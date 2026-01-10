@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F2DDB8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#393F4A;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Forme géométrique type brisure -->
+  <polygon points="50,10 90,35 75,75 25,75 10,35" fill="url(#grad)" stroke="#393F4A" stroke-width="2"/>
+  <polygon points="50,30 70,42 60,60 40,60 30,42" fill="#F2DDB8" opacity="0.7"/>
+</svg>

@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Portfolio 3D interactif - Développeur créatif">
+  <meta name="theme-color" content="#0a0a0a">
+  
+  <title>Portfolio 3D | Développeur Créatif</title>
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg">
+  
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/css/variables.css">
+  <link rel="stylesheet" href="assets/css/reset.css">
+  <link rel="stylesheet" href="assets/css/main.css">
+  <link rel="stylesheet" href="assets/css/responsive.css">
+  
+  <!-- Preload critiques -->
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  
+  <style>
+    /* Critical CSS - Scroll virtuel */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden; /* SUPPRESSION SCROLL NATIF */
+    }
+    
+    canvas {
+      display: block;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+    
+    /* Loading screen */
+    .loading-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--bg-primary, #0a0a0a);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      transition: opacity 0.5s ease, visibility 0.5s ease;
+    }
+    
+    .loading-screen.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    
+    .loading-spinner {
+      width: 60px;
+      height: 60px;
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top-color: var(--accent, #4a90d9);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    .loading-text {
+      margin-top: 20px;
+      color: var(--text-secondary, rgba(255,255,255,0.6));
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    /* Shard info overlay */
+    .shard-info-overlay {
+      font-family: system-ui, -apple-system, sans-serif;
+      color: var(--text-primary);
+    }
+    
+    .shard-info-content {
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(20px);
+      border-radius: 20px;
+      padding: 30px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    [data-theme="light"] .shard-info-content {
+      background: rgba(242, 221, 184, 0.95);
+      border: 1px solid rgba(57, 63, 74, 0.2);
+    }
+    
+    .facette-nav {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    
+    .facette-nav button {
+      background: var(--bg-secondary);
+      border: none;
+      color: var(--text-primary);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 16px;
+      transition: transform 0.2s, background 0.2s;
+    }
+    
+    .facette-nav button:hover {
+      transform: scale(1.1);
+      background: var(--accent);
+      color: var(--bg-primary);
+    }
+    
+    .facette-indicator {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+    
+    .shard-category {
+      display: inline-block;
+      padding: 5px 15px;
+      background: var(--accent);
+      color: var(--bg-primary);
+      border-radius: 20px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 15px;
+    }
+    
+    .shard-title {
+      font-size: 28px;
+      font-weight: 600;
+      margin: 0 0 15px;
+    }
+    
+    .shard-description {
+      font-size: 16px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+      margin: 0 0 20px;
+    }
+    
+    .shard-technologies {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    
+    .tech-badge {
+      padding: 5px 12px;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      border-radius: 15px;
+      font-size: 12px;
+    }
+    
+    .shard-links {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+    }
+    
+    .shard-link {
+      color: var(--accent);
+      text-decoration: none;
+      padding: 10px 20px;
+      border: 1px solid var(--accent);
+      border-radius: 25px;
+      transition: background 0.2s, color 0.2s;
+    }
+    
+    .shard-link:hover {
+      background: var(--accent);
+      color: var(--bg-primary);
+    }
+    
+    /* Scroll indicator */
+    .scroll-progress {
+      width: 2px;
+      height: 40px;
+      background: var(--text-secondary);
+      border-radius: 1px;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .scroll-progress::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 50%;
+      background: var(--accent);
+      animation: scrollHint 1.5s ease-in-out infinite;
+    }
+    
+    @keyframes scrollHint {
+      0%, 100% { transform: translateY(0); opacity: 1; }
+      50% { transform: translateY(100%); opacity: 0.5; }
+    }
+    
+    .scroll-hint {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <!-- Loading Screen -->
+  <div class="loading-screen" id="loading">
+    <div class="loading-spinner"></div>
+    <p class="loading-text">Chargement de l'univers...</p>
+  </div>
+  
+  <!-- Three.js Canvas sera injecté ici -->
+  
+  <!-- Scripts -->
+  <!-- Three.js -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js"
+    }
+  }
+  </script>
+  
+  <!-- GSAP -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollToPlugin.min.js"></script>
+  
+  <!-- Main App -->
+  <script type="module">
+    import './assets/js/main.js';
+    
+    // Hide loading screen when ready
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        document.getElementById('loading').classList.add('hidden');
+      }, 500);
+    });
+  </script>
+</body>
+</html>
