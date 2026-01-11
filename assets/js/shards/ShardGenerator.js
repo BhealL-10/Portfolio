@@ -1,6 +1,6 @@
 /**
  * ShardGenerator.js - Génération des shards
- * Portfolio 3D V3.0
+ * Portfolio 3D V4.0
  */
 
 import * as THREE from 'three';
@@ -59,6 +59,7 @@ export class ShardGenerator {
       focusAmount: 0,
       flattenAmount: 0,
       hoverMorphAmount: 0,
+      dragMorphAmount: 0,
       
       state: 'idle',
       

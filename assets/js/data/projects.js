@@ -1,6 +1,6 @@
 /**
  * Projects.js - Données des 10 projets avec 3 facettes chacun
- * Portfolio 3D V3.0
+ * Portfolio 3D V4.0
  */
 
 export const projects = [

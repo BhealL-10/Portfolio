@@ -1,10 +1,10 @@
 /**
- * Camera.js - Gestion caméra avec déplacement continu
- * Portfolio 3D V3.0
+ * Camera.js - Gestion caméra avec correction automatique de position
+ * Portfolio 3D V4.0
  */
 
 import * as THREE from 'three';
-import { CAMERA, SHARD } from '../config/constants.js';
+import { CAMERA, SHARD, FOCUS } from '../config/constants.js';
 
 export class Camera {
   constructor() {
@@ -29,6 +29,8 @@ export class Camera {
     
     this.totalShards = 10;
     this.isTransitioning = false;
+    this.isFocusMode = false;
+    this.focusTargetZ = null;
     
     this.setupResize();
   }
@@ -52,11 +54,12 @@ export class Camera {
     const endCameraZ = lastShardZ + 40;
     const totalDistance = endCameraZ - startCameraZ;
     
-    let targetZ = startCameraZ + (scrollProgress * totalDistance);
-    return targetZ;
+    return startCameraZ + (scrollProgress * totalDistance);
   }
   
   updateFromScroll(scrollProgress, totalShards, currentShardIndex = 0) {
+    if (this.isFocusMode) return;
+    
     this.totalShards = totalShards;
     
     const targetZ = this.calculateTargetZ(scrollProgress, currentShardIndex);
@@ -69,9 +72,11 @@ export class Camera {
   }
   
   update(deltaTime = 0.016) {
-    const easeFactor = CAMERA.CONTINUOUS_MOVEMENT.ENABLED 
-      ? CAMERA.CONTINUOUS_MOVEMENT.EASE_FACTOR 
-      : this.smoothing;
+    const easeFactor = this.isFocusMode 
+      ? FOCUS.POSITION_CORRECTION.SMOOTHING 
+      : (CAMERA.CONTINUOUS_MOVEMENT.ENABLED 
+        ? CAMERA.CONTINUOUS_MOVEMENT.EASE_FACTOR 
+        : this.smoothing);
     
     this.currentPosition.lerp(this.targetPosition, easeFactor);
     this.instance.position.copy(this.currentPosition);
@@ -80,6 +85,28 @@ export class Camera {
     this.instance.lookAt(this.currentLookAt);
     
     this.velocity.subVectors(this.targetPosition, this.currentPosition);
+  }
+  
+  setFocusMode(enabled, shardZ = null) {
+    this.isFocusMode = enabled;
+    if (enabled && shardZ !== null) {
+      this.focusTargetZ = shardZ;
+    } else {
+      this.focusTargetZ = null;
+    }
+  }
+  
+  setFocusPosition(x, y, z, lookAtZ) {
+    this.targetPosition.set(x, y, z);
+    this.lookAtTarget.set(x, y, lookAtZ);
+  }
+  
+  enforceFocusPosition(shardZ) {
+    if (!this.isFocusMode) return;
+    
+    const cameraZ = shardZ - FOCUS.CAMERA_DISTANCE;
+    this.targetPosition.set(0, 0, cameraZ);
+    this.lookAtTarget.set(0, 0, shardZ);
   }
   
   teleportTo(z, x = 0, y = 0) {

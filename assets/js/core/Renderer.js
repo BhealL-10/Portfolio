@@ -1,6 +1,6 @@
 /**
  * Renderer.js - Configuration WebGL avec gestion dual canvas
- * Portfolio 3D V3.0
+ * Portfolio 3D V4.0
  */
 
 import * as THREE from 'three';
@@ -20,6 +20,7 @@ export class Renderer {
     
     this.opacity = 1;
     this.isVisible = true;
+    this.blurAmount = 0;
     
     this.setupRenderer();
     this.setupResize();
@@ -43,6 +44,7 @@ export class Renderer {
       height: 100%;
       z-index: ${LAYERS.THREE_JS.Z_INDEX};
       pointer-events: auto;
+      transition: filter 0.3s ease;
     `;
     
     if (!canvas.parentNode) {
@@ -65,6 +67,29 @@ export class Renderer {
   setOpacity(opacity) {
     this.opacity = Math.max(0, Math.min(1, opacity));
     this.instance.domElement.style.opacity = this.opacity;
+  }
+  
+  setBlur(amount) {
+    this.blurAmount = Math.max(0, Math.min(20, amount));
+    this.instance.domElement.style.filter = amount > 0 ? `blur(${amount}px)` : 'none';
+  }
+  
+  animateBlur(targetBlur, duration = 0.3) {
+    if (!window.gsap) {
+      this.setBlur(targetBlur);
+      return;
+    }
+    
+    window.gsap.to(this, {
+      blurAmount: targetBlur,
+      duration: duration,
+      ease: 'power2.out',
+      onUpdate: () => {
+        this.instance.domElement.style.filter = this.blurAmount > 0.1 
+          ? `blur(${this.blurAmount}px)` 
+          : 'none';
+      }
+    });
   }
   
   animateOpacity(targetOpacity, duration = 0.5, onComplete = null) {

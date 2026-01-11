@@ -1,6 +1,6 @@
 /**
  * ScrollManager.js - Gestionnaire scroll virtuel avec sous-étapes
- * Portfolio 3D V3.0
+ * Portfolio 3D V4.0
  */
 
 import { SCROLL } from '../config/constants.js';
@@ -229,17 +229,6 @@ export class ScrollManager {
     return (shardScroll - sectionStart) / sectionSize;
   }
   
-  getSubStepThreshold() {
-    const progress = this.getSectionProgress();
-    const thresholds = SCROLL.SUB_STEP_THRESHOLDS;
-    
-    if (progress < thresholds.APPROACHING) return 'approaching';
-    if (progress < thresholds.ENTERING) return 'entering';
-    if (progress < thresholds.CENTERED) return 'centered';
-    if (progress < thresholds.LEAVING) return 'leaving';
-    return 'exiting';
-  }
-  
   setTotalSections(count) {
     this.totalSections = Math.max(1, count);
   }
@@ -261,10 +250,6 @@ export class ScrollManager {
     if (instant) {
       this.scroll = this.scrollTarget;
     }
-  }
-  
-  scrollToAbout(instant = false) {
-    this.scrollTo(SCROLL.ABOUT_SECTION_THRESHOLD + 0.1, instant);
   }
   
   lock() { this.locked = true; }
@@ -291,12 +276,4 @@ export class ScrollManager {
   isInAbout() { return this.isInAboutSection; }
   getLocked() { return this.locked; }
   getEnabled() { return this.enabled; }
-  
-  static map(value, inMin, inMax, outMin, outMax) {
-    return outMin + (outMax - outMin) * ((value - inMin) / (inMax - inMin));
-  }
-  
-  static clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
-  }
 }

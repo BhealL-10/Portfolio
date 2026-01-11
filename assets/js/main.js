@@ -1,6 +1,6 @@
 /**
  * Main.js - Point d'entrée principal
- * Portfolio 3D V3.0 - Orchestration améliorée
+ * Portfolio 3D V4.0 - Focus Optimisé
  */
 
 import { Camera } from './core/Camera.js';
@@ -37,7 +37,7 @@ class PortfolioApp {
   }
   
   async init() {
-    console.log('🚀 Initializing Portfolio 3D V3.0...');
+    console.log('🚀 Initializing Portfolio 3D V4.0...');
     
     try {
       this.initCore();
@@ -79,6 +79,7 @@ class PortfolioApp {
       this.timelineManager
     );
     this.focusController.setScrollManager(this.scrollManager);
+    this.focusController.setRenderer(this.renderer);
     
     console.log('✅ Managers initialized');
   }
@@ -109,7 +110,11 @@ class PortfolioApp {
     
     this.raycastManager.onShardClick = (shard) => {
       if (this.focusController.isFocused()) {
-        this.focusController.unfocus();
+        if (this.focusController.getFocusedShard() === shard) {
+          this.focusController.unfocus();
+        } else {
+          this.focusController.focus(shard);
+        }
       } else {
         this.focusController.focus(shard);
       }
@@ -140,7 +145,7 @@ class PortfolioApp {
     this.uiManager = new UIManager();
     this.themeSwitch = new ThemeSwitch(this.scene, this.shardManager);
     
-    this.uiManager.setupNavigation(this.scrollManager);
+    this.uiManager.setupNavigation(this.scrollManager, this.shardManager, this.focusController);
     
     console.log('✅ UI initialized');
   }
@@ -192,7 +197,6 @@ class PortfolioApp {
     };
     
     this.introManager.onProgress = (progress) => {
-      // Optional: Could fade in shards during intro
     };
     
     this.introManager.start();

@@ -1,6 +1,6 @@
 /**
  * ThemeSwitch.js - Gestion du thème light/dark
- * Portfolio 3D V3.0
+ * Portfolio 3D V4.0
  */
 
 import { LAYERS } from '../config/constants.js';

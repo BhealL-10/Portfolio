@@ -1,11 +1,6 @@
 /**
  * Constants.js - Configuration centralisée
- * Portfolio 3D V3.0 - Système Immersif Optimisé
- * 
- * - 10 shards en boucle infinie
- * - Scroll virtuel avec sous-étapes
- * - Dual canvas (2D + Three.js)
- * - Animations focus 4 phases améliorées
+ * Portfolio 3D V4.0 - Système Focus Optimisé
  */
 
 // ==========================================
@@ -15,21 +10,17 @@ export const INTRO = {
   HERO_TEXT: "Bienvenue dans mon univers",
   HERO_SUBTITLE: "Cliquez pour entrer",
   
-  // Fractures et cellules Voronoi
   CELLS_PER_CLICK: 8,
   CELL_SPREAD: 150,
   FRACTURE_DETECTION_RADIUS: 120,
   
-  // Destruction
   DESTRUCTION_THRESHOLD: 100,
   DECAY_RATE: 2.0,
   DECAY_DELAY: 1.5,
   
-  // Transition
   FADE_DURATION: 1.5,
   SHATTER_DURATION: 1.2,
   
-  // LocalStorage
   STORAGE_KEY: 'portfolio_intro_completed'
 };
 
@@ -162,34 +153,32 @@ export const SHARD = {
 export const FACETTE = {
   COUNT: 3,
   ROTATION_ANGLE: (2 * Math.PI) / 3,
-  TRANSITION_DURATION: 0.8,
+  TRANSITION_DURATION: 1.5,
   TRANSITION_EASE: 'power2.inOut',
   
-  // Rotation triangulaire
   TRIANGLE_ROTATION: true,
-  TRIANGLE_SCALE_DEPTH: 0.15,
-  TRIANGLE_ROTATION_AXIS_Y: true,
+  TRIANGLE_SCALE_DEPTH: 0.3,
   
-  // Animation pendant focus
+  TEXT_FADE_DURATION: 0.3,
+  TEXT_FADE_DELAY: 0.2,
+  
   KEEP_FOCUS_STATE: true,
   MORPH_DURING_TRANSITION: true
 };
 
 // ==========================================
-// CONFIGURATION DU FOCUS (4 PHASES)
+// CONFIGURATION DU FOCUS OPTIMISÉ
 // ==========================================
 export const FOCUS = {
   Z_OFFSET: 12,
-  CAMERA_DISTANCE_BASE: 25,
-  CAMERA_DISTANCE_MULTIPLIER: 1.0,
+  CAMERA_DISTANCE: 30,
   SCALE: 2.0,
   EMISSIVE: 0.35,
   
-  // Durées par phase
-  PHASE1_DURATION: 0.5,  // Sphérique → Fragmenté
-  PHASE2_DURATION: 0.7,  // Fragmenté → Plat
-  PHASE3_DURATION: 1.0,  // Approche caméra
-  PHASE4_DURATION: 0.7,  // Transformation matériau
+  PHASE1_DURATION: 0.5,
+  PHASE2_DURATION: 0.7,
+  PHASE3_DURATION: 1.0,
+  PHASE4_DURATION: 0.7,
   
   FOCUS_DURATION: 0.9,
   UNFOCUS_DURATION: 0.7,
@@ -197,7 +186,20 @@ export const FOCUS = {
   AUTO_FOCUS_ENABLED: true,
   AUTO_FOCUS_DELAY: 0.5,
   AUTO_FOCUS_SUB_STEP: 0.5,
-  AUTO_UNFOCUS_ON_SCROLL: true,
+  AUTO_UNFOCUS_ON_SCROLL: false,
+  
+  QUICK_FOCUS: {
+    ENABLED: true,
+    SCROLL_SPEED: 0.15,
+    BLUR_AMOUNT: 0.8,
+    TRANSITION_DURATION: 0.6
+  },
+  
+  POSITION_CORRECTION: {
+    ENABLED: true,
+    SMOOTHING: 0.1,
+    THRESHOLD: 0.5
+  },
   
   EASE_IN: 'power2.out',
   EASE_OUT: 'power2.inOut'
@@ -229,11 +231,17 @@ export const ANIMATION = {
     OPACITY_DURATION: 0.5
   },
   
-  // Morphing hover
   MORPH: {
     STRENGTH: 0.15,
     FREQUENCY: 2.0,
-    DRAG_STRETCH: 0.4
+    DRAG_STRETCH: 0.4,
+    FOCUS_FRAGMENT: 0.12
+  },
+  
+  HOVER: {
+    FRAGMENT_STRENGTH: 0.12,
+    FRAGMENT_FREQUENCY: 1.5,
+    CONTINUOUS: true
   }
 };
 
@@ -266,7 +274,13 @@ export const PHYSICS = {
 export const DRAG = {
   SENSITIVITY: 0.012,
   THROW_MULTIPLIER: 0.12,
-  RETURN_DELAY: 1800
+  RETURN_DELAY: 1800,
+  
+  DEFORM: {
+    ENABLED: true,
+    STRENGTH: 0.25,
+    COMBINES_WITH_HOVER: true
+  }
 };
 
 // ==========================================
@@ -309,7 +323,10 @@ export const CATEGORIES = {
   dev: { label: 'Développement', color: 0x5ce1e6, emoji: '💻' },
   realisation: { label: 'Réalisation', color: 0xe74c3c, emoji: '🎬' },
   video: { label: 'Vidéo', color: 0x9b59b6, emoji: '🎥' },
-  graphisme: { label: 'Graphisme', color: 0xf39c12, emoji: '🎨' }
+  graphisme: { label: 'Graphisme', color: 0xf39c12, emoji: '🎨' },
+  presentation: { label: 'Présentation', color: 0x27ae60, emoji: '👤' },
+  skills: { label: 'Compétences', color: 0x3498db, emoji: '🎯' },
+  contact: { label: 'Contact', color: 0xe91e63, emoji: '✉️' }
 };
 
 // ==========================================

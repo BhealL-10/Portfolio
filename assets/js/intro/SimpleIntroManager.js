@@ -1,6 +1,6 @@
 /**
  * SimpleIntroManager.js - Gestionnaire intro avec transition Canvas → Three.js
- * Portfolio 3D V3.0
+ * Portfolio 3D V4.0
  */
 
 import { INTRO, LAYERS } from '../config/constants.js';

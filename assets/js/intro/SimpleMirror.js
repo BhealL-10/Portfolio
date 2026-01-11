@@ -1,6 +1,6 @@
 /**
  * SimpleMirror.js - Miroir Canvas 2D avec effet de bris
- * Portfolio 3D V3.0
+ * Portfolio 3D V4.0
  */
 
 import { INTRO, THEME, LAYERS } from '../config/constants.js';
@@ -77,7 +77,7 @@ export class SimpleMirror {
     ctx.globalAlpha = this.opacity;
     ctx.fillRect(0, 0, w, h);
     
-    if (this.opacity > 1) {
+    if (this.opacity > 0.5) {
       ctx.globalAlpha = this.opacity;
       ctx.fillStyle = crackColor;
       ctx.font = 'bold 52px system-ui, -apple-system, sans-serif';
@@ -86,7 +86,7 @@ export class SimpleMirror {
       ctx.fillText(INTRO.HERO_TEXT, w / 2, h / 2 - 35);
       
       ctx.font = '22px system-ui, -apple-system, sans-serif';
-      ctx.globalAlpha = this.opacity * 1;
+      ctx.globalAlpha = this.opacity;
       ctx.fillText(INTRO.HERO_SUBTITLE, w / 2, h / 2 + 25);
     }
     
@@ -184,8 +184,6 @@ export class SimpleMirror {
     }
     
     if (targetFracture) {
-      console.log(`🔨 Clic sur fracture existante #${targetFracture.id}, ajout de ${INTRO.CELLS_PER_CLICK} cellules`);
-      
       for (let i = 0; i < INTRO.CELLS_PER_CLICK; i++) {
         const angle = Math.random() * Math.PI * 2;
         const distance = Math.random() * INTRO.CELL_SPREAD * 0.5;
@@ -208,7 +206,6 @@ export class SimpleMirror {
       
     } else {
       const fractureId = this.nextFractureId++;
-      console.log(`✨ Nouvelle fracture #${fractureId} à (${Math.round(x)}, ${Math.round(y)})`);
       
       const newFracture = {
         id: fractureId,

@@ -1,6 +1,6 @@
 /**
- * UIManager.js - Gestion des sections About/Contact
- * Portfolio 3D V3.0
+ * UIManager.js - Gestion UI et sections About/Contact
+ * Portfolio 3D V4.0
  */
 
 import { LAYERS, UI, SCROLL } from '../config/constants.js';
@@ -59,6 +59,11 @@ export class UIManager {
       
       .shard-info-content {
         font-family: system-ui, -apple-system, sans-serif;
+        background: rgba(0,0,0,0.6);
+        backdrop-filter: blur(20px);
+        padding: 30px;
+        border-radius: 20px;
+        border: 1px solid rgba(255,255,255,0.1);
       }
       
       .shard-category {
@@ -279,11 +284,24 @@ export class UIManager {
     }
   }
   
-  setupNavigation(scrollManager) {
+  setupNavigation(scrollManager, shardManager, focusController) {
     const dots = this.sectionIndicator?.querySelectorAll('.section-dot');
+    console.log('🎯 setupNavigation: dots=' + dots?.length + ', focusController=' + !!focusController + ', shardManager=' + !!shardManager);
+    
     dots?.forEach((dot, i) => {
       dot.addEventListener('click', () => {
-        scrollManager.scrollToSection(i);
+        console.log('🖱️ Dot clicked: index=' + i);
+        
+        if (focusController && shardManager) {
+          const shard = shardManager.getShardByIndex(i);
+          console.log('  → Shard found: ' + !!shard);
+          if (shard) {
+            focusController.focus(shard, false);
+          }
+        } else {
+          console.log('  → Fallback to scrollToSection');
+          scrollManager.scrollToSection(i);
+        }
       });
     });
   }

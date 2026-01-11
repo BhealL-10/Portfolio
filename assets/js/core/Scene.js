@@ -1,6 +1,6 @@
 /**
  * Scene.js - Configuration scène Three.js
- * Portfolio 3D V3.0
+ * Portfolio 3D V4.0
  */
 
 import * as THREE from 'three';
