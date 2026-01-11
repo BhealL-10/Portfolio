@@ -109,53 +109,12 @@ export class FocusController {
     // Callback
     if (this.onFocusStart) this.onFocusStart(shard);
     
-    // Sauvegarder position/rotation originales
-    shard.userData.originalPosition = shard.position.clone();
-    shard.userData.originalRotation = shard.rotation.clone();
-    
-    // Position cible (devant la caméra)
-    const cameraPos = this.camera.getPosition();
-    const focusPosition = new THREE.Vector3(0, 0, cameraPos.z - this.focusDistance);
-    
-    // Animation GSAP
-    const gsap = window.gsap;
-    if (!gsap) {
-      console.error('GSAP not found');
-      return;
-    }
-    
-    const tl = gsap.timeline({
-      onComplete: () => {
-        this.state = FocusState.FOCUSED;
-        this.showInfo(shard);
-        if (this.onFocusComplete) this.onFocusComplete(shard);
-      }
+    // Utiliser TimelineManager pour l'animation (comme l'ancien système)
+    this.timelineManager.animateFocus(shard, this.camera.instance, () => {
+      this.state = FocusState.FOCUSED;
+      this.showInfo(shard);
+      if (this.onFocusComplete) this.onFocusComplete(shard);
     });
-    
-    // Mouvement vers le centre
-    tl.to(shard.position, {
-      x: focusPosition.x,
-      y: focusPosition.y,
-      z: focusPosition.z,
-      duration: this.focusDuration,
-      ease: ANIMATION.EASE.IN_OUT
-    }, 0);
-    
-    // Rotation face caméra
-    tl.to(shard.rotation, {
-      x: 0,
-      y: 0,
-      z: 0,
-      duration: this.focusDuration,
-      ease: ANIMATION.EASE.OUT
-    }, 0);
-    
-    // Aplatissement
-    tl.to(shard.userData, {
-      focusAmount: 1,
-      duration: this.focusDuration,
-      ease: ANIMATION.EASE.OUT
-    }, 0);
   }
   
   /**

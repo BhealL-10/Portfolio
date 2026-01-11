@@ -28,10 +28,11 @@ export class ShardGenerator {
     
     const material = new THREE.MeshStandardMaterial({
       color: theme.shardColor,
+      roughness: 0.7,
       metalness: 0.3,
-      roughness: 0.4,
-      emissive: new THREE.Color(theme.shardColor),
-      emissiveIntensity: SHARD.STATES.IDLE.emissive,
+      flatShading: true,
+      emissive: 0x000000,
+      emissiveIntensity: 0,
       transparent: true,
       opacity: 1
     });

@@ -165,7 +165,7 @@ export class ScrollManager {
   update() {
     if (!this.enabled) return this.scroll;
     
-    // Si locked, ne pas lisser mais retourner la valeur actuelle
+    // Si locked, ne pas mettre à jour
     if (this.locked) return this.scroll;
     
     // Lissage du scroll
@@ -177,8 +177,10 @@ export class ScrollManager {
       this.scroll = this.scrollTarget;
     }
     
-    // Calculer section actuelle
-    const newSection = this.calculateCurrentSection();
+    // Calculer section courante
+    const newSection = this.calculateSectionFromScroll(this.scroll);
+    
+    // Détecter changement de section
     if (newSection !== this.currentSection) {
       const oldSection = this.currentSection;
       this.currentSection = newSection;
@@ -197,15 +199,22 @@ export class ScrollManager {
   }
   
   /**
-   * Calcule la section actuelle basée sur le scroll
+   * Calcule la section basée sur une valeur de scroll
    */
-  calculateCurrentSection() {
+  calculateSectionFromScroll(scrollValue) {
     if (this.totalSections <= 0) return 0;
     
     const sectionSize = 1 / this.totalSections;
-    const section = Math.floor(this.scroll / sectionSize);
+    const section = Math.floor(scrollValue / sectionSize);
     // Clamper pour éviter les dépassements
     return Math.max(0, Math.min(section, this.totalSections - 1));
+  }
+  
+  /**
+   * Calcule la section actuelle basée sur le scroll
+   */
+  calculateCurrentSection() {
+    return this.calculateSectionFromScroll(this.scroll);
   }
   
   /**
@@ -286,6 +295,7 @@ export class ScrollManager {
   getCurrentSection() {
     return this.currentSection;
   }
+  
   
   getProgress() {
     return this.scroll;

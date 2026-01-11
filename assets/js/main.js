@@ -149,7 +149,7 @@ class Portfolio3D {
   }
   
   /**
-   * Animation de transition post-intro (2 secondes)
+   * Animation de transition post-intro
    */
   playPostIntroAnimation() {
     console.log('🎬 Animation post-intro - caméra...');
@@ -158,8 +158,7 @@ class Portfolio3D {
     setTimeout(() => {
       // Position de départ de la caméra (très loin)
       const startZ = CAMERA.POST_INTRO_START_Z;
-      this.camera.instance.position.z = startZ;
-      this.camera.targetPosition.z = startZ;
+      this.camera.teleportTo(startZ);
       
       console.log('📍 Position caméra départ:', startZ);
       
@@ -182,17 +181,7 @@ class Portfolio3D {
         this.animate();
       }
       
-      // Utiliser le système d'animation de Camera.js au lieu d'une animation manuelle
-      console.log('🎯 Animation caméra via animateToSection vers section 0');
-      
-      // Bloquer le scroll pendant l'animation
-      this.scrollManager.lock();
-      
-      // Animer vers la section 0 (position initiale)
-      this.camera.animateToSection(0, this.shardManager.getTotalShards(), () => {
-        console.log('✅ Animation post-intro terminée');
-        this.scrollManager.unlock();
-      });
+      console.log('✅ Animation post-intro prête - scroll actif');
     }, 100); // Délai de 100ms pour la transition
   }
   
@@ -333,24 +322,9 @@ class Portfolio3D {
       this.focusController.checkScrollUnfocus(scroll);
     };
     
-    // Section change
+    // Section change - Log simple (pas d'animation complexe)
     this.scrollManager.onSectionChange = (newSection, oldSection) => {
-      console.log(`📍 Section ${oldSection} → ${newSection}`);
-      
-      // Ne pas animer si déjà en animation
-      if (this.camera.isAnimating) {
-        console.log('⚠️ Animation déjà en cours, ignoré');
-        return;
-      }
-      
-      // Bloquer le scroll pendant l'animation
-      this.scrollManager.lock();
-      
-      // Animer la caméra vers la nouvelle section
-      this.camera.animateToSection(newSection, this.shardManager.getTotalShards(), () => {
-        // Débloquer le scroll après l'animation
-        this.scrollManager.unlock();
-      });
+      console.log(`🎯 Section: ${oldSection} → ${newSection}`);
     };
     
     // Focus events
@@ -450,22 +424,12 @@ class Portfolio3D {
     if (this.scrollManager) {
       const scroll = this.scrollManager.update();
       
-      // Update camera - TOUJOURS en premier pour les animations
-      // Cette méthode met à jour la position de la caméra à chaque frame
+      // Update camera position based on scroll
+      this.camera.updateFromScroll(scroll, this.shardManager.getTotalShards());
       this.camera.update();
       
-      // Update camera target basée sur le scroll (SEULEMENT si pas en animation)
-      if (!this.camera.isAnimating) {
-        this.camera.updateFromScroll(scroll, this.shardManager.getTotalShards());
-      }
-      
-      // Update shards (utiliser la position réelle de la caméra, pas le scroll)
+      // Update shards
       this.shardManager.update(scroll, deltaTime);
-      
-      // Update timeline (seulement si pas en animation de section)
-      if (!this.camera.isAnimating) {
-        this.timelineManager.update(scroll);
-      }
       
       // Update scene lights (suit toujours la caméra)
       this.scene.updatePointLight(this.camera.instance.position);
@@ -473,7 +437,7 @@ class Portfolio3D {
       // Update section indicator
       this.updateSectionIndicator();
     } else {
-      // Même sans scrollManager, update la caméra pour l'animation post-intro
+      // Même sans scrollManager, update la caméra
       this.camera.update();
     }
     

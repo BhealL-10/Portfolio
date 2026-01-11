@@ -61,10 +61,11 @@ export const CAMERA = {
   INITIAL_Z: 30,
   
   // Position de départ post-intro (très loin)
-  POST_INTRO_START_Z: 150,
+  POST_INTRO_START_Z: 250,
   
   // Distance de déplacement sur l'axe Z (début → fin)
-  Z_TRAVEL: 150,
+  // Calculé automatiquement: totalShards * Z_SPACING
+  Z_TRAVEL: 400,
   
   // FOV
   FOV: 60,
@@ -72,10 +73,10 @@ export const CAMERA = {
   FAR: 1000,
   
   // Lissage de la caméra (plus bas = plus lent et fluide)
-  SMOOTHING: 0.05,
+  SMOOTHING: 0.015,
   
-  // LookAt offset
-  LOOK_AHEAD: 10
+  // LookAt offset (distance devant la caméra pour le regard)
+  LOOK_AHEAD: 15
 };
 
 // ==========================================
@@ -83,7 +84,7 @@ export const CAMERA = {
 // ==========================================
 export const SHARD = {
   // Géométrie
-  GEOMETRY_DETAIL: 5,
+  GEOMETRY_DETAIL: 1,
   BASE_SCALE: 1.5,
   
   // Espacement entre shards sur Z
@@ -91,10 +92,10 @@ export const SHARD = {
   
   // Orbite (mouvement orbital autour de la position centrale)
   ORBIT: {
-    BASE_RADIUS_X: 3,
-    BASE_RADIUS_Y: 2,
-    GROWTH_PER_INDEX: 12.5,  // L'orbite grandit avec la distance
-    SPEED: 0.15
+    BASE_RADIUS_X: 8,
+    BASE_RADIUS_Y: 4.5,
+    GROWTH_PER_INDEX: 17.5,
+    SPEED: 0.45
   },
   
   // Rotation automatique
@@ -104,31 +105,34 @@ export const SHARD = {
     SPEED_Z: 0.001
   },
   
-  // États visuels
+  // États visuels (basés sur l'ancien animations.js)
   STATES: {
     IDLE: {
-      scale: 1,
+      scale: 0.7,
       opacity: 1,
       emissive: 0.05
     },
     CURRENT: {
-      scale: 1.3,
+      scale: 1.2,
       opacity: 1,
       emissive: 0.15
     },
     HOVER: {
-      scale: 1.2,
+      scale: 1.0,
+      scaleIncrease: 0.3,
       opacity: 1,
-      emissive: 0.25
+      emissive: 0.3,
+      flattenAmount: 0.5
     },
     FOCUS: {
-      scale: 2.0,
+      scale: 1.8,
+      scaleIncrease: 0.5,
       opacity: 1,
       emissive: 0.4,
-      flattenAmount: 0.95
+      flattenAmount: 0.98
     },
     DISTANT: {
-      scale: 0.8,
+      scale: 0.7,
       opacity: 0.7,
       emissive: 0.02
     }
