@@ -1,20 +1,23 @@
 /**
- * ShardGenerator.js - Génération des shards 3D
- * Portfolio 3D V2.0
+ * ShardGenerator.js - Génération des shards
+ * Portfolio 3D V3.0
  * 
- * Crée les géométries et matériaux des shards avec support facettes
+ * - Support 10 shards dynamiques
+ * - Configuration boucle infinie
+ * - Positionnement optimisé
  */
 
 import * as THREE from 'three';
-import { SHARD, THEME, CATEGORIES } from '../config/constants.js';
+import { SHARD, THEME } from '../config/constants.js';
 
 export class ShardGenerator {
-  constructor(isDarkMode = true) {
-    this.isDarkMode = isDarkMode;
+  constructor() {
+    this.isDarkMode = document.documentElement.dataset.theme === 'dark';
+    this.generatedCount = 0;
   }
   
   /**
-   * Génère un shard pour un projet
+   * Génère un shard à une position Z fixe
    */
   generateShard(project, index) {
     // Géométrie icosaèdre
@@ -25,33 +28,37 @@ export class ShardGenerator {
     
     // Matériau
     const theme = this.isDarkMode ? THEME.DARK : THEME.LIGHT;
-    
     const material = new THREE.MeshStandardMaterial({
       color: theme.shardColor,
-      roughness: 0.7,
-      metalness: 0.3,
+      roughness: 0.65,
+      metalness: 0.35,
       flatShading: true,
-      emissive: 0x000000,
-      emissiveIntensity: 0,
       transparent: true,
-      opacity: 1
+      opacity: 0,
+      emissive: new THREE.Color(theme.emissiveColor),
+      emissiveIntensity: SHARD.STATES.IDLE.emissive
     });
     
-    // Mesh
     const shard = new THREE.Mesh(geometry, material);
     
-    // Position initiale
-    const position = this.calculateInitialPosition(index);
-    shard.position.set(position.x, position.y, position.z);
+    // Position Z fixe (commence à Z négatif pour que caméra à Z=30 voit bien le premier shard)
+    const fixedZ = (index * SHARD.Z_SPACING) - SHARD.Z_SPACING;
     
-    // Rotation aléatoire
+    // Position initiale avec offset orbital aléatoire
+    const initialOrbitAngle = Math.random() * Math.PI * 2;
+    const initialX = Math.cos(initialOrbitAngle) * SHARD.ORBIT.RADIUS_X * 0.5;
+    const initialY = Math.sin(initialOrbitAngle) * SHARD.ORBIT.RADIUS_Y * 0.5;
+    
+    shard.position.set(initialX, initialY, fixedZ);
+    
+    // Rotation initiale aléatoire
     shard.rotation.set(
       Math.random() * Math.PI * 2,
       Math.random() * Math.PI * 2,
       Math.random() * Math.PI * 2
     );
     
-    // UserData enrichi
+    // UserData
     shard.userData = {
       // Identifiants
       projectId: project.id,
@@ -61,33 +68,36 @@ export class ShardGenerator {
       facettes: project.facettes,
       activeFacette: 0,
       
-      // Position canonique (calculée par scroll)
-      canonicalPosition: new THREE.Vector3(position.x, position.y, position.z),
+      // Position Z fixe
+      fixedZ: fixedZ,
       
-      // Animation progress (0-1)
-      approachProgress: 0,
-      currentProgress: 0,
-      departProgress: 0,
+      // Position orbitale
+      orbitalCenter: new THREE.Vector3(0, 0, fixedZ),
+      
+      // Animation
       focusAmount: 0,
+      flattenAmount: 0,
       
-      // États
-      state: 'idle', // idle, current, hover, focus, dragged
-      isVisible: true,
+      // État
+      state: 'idle',
       
-      // Physique
-      velocity: new THREE.Vector3(0, 0, 0),
+      // Physique (X/Y)
+      velocity: new THREE.Vector2(0, 0),
       isDragging: false,
-      isReturning: false,
+      
+      // Focus
+      isFocused: false,
+      focusZOffset: 0,
       
       // Orbite
-      orbitAngle: Math.random() * Math.PI * 2,
-      orbitSpeed: SHARD.ORBIT.SPEED * (0.8 + Math.random() * 0.4),
+      orbitAngle: initialOrbitAngle,
+      orbitSpeed: SHARD.ORBIT.SPEED * (0.7 + Math.random() * SHARD.ORBIT.VARIATION),
       
       // Rotation
       rotationSpeed: {
-        x: SHARD.ROTATION.SPEED_X * (0.5 + Math.random()),
-        y: SHARD.ROTATION.SPEED_Y * (0.5 + Math.random()),
-        z: SHARD.ROTATION.SPEED_Z * (0.5 + Math.random())
+        x: SHARD.ROTATION.SPEED_X * (0.6 + Math.random() * 0.8),
+        y: SHARD.ROTATION.SPEED_Y * (0.6 + Math.random() * 0.8),
+        z: SHARD.ROTATION.SPEED_Z * (0.6 + Math.random() * 0.8)
       },
       
       // Scale de base
@@ -97,29 +107,38 @@ export class ShardGenerator {
         SHARD.BASE_SCALE
       ),
       
-      // Sauvegarde pour animations
+      // Pour animations
+      originalRotation: null,
       originalPosition: null,
-      originalRotation: null
+      
+      // Boucle infinie
+      isWrapped: false,
+      wrapOffset: 0
     };
+    
+    // Appliquer scale initial
+    const idleScale = SHARD.STATES.IDLE.scale * SHARD.BASE_SCALE;
+    shard.scale.set(idleScale, idleScale, idleScale);
+    
+    this.generatedCount++;
     
     return shard;
   }
   
   /**
-   * Calcule la position initiale d'un shard
+   * Génère tous les shards pour les projets
    */
-  calculateInitialPosition(index) {
-    const z = -index * SHARD.Z_SPACING;
+  generateAllShards(projects, scene) {
+    const shards = [];
     
-    // Position orbitale initiale
-    const angle = (index / 6) * Math.PI * 2;
-    const radius = SHARD.ORBIT.BASE_RADIUS_X + index * SHARD.ORBIT.GROWTH_PER_INDEX;
+    projects.forEach((project, index) => {
+      const shard = this.generateShard(project, index);
+      shards.push(shard);
+      scene.add(shard);
+    });
     
-    return {
-      x: Math.cos(angle) * radius,
-      y: Math.sin(angle) * SHARD.ORBIT.BASE_RADIUS_Y,
-      z: z
-    };
+    console.log(`✅ Generated ${shards.length} shards`);
+    return shards;
   }
   
   /**
@@ -129,15 +148,22 @@ export class ShardGenerator {
     const theme = isDarkMode ? THEME.DARK : THEME.LIGHT;
     
     shard.material.color.setHex(theme.shardColor);
-    shard.material.emissive.setHex(theme.shardColor);
+    shard.material.emissive.setHex(theme.emissiveColor);
     shard.material.needsUpdate = true;
   }
   
   /**
-   * Met à jour la catégorie visuelle (couleur émissive)
+   * Calcule la distance totale des shards
    */
-  updateShardCategory(shard, category) {
-    const categoryConfig = CATEGORIES[category] || CATEGORIES.dev;
-    shard.material.emissive.setHex(categoryConfig.color);
+  getTotalDistance(shardCount) {
+    return shardCount * SHARD.Z_SPACING;
+  }
+  
+  /**
+   * Dispose d'un shard
+   */
+  disposeShard(shard) {
+    if (shard.geometry) shard.geometry.dispose();
+    if (shard.material) shard.material.dispose();
   }
 }

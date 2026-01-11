@@ -1,30 +1,37 @@
 /**
  * Constants.js - Configuration centralisée
- * Portfolio 3D V2.0 - Scroll Virtuel
+ * Portfolio 3D V3.0 - Système Immersif Optimisé
+ * 
+ * - 10 shards en boucle infinie
+ * - Scroll virtuel avec sous-étapes
+ * - Dual canvas (2D + Three.js)
  */
 
 // ==========================================
 // CONFIGURATION DE L'INTRO (Canvas 2D)
 // ==========================================
 export const INTRO = {
-  // Hero text
   HERO_TEXT: "Bienvenue dans mon univers",
   HERO_SUBTITLE: "Cliquez pour entrer",
   
-  // Voronoi cells (effet bris de miroir)
-  INITIAL_CELLS: 10, // Cellules initiales par clic
-  CELL_SPREAD: 120, // Rayon de dispersion
-  CELL_GROWTH_RATE: 1.8, // Vitesse de croissance par seconde
-  CELL_MAX_SIZE: 3, // Taille max d'une cellule
-  CELL_SPLIT_THRESHOLD: 1.0, // Taille pour se diviser
+  // Voronoi cells
+  INITIAL_CELLS: 12,
+  CELL_SPREAD: 150,
+  CELL_GROWTH_RATE: 2.0,
+  CELL_MAX_SIZE: 3.5,
+  CELL_SPLIT_THRESHOLD: 1.0,
   
   // Destruction
-  DESTRUCTION_THRESHOLD: 50, // 10 clics pour détruire
-  GROWTH_PER_CLICK: 1, // Growth ajouté par clic
-  DECAY_RATE: 0.3, // Vitesse de réduction par seconde
-  DECAY_DELAY: 0.8, // Délai avant decay (secondes)
+  DESTRUCTION_THRESHOLD: 40,
+  GROWTH_PER_CLICK: 1.2,
+  DECAY_RATE: 0.25,
+  DECAY_DELAY: 1.0,
   
-  // LocalStorage key
+  // Transition
+  FADE_DURATION: 1.5,
+  SHATTER_DURATION: 1.2,
+  
+  // LocalStorage
   STORAGE_KEY: 'portfolio_intro_completed'
 };
 
@@ -32,24 +39,35 @@ export const INTRO = {
 // CONFIGURATION DU SCROLL VIRTUEL
 // ==========================================
 export const SCROLL = {
-  // Vitesse de scroll (sensibilité molette/touch)
-  SPEED: 0.0008,
-  TOUCH_MULTIPLIER: 2,
+  // Sensibilité
+  SPEED: 0.0006,
+  TOUCH_MULTIPLIER: 2.5,
   
-  // Limites du scroll virtuel (0 = début, 1 = fin)
+  // Limites (0 = début, 1 = fin, >1 = sections About/Contact)
   MIN: 0,
-  MAX: 1,
+  MAX: 1.2, // Extra 20% pour About/Contact
   
-  // Lissage (plus petit = plus fluide, plus lent)
-  SMOOTHING: 0.02,
+  // Lissage
+  SMOOTHING: 0.04,
   
-  // Sections par shard (découpage de la timeline)
-  SECTION_SIZE: null, // Calculé dynamiquement selon nombre de shards
+  // Sous-étapes par shard (pour auto-focus progressif)
+  SUB_STEPS_PER_SHARD: 5,
   
-  // Durée de transition entre sections (secondes)
-  SECTION_TRANSITION: 0.3,
+  // Seuils de sous-étapes
+  SUB_STEP_THRESHOLDS: {
+    APPROACHING: 0.2,   // 0-20%: shard en approche
+    ENTERING: 0.4,      // 20-40%: entrée dans la zone
+    CENTERED: 0.6,      // 40-60%: centré (auto-focus)
+    LEAVING: 0.8,       // 60-80%: sortie de zone
+    EXITING: 1.0        // 80-100%: quitte la zone
+  },
   
-  // Blocage pendant intro
+  // Durée transition entre sections
+  SECTION_TRANSITION: 0.4,
+  
+  // Seuil pour afficher About/Contact
+  ABOUT_SECTION_THRESHOLD: 1.0,
+  
   LOCKED: false
 };
 
@@ -57,26 +75,32 @@ export const SCROLL = {
 // CONFIGURATION DE LA CAMÉRA
 // ==========================================
 export const CAMERA = {
-  // Position initiale (navigation normale)
-  INITIAL_Z: 30,
+  // Position initiale (derrière premier shard à -60)
+  INITIAL_Z: -100,
   
-  // Position de départ post-intro (très loin)
-  POST_INTRO_START_Z: 250,
-  
-  // Distance de déplacement sur l'axe Z (début → fin)
-  // Calculé automatiquement: totalShards * Z_SPACING
-  Z_TRAVEL: 400,
+  // Position post-intro (même chose)
+  POST_INTRO_START_Z: -120,
   
   // FOV
-  FOV: 60,
+  FOV: 55,
   NEAR: 0.1,
-  FAR: 1000,
+  FAR: 3000,
   
-  // Lissage de la caméra (plus bas = plus lent et fluide)
-  SMOOTHING: 0.015,
+  // Lissage caméra
+  SMOOTHING: 0.05,
   
-  // LookAt offset (distance devant la caméra pour le regard)
-  LOOK_AHEAD: 15
+  // Distance caméra par rapport au shard courant
+  DISTANCE_FROM_SHARD: 25,
+  
+  // LookAt offset (DEVANT car caméra avance)
+  LOOK_AHEAD: 20,
+  
+  // Déplacement continu
+  CONTINUOUS_MOVEMENT: {
+    ENABLED: true,
+    EASE_FACTOR: 0.06,
+    ANTICIPATION: 0.3
+  }
 };
 
 // ==========================================
@@ -85,74 +109,92 @@ export const CAMERA = {
 export const SHARD = {
   // Géométrie
   GEOMETRY_DETAIL: 1,
-  BASE_SCALE: 1.5,
+  BASE_SCALE: 2.2,
   
   // Espacement entre shards sur Z
-  Z_SPACING: 25,
+  Z_SPACING: 60,
   
-  // Orbite (mouvement orbital autour de la position centrale)
+  // Configuration boucle infinie
+  INFINITE_LOOP: {
+    ENABLED: true,
+    BUFFER_COUNT: 3, // Shards en buffer avant/après zone visible
+    WRAP_DISTANCE: 600 // Distance de wrap
+  },
+  
+  // Orbite (mouvement X/Y autour de position Z fixe)
   ORBIT: {
-    BASE_RADIUS_X: 8,
-    BASE_RADIUS_Y: 4.5,
-    GROWTH_PER_INDEX: 17.5,
-    SPEED: 0.45
+    RADIUS_X: 4,
+    RADIUS_Y: 3,
+    SPEED: 0.25,
+    VARIATION: 0.3
   },
   
   // Rotation automatique
   ROTATION: {
-    SPEED_X: 0.002,
-    SPEED_Y: 0.003,
-    SPEED_Z: 0.001
+    SPEED_X: 0.0015,
+    SPEED_Y: 0.002,
+    SPEED_Z: 0.0008,
+    MULTIPLIER_CURRENT: 0.4,
+    MULTIPLIER_IDLE: 0.8,
+    MULTIPLIER_FOCUS: 0.15
   },
   
-  // États visuels (basés sur l'ancien animations.js)
+  // États visuels
   STATES: {
     IDLE: {
-      scale: 0.7,
-      opacity: 1,
-      emissive: 0.05
+      scale: 0.85,
+      opacity: 0.7,
+      emissive: 0.05,
+      blur: 0.2
+    },
+    APPROACHING: {
+      scale: 1.1,
+      opacity: 0.9,
+      emissive: 0.12,
+      blur: 0.05
     },
     CURRENT: {
-      scale: 1.2,
+      scale: 1.5,
       opacity: 1,
-      emissive: 0.15
+      emissive: 0.22,
+      blur: 0
+    },
+    LEAVING: {
+      scale: 1.1,
+      opacity: 0.9,
+      emissive: 0.12,
+      blur: 0.05
     },
     HOVER: {
-      scale: 1.0,
-      scaleIncrease: 0.3,
+      scale: 1.15,
+      scaleIncrease: 0.25,
       opacity: 1,
-      emissive: 0.3,
-      flattenAmount: 0.5
+      emissive: 0.22,
+      flattenAmount: 0.35,
+      blur: 0
     },
     FOCUS: {
-      scale: 1.8,
-      scaleIncrease: 0.5,
+      scale: 2.0,
       opacity: 1,
-      emissive: 0.4,
-      flattenAmount: 0.98
-    },
-    DISTANT: {
-      scale: 0.7,
-      opacity: 0.7,
-      emissive: 0.02
+      emissive: 0.35,
+      flattenAmount: 0.92,
+      zOffset: 12,
+      blur: 0
     }
-  }
+  },
+  
+  // Visibilité constante
+  ALWAYS_VISIBLE: true,
+  VISIBILITY_RANGE: 500
 };
 
 // ==========================================
 // CONFIGURATION DES FACETTES
 // ==========================================
 export const FACETTE = {
-  // Nombre de facettes par shard
   COUNT: 3,
-  
-  // Angle de rotation pour changer de facette (radians)
-  ROTATION_ANGLE: (2 * Math.PI) / 3,  // 120°
-  
-  // Durée de transition entre facettes
-  TRANSITION_DURATION: 0.6,
-  
-  // Easing de la transition
+  ROTATION_ANGLE: (2 * Math.PI) / 3,
+  TRANSITION_DURATION: 0.7,
   TRANSITION_EASE: 'power2.inOut'
 };
 
@@ -160,48 +202,70 @@ export const FACETTE = {
 // CONFIGURATION DU FOCUS
 // ==========================================
 export const FOCUS = {
-  // Distance devant la caméra
-  DISTANCE: 8,
+  Z_OFFSET: 12,
   
-  // Durées d'animation
-  FOCUS_DURATION: 0.8,
-  UNFOCUS_DURATION: 0.6,
-  INFO_FADE_DURATION: 0.4,
+  // Durées
+  FOCUS_DURATION: 0.9,
+  UNFOCUS_DURATION: 0.7,
   
-  // Release (éloignement lors de l'unfocus)
-  RELEASE_DISTANCE: 15,
-  RELEASE_DURATION: 1.0,
+  // Auto-focus
+  AUTO_FOCUS_ENABLED: true,
+  AUTO_FOCUS_DELAY: 0.5,
+  AUTO_FOCUS_SUB_STEP: 0.5, // Sous-étape à laquelle déclencher
+  AUTO_UNFOCUS_ON_SCROLL: true,
   
-  // Scroll threshold pour unfocus automatique
-  SCROLL_THRESHOLD: 0.05
+  // Easing
+  EASE_IN: 'power2.out',
+  EASE_OUT: 'power2.inOut'
+};
+
+// ==========================================
+// CONFIGURATION DES ANIMATIONS
+// ==========================================
+export const ANIMATION = {
+  EASE: {
+    IN: 'power2.in',
+    OUT: 'power2.out',
+    IN_OUT: 'power2.inOut',
+    ELASTIC: 'elastic.out(1, 0.5)'
+  },
+  
+  DURATION: {
+    INSTANT: 0.1,
+    FAST: 0.3,
+    NORMAL: 0.6,
+    SLOW: 1.0,
+    VERY_SLOW: 1.5
+  },
+  
+  TRANSITION: {
+    DURATION: 1.0,
+    EASE: 'power2.inOut',
+    SCALE_DURATION: 0.7,
+    OPACITY_DURATION: 0.5
+  }
 };
 
 // ==========================================
 // CONFIGURATION DE LA PHYSIQUE
 // ==========================================
 export const PHYSICS = {
-  // Friction (décélération)
-  FRICTION: 0.95,
+  FRICTION: 0.92,
+  MAX_VELOCITY: 2.5,
   
-  // Vélocité max
-  MAX_VELOCITY: 2,
-  
-  // Force de répulsion entre shards
   REPULSION: {
-    STRENGTH: 0.5,
-    DISTANCE: 5
+    STRENGTH: 0.6,
+    DISTANCE: 8
   },
   
-  // Rebond sur les bords
   BOUNCE: {
-    DAMPING: 0.7,
-    MARGIN: 10
+    DAMPING: 0.65,
+    MARGIN: 12
   },
   
-  // Retour à la position canonique
   RETURN: {
-    STRENGTH: 0.02,
-    SNAP_THRESHOLD: 0.1
+    STRENGTH: 0.025,
+    SNAP_THRESHOLD: 0.08
   }
 };
 
@@ -209,43 +273,18 @@ export const PHYSICS = {
 // CONFIGURATION DU DRAG & DROP
 // ==========================================
 export const DRAG = {
-  // Sensibilité
-  SENSITIVITY: 0.01,
-  
-  // Vélocité au lâcher
-  THROW_MULTIPLIER: 0.1,
-  
-  // Délai avant retour (ms)
-  RETURN_DELAY: 2000
+  SENSITIVITY: 0.012,
+  THROW_MULTIPLIER: 0.12,
+  RETURN_DELAY: 1800
 };
 
 // ==========================================
-// CONFIGURATION DES ANIMATIONS
-// ==========================================
-export const ANIMATION = {
-  // Durées par défaut
-  DURATION: {
-    FAST: 0.3,
-    NORMAL: 0.6,
-    SLOW: 1.0
-  },
-  
-  // Easings
-  EASE: {
-    IN: 'power2.in',
-    OUT: 'power2.out',
-    IN_OUT: 'power3.inOut',
-    ELASTIC: 'elastic.out(1, 0.5)',
-    BOUNCE: 'bounce.out'
-  }
-};
-
-// ==========================================
-// COULEURS (pour CSS et Three.js)
+// COULEURS
 // ==========================================
 export const COLORS = {
   LIGHT_HEX: '#F2DDB8',
-  DARK_HEX: '#393F4A'
+  DARK_HEX: '#393F4A',
+  ACCENT: '#4a90d9'
 };
 
 // ==========================================
@@ -253,18 +292,22 @@ export const COLORS = {
 // ==========================================
 export const THEME = {
   LIGHT: {
-    background: 0xF2DDB8,      // Beige clair
+    background: 0xF2DDB8,
     ambient: 0xffffff,
     directional: 0xffffff,
-    shardColor: 0x393F4A,      // Gris foncé
-    emissiveColor: 0x393F4A
+    shardColor: 0x393F4A,
+    emissiveColor: 0x393F4A,
+    fogNear: 80,
+    fogFar: 350
   },
   DARK: {
-    background: 0x393F4A,      // Gris foncé
-    ambient: 0x808080,
+    background: 0x393F4A,
+    ambient: 0x909090,
     directional: 0xffffff,
-    shardColor: 0xF2DDB8,      // Beige clair
-    emissiveColor: 0xF2DDB8
+    shardColor: 0xF2DDB8,
+    emissiveColor: 0xF2DDB8,
+    fogNear: 80,
+    fogFar: 350
   }
 };
 
@@ -272,8 +315,50 @@ export const THEME = {
 // CATÉGORIES DE PROJETS
 // ==========================================
 export const CATEGORIES = {
-  dev: { label: 'Développement', color: 0x5ce1e6 },
-  realisation: { label: 'Réalisation', color: 0xe74c3c },
-  video: { label: 'Vidéo', color: 0x9b59b6 },
-  graphisme: { label: 'Graphisme', color: 0xf39c12 }
+  dev: { label: 'Développement', color: 0x5ce1e6, emoji: '💻' },
+  realisation: { label: 'Réalisation', color: 0xe74c3c, emoji: '🎬' },
+  video: { label: 'Vidéo', color: 0x9b59b6, emoji: '🎥' },
+  graphisme: { label: 'Graphisme', color: 0xf39c12, emoji: '🎨' }
+};
+
+// ==========================================
+// CONFIGURATION UI
+// ==========================================
+export const UI = {
+  // Overlay info projet
+  INFO_OVERLAY: {
+    FADE_DURATION: 0.4,
+    MAX_WIDTH: 550
+  },
+  
+  // Section About/Contact
+  SECTIONS: {
+    FADE_IN_DURATION: 0.8,
+    FADE_OUT_DURATION: 0.4,
+    SCROLL_THRESHOLD: 1.0
+  },
+  
+  // Indicateurs
+  INDICATORS: {
+    DOT_SIZE: 12,
+    DOT_GAP: 10,
+    ACTIVE_SCALE: 1.4
+  }
+};
+
+// ==========================================
+// CANVAS LAYERS
+// ==========================================
+export const LAYERS = {
+  CANVAS_2D: {
+    Z_INDEX: 100,
+    INITIAL_OPACITY: 1
+  },
+  THREE_JS: {
+    Z_INDEX: 50,
+    INITIAL_OPACITY: 1
+  },
+  UI: {
+    Z_INDEX: 200
+  }
 };

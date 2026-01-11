@@ -1,6 +1,10 @@
 /**
- * Scene.js - Configuration de la scène Three.js
- * Portfolio 3D V2.0
+ * Scene.js - Configuration scène Three.js
+ * Portfolio 3D V3.0
+ * 
+ * - Éclairage optimisé
+ * - Fog pour profondeur
+ * - Support thème light/dark
  */
 
 import * as THREE from 'three';
@@ -30,33 +34,50 @@ export class Scene {
     const theme = this.isDarkMode ? THEME.DARK : THEME.LIGHT;
     
     // Lumière ambiante
-    this.ambientLight = new THREE.AmbientLight(theme.ambient, 0.6);
+    this.ambientLight = new THREE.AmbientLight(theme.ambient, 0.5);
     this.instance.add(this.ambientLight);
     
     // Lumière directionnelle principale
-    this.mainLight = new THREE.DirectionalLight(theme.directional, 1.0);
-    this.mainLight.position.set(5, 10, 7);
+    this.mainLight = new THREE.DirectionalLight(theme.directional, 1.2);
+    this.mainLight.position.set(5, 10, 10);
     this.mainLight.castShadow = false;
     this.instance.add(this.mainLight);
     
     // Lumière de fill (arrière)
-    this.fillLight = new THREE.DirectionalLight(theme.directional, 0.3);
-    this.fillLight.position.set(-5, -5, -10);
+    this.fillLight = new THREE.DirectionalLight(theme.directional, 0.4);
+    this.fillLight.position.set(-5, -5, -15);
     this.instance.add(this.fillLight);
     
-    // Point light pour les reflets
-    this.pointLight = new THREE.PointLight(0xffffff, 0.5, 100);
-    this.pointLight.position.set(0, 0, 20);
+    // Lumière de rim (contour)
+    this.rimLight = new THREE.DirectionalLight(0xffffff, 0.3);
+    this.rimLight.position.set(0, 5, -10);
+    this.instance.add(this.rimLight);
+    
+    // Point light mobile (suit la caméra)
+    this.pointLight = new THREE.PointLight(0xffffff, 0.6, 150);
+    this.pointLight.position.set(0, 0, 30);
     this.instance.add(this.pointLight);
+    
+    // Hemisphere light pour ambiance
+    this.hemisphereLight = new THREE.HemisphereLight(
+      theme.ambient,
+      theme.background,
+      0.3
+    );
+    this.instance.add(this.hemisphereLight);
   }
   
   setupFog() {
     const theme = this.isDarkMode ? THEME.DARK : THEME.LIGHT;
-    this.instance.fog = new THREE.Fog(theme.background, 50, 200);
+    this.instance.fog = new THREE.Fog(
+      theme.background,
+      theme.fogNear,
+      theme.fogFar
+    );
   }
   
   /**
-   * Change le thème (light/dark)
+   * Change le thème
    */
   setTheme(isDark) {
     this.isDarkMode = isDark;
@@ -69,9 +90,13 @@ export class Scene {
     this.ambientLight.color.setHex(theme.ambient);
     this.mainLight.color.setHex(theme.directional);
     this.fillLight.color.setHex(theme.directional);
+    this.hemisphereLight.color.setHex(theme.ambient);
+    this.hemisphereLight.groundColor.setHex(theme.background);
     
     // Fog
     this.instance.fog.color.setHex(theme.background);
+    this.instance.fog.near = theme.fogNear;
+    this.instance.fog.far = theme.fogFar;
   }
   
   /**
@@ -79,7 +104,8 @@ export class Scene {
    */
   updatePointLight(cameraPosition) {
     this.pointLight.position.copy(cameraPosition);
-    this.pointLight.position.z += 10;
+    this.pointLight.position.z += 15;
+    this.pointLight.position.y += 5;
   }
   
   /**

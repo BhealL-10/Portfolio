@@ -1,8 +1,6 @@
 /**
- * Projects.js - Données des projets avec facettes
- * Portfolio 3D V2.0
- * 
- * Chaque shard possède 3 facettes (faces) avec contenu différent
+ * Projects.js - Données des 10 projets avec 3 facettes chacun
+ * Portfolio 3D V3.0
  */
 
 export const projects = [
@@ -18,11 +16,7 @@ export const projects = [
         longDescription: "Je suis un développeur full-stack avec une passion pour les expériences interactives et immersives. Mon expertise s'étend du développement web aux productions vidéo.",
         technologies: ["JavaScript", "Three.js", "React", "Node.js", "Creative Coding"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: "https://github.com/votre-username",
-          demo: null,
-          video: null
-        },
+        links: { github: "https://github.com/votre-username", demo: null, video: null },
         featured: true
       },
       {
@@ -33,11 +27,7 @@ export const projects = [
         longDescription: "Maîtrise du développement front-end et back-end, avec une spécialisation en WebGL et expériences 3D interactives.",
         technologies: ["WebGL", "GSAP", "Ruby on Rails", "PostgreSQL", "Docker"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: null,
-          demo: null,
-          video: null
-        },
+        links: { github: null, demo: null, video: null },
         featured: false
       },
       {
@@ -48,11 +38,7 @@ export const projects = [
         longDescription: "Disponible pour des projets freelance, des collaborations créatives ou des opportunités d'emploi.",
         technologies: ["Email", "LinkedIn", "GitHub", "Discord"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: "https://github.com/votre-username",
-          demo: "mailto:contact@example.com",
-          video: null
-        },
+        links: { github: "https://github.com/votre-username", demo: "mailto:contact@example.com", video: null },
         featured: false
       }
     ],
@@ -71,11 +57,7 @@ export const projects = [
         longDescription: "Bot Discord avancé intégrant un système de jeu RPG avec combat, navigation, inventaire et interactions PNJ.",
         technologies: ["JavaScript", "Node.js", "Discord.js"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: "https://github.com/votre-username/tono-bot",
-          demo: null,
-          video: null
-        },
+        links: { github: "https://github.com/votre-username/tono-bot", demo: null, video: null },
         featured: true
       },
       {
@@ -86,11 +68,7 @@ export const projects = [
         longDescription: "API REST robuste gérant la logique métier, les données de jeu et les interactions en temps réel.",
         technologies: ["Ruby on Rails", "PostgreSQL", "Redis", "Sidekiq"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: "https://github.com/votre-username/tono-api",
-          demo: null,
-          video: null
-        },
+        links: { github: "https://github.com/votre-username/tono-api", demo: null, video: null },
         featured: false
       },
       {
@@ -101,11 +79,7 @@ export const projects = [
         longDescription: "Système de combat complet avec éléments, buffs/debuffs, compétences spéciales et IA adaptative.",
         technologies: ["Game Design", "State Machine", "AI", "Balancing"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: null,
-          demo: null,
-          video: "https://youtube.com/watch?v=example"
-        },
+        links: { github: null, demo: null, video: "https://youtube.com/watch?v=example" },
         featured: false
       }
     ],
@@ -124,11 +98,7 @@ export const projects = [
         longDescription: "Éditeur de cartes procédurales utilisant l'algorithme de Voronoi pour générer des îles.",
         technologies: ["JavaScript", "Three.js", "Voronoi"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: "https://github.com/votre-username/map-editor",
-          demo: "https://demo.map-editor.com",
-          video: null
-        },
+        links: { github: "https://github.com/votre-username/map-editor", demo: "https://demo.map-editor.com", video: null },
         featured: true
       },
       {
@@ -139,11 +109,7 @@ export const projects = [
         longDescription: "Implémentation d'algorithmes Voronoi, Delaunay et bruit de Perlin pour la génération de cartes.",
         technologies: ["Voronoi", "Delaunay", "Perlin Noise", "SVG"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: null,
-          demo: null,
-          video: null
-        },
+        links: { github: null, demo: null, video: null },
         featured: false
       },
       {
@@ -154,11 +120,7 @@ export const projects = [
         longDescription: "Interface intuitive avec panneaux modulaires, prévisualisations temps réel et export multi-format.",
         technologies: ["UI/UX Design", "Canvas API", "CSS Grid"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: null,
-          demo: null,
-          video: null
-        },
+        links: { github: null, demo: null, video: null },
         featured: false
       }
     ],
@@ -177,11 +139,7 @@ export const projects = [
         longDescription: "Court-métrage explorant les thèmes de l'identité et du reflet à travers une narration non-linéaire.",
         technologies: ["Premiere Pro", "After Effects", "DaVinci Resolve"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: null,
-          demo: null,
-          video: "https://youtube.com/watch?v=example"
-        },
+        links: { github: null, demo: null, video: "https://youtube.com/watch?v=example" },
         featured: true
       },
       {
@@ -192,11 +150,7 @@ export const projects = [
         longDescription: "Création d'un univers visuel unique mêlant symbolisme et atmosphère onirique.",
         technologies: ["Storyboarding", "Color Grading", "Cinematography"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: null,
-          demo: null,
-          video: null
-        },
+        links: { github: null, demo: null, video: null },
         featured: false
       },
       {
@@ -207,11 +161,7 @@ export const projects = [
         longDescription: "Montage narratif avec effets de transition innovants et sound design immersif.",
         technologies: ["VFX", "Sound Design", "Color Grading"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: null,
-          demo: null,
-          video: null
-        },
+        links: { github: null, demo: null, video: null },
         featured: false
       }
     ],
@@ -230,11 +180,7 @@ export const projects = [
         longDescription: "Design d'identité de marque incluant logo, charte graphique et supports de communication.",
         technologies: ["Illustrator", "Photoshop", "Figma"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: null,
-          demo: "https://behance.net/example",
-          video: null
-        },
+        links: { github: null, demo: "https://behance.net/example", video: null },
         featured: true
       },
       {
@@ -245,11 +191,7 @@ export const projects = [
         longDescription: "Logo principal avec déclinaisons pour différents supports : web, print, réseaux sociaux.",
         technologies: ["Vector Graphics", "Typography", "Color Theory"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: null,
-          demo: null,
-          video: null
-        },
+        links: { github: null, demo: null, video: null },
         featured: false
       },
       {
@@ -260,11 +202,7 @@ export const projects = [
         longDescription: "Collection de templates Instagram, LinkedIn et Twitter cohérents avec l'identité visuelle.",
         technologies: ["Figma", "Canva", "Adobe XD"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: null,
-          demo: null,
-          video: null
-        },
+        links: { github: null, demo: null, video: null },
         featured: false
       }
     ],
@@ -283,11 +221,7 @@ export const projects = [
         longDescription: "Portfolio immersif utilisant Three.js pour créer une expérience 3D unique avec navigation par scroll.",
         technologies: ["Three.js", "GSAP", "JavaScript ES6+", "WebGL"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: "https://github.com/votre-username/portfolio",
-          demo: "https://votre-portfolio.com",
-          video: null
-        },
+        links: { github: "https://github.com/votre-username/portfolio", demo: "https://votre-portfolio.com", video: null },
         featured: true
       },
       {
@@ -298,11 +232,7 @@ export const projects = [
         longDescription: "Architecture basée sur des modules ES6, scroll virtuel, et animations pilotées par timeline GSAP.",
         technologies: ["ES6 Modules", "Virtual Scroll", "Timeline Animation"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: null,
-          demo: null,
-          video: null
-        },
+        links: { github: null, demo: null, video: null },
         featured: false
       },
       {
@@ -313,16 +243,176 @@ export const projects = [
         longDescription: "Chaque shard possède 3 facettes rotatives offrant différentes perspectives sur un même projet.",
         technologies: ["3D Math", "Quaternions", "UX Design"],
         images: ["assets/images/projects/placeholder.svg"],
-        links: {
-          github: null,
-          demo: null,
-          video: null
-        },
+        links: { github: null, demo: null, video: null },
         featured: false
       }
     ],
     activeFacette: 0,
     date: "2024-03"
+  },
+  {
+    id: 7,
+    title: "Application E-commerce",
+    facettes: [
+      {
+        id: 1,
+        title: "Plateforme E-commerce",
+        category: "dev",
+        description: "Application web complète avec panier et paiement",
+        longDescription: "Application e-commerce moderne avec gestion de produits, panier d'achat, système de paiement Stripe.",
+        technologies: ["React", "Node.js", "MongoDB", "Stripe"],
+        images: ["assets/images/projects/placeholder.svg"],
+        links: { github: "https://github.com/votre-username/ecommerce", demo: "https://demo.ecommerce.com", video: null },
+        featured: true
+      },
+      {
+        id: 2,
+        title: "Interface Admin",
+        category: "dev",
+        description: "Dashboard de gestion",
+        longDescription: "Interface d'administration complète pour gérer produits, commandes et utilisateurs.",
+        technologies: ["React Admin", "Charts.js", "REST API"],
+        images: ["assets/images/projects/placeholder.svg"],
+        links: { github: null, demo: null, video: null },
+        featured: false
+      },
+      {
+        id: 3,
+        title: "Design Responsive",
+        category: "graphisme",
+        description: "UI/UX moderne et adaptative",
+        longDescription: "Design responsive optimisé pour mobile, tablette et desktop avec animations fluides.",
+        technologies: ["Tailwind CSS", "Framer Motion", "Figma"],
+        images: ["assets/images/projects/placeholder.svg"],
+        links: { github: null, demo: null, video: null },
+        featured: false
+      }
+    ],
+    activeFacette: 0,
+    date: "2023-10"
+  },
+  {
+    id: 8,
+    title: "Documentaire Nature",
+    facettes: [
+      {
+        id: 1,
+        title: "Documentaire Nature",
+        category: "realisation",
+        description: "Documentaire sur la faune locale",
+        longDescription: "Documentaire de 20 minutes explorant la biodiversité locale avec prises de vue drone.",
+        technologies: ["Premiere Pro", "DaVinci Resolve", "Drone DJI"],
+        images: ["assets/images/projects/placeholder.svg"],
+        links: { github: null, demo: null, video: "https://youtube.com/watch?v=example" },
+        featured: true
+      },
+      {
+        id: 2,
+        title: "Prises de Vue Aériennes",
+        category: "video",
+        description: "Captation drone et techniques",
+        longDescription: "Utilisation de drones pour capturer des paysages et la faune sous des angles uniques.",
+        technologies: ["DJI Mavic", "Aerial Cinematography", "Flight Planning"],
+        images: ["assets/images/projects/placeholder.svg"],
+        links: { github: null, demo: null, video: null },
+        featured: false
+      },
+      {
+        id: 3,
+        title: "Sound Design",
+        category: "video",
+        description: "Ambiance sonore immersive",
+        longDescription: "Création d'une bande sonore immersive mêlant sons naturels et musique originale.",
+        technologies: ["Pro Tools", "Field Recording", "Foley"],
+        images: ["assets/images/projects/placeholder.svg"],
+        links: { github: null, demo: null, video: null },
+        featured: false
+      }
+    ],
+    activeFacette: 0,
+    date: "2023-09"
+  },
+  {
+    id: 9,
+    title: "Motion Design Explainer",
+    facettes: [
+      {
+        id: 1,
+        title: "Vidéo Explicative",
+        category: "video",
+        description: "Animation 2D pour produit SaaS",
+        longDescription: "Vidéo explicative animée présentant un produit SaaS de manière claire et engageante.",
+        technologies: ["After Effects", "Illustrator", "Character Animator"],
+        images: ["assets/images/projects/placeholder.svg"],
+        links: { github: null, demo: null, video: "https://youtube.com/watch?v=example" },
+        featured: true
+      },
+      {
+        id: 2,
+        title: "Storyboard & Script",
+        category: "realisation",
+        description: "Conception narrative",
+        longDescription: "Développement du script et storyboard pour une narration efficace et mémorable.",
+        technologies: ["Storyboarding", "Scriptwriting", "Figma"],
+        images: ["assets/images/projects/placeholder.svg"],
+        links: { github: null, demo: null, video: null },
+        featured: false
+      },
+      {
+        id: 3,
+        title: "Animation de Personnages",
+        category: "video",
+        description: "Character design et animation",
+        longDescription: "Création et animation de personnages expressifs pour illustrer le produit.",
+        technologies: ["Character Animator", "Rig System", "2D Animation"],
+        images: ["assets/images/projects/placeholder.svg"],
+        links: { github: null, demo: null, video: null },
+        featured: false
+      }
+    ],
+    activeFacette: 0,
+    date: "2023-11"
+  },
+  {
+    id: 10,
+    title: "UI Kit Mobile",
+    facettes: [
+      {
+        id: 1,
+        title: "Kit UI Mobile",
+        category: "graphisme",
+        description: "Collection de composants UI réutilisables",
+        longDescription: "Kit complet d'interface utilisateur pour applications iOS et Android avec design system cohérent.",
+        technologies: ["Figma", "Sketch", "Adobe XD"],
+        images: ["assets/images/projects/placeholder.svg"],
+        links: { github: null, demo: "https://figma.com/example", video: null },
+        featured: true
+      },
+      {
+        id: 2,
+        title: "Design System",
+        category: "graphisme",
+        description: "Système de design complet",
+        longDescription: "Tokens de design, composants atomiques et documentation pour une cohérence parfaite.",
+        technologies: ["Design Tokens", "Atomic Design", "Documentation"],
+        images: ["assets/images/projects/placeholder.svg"],
+        links: { github: null, demo: null, video: null },
+        featured: false
+      },
+      {
+        id: 3,
+        title: "Prototypage Interactif",
+        category: "graphisme",
+        description: "Prototypes haute fidélité",
+        longDescription: "Prototypes interactifs avec transitions et micro-interactions pour validation utilisateur.",
+        technologies: ["Figma Prototyping", "Principle", "ProtoPie"],
+        images: ["assets/images/projects/placeholder.svg"],
+        links: { github: null, demo: null, video: null },
+        featured: false
+      }
+    ],
+    activeFacette: 0,
+    date: "2024-02"
   }
 ];
 
@@ -332,6 +422,10 @@ export const projects = [
 
 export function getProjectById(id) {
   return projects.find(p => p.id === id);
+}
+
+export function getProjectByIndex(index) {
+  return projects[index] || null;
 }
 
 export function getProjectsByCategory(category) {
@@ -346,7 +440,12 @@ export function getFeaturedProjects() {
   );
 }
 
-export function getActiveFacette(project) {
+export function getActiveFacette(projectOrId) {
+  const project = typeof projectOrId === 'number' 
+    ? getProjectById(projectOrId)
+    : projectOrId;
+  
+  if (!project) return null;
   return project.facettes[project.activeFacette];
 }
 
@@ -360,4 +459,8 @@ export function getPrevFacetteIndex(project) {
 
 export function getTotalShards() {
   return projects.length;
+}
+
+export function getTotalFacettes() {
+  return projects.reduce((sum, p) => sum + p.facettes.length, 0);
 }

@@ -1,8 +1,9 @@
 /**
  * RaycastManager.js - Gestion du raycasting
- * Portfolio 3D V2.0
+ * Portfolio 3D V3.0
  * 
- * Détecte les interactions souris/touch avec les shards
+ * - Détection souris/touch
+ * - Hover, click, drag
  */
 
 import * as THREE from 'three';
@@ -22,10 +23,15 @@ export class RaycastManager {
     this.onShardDragEnd = null;
     this.onBackgroundClick = null;
     
-    // État du drag
+    // État drag
     this.isDragging = false;
     this.draggedShard = null;
+    this.dragStartTime = 0;
+    this.dragThreshold = 150; // ms pour distinguer clic/drag
     this.dragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    
+    // Dernier hover
+    this.lastHoveredShard = null;
     
     this.setupListeners();
   }
@@ -38,22 +44,20 @@ export class RaycastManager {
   }
   
   /**
-   * Configure les event listeners
+   * Configure les listeners
    */
   setupListeners() {
-    // Mouse events
     window.addEventListener('mousemove', (e) => this.onMouseMove(e));
     window.addEventListener('mousedown', (e) => this.onMouseDown(e));
     window.addEventListener('mouseup', (e) => this.onMouseUp(e));
     
-    // Touch events
     window.addEventListener('touchstart', (e) => this.onTouchStart(e), { passive: false });
     window.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
     window.addEventListener('touchend', (e) => this.onTouchEnd(e));
   }
   
   /**
-   * Convertit les coordonnées écran en coordonnées normalisées
+   * Coordonnées écran → normalisées
    */
   updateMouse(clientX, clientY) {
     this.mouse.x = (clientX / window.innerWidth) * 2 - 1;
@@ -70,7 +74,7 @@ export class RaycastManager {
   }
   
   /**
-   * Obtient la position monde sur le plan de drag
+   * Position monde sur plan de drag
    */
   getWorldPosition() {
     this.raycaster.setFromCamera(this.mouse, this.camera);
@@ -79,35 +83,38 @@ export class RaycastManager {
     return target;
   }
   
-  // ==========================================
-  // MOUSE EVENTS
-  // ==========================================
+  // === MOUSE EVENTS ===
   
   onMouseMove(event) {
     this.updateMouse(event.clientX, event.clientY);
     
     if (this.isDragging && this.draggedShard) {
-      // Drag en cours
       const worldPos = this.getWorldPosition();
       if (this.onShardDrag) {
         this.onShardDrag(this.draggedShard, worldPos);
       }
     } else {
-      // Hover
       const intersect = this.raycast();
-      if (this.onShardHover) {
-        this.onShardHover(intersect ? intersect.object : null);
+      const hoveredShard = intersect ? intersect.object : null;
+      
+      // Détecter changement de hover
+      if (hoveredShard !== this.lastHoveredShard) {
+        this.lastHoveredShard = hoveredShard;
+        if (this.onShardHover) {
+          this.onShardHover(hoveredShard);
+        }
       }
     }
   }
   
   onMouseDown(event) {
-    if (event.button !== 0) return; // Left click only
+    if (event.button !== 0) return;
     
     this.updateMouse(event.clientX, event.clientY);
     const intersect = this.raycast();
     
     if (intersect) {
+      this.dragStartTime = Date.now();
       this.startDrag(intersect.object);
     }
   }
@@ -115,10 +122,22 @@ export class RaycastManager {
   onMouseUp(event) {
     if (event.button !== 0) return;
     
+    const dragDuration = Date.now() - this.dragStartTime;
+    
     if (this.isDragging && this.draggedShard) {
-      this.endDrag();
+      if (dragDuration < this.dragThreshold) {
+        // C'était un clic, pas un drag
+        this.endDrag();
+        if (this.onShardClick) {
+          const intersect = this.raycast();
+          if (intersect) {
+            this.onShardClick(intersect.object);
+          }
+        }
+      } else {
+        this.endDrag();
+      }
     } else {
-      // Click sans drag
       const intersect = this.raycast();
       if (intersect) {
         if (this.onShardClick) {
@@ -132,9 +151,7 @@ export class RaycastManager {
     }
   }
   
-  // ==========================================
-  // TOUCH EVENTS
-  // ==========================================
+  // === TOUCH EVENTS ===
   
   onTouchStart(event) {
     if (event.touches.length !== 1) return;
@@ -144,6 +161,7 @@ export class RaycastManager {
     
     const intersect = this.raycast();
     if (intersect) {
+      this.dragStartTime = Date.now();
       this.startDrag(intersect.object);
       event.preventDefault();
     }
@@ -164,10 +182,20 @@ export class RaycastManager {
   }
   
   onTouchEnd(event) {
+    const dragDuration = Date.now() - this.dragStartTime;
+    
     if (this.isDragging) {
-      this.endDrag();
+      if (dragDuration < this.dragThreshold) {
+        // C'était un tap
+        const shard = this.draggedShard;
+        this.endDrag();
+        if (this.onShardClick && shard) {
+          this.onShardClick(shard);
+        }
+      } else {
+        this.endDrag();
+      }
     } else if (event.changedTouches.length === 1) {
-      // Tap
       const touch = event.changedTouches[0];
       this.updateMouse(touch.clientX, touch.clientY);
       
@@ -184,15 +212,12 @@ export class RaycastManager {
     }
   }
   
-  // ==========================================
-  // DRAG MANAGEMENT
-  // ==========================================
+  // === DRAG MANAGEMENT ===
   
   startDrag(shard) {
     this.isDragging = true;
     this.draggedShard = shard;
     
-    // Mettre à jour le plan de drag à la position Z du shard
     this.dragPlane.setFromNormalAndCoplanarPoint(
       new THREE.Vector3(0, 0, 1),
       shard.position
@@ -213,16 +238,8 @@ export class RaycastManager {
   }
   
   /**
-   * Vérifie si un drag est en cours
+   * Getters
    */
-  isDraggingShard() {
-    return this.isDragging;
-  }
-  
-  /**
-   * Retourne le shard en cours de drag
-   */
-  getDraggedShard() {
-    return this.draggedShard;
-  }
+  isDraggingShard() { return this.isDragging; }
+  getDraggedShard() { return this.draggedShard; }
 }

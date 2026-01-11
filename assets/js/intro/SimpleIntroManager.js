@@ -1,11 +1,13 @@
 /**
- * SimpleIntroManager.js - Gestionnaire d'intro ultra-léger
- * Portfolio 3D V2.0
+ * SimpleIntroManager.js - Gestionnaire intro avec transition Canvas → Three.js
+ * Portfolio 3D V3.0
  * 
- * Approche Canvas 2D pure - pas de Three.js pour le miroir
+ * - Canvas 2D toujours visible initialement
+ * - Transition progressive révélant Three.js
+ * - Gestion de l'opacité
  */
 
-import { INTRO, SCROLL } from '../config/constants.js';
+import { INTRO, LAYERS } from '../config/constants.js';
 import { SimpleMirror } from './SimpleMirror.js';
 
 export class SimpleIntroManager {
@@ -17,9 +19,13 @@ export class SimpleIntroManager {
     
     // Callbacks
     this.onComplete = null;
+    this.onProgress = null;
     
     // Gauge UI
     this.gaugeElement = null;
+    
+    // État de la transition
+    this.isTransitioning = false;
   }
   
   /**
@@ -39,7 +45,7 @@ export class SimpleIntroManager {
    * Démarre l'intro
    */
   start() {
-    console.log('🎬 Starting simple intro...');
+    console.log('🎬 Starting intro with Canvas 2D...');
     
     this.isActive = true;
     
@@ -58,46 +64,70 @@ export class SimpleIntroManager {
   }
   
   /**
-   * Crée la jauge simple
+   * Crée la jauge de progression
    */
   createGauge() {
     this.gaugeElement = document.createElement('div');
+    this.gaugeElement.className = 'intro-gauge';
     this.gaugeElement.innerHTML = `
-      <div style="
-        position: fixed;
-        bottom: 100px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 10000;
-        background: rgba(0,0,0,0.3);
-        backdrop-filter: blur(10px);
-        padding: 15px 30px;
-        border-radius: 10px;
-        font-family: Arial, sans-serif;
-        color: white;
-        text-align: center;
-      ">
-        <div id="gauge-bar" style="
-          width: 300px;
-          height: 20px;
-          background: rgba(255,255,255,0.2);
-          border-radius: 10px;
-          overflow: hidden;
-          margin-bottom: 10px;
-        ">
-          <div id="gauge-fill" style="
-            width: 0%;
-            height: 100%;
-            background: linear-gradient(90deg, #4CAF50, #8BC34A);
-            transition: width 0.2s ease;
-          "></div>
+      <div class="gauge-container">
+        <div class="gauge-bar">
+          <div class="gauge-fill"></div>
         </div>
-        <div style="font-size: 14px; opacity: 0.8;">
-          <span id="click-count">0</span> clics
+        <div class="gauge-text">
+          <span class="click-count">0</span> / <span class="click-target">${INTRO.DESTRUCTION_THRESHOLD}</span>
         </div>
+        <div class="gauge-hint">Cliquez pour briser le miroir</div>
       </div>
     `;
     
+    this.gaugeElement.style.cssText = `
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: ${LAYERS.UI.Z_INDEX + 1};
+      text-align: center;
+      font-family: system-ui, -apple-system, sans-serif;
+      color: var(--text-primary, white);
+      pointer-events: none;
+    `;
+    
+    const style = document.createElement('style');
+    style.textContent = `
+      .gauge-container {
+        background: rgba(0,0,0,0.4);
+        backdrop-filter: blur(12px);
+        padding: 20px 35px;
+        border-radius: 16px;
+        border: 1px solid rgba(255,255,255,0.1);
+      }
+      .gauge-bar {
+        width: 280px;
+        height: 8px;
+        background: rgba(255,255,255,0.15);
+        border-radius: 4px;
+        overflow: hidden;
+        margin-bottom: 12px;
+      }
+      .gauge-fill {
+        width: 0%;
+        height: 100%;
+        background: linear-gradient(90deg, #4a90d9, #67b26f);
+        border-radius: 4px;
+        transition: width 0.15s ease-out;
+      }
+      .gauge-text {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      .gauge-hint {
+        font-size: 13px;
+        opacity: 0.7;
+      }
+    `;
+    document.head.appendChild(style);
     document.body.appendChild(this.gaugeElement);
   }
   
@@ -105,7 +135,7 @@ export class SimpleIntroManager {
    * Gère le clic
    */
   handleClick(e) {
-    if (!this.isActive) return;
+    if (!this.isActive || this.isTransitioning) return;
     
     this.clickCount++;
     
@@ -115,8 +145,13 @@ export class SimpleIntroManager {
     // Mettre à jour la jauge
     this.updateGauge();
     
-    // Vérifier si complet
+    // Callback de progression
     const percent = this.mirror.getDestructionPercent();
+    if (this.onProgress) {
+      this.onProgress(percent);
+    }
+    
+    // Vérifier si complet
     if (percent >= 1) {
       this.complete();
     }
@@ -127,15 +162,15 @@ export class SimpleIntroManager {
    */
   updateGauge() {
     const percent = this.mirror.getDestructionPercent();
-    const fillBar = document.getElementById('gauge-fill');
-    const countText = document.getElementById('click-count');
+    const fillBar = this.gaugeElement.querySelector('.gauge-fill');
+    const countText = this.gaugeElement.querySelector('.click-count');
     
     if (fillBar) {
       fillBar.style.width = `${percent * 100}%`;
     }
     
     if (countText) {
-      countText.textContent = this.clickCount;
+      countText.textContent = Math.floor(percent * INTRO.DESTRUCTION_THRESHOLD);
     }
   }
   
@@ -149,7 +184,7 @@ export class SimpleIntroManager {
     const deltaTime = (now - this.lastTime) / 1000;
     this.lastTime = now;
     
-    // Update mirror (decay des fissures)
+    // Update mirror
     this.mirror.update(deltaTime);
     
     // Update gauge
@@ -162,32 +197,63 @@ export class SimpleIntroManager {
    * Complète l'intro
    */
   complete() {
-    console.log('✅ Intro completed!');
+    if (this.isTransitioning) return;
     
+    console.log('✅ Intro complete - starting transition');
+    this.isTransitioning = true;
     this.isActive = false;
     
     // Sauvegarder
     localStorage.setItem(INTRO.STORAGE_KEY, 'true');
     
-    // Supprimer la jauge immédiatement
+    // Fade out gauge
     if (this.gaugeElement) {
+      this.gaugeElement.style.transition = 'opacity 0.4s ease';
       this.gaugeElement.style.opacity = '0';
-      this.gaugeElement.style.transition = 'opacity 0.3s';
       setTimeout(() => {
-        if (this.gaugeElement && this.gaugeElement.parentNode) {
+        if (this.gaugeElement?.parentNode) {
           this.gaugeElement.parentNode.removeChild(this.gaugeElement);
         }
-      }, 300);
+      }, 400);
     }
     
-    // Phase 1: Animation de bris (1 seconde)
+    // Animation de bris
     this.mirror.shatterAnimation(() => {
-      // Phase 2: Callback pour démarrer l'animation de caméra
-      // (le canvas est déjà supprimé dans shatterAnimation)
+      console.log('✅ Mirror shattered - calling onComplete');
       if (this.onComplete) {
         this.onComplete();
       }
     });
+  }
+  
+  /**
+   * Force la fin de l'intro (skip)
+   */
+  skip() {
+    if (this.isTransitioning) return;
+    
+    this.isActive = false;
+    localStorage.setItem(INTRO.STORAGE_KEY, 'true');
+    
+    // Supprimer immédiatement
+    if (this.mirror) {
+      this.mirror.remove();
+    }
+    
+    if (this.gaugeElement?.parentNode) {
+      this.gaugeElement.parentNode.removeChild(this.gaugeElement);
+    }
+    
+    if (this.onComplete) {
+      this.onComplete();
+    }
+  }
+  
+  /**
+   * Retourne l'opacité actuelle du canvas 2D
+   */
+  getCanvasOpacity() {
+    return this.mirror ? this.mirror.opacity : 0;
   }
   
   /**
@@ -200,7 +266,7 @@ export class SimpleIntroManager {
       this.mirror.remove();
     }
     
-    if (this.gaugeElement && this.gaugeElement.parentNode) {
+    if (this.gaugeElement?.parentNode) {
       this.gaugeElement.parentNode.removeChild(this.gaugeElement);
     }
   }

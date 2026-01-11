@@ -1,16 +1,17 @@
 /**
  * ShardManager.js - Gestionnaire principal des shards
- * Portfolio 3D V2.0
+ * Portfolio 3D V3.0
  * 
- * Gère la création, mise à jour et animations de tous les shards
- * Basé sur l'ancien animations.js avec calcul de position canonique
+ * - 10 shards constamment visibles
+ * - Boucle infinie
+ * - Déplacement continu de la caméra
  */
 
 import * as THREE from 'three';
 import { ShardGenerator } from './ShardGenerator.js';
 import { ShardPhysics } from './ShardPhysics.js';
 import { projects } from '../data/projects.js';
-import { SHARD, CAMERA } from '../config/constants.js';
+import { SHARD, CAMERA, SCROLL } from '../config/constants.js';
 
 export class ShardManager {
   constructor(scene, camera) {
@@ -18,6 +19,7 @@ export class ShardManager {
     this.camera = camera;
     this.shards = [];
     this.currentIndex = 0;
+    this.previousIndex = -1;
     
     // Sous-systèmes
     this.generator = new ShardGenerator();
@@ -28,8 +30,12 @@ export class ShardManager {
     this.hoveredShard = null;
     this.draggedShard = null;
     
-    // Temps global pour animations orbitales
+    // Temps global
     this.globalTime = 0;
+    
+    // Boucle infinie
+    this.infiniteLoopEnabled = SHARD.INFINITE_LOOP.ENABLED;
+    this.totalDistance = 0;
   }
   
   /**
@@ -42,277 +48,290 @@ export class ShardManager {
       this.scene.add(shard);
     }
     
-    console.log(`✅ Generated ${this.shards.length} shards`);
+    this.totalDistance = projects.length * SHARD.Z_SPACING;
+    
+    console.log(`✅ Generated ${this.shards.length} shards (total distance: ${this.totalDistance})`);
     return this.shards;
   }
   
   /**
-   * Mise à jour principale (appelée chaque frame)
+   * Mise à jour principale
    */
   update(scrollProgress, deltaTime) {
     this.globalTime += deltaTime;
     
-    // Calculer l'index du shard courant basé sur le scroll
-    const newIndex = Math.floor(scrollProgress * this.shards.length);
+    // Calculer l'index courant (0-1 scroll → 0-9 index)
+    const shardScroll = Math.min(scrollProgress, 1.0);
+    const newIndex = Math.floor(shardScroll * this.shards.length);
     this.currentIndex = Math.max(0, Math.min(newIndex, this.shards.length - 1));
     
-    // Position Z de la caméra
+    // Détecter changement
+    const indexChanged = this.currentIndex !== this.previousIndex;
+    if (indexChanged) {
+      this.onShardIndexChanged(this.previousIndex, this.currentIndex);
+      this.previousIndex = this.currentIndex;
+    }
+    
+    // Position caméra pour calculs de distance
     const cameraZ = this.camera.position.z;
     
     // Mettre à jour chaque shard
     this.shards.forEach((shard, index) => {
-      this.updateShard(shard, index, cameraZ);
+      this.updateShardState(shard, index, cameraZ, scrollProgress);
+      this.updateShardVisuals(shard, index);
+      this.updateShardOrbital(shard, index);
+      this.updateShardRotation(shard, index);
     });
     
-    // Physique pour les shards en mouvement libre
+    // Physique
     this.physics.update(this.shards, deltaTime);
   }
   
   /**
-   * Met à jour un shard individuel
+   * Calcule l'état d'un shard basé sur sa distance à la caméra
+   * Caméra AVANCE vers les shards (Z augmente)
    */
-  updateShard(shard, index, cameraZ) {
-    // Skip si en focus ou drag
-    if (shard.userData.isFocused || shard.userData.isDragging) {
-      return;
-    }
+  updateShardState(shard, index, cameraZ, scrollProgress) {
+    if (shard.userData.isFocused || shard.userData.isDragging) return;
     
-    // Calculer la position canonique
-    const canonicalPos = this.calculateCanonicalPosition(shard, index, cameraZ);
+    const shardZ = shard.userData.fixedZ;
+    const distance = shardZ - cameraZ; // Distance DEVANT la caméra (positif = devant)
     
-    // Appliquer la position
-    if (shard.userData.isReturning) {
-      // Interpolation douce pour le retour
-      shard.position.lerp(canonicalPos, 0.05);
-      
-      if (shard.position.distanceTo(canonicalPos) < 0.1) {
-        shard.userData.isReturning = false;
+    // Déterminer l'état basé sur la distance réelle
+    let newState = 'idle';
+    
+    // Shard très proche devant la caméra (dans les 30 unités)
+    if (distance > -30 && distance < 80) {
+      if (distance > -10 && distance < 30) {
+        newState = 'current'; // Très proche
+      } else if (distance >= 30 && distance < 80) {
+        newState = 'approaching'; // Devant, approchant
+      } else if (distance >= -30 && distance <= -10) {
+        newState = 'leaving'; // Derrière, s'éloignant
       }
-    } else {
-      // Position directe
-      shard.position.copy(canonicalPos);
     }
+    // Sinon reste 'idle' (trop loin)
     
-    // Rotation automatique
-    this.updateRotation(shard, index);
-    
-    // Mise à jour visuelle (scale, glow)
-    this.updateVisuals(shard, index);
+    // Appliquer si changement d'état
+    if (shard.userData.state !== newState && !shard.userData.isFocused) {
+      const oldState = shard.userData.state;
+      shard.userData.state = newState;
+      this.animateStateTransition(shard, newState);
+    }
   }
   
   /**
-   * Calcule la position canonique d'un shard
-   * Basé sur l'ancien PositionCalculator
+   * Appelé lors du changement d'index
    */
-  calculateCanonicalPosition(shard, index, cameraZ) {
-    const relativeIndex = index - this.currentIndex;
-    
-    // Paramètres orbitaux
-    const phase = shard.userData.orbitAngle;
-    const speed = shard.userData.orbitSpeed;
-    const orbitT = this.globalTime * speed * SHARD.ORBIT.SPEED + phase;
-    
-    // === SHARD COURANTE ===
-    if (relativeIndex === 0) {
-      const z = cameraZ - CAMERA.LOOK_AHEAD;
-      const x = Math.cos(orbitT) * SHARD.ORBIT.BASE_RADIUS_X * 0.3;
-      const y = Math.sin(orbitT) * SHARD.ORBIT.BASE_RADIUS_Y * 0.3;
-      return new THREE.Vector3(x, y, z);
+  onShardIndexChanged(oldIndex, newIndex) {
+    // Marquer l'ancien comme leaving
+    if (oldIndex >= 0 && oldIndex < this.shards.length) {
+      const oldShard = this.shards[oldIndex];
+      if (oldShard.userData.state === 'current' && !oldShard.userData.isFocused) {
+        oldShard.userData.state = 'leaving';
+        this.animateStateTransition(oldShard, 'leaving');
+      }
     }
     
-    // === SHARDS FUTURES (devant) ===
-    if (relativeIndex > 0) {
-      const z = cameraZ - CAMERA.LOOK_AHEAD - (relativeIndex * SHARD.Z_SPACING);
+    // Marquer le nouveau
+    const newShard = this.shards[newIndex];
+    if (newShard && !newShard.userData.isFocused) {
+      newShard.userData.state = 'approaching';
+      this.animateStateTransition(newShard, 'approaching');
       
-      // Orbite qui grandit avec la distance
-      const orbitMultiplier = 1 + (relativeIndex - 1) * 0.5;
-      const baseAngle = (index / this.shards.length) * Math.PI * 2;
-      const animatedAngle = baseAngle + orbitT * 0.3;
+      setTimeout(() => {
+        if (newShard.userData.state === 'approaching' && !newShard.userData.isFocused) {
+          newShard.userData.state = 'current';
+          this.animateStateTransition(newShard, 'current');
+        }
+      }, 250);
+    }
+  }
+  
+  /**
+   * Anime la transition d'état
+   */
+  animateStateTransition(shard, state) {
+    const config = SHARD.STATES[state.toUpperCase()] || SHARD.STATES.IDLE;
+    
+    if (window.gsap) {
+      const targetScale = config.scale * shard.userData.baseScale.x;
       
-      const radiusX = SHARD.ORBIT.BASE_RADIUS_X * orbitMultiplier;
-      const radiusY = SHARD.ORBIT.BASE_RADIUS_Y * orbitMultiplier;
+      window.gsap.to(shard.scale, {
+        x: targetScale,
+        y: targetScale,
+        z: targetScale,
+        duration: 0.7,
+        ease: 'power2.out'
+      });
       
-      const x = Math.cos(animatedAngle) * radiusX;
-      const y = Math.sin(animatedAngle) * radiusY;
+      window.gsap.to(shard.material, {
+        opacity: config.opacity,
+        duration: 0.5,
+        ease: 'power2.out'
+      });
+    }
+  }
+  
+  /**
+   * Met à jour les visuels
+   */
+  updateShardVisuals(shard, index) {
+    const state = shard.userData.state;
+    const config = SHARD.STATES[state.toUpperCase()] || SHARD.STATES.IDLE;
+    
+    // Emissive
+    if (shard.material.emissive) {
+      const intensity = config.emissive;
+      const targetR = intensity;
+      const targetG = intensity * 0.9;
+      const targetB = intensity * 0.7;
       
-      return new THREE.Vector3(x, y, z);
+      shard.material.emissive.r += (targetR - shard.material.emissive.r) * 0.1;
+      shard.material.emissive.g += (targetG - shard.material.emissive.g) * 0.1;
+      shard.material.emissive.b += (targetB - shard.material.emissive.b) * 0.1;
     }
     
-    // === SHARDS PASSÉES (derrière) ===
-    const passedDistance = Math.abs(relativeIndex);
-    const z = cameraZ - CAMERA.LOOK_AHEAD + (passedDistance * SHARD.Z_SPACING);
-    
-    // Orbite qui grandit avec la distance derrière
-    const orbitMultiplier = 1 + (passedDistance - 1) * 0.5;
-    const baseAngle = (index / this.shards.length) * Math.PI * 2;
-    const animatedAngle = baseAngle + orbitT * 0.2;
-    
-    const radiusX = SHARD.ORBIT.BASE_RADIUS_X * orbitMultiplier;
-    const radiusY = SHARD.ORBIT.BASE_RADIUS_Y * orbitMultiplier;
-    
-    const x = Math.cos(animatedAngle) * radiusX;
-    const y = Math.sin(animatedAngle) * radiusY;
-    
-    return new THREE.Vector3(x, y, z);
-  }
-  
-  /**
-   * Met à jour la rotation d'un shard
-   */
-  updateRotation(shard, index) {
-    if (shard.userData.state === 'hover') return;
-    
-    const speed = shard.userData.rotationSpeed;
-    const isCurrentShard = (index === this.currentIndex);
-    const mult = isCurrentShard ? 0.5 : 1.0;
-    
-    shard.rotation.x += speed.x * mult;
-    shard.rotation.y += speed.y * mult;
-    shard.rotation.z += speed.z * mult;
-  }
-  
-  /**
-   * Met à jour les visuels d'un shard (scale, emissive)
-   */
-  updateVisuals(shard, index) {
-    const relativeIndex = index - this.currentIndex;
-    const isCurrentShard = (relativeIndex === 0);
-    const baseScale = shard.userData.baseScale;
-    
-    // Déterminer le scale cible
-    let targetScale;
-    if (shard.userData.state === 'hover') {
-      targetScale = SHARD.STATES.HOVER.scale;
-    } else if (isCurrentShard) {
-      targetScale = SHARD.STATES.CURRENT.scale;
-    } else if (Math.abs(relativeIndex) <= 2) {
-      targetScale = SHARD.STATES.IDLE.scale;
-    } else {
-      targetScale = SHARD.STATES.DISTANT.scale;
+    // Flatten pour focus/hover
+    if (state === 'focus' && shard.userData.focusAmount > 0) {
+      const focusAmount = shard.userData.focusAmount;
+      const flattenAmount = config.flattenAmount || 0;
+      const baseScale = shard.userData.baseScale.x;
+      
+      shard.scale.set(
+        baseScale * config.scale * (1 + focusAmount * 0.4),
+        baseScale * config.scale * (1 + focusAmount * 0.4),
+        baseScale * config.scale * (1 - focusAmount * flattenAmount)
+      );
     }
+  }
+  
+  /**
+   * Met à jour position orbitale (X/Y)
+   */
+  updateShardOrbital(shard, index) {
+    if (shard.userData.isDragging || shard.userData.isFocused) return;
+    if (this.physics.isShardMoving(shard)) return;
     
-    // Interpoler le scale
-    const currentScale = shard.scale.x / baseScale.x;
-    const newScale = currentScale + (targetScale - currentScale) * 0.1;
+    const orbitT = this.globalTime * shard.userData.orbitSpeed + shard.userData.orbitAngle;
     
-    // Appliquer avec aplatissement si focus
-    const focusAmount = shard.userData.focusAmount || 0;
-    const flattenZ = 1 - focusAmount * SHARD.STATES.FOCUS.flattenAmount;
+    const targetX = Math.cos(orbitT) * SHARD.ORBIT.RADIUS_X;
+    const targetY = Math.sin(orbitT) * SHARD.ORBIT.RADIUS_Y;
     
-    shard.scale.set(
-      baseScale.x * newScale,
-      baseScale.y * newScale,
-      baseScale.z * newScale * flattenZ
-    );
+    const smoothing = 0.04;
+    shard.position.x += (targetX - shard.position.x) * smoothing;
+    shard.position.y += (targetY - shard.position.y) * smoothing;
     
-    // Émissivité
-    let targetEmissive;
-    if (shard.userData.state === 'hover') {
-      targetEmissive = SHARD.STATES.HOVER.emissive;
-    } else if (isCurrentShard) {
-      targetEmissive = SHARD.STATES.CURRENT.emissive;
-    } else {
-      targetEmissive = SHARD.STATES.IDLE.emissive;
+    // Z reste fixe
+    if (!shard.userData.isFocused) {
+      shard.position.z = shard.userData.fixedZ;
     }
-    
-    const currentEmissive = shard.material.emissiveIntensity;
-    shard.material.emissiveIntensity = currentEmissive + (targetEmissive - currentEmissive) * 0.1;
   }
   
   /**
-   * Change la facette active d'un shard
+   * Met à jour rotation
    */
-  changeFacette(shard, direction = 1) {
-    const facettes = shard.userData.facettes;
-    const currentIndex = shard.userData.activeFacette;
-    const newIndex = (currentIndex + direction + facettes.length) % facettes.length;
+  updateShardRotation(shard, index) {
+    const state = shard.userData.state;
     
-    shard.userData.activeFacette = newIndex;
+    if (state === 'hover' || shard.userData.isDragging || shard.userData.isFocused) return;
     
-    const newFacette = facettes[newIndex];
-    this.generator.updateShardCategory(shard, newFacette.category);
+    let mult = SHARD.ROTATION.MULTIPLIER_IDLE;
+    if (state === 'current') mult = SHARD.ROTATION.MULTIPLIER_CURRENT;
+    else if (state === 'focus') mult = SHARD.ROTATION.MULTIPLIER_FOCUS;
     
-    return newFacette;
+    shard.rotation.x += shard.userData.rotationSpeed.x * mult;
+    shard.rotation.y += shard.userData.rotationSpeed.y * mult;
+    shard.rotation.z += shard.userData.rotationSpeed.z * mult;
   }
   
-  /**
-   * Démarre le drag d'un shard
-   */
+  // === DRAG ===
+  
   startDrag(shard) {
     shard.userData.isDragging = true;
     shard.userData.state = 'dragged';
-    shard.userData.velocity.set(0, 0, 0);
+    shard.userData.velocity.set(0, 0);
     this.draggedShard = shard;
   }
   
-  /**
-   * Met à jour le drag d'un shard
-   */
   updateDrag(shard, worldPosition) {
     if (!shard.userData.isDragging) return;
     
-    const velocity = worldPosition.clone().sub(shard.position);
-    shard.userData.velocity.copy(velocity);
-    shard.position.copy(worldPosition);
+    const velocityX = worldPosition.x - shard.position.x;
+    const velocityY = worldPosition.y - shard.position.y;
+    
+    shard.userData.velocity.set(velocityX, velocityY);
+    shard.position.x = worldPosition.x;
+    shard.position.y = worldPosition.y;
   }
   
-  /**
-   * Termine le drag d'un shard
-   */
   endDrag(shard) {
     shard.userData.isDragging = false;
     shard.userData.state = 'idle';
-    shard.userData.isReturning = true;
     this.draggedShard = null;
     
-    this.physics.applyVelocity(shard, shard.userData.velocity.clone().multiplyScalar(5));
+    this.physics.applyImpulse(
+      shard,
+      shard.userData.velocity.x * 6,
+      shard.userData.velocity.y * 6
+    );
   }
   
-  /**
-   * Met un shard en hover
-   */
+  // === HOVER ===
+  
   setHover(shard) {
     if (this.hoveredShard && this.hoveredShard !== shard) {
       this.hoveredShard.userData.state = 'idle';
     }
+    
     shard.userData.state = 'hover';
     this.hoveredShard = shard;
+    
+    if (window.gsap) {
+      window.gsap.to(shard.userData, {
+        flattenAmount: 1,
+        duration: 0.25,
+        ease: 'power2.out'
+      });
+    }
   }
   
-  /**
-   * Retire le hover
-   */
   clearHover() {
     if (this.hoveredShard) {
       this.hoveredShard.userData.state = 'idle';
+      
+      if (window.gsap) {
+        window.gsap.to(this.hoveredShard.userData, {
+          flattenAmount: 0,
+          duration: 0.25,
+          ease: 'power2.out'
+        });
+      }
+      
       this.hoveredShard = null;
     }
   }
   
-  /**
-   * Met un shard en focus
-   */
+  // === FOCUS ===
+  
   setFocus(shard) {
     shard.userData.isFocused = true;
     shard.userData.state = 'focus';
     this.focusedShard = shard;
   }
   
-  /**
-   * Retire le focus
-   */
   clearFocus() {
     if (this.focusedShard) {
       this.focusedShard.userData.isFocused = false;
       this.focusedShard.userData.state = 'idle';
-      this.focusedShard.userData.isReturning = true;
+      this.focusedShard.userData.focusZOffset = 0;
+      this.focusedShard.position.z = this.focusedShard.userData.fixedZ;
       this.focusedShard = null;
     }
   }
   
-  /**
-   * Met à jour le thème de tous les shards
-   */
+  // === THEME ===
+  
   setTheme(isDarkMode) {
     this.generator.isDarkMode = isDarkMode;
     this.shards.forEach(shard => {
@@ -320,41 +339,14 @@ export class ShardManager {
     });
   }
   
-  /**
-   * Getters
-   */
-  getAllShards() {
-    return this.shards;
-  }
+  // === GETTERS ===
   
-  getShardByIndex(index) {
-    if (index < 0 || index >= this.shards.length) {
-      return null;
-    }
-    return this.shards[index];
-  }
-  
-  getCurrentShard() {
-    return this.shards[this.currentIndex];
-  }
-  
-  getCurrentIndex() {
-    return this.currentIndex;
-  }
-  
-  getTotalShards() {
-    return this.shards.length;
-  }
-  
-  getFocusedShard() {
-    return this.focusedShard;
-  }
-  
-  getHoveredShard() {
-    return this.hoveredShard;
-  }
-  
-  getDraggedShard() {
-    return this.draggedShard;
-  }
+  getAllShards() { return this.shards; }
+  getShardByIndex(index) { return this.shards[index] || null; }
+  getCurrentShard() { return this.shards[this.currentIndex]; }
+  getCurrentIndex() { return this.currentIndex; }
+  getTotalShards() { return this.shards.length; }
+  getFocusedShard() { return this.focusedShard; }
+  getHoveredShard() { return this.hoveredShard; }
+  getDraggedShard() { return this.draggedShard; }
 }

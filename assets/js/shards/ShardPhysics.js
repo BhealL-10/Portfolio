@@ -1,8 +1,6 @@
 /**
- * ShardPhysics.js - Physique des shards
- * Portfolio 3D V2.0
- * 
- * Gère la vélocité, friction, collisions et répulsion
+ * ShardPhysics.js - Physique des shards (X/Y uniquement)
+ * Portfolio 3D V3.0
  */
 
 import * as THREE from 'three';
@@ -11,65 +9,45 @@ import { PHYSICS } from '../config/constants.js';
 export class ShardPhysics {
   constructor() {
     this.bounds = {
-      minX: -20,
-      maxX: 20,
-      minY: -15,
-      maxY: 15
+      minX: -25,
+      maxX: 25,
+      minY: -18,
+      maxY: 18
     };
   }
   
   /**
-   * Mise à jour de la physique pour tous les shards
+   * Mise à jour physique
    */
   update(shards, deltaTime) {
     shards.forEach(shard => {
-      if (shard.userData.isDragging || shard.userData.state === 'focus') {
-        return;
-      }
+      if (shard.userData.isFocused || shard.userData.isDragging) return;
       
       // Appliquer vélocité
       if (shard.userData.velocity.lengthSq() > 0.0001) {
-        this.applyVelocity(shard, shard.userData.velocity);
+        shard.position.x += shard.userData.velocity.x;
+        shard.position.y += shard.userData.velocity.y;
         
         // Friction
         shard.userData.velocity.multiplyScalar(PHYSICS.FRICTION);
         
-        // Rebond sur les bords
+        // Rebond
         this.applyBounce(shard);
-      }
-      
-      // Retour à la position canonique
-      if (shard.userData.isReturning) {
-        this.applyReturn(shard);
       }
     });
     
-    // Répulsion entre shards proches
+    // Répulsion
     this.applyRepulsion(shards);
   }
   
   /**
-   * Applique une vélocité à un shard
-   */
-  applyVelocity(shard, velocity) {
-    // Limiter la vélocité
-    if (velocity.length() > PHYSICS.MAX_VELOCITY) {
-      velocity.normalize().multiplyScalar(PHYSICS.MAX_VELOCITY);
-    }
-    
-    shard.position.add(velocity);
-    shard.userData.velocity.copy(velocity);
-  }
-  
-  /**
-   * Applique le rebond sur les bords
+   * Rebond sur les bords
    */
   applyBounce(shard) {
     const pos = shard.position;
     const vel = shard.userData.velocity;
     const damping = PHYSICS.BOUNCE.DAMPING;
     
-    // Rebond X
     if (pos.x < this.bounds.minX) {
       pos.x = this.bounds.minX;
       vel.x *= -damping;
@@ -78,7 +56,6 @@ export class ShardPhysics {
       vel.x *= -damping;
     }
     
-    // Rebond Y
     if (pos.y < this.bounds.minY) {
       pos.y = this.bounds.minY;
       vel.y *= -damping;
@@ -86,26 +63,6 @@ export class ShardPhysics {
       pos.y = this.bounds.maxY;
       vel.y *= -damping;
     }
-  }
-  
-  /**
-   * Retour progressif vers la position canonique
-   */
-  applyReturn(shard) {
-    const canonical = shard.userData.canonicalPosition;
-    const direction = canonical.clone().sub(shard.position);
-    const distance = direction.length();
-    
-    if (distance < PHYSICS.RETURN.SNAP_THRESHOLD) {
-      shard.position.copy(canonical);
-      shard.userData.velocity.set(0, 0, 0);
-      shard.userData.isReturning = false;
-      return;
-    }
-    
-    // Force de retour proportionnelle à la distance
-    direction.normalize().multiplyScalar(PHYSICS.RETURN.STRENGTH * distance);
-    shard.userData.velocity.add(direction);
   }
   
   /**
@@ -117,77 +74,61 @@ export class ShardPhysics {
         const shardA = shards[i];
         const shardB = shards[j];
         
-        // Skip si l'un est en focus ou drag
-        if (shardA.userData.state === 'focus' || shardA.userData.isDragging) continue;
-        if (shardB.userData.state === 'focus' || shardB.userData.isDragging) continue;
+        if (shardA.userData.isFocused || shardA.userData.isDragging) continue;
+        if (shardB.userData.isFocused || shardB.userData.isDragging) continue;
         
-        const distance = shardA.position.distanceTo(shardB.position);
+        // Distance 2D
+        const dx = shardA.position.x - shardB.position.x;
+        const dy = shardA.position.y - shardB.position.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
         
         if (distance < PHYSICS.REPULSION.DISTANCE && distance > 0.1) {
-          const direction = shardA.position.clone().sub(shardB.position).normalize();
           const force = PHYSICS.REPULSION.STRENGTH * (1 - distance / PHYSICS.REPULSION.DISTANCE);
           
-          // Appliquer force aux deux shards
-          shardA.userData.velocity.add(direction.clone().multiplyScalar(force));
-          shardB.userData.velocity.add(direction.clone().multiplyScalar(-force));
+          const dirX = dx / distance;
+          const dirY = dy / distance;
+          
+          shardA.userData.velocity.x += dirX * force;
+          shardA.userData.velocity.y += dirY * force;
+          shardB.userData.velocity.x -= dirX * force;
+          shardB.userData.velocity.y -= dirY * force;
         }
       }
     }
   }
   
   /**
-   * Applique une impulsion (pour effet billard)
+   * Applique une impulsion
    */
-  applyImpulse(shard, impulse) {
-    shard.userData.velocity.add(impulse);
-    shard.userData.isReturning = true;
+  applyImpulse(shard, impulseX, impulseY) {
+    shard.userData.velocity.x += impulseX;
+    shard.userData.velocity.y += impulseY;
+    
+    // Limiter vélocité max
+    const vel = shard.userData.velocity;
+    const speed = vel.length();
+    if (speed > PHYSICS.MAX_VELOCITY) {
+      vel.multiplyScalar(PHYSICS.MAX_VELOCITY / speed);
+    }
   }
   
   /**
-   * Collision entre deux shards (effet billard)
+   * Vérifie si un shard est en mouvement
    */
-  resolveCollision(shardA, shardB) {
-    const posA = shardA.position;
-    const posB = shardB.position;
-    const velA = shardA.userData.velocity;
-    const velB = shardB.userData.velocity;
-    
-    // Vecteur normal de collision
-    const normal = posA.clone().sub(posB).normalize();
-    
-    // Vélocité relative
-    const relativeVel = velA.clone().sub(velB);
-    const velAlongNormal = relativeVel.dot(normal);
-    
-    // Ne pas résoudre si les objets s'éloignent
-    if (velAlongNormal > 0) return;
-    
-    // Coefficient de restitution (élasticité)
-    const restitution = 0.8;
-    
-    // Calculer impulsion scalaire
-    const impulseScalar = -(1 + restitution) * velAlongNormal / 2;
-    
-    // Appliquer impulsion
-    const impulse = normal.clone().multiplyScalar(impulseScalar);
-    velA.add(impulse);
-    velB.sub(impulse);
-    
-    // Marquer comme en mouvement
-    shardA.userData.isReturning = true;
-    shardB.userData.isReturning = true;
+  isShardMoving(shard) {
+    return shard.userData.velocity && shard.userData.velocity.lengthSq() > 0.01;
   }
   
   /**
-   * Met à jour les limites (appelé lors du resize)
+   * Met à jour les limites
    */
   updateBounds(width, height) {
     const aspect = width / height;
     this.bounds = {
-      minX: -15 * aspect,
-      maxX: 15 * aspect,
-      minY: -15,
-      maxY: 15
+      minX: -18 * aspect,
+      maxX: 18 * aspect,
+      minY: -18,
+      maxY: 18
     };
   }
 }
