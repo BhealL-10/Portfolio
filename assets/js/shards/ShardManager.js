@@ -25,6 +25,9 @@ export class ShardManager {
     this.generator = new ShardGenerator();
     this.physics = new ShardPhysics();
     
+    // Référence au ScrollManager (sera définie plus tard)
+    this.scrollManager = null;
+    
     // État
     this.focusedShard = null;
     this.hoveredShard = null;
@@ -174,13 +177,13 @@ export class ShardManager {
   }
   
   /**
-   * Met à jour les visuels
+   * Met à jour les visuels d'un shard
    */
   updateShardVisuals(shard, index) {
     const state = shard.userData.state;
     const config = SHARD.STATES[state.toUpperCase()] || SHARD.STATES.IDLE;
     
-    // Emissive
+    // Emissive (augmentation lumière)
     if (shard.material.emissive) {
       const intensity = config.emissive;
       const targetR = intensity;
@@ -192,7 +195,12 @@ export class ShardManager {
       shard.material.emissive.b += (targetB - shard.material.emissive.b) * 0.1;
     }
     
-    // Flatten pour focus/hover
+    // Effet de morphing/déformation au hover
+    if (state === 'hover' && !shard.userData.isDragging) {
+      this.applyHoverMorphing(shard);
+    }
+    
+    // Flatten pour focus
     if (state === 'focus' && shard.userData.focusAmount > 0) {
       const focusAmount = shard.userData.focusAmount;
       const flattenAmount = config.flattenAmount || 0;
@@ -207,7 +215,64 @@ export class ShardManager {
   }
   
   /**
+   * Applique l'effet de morphing au hover (déformation organique)
+   */
+  applyHoverMorphing(shard) {
+    if (!shard.geometry.attributes.position) return;
+    
+    const positions = shard.geometry.attributes.position;
+    const time = this.globalTime * 2;
+    
+    // Déformation subtile des vertices
+    if (!shard.userData.originalPositions) {
+      // Sauvegarder positions originales
+      shard.userData.originalPositions = [];
+      for (let i = 0; i < positions.count; i++) {
+        shard.userData.originalPositions.push({
+          x: positions.getX(i),
+          y: positions.getY(i),
+          z: positions.getZ(i)
+        });
+      }
+    }
+    
+    // Appliquer déformation ondulante
+    const morphStrength = 0.15; // Intensité de la déformation
+    for (let i = 0; i < positions.count; i++) {
+      const original = shard.userData.originalPositions[i];
+      const offset = Math.sin(time + i * 0.5) * morphStrength;
+      
+      positions.setXYZ(
+        i,
+        original.x * (1 + offset),
+        original.y * (1 + offset * 0.8),
+        original.z * (1 + offset * 0.6)
+      );
+    }
+    
+    positions.needsUpdate = true;
+    shard.geometry.computeVertexNormals();
+  }
+  
+  /**
+   * Restaure la géométrie originale
+   */
+  restoreOriginalGeometry(shard) {
+    if (!shard.userData.originalPositions) return;
+    
+    const positions = shard.geometry.attributes.position;
+    for (let i = 0; i < positions.count; i++) {
+      const original = shard.userData.originalPositions[i];
+      positions.setXYZ(i, original.x, original.y, original.z);
+    }
+    
+    positions.needsUpdate = true;
+    shard.geometry.computeVertexNormals();
+  }
+  
+  /**
    * Met à jour position orbitale (X/Y)
+   * Plus le scroll est loin de la shard, plus l'orbite est grande
    */
   updateShardOrbital(shard, index) {
     if (shard.userData.isDragging || shard.userData.isFocused) return;
@@ -215,8 +280,16 @@ export class ShardManager {
     
     const orbitT = this.globalTime * shard.userData.orbitSpeed + shard.userData.orbitAngle;
     
-    const targetX = Math.cos(orbitT) * SHARD.ORBIT.RADIUS_X;
-    const targetY = Math.sin(orbitT) * SHARD.ORBIT.RADIUS_Y;
+    // Calculer distance entre scroll et shard
+    const scrollProgress = this.scrollManager ? this.scrollManager.getShardProgress() : 0;
+    const shardScrollPosition = index / this.shards.length;
+    const distanceFromScroll = Math.abs(scrollProgress - shardScrollPosition);
+    
+    // Plus on est loin, plus l'orbite est grande (facteur 1.0 à 2.5)
+    const orbitMultiplier = 1.0 + (distanceFromScroll * 1.5);
+    
+    const targetX = Math.cos(orbitT) * SHARD.ORBIT.RADIUS_X * orbitMultiplier;
+    const targetY = Math.sin(orbitT) * SHARD.ORBIT.RADIUS_Y * orbitMultiplier;
     
     const smoothing = 0.04;
     shard.position.x += (targetX - shard.position.x) * smoothing;
@@ -263,6 +336,38 @@ export class ShardManager {
     shard.userData.velocity.set(velocityX, velocityY);
     shard.position.x = worldPosition.x;
     shard.position.y = worldPosition.y;
+    
+    // Étirement dans la direction du mouvement
+    const speed = Math.sqrt(velocityX * velocityX + velocityY * velocityY);
+    if (speed > 0.1) {
+      const stretchAmount = Math.min(speed * 0.5, 0.4);
+      const angle = Math.atan2(velocityY, velocityX);
+      
+      // Appliquer déformation plus importante pendant le drag
+      if (!shard.userData.originalPositions) return;
+      
+      const positions = shard.geometry.attributes.position;
+      for (let i = 0; i < positions.count; i++) {
+        const original = shard.userData.originalPositions[i];
+        const dx = original.x;
+        const dy = original.y;
+        
+        // Étirement dans la direction du mouvement
+        const alignmentX = Math.cos(angle);
+        const alignmentY = Math.sin(angle);
+        const alignment = (dx * alignmentX + dy * alignmentY) / 2;
+        
+        positions.setXYZ(
+          i,
+          original.x * (1 + alignment * stretchAmount),
+          original.y * (1 + alignment * stretchAmount * 0.5),
+          original.z
+        );
+      }
+      
+      positions.needsUpdate = true;
+      shard.geometry.computeVertexNormals();
+    }
   }
   
   endDrag(shard) {
@@ -270,10 +375,14 @@ export class ShardManager {
     shard.userData.state = 'idle';
     this.draggedShard = null;
     
+    // Restaurer géométrie après drag
+    this.restoreOriginalGeometry(shard);
+    
+    // Impulsion spatiale réduite
     this.physics.applyImpulse(
       shard,
-      shard.userData.velocity.x * 6,
-      shard.userData.velocity.y * 6
+      shard.userData.velocity.x * 2,
+      shard.userData.velocity.y * 2
     );
   }
   
@@ -299,7 +408,8 @@ export class ShardManager {
   clearHover() {
     if (this.hoveredShard) {
       this.hoveredShard.userData.state = 'idle';
-      
+      // Restaurer géométrie originale
+      this.restoreOriginalGeometry(this.hoveredShard);
       if (window.gsap) {
         window.gsap.to(this.hoveredShard.userData, {
           flattenAmount: 0,

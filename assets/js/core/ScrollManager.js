@@ -166,6 +166,23 @@ export class ScrollManager {
   }
   
   /**
+   * Ajoute au scroll (pour guided scrolling)
+   */
+  addScroll(delta) {
+    if (this.locked) return;
+    this.scrollTarget += delta;
+    this.scrollTarget = Math.max(SCROLL.MIN, Math.min(SCROLL.MAX, this.scrollTarget));
+  }
+  
+  /**
+   * Définit le scroll directement
+   */
+  setScroll(value) {
+    this.scroll = value;
+    this.scrollTarget = value;
+  }
+  
+  /**
    * Mise à jour (chaque frame)
    */
   update() {
@@ -326,6 +343,10 @@ export class ScrollManager {
     this.locked = false;
   }
   
+  setLocked(value) {
+    this.locked = value;
+  }
+  
   /**
    * Enable/Disable
    */
@@ -359,6 +380,8 @@ export class ScrollManager {
   getProgress() { return this.scroll; }
   getShardProgress() { return Math.min(this.scroll, 1.0); }
   isInAbout() { return this.isInAboutSection; }
+  getLocked() { return this.locked; }
+  getEnabled() { return this.enabled; }
   
   /**
    * Utilitaires

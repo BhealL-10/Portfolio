@@ -14,18 +14,15 @@ export const INTRO = {
   HERO_TEXT: "Bienvenue dans mon univers",
   HERO_SUBTITLE: "Cliquez pour entrer",
   
-  // Voronoi cells
-  INITIAL_CELLS: 12,
-  CELL_SPREAD: 150,
-  CELL_GROWTH_RATE: 2.0,
-  CELL_MAX_SIZE: 3.5,
-  CELL_SPLIT_THRESHOLD: 1.0,
+  // Fractures et cellules Voronoi
+  CELLS_PER_CLICK: 8,              // Nombre de cellules ajoutées par clic
+  CELL_SPREAD: 150,                // Rayon de dispersion des cellules
+  FRACTURE_DETECTION_RADIUS: 120,  // Distance pour détecter si clic sur fracture existante
   
   // Destruction
-  DESTRUCTION_THRESHOLD: 40,
-  GROWTH_PER_CLICK: 1.2,
-  DECAY_RATE: 0.25,
-  DECAY_DELAY: 1.0,
+  DESTRUCTION_THRESHOLD: 100,      // Nombre total de cellules pour compléter
+  DECAY_RATE: 2.0,                 // Vitesse de suppression des cellules (cellules/sec)
+  DECAY_DELAY: 1.5,                // Délai avant début du decay (secondes)
   
   // Transition
   FADE_DURATION: 1.5,
@@ -122,11 +119,13 @@ export const SHARD = {
   },
   
   // Orbite (mouvement X/Y autour de position Z fixe)
+  // Plus le scroll est loin, plus l'orbite est grande
   ORBIT: {
-    RADIUS_X: 4,
-    RADIUS_Y: 3,
+    RADIUS_X: 6,
+    RADIUS_Y: 4.5,
     SPEED: 0.25,
-    VARIATION: 0.3
+    VARIATION: 0.3,
+    DISTANCE_MULTIPLIER: 1.5 // Facteur d'agrandissement selon distance scroll
   },
   
   // Rotation automatique

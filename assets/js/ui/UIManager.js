@@ -23,10 +23,31 @@ export class UIManager {
    * Initialisation
    */
   init() {
-    this.createScrollIndicator();
+    this.scrollIndicator = document.querySelector('.scroll-indicator');
     this.createSectionIndicator();
     this.setupAboutSection();
     this.injectStyles();
+  }
+  
+  /**
+   * Transforme l'indicateur en mode scroll après l'intro
+   */
+  transformIndicatorToScrollMode() {
+    if (!this.scrollIndicator) {
+      this.scrollIndicator = document.querySelector('.scroll-indicator');
+    }
+    
+    if (this.scrollIndicator) {
+      // Transformer le contenu en indicateur de scroll
+      this.scrollIndicator.innerHTML = `
+        <div class="scroll-progress-container" style="width: 200px; height: 4px; background: var(--bg-secondary); border-radius: 2px; overflow: hidden;">
+          <div class="scroll-progress-bar" style="width: 0%; height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.1s ease-out;"></div>
+        </div>
+      `;
+      
+      // Réafficher immédiatement
+      this.scrollIndicator.style.opacity = '0.8';
+    }
   }
   
   /**
@@ -338,6 +359,15 @@ export class UIManager {
     }
     
     console.log('📖 About/Contact sections hidden');
+  }
+  
+  /**
+   * Active le scroll natif pour About/Contact
+   */
+  enableAboutContactScroll() {
+    console.log('📜 Enabling native scroll for About/Contact sections');
+    document.body.style.overflow = 'auto';
+    document.body.style.height = 'auto';
   }
   
   /**

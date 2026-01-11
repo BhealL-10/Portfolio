@@ -69,6 +69,9 @@ class Portfolio3D {
       this.camera = new Camera();
       this.renderer = new Renderer();
       
+      // ScrollManager (créer avant l'intro)
+      this.scrollManager = new ScrollManager();
+      
       // UI Manager
       this.uiManager = new UIManager();
       
@@ -197,65 +200,69 @@ class Portfolio3D {
   /**
    * Animation post-intro
    */
-  playPostIntroAnimation() {
+  async playPostIntroAnimation() {
     console.log('🎬 Playing post-intro camera animation...');
     
-    // Position initiale: DERRIÈRE le premier shard (-60)
-    // Caméra à -120 pour être bien derrière
-    const startZ = -120;
-    this.camera.teleportTo(startZ);
+    // Position de départ de la caméra (derrière le premier shard)
+    const startZ = CAMERA.POST_INTRO_START_Z;
+    this.camera.teleportTo(startZ, 0, 0);
     
-    // Afficher les shards avec fade in
-    const shards = this.shardManager.getAllShards();
+    // Position cible (position initiale du scroll)
+    const targetZ = CAMERA.INITIAL_Z;
     
+    // Animation GSAP
     if (window.gsap) {
-      // Animation caméra: AVANCE vers -100 (position de départ du scroll)
-      const targetZ = -100;
-      
-      window.gsap.to(this.camera.targetPosition, {
-        z: targetZ,
-        duration: 2.5,
-        ease: 'power2.inOut',
-        onUpdate: () => {
-          this.camera.lookAtTarget.z = this.camera.targetPosition.z + CAMERA.LOOK_AHEAD;
-        }
+      await new Promise(resolve => {
+        window.gsap.to(this.camera.targetPosition, {
+          z: targetZ,
+          duration: 2.5,
+          ease: 'power2.inOut',
+          onUpdate: () => {
+            // Regarder devant
+            this.camera.lookAtTarget.z = this.camera.targetPosition.z + CAMERA.LOOK_AHEAD;
+          },
+          onComplete: resolve
+        });
       });
       
-      // Fade in des shards en cascade avec scale animation
+      // Animer les shards en cascade
+      const shards = this.shardManager.getAllShards();
       shards.forEach((shard, index) => {
-        const baseScale = shard.userData.baseScale.x;
-        const startScale = SHARD.STATES.IDLE.scale * baseScale * 0.3;
-        const targetScale = SHARD.STATES.IDLE.scale * baseScale;
-        
-        // Reset scale pour animation
-        shard.scale.set(startScale, startScale, startScale);
-        
-        // Animate opacity
         window.gsap.to(shard.material, {
           opacity: SHARD.STATES.IDLE.opacity,
-          duration: 1.0,
-          delay: 0.5 + index * 0.1,
+          delay: index * 0.08,
+          duration: 0.6,
           ease: 'power2.out'
         });
         
-        // Animate scale
         window.gsap.to(shard.scale, {
-          x: targetScale,
-          y: targetScale,
-          z: targetScale,
-          duration: 1.2,
-          delay: 0.5 + index * 0.1,
-          ease: 'back.out(1.2)'
+          x: SHARD.STATES.IDLE.scale * shard.userData.baseScale.x,
+          y: SHARD.STATES.IDLE.scale * shard.userData.baseScale.y,
+          z: SHARD.STATES.IDLE.scale * shard.userData.baseScale.z,
+          delay: index * 0.08,
+          duration: 0.8,
+          ease: 'back.out(1.5)'
         });
       });
       
-      // Finaliser après l'animation
-      setTimeout(() => {
+      // Attendre un peu avant de finaliser
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Finaliser la configuration
+      if (!this.focusController) {
         this.completeMainExperienceSetup();
-      }, 3000);
+      }
+      
+      // Transformer l'indicateur en mode scroll APRÈS setup
+      setTimeout(() => {
+        if (this.uiManager) {
+          this.uiManager.transformIndicatorToScrollMode();
+        }
+      }, 500);
       
     } else {
       // Fallback sans GSAP
+      const shards = this.shardManager.getAllShards();
       shards.forEach(shard => {
         shard.material.opacity = SHARD.STATES.IDLE.opacity;
         const baseScale = shard.userData.baseScale.x;
@@ -264,6 +271,13 @@ class Portfolio3D {
       });
       this.camera.teleportTo(-100);
       this.completeMainExperienceSetup();
+      
+      // Transformer l'indicateur en mode scroll
+      setTimeout(() => {
+        if (this.uiManager) {
+          this.uiManager.transformIndicatorToScrollMode();
+        }
+      }, 500);
     }
   }
   
@@ -273,9 +287,9 @@ class Portfolio3D {
   completeMainExperienceSetup() {
     console.log('🔧 Completing main experience setup...');
     
-    // ScrollManager
-    this.scrollManager = new ScrollManager();
-    this.scrollManager.setTotalSections(projects.length);
+    // ShardManager déjà créé dans prepareMainExperience
+    // Juste lier le ScrollManager
+    this.shardManager.scrollManager = this.scrollManager;
     
     // TimelineManager
     this.timelineManager = new TimelineManager();
@@ -291,6 +305,14 @@ class Portfolio3D {
       this.shardManager,
       this.timelineManager
     );
+    
+    // Link FocusController with ScrollManager
+    this.focusController.setScrollManager(this.scrollManager);
+    
+    // Callback pour extension page About/Contact
+    this.focusController.onLastShardVisited = () => {
+      this.extendPageForAboutContact();
+    };
     
     // Camera setup
     this.camera.setTotalShards(projects.length);
@@ -330,7 +352,7 @@ class Portfolio3D {
       if (this.focusController.isFocused()) {
         this.focusController.unfocus();
       } else {
-        this.focusController.focus(shard, this.scrollManager.getScroll());
+        this.focusController.focus(shard, false);
       }
     };
     
@@ -344,6 +366,8 @@ class Portfolio3D {
     // Drag
     this.raycastManager.onShardDragStart = (shard) => {
       if (this.focusController.isFocused()) return;
+      // Pause guided scrolling pendant le drag
+      this.focusController.guidedScrollPaused = true;
       this.shardManager.startDrag(shard);
     };
     
@@ -353,6 +377,8 @@ class Portfolio3D {
     
     this.raycastManager.onShardDragEnd = (shard) => {
       this.shardManager.endDrag(shard);
+      // Reprendre guided scrolling
+      this.focusController.guidedScrollPaused = false;
     };
     
     // Keyboard
@@ -384,7 +410,6 @@ class Portfolio3D {
   setupCallbacks() {
     // Scroll change
     this.scrollManager.onScrollChange = (scroll, velocity) => {
-      this.focusController.checkScrollUnfocus(scroll);
       this.uiManager.updateScrollProgress(scroll);
     };
     
@@ -466,7 +491,8 @@ class Portfolio3D {
       if (this.focusController) {
         this.focusController.update(
           this.shardManager.getCurrentIndex(),
-          this.scrollManager.getCurrentSubStep()
+          this.scrollManager.getCurrentSubStep(),
+          deltaTime
         );
       }
       
@@ -485,6 +511,25 @@ class Portfolio3D {
    */
   pause() { this.isPaused = true; }
   resume() { this.isPaused = false; }
+  
+  /**
+   * Étend la page pour afficher About/Contact après la dernière shard
+   */
+  extendPageForAboutContact() {
+    console.log('📄 Extending page for About/Contact sections...');
+    
+    // Augmenter la hauteur de la page pour permettre le scroll natif
+    document.body.style.minHeight = '200vh';
+    
+    // Activer le scroll natif pour About/Contact
+    document.documentElement.style.overflow = 'auto';
+    document.body.style.overflow = 'auto';
+    
+    // Notifier UIManager
+    if (this.uiManager) {
+      this.uiManager.enableAboutContactScroll();
+    }
+  }
   
   /**
    * Affiche une erreur

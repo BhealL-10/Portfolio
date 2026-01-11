@@ -17,36 +17,59 @@ export class ShardPhysics {
   }
   
   /**
-   * Mise à jour physique
+   * Mise à jour physique - Mouvement spatial lent
    */
   update(shards, deltaTime) {
     shards.forEach(shard => {
       if (shard.userData.isFocused || shard.userData.isDragging) return;
       
-      // Appliquer vélocité
+      // Attraction vers position orbitale (retour calme)
+      this.applyOrbitalAttraction(shard);
+      
+      // Appliquer vélocité (mouvement spatial lent)
       if (shard.userData.velocity.lengthSq() > 0.0001) {
-        shard.position.x += shard.userData.velocity.x;
-        shard.position.y += shard.userData.velocity.y;
+        shard.position.x += shard.userData.velocity.x * 0.5; // Réduit de moitié
+        shard.position.y += shard.userData.velocity.y * 0.5;
         
-        // Friction
-        shard.userData.velocity.multiplyScalar(PHYSICS.FRICTION);
+        // Friction spatiale (très faible)
+        shard.userData.velocity.multiplyScalar(0.98); // Au lieu de PHYSICS.FRICTION
         
-        // Rebond
+        // Rebond doux
         this.applyBounce(shard);
       }
     });
     
-    // Répulsion
+    // Répulsion douce
     this.applyRepulsion(shards);
   }
   
   /**
-   * Rebond sur les bords
+   * Attraction vers position orbitale (retour calme)
+   */
+  applyOrbitalAttraction(shard) {
+    const orbitalAngle = shard.userData.orbitAngle;
+    const targetX = Math.cos(orbitalAngle) * 8; // Rayon orbital réduit
+    const targetY = Math.sin(orbitalAngle) * 6;
+    
+    const dx = targetX - shard.position.x;
+    const dy = targetY - shard.position.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    if (distance > 0.5) {
+      // Force d'attraction très douce
+      const attractionForce = 0.002;
+      shard.userData.velocity.x += (dx / distance) * attractionForce;
+      shard.userData.velocity.y += (dy / distance) * attractionForce;
+    }
+  }
+  
+  /**
+   * Rebond doux sur les bords
    */
   applyBounce(shard) {
     const pos = shard.position;
     const vel = shard.userData.velocity;
-    const damping = PHYSICS.BOUNCE.DAMPING;
+    const damping = 0.5; // Rebond très amorti
     
     if (pos.x < this.bounds.minX) {
       pos.x = this.bounds.minX;
@@ -66,7 +89,7 @@ export class ShardPhysics {
   }
   
   /**
-   * Répulsion entre shards proches
+   * Répulsion douce entre shards proches (comme dans l'espace)
    */
   applyRepulsion(shards) {
     for (let i = 0; i < shards.length; i++) {
@@ -82,8 +105,11 @@ export class ShardPhysics {
         const dy = shardA.position.y - shardB.position.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         
-        if (distance < PHYSICS.REPULSION.DISTANCE && distance > 0.1) {
-          const force = PHYSICS.REPULSION.STRENGTH * (1 - distance / PHYSICS.REPULSION.DISTANCE);
+        const repulsionDistance = 8; // Distance de répulsion
+        
+        if (distance < repulsionDistance && distance > 0.1) {
+          // Force très douce (mouvement spatial)
+          const force = 0.005 * (1 - distance / repulsionDistance);
           
           const dirX = dx / distance;
           const dirY = dy / distance;
@@ -98,17 +124,19 @@ export class ShardPhysics {
   }
   
   /**
-   * Applique une impulsion
+   * Applique une impulsion (mouvement spatial lent)
    */
   applyImpulse(shard, impulseX, impulseY) {
-    shard.userData.velocity.x += impulseX;
-    shard.userData.velocity.y += impulseY;
+    // Réduire l'impulsion pour mouvement spatial
+    shard.userData.velocity.x += impulseX * 0.3;
+    shard.userData.velocity.y += impulseY * 0.3;
     
-    // Limiter vélocité max
+    // Limiter vélocité max (très basse pour effet spatial)
     const vel = shard.userData.velocity;
     const speed = vel.length();
-    if (speed > PHYSICS.MAX_VELOCITY) {
-      vel.multiplyScalar(PHYSICS.MAX_VELOCITY / speed);
+    const maxSpeed = 0.5; // Vitesse max très réduite
+    if (speed > maxSpeed) {
+      vel.multiplyScalar(maxSpeed / speed);
     }
   }
   

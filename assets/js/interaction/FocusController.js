@@ -1,21 +1,19 @@
 /**
- * FocusController.js - Gestion du focus avec auto-focus par sous-étapes
+ * FocusController.js - Gestion du focus avec positionnement précis et animations scriptées
  * Portfolio 3D V3.0
- * 
- * - Auto-focus progressif basé sur sous-étapes
- * - Navigation entre facettes
- * - Overlay d'information projet
  */
 
 import * as THREE from 'three';
 import { getActiveFacette, getProjectByIndex } from '../data/projects.js';
-import { FOCUS, FACETTE, SCROLL, CATEGORIES } from '../config/constants.js';
+import { FOCUS, FACETTE, SCROLL, CATEGORIES, SHARD, CAMERA } from '../config/constants.js';
 
 const FocusState = {
   IDLE: 'idle',
+  SCROLLING_TO_SHARD: 'scrolling_to_shard',
   FOCUSING: 'focusing',
   FOCUSED: 'focused',
-  UNFOCUSING: 'unfocusing'
+  UNFOCUSING: 'unfocusing',
+  EXITING: 'exiting'
 };
 
 export class FocusController {
@@ -27,80 +25,50 @@ export class FocusController {
     this.focusedShard = null;
     this.state = FocusState.IDLE;
     
-    // Auto-focus
     this.autoFocusEnabled = FOCUS.AUTO_FOCUS_ENABLED;
     this.autoFocusTimer = null;
     this.lastShardIndex = -1;
     this.lastSubStep = -1;
     
-    // Scroll state for unfocus detection
-    this.scrollAtFocus = 0;
+    this.scrollManager = null;
+    this.targetScrollProgress = 0;
+    this.isAutoScrolling = false;
     
-    // Callbacks
+    this.guidedScrollEnabled = true;
+    this.guidedScrollSpeed = 0.0002;
+    this.guidedScrollPaused = false;
+    
+    this.lastShardVisited = -1;
+    this.hasVisitedLastShard = false;
+    
+    this.focusPosition = new THREE.Vector3();
+    this.focusRotation = new THREE.Euler();
+    
     this.onFocusStart = null;
     this.onFocusComplete = null;
     this.onUnfocusComplete = null;
+    this.onLastShardVisited = null;
+    this.onScrollBlur = null;
     
-    // UI Overlay
     this.infoOverlay = null;
     this.createInfoOverlay();
   }
   
-  /**
-   * Crée l'overlay HTML
-   */
+  setScrollManager(scrollManager) {
+    this.scrollManager = scrollManager;
+  }
+  
   createInfoOverlay() {
     this.infoOverlay = document.createElement('div');
     this.infoOverlay.className = 'shard-info-overlay';
-    this.infoOverlay.innerHTML = `
-      <div class="shard-info-content">
-        <div class="facette-nav">
-          <button class="facette-prev" aria-label="Facette précédente">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="15 18 9 12 15 6"/>
-            </svg>
-          </button>
-          <span class="facette-indicator">1/3</span>
-          <button class="facette-next" aria-label="Facette suivante">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="9 18 15 12 9 6"/>
-            </svg>
-          </button>
-        </div>
-        <span class="shard-category"></span>
-        <h2 class="shard-title"></h2>
-        <p class="shard-description"></p>
-        <div class="shard-technologies"></div>
-        <div class="shard-links"></div>
-      </div>
-    `;
+    this.infoOverlay.innerHTML = '<div class="shard-info-content"><div class="facette-nav"><button class="facette-prev">◀</button><span class="facette-indicator">1/3</span><button class="facette-next">▶</button></div><span class="shard-category"></span><h2 class="shard-title"></h2><p class="shard-description"></p><div class="shard-technologies"></div><div class="shard-links"></div></div>';
     
-    this.infoOverlay.style.cssText = `
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      z-index: 150;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.4s ease;
-      max-width: 550px;
-      width: 90%;
-      text-align: center;
-      padding: 30px;
-      background: var(--bg-overlay, rgba(0,0,0,0.7));
-      backdrop-filter: blur(10px);
-      border-radius: 16px;
-      color: var(--text-primary, white);
-    `;
+    this.infoOverlay.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:150;pointer-events:none;opacity:0;transition:opacity 0.4s ease;max-width:550px;width:90%;text-align:center;';
     
     document.body.appendChild(this.infoOverlay);
     this.setupFacetteNavigation();
   }
   
-  /**
-   * Configure navigation facettes
-   */
   setupFacetteNavigation() {
     const prevBtn = this.infoOverlay.querySelector('.facette-prev');
     const nextBtn = this.infoOverlay.querySelector('.facette-next');
@@ -115,38 +83,63 @@ export class FocusController {
     });
   }
   
-  /**
-   * Update appelé chaque frame
-   */
-  update(currentShardIndex, currentSubStep = 0) {
+  update(currentShardIndex, currentSubStep = 0, deltaTime = 0.016) {
+    if (this.guidedScrollEnabled && !this.guidedScrollPaused && 
+        this.state === FocusState.IDLE && this.scrollManager) {
+      const currentScroll = this.scrollManager.getScroll();
+      if (currentScroll < 1.0) {
+        this.scrollManager.addScroll(this.guidedScrollSpeed);
+      }
+    }
+    
+    if (this.isAutoScrolling && this.scrollManager) {
+      const currentScroll = this.scrollManager.getScroll();
+      const diff = this.targetScrollProgress - currentScroll;
+      
+      if (Math.abs(diff) > 0.001) {
+        const scrollSpeed = Math.min(Math.abs(diff) * 0.15, 0.03);
+        const scrollDelta = Math.sign(diff) * scrollSpeed;
+        this.scrollManager.addScroll(scrollDelta);
+        
+        const blurAmount = Math.min(scrollSpeed * 50, 1.0);
+        if (this.onScrollBlur) this.onScrollBlur(blurAmount);
+      } else {
+        this.isAutoScrolling = false;
+        this.scrollManager.setScroll(this.targetScrollProgress);
+        
+        if (this.onScrollBlur) this.onScrollBlur(0);
+        
+        if (this.state === FocusState.SCROLLING_TO_SHARD) {
+          setTimeout(() => {
+            this.executeFocus(this.focusedShard);
+          }, 200);
+        }
+      }
+      return;
+    }
+    
     if (!this.autoFocusEnabled) return;
     
-    // Détecter changement de shard
     if (currentShardIndex !== this.lastShardIndex) {
       this.lastShardIndex = currentShardIndex;
       this.lastSubStep = -1;
       
-      // Annuler timer précédent
       if (this.autoFocusTimer) {
         clearTimeout(this.autoFocusTimer);
         this.autoFocusTimer = null;
       }
       
-      // Unfocus si nécessaire
       if (this.state === FocusState.FOCUSED) {
         this.unfocus();
       }
     }
     
-    // Détecter changement de sous-étape pour auto-focus
     if (currentSubStep !== this.lastSubStep) {
       this.lastSubStep = currentSubStep;
       
-      // Auto-focus quand on atteint la sous-étape centrale
       const centerSubStep = Math.floor(SCROLL.SUB_STEPS_PER_SHARD * FOCUS.AUTO_FOCUS_SUB_STEP);
       
       if (currentSubStep === centerSubStep && this.state === FocusState.IDLE) {
-        // Programmer l'auto-focus
         if (this.autoFocusTimer) {
           clearTimeout(this.autoFocusTimer);
         }
@@ -154,181 +147,320 @@ export class FocusController {
         this.autoFocusTimer = setTimeout(() => {
           const shard = this.shardManager.getShardByIndex(currentShardIndex);
           if (shard && this.state === FocusState.IDLE) {
-            this.focus(shard);
+            this.focus(shard, true);
           }
         }, FOCUS.AUTO_FOCUS_DELAY * 1000);
       }
     }
   }
   
-  /**
-   * Vérifie si on doit unfocus basé sur le scroll
-   */
-  checkScrollUnfocus(currentScroll) {
-    if (this.state !== FocusState.FOCUSED) return;
+  focus(shard, isAutoFocus = false) {
+    if (!shard) return;
     
-    if (!FOCUS.AUTO_UNFOCUS_ON_SCROLL) return;
+    const shardIndex = shard.userData.index;
+    const currentScroll = this.scrollManager ? this.scrollManager.getScroll() : 0;
+    const targetScroll = shardIndex / this.shardManager.getTotalShards();
+    const scrollDiff = Math.abs(targetScroll - currentScroll);
     
-    const scrollDelta = Math.abs(currentScroll - this.scrollAtFocus);
-    const threshold = 1 / (this.shardManager.getTotalShards() * 2);
-    
-    if (scrollDelta > threshold) {
-      this.unfocus();
+    if (!isAutoFocus && scrollDiff > 0.05 && this.scrollManager) {
+      console.log('🎯 Auto-scrolling to shard ' + shardIndex + '...');
+      this.focusedShard = shard;
+      this.state = FocusState.SCROLLING_TO_SHARD;
+      this.targetScrollProgress = targetScroll;
+      this.isAutoScrolling = true;
+      this.guidedScrollPaused = true;
+      
+      if (this.scrollManager) {
+        this.scrollManager.setLocked(true);
+      }
+      
+      return;
     }
+    
+    this.executeFocus(shard);
   }
   
-  /**
-   * Focus sur un shard
-   */
-  focus(shard, scrollValue = 0) {
-    if (this.state !== FocusState.IDLE || this.focusedShard) return;
+  executeFocus(shard) {
+    if (this.state === FocusState.FOCUSED || !shard) return;
     
     this.focusedShard = shard;
     this.state = FocusState.FOCUSING;
-    this.scrollAtFocus = scrollValue;
+    this.guidedScrollPaused = true;
     
-    // Marquer le shard
     this.shardManager.setFocus(shard);
     
-    // Callback
     if (this.onFocusStart) this.onFocusStart(shard);
     
-    // Animation
-    this.timelineManager.animateFocus(shard, this.camera.instance, () => {
+    const shardZ = shard.userData.fixedZ;
+    this.focusPosition.set(0, 0, shardZ - FOCUS.CAMERA_DISTANCE);
+    this.focusRotation.set(0, 0, 0);
+    
+    if (this.scrollManager) {
+      this.scrollManager.setLocked(true);
+    }
+    
+    if (window.gsap) {
+      const timeline = window.gsap.timeline({
+        onComplete: () => {
+          this.state = FocusState.FOCUSED;
+          this.showInfo(shard);
+          if (this.onFocusComplete) this.onFocusComplete(shard);
+          
+          if (shard.userData.index > this.lastShardVisited) {
+            this.lastShardVisited = shard.userData.index;
+            
+            if (shard.userData.index === this.shardManager.getTotalShards() - 1) {
+              this.hasVisitedLastShard = true;
+            }
+          }
+        }
+      });
+      
+      timeline.to(this.camera.targetPosition, {
+        x: this.focusPosition.x,
+        y: this.focusPosition.y,
+        z: this.focusPosition.z,
+        duration: 1.2,
+        ease: 'power2.inOut'
+      }, 0);
+      
+      timeline.to(shard.scale, {
+        x: FOCUS.SCALE * shard.userData.baseScale.x,
+        y: FOCUS.SCALE * shard.userData.baseScale.y,
+        z: FOCUS.SCALE * shard.userData.baseScale.z,
+        duration: 1.0,
+        ease: 'back.out(1.5)'
+      }, 0);
+      
+      timeline.to(shard.position, {
+        x: 0,
+        y: 0,
+        duration: 1.0,
+        ease: 'power2.out'
+      }, 0);
+      
+      timeline.to(shard.material, {
+        opacity: 1,
+        emissiveIntensity: FOCUS.EMISSIVE,
+        duration: 0.8,
+        ease: 'power2.out'
+      }, 0);
+    } else {
+      this.camera.teleportTo(this.focusPosition.z, this.focusPosition.x, this.focusPosition.y);
+      shard.position.set(0, 0, shardZ);
       this.state = FocusState.FOCUSED;
       this.showInfo(shard);
-      if (this.onFocusComplete) this.onFocusComplete(shard);
-    });
+    }
   }
   
-  /**
-   * Unfocus
-   */
   unfocus() {
     if (this.state !== FocusState.FOCUSED || !this.focusedShard) return;
     
     this.state = FocusState.UNFOCUSING;
     const shard = this.focusedShard;
     
-    // Cacher infos
     this.hideInfo();
     
-    // Animation
-    this.timelineManager.animateUnfocus(shard, () => {
+    const exitDirections = [
+      { x: 0, y: 50, angle: 0 },
+      { x: 0, y: -50, angle: 0 },
+      { x: 50, y: 0, angle: 0 },
+      { x: -50, y: 0, angle: 0 },
+      { x: 35, y: 35, angle: 45 },
+      { x: -35, y: 35, angle: -45 },
+      { x: 35, y: -35, angle: 45 },
+      { x: -35, y: -35, angle: -45 }
+    ];
+    
+    const exitDir = exitDirections[Math.floor(Math.random() * exitDirections.length)];
+    
+    if (window.gsap) {
+      const timeline = window.gsap.timeline({
+        onComplete: () => {
+          this.repositionShardAfterUnfocus(shard);
+        }
+      });
+      
+      timeline.to(shard.position, {
+        x: exitDir.x,
+        y: exitDir.y,
+        duration: 1.0,
+        ease: 'power2.in'
+      }, 0);
+      
+      timeline.to(shard.rotation, {
+        z: (exitDir.angle * Math.PI) / 180,
+        duration: 1.0,
+        ease: 'power2.in'
+      }, 0);
+      
+      timeline.to(shard.material, {
+        opacity: 0.3,
+        duration: 0.8,
+        ease: 'power2.in'
+      }, 0);
+      
+    } else {
+      this.repositionShardAfterUnfocus(shard);
+    }
+  }
+  
+  repositionShardAfterUnfocus(shard) {
+    this.state = FocusState.EXITING;
+    
+    const orbitalAngle = shard.userData.orbitAngle;
+    const targetX = Math.cos(orbitalAngle) * SHARD.ORBIT.RADIUS_X * 0.5;
+    const targetY = Math.sin(orbitalAngle) * SHARD.ORBIT.RADIUS_Y * 0.5;
+    
+    if (window.gsap) {
+      const timeline = window.gsap.timeline({
+        onComplete: () => {
+          this.shardManager.clearFocus();
+          this.focusedShard = null;
+          this.state = FocusState.IDLE;
+          this.guidedScrollPaused = false;
+          
+          if (this.scrollManager) {
+            this.scrollManager.setLocked(false);
+          }
+          
+          if (this.hasVisitedLastShard && this.onLastShardVisited) {
+            this.onLastShardVisited();
+          }
+          
+          if (this.onUnfocusComplete) this.onUnfocusComplete(shard);
+        }
+      });
+      
+      timeline.to(shard.position, {
+        x: targetX,
+        y: targetY,
+        z: shard.userData.fixedZ,
+        duration: 1.5,
+        ease: 'power2.out'
+      }, 0);
+      
+      timeline.to(shard.rotation, {
+        z: 0,
+        duration: 1.2,
+        ease: 'power2.out'
+      }, 0);
+      
+      timeline.to(shard.scale, {
+        x: SHARD.STATES.IDLE.scale * shard.userData.baseScale.x,
+        y: SHARD.STATES.IDLE.scale * shard.userData.baseScale.y,
+        z: SHARD.STATES.IDLE.scale * shard.userData.baseScale.z,
+        duration: 1.2,
+        ease: 'power2.out'
+      }, 0);
+      
+      timeline.to(shard.material, {
+        opacity: SHARD.STATES.IDLE.opacity,
+        emissiveIntensity: SHARD.STATES.IDLE.emissive,
+        duration: 1.0,
+        ease: 'power2.out'
+      }, 0);
+      
+    } else {
+      shard.position.set(targetX, targetY, shard.userData.fixedZ);
       this.shardManager.clearFocus();
       this.focusedShard = null;
       this.state = FocusState.IDLE;
-      if (this.onUnfocusComplete) this.onUnfocusComplete(shard);
-    });
+      this.guidedScrollPaused = false;
+      
+      if (this.scrollManager) {
+        this.scrollManager.setLocked(false);
+      }
+    }
   }
   
-  /**
-   * Change de facette
-   */
   changeFacette(direction) {
     if (!this.focusedShard) return;
     
     const shard = this.focusedShard;
-    const project = getProjectByIndex(shard.userData.index);
+    const currentFacette = shard.userData.activeFacette;
+    const totalFacettes = shard.userData.facettes.length;
+    const newFacette = (currentFacette + direction + totalFacettes) % totalFacettes;
     
-    if (!project) return;
+    shard.userData.activeFacette = newFacette;
     
-    const facettes = project.facettes;
-    const currentIndex = project.activeFacette;
-    const newIndex = (currentIndex + direction + facettes.length) % facettes.length;
-    
-    project.activeFacette = newIndex;
-    shard.userData.activeFacette = newIndex;
-    
-    // Animation rotation
-    this.timelineManager.animateFacetteChange(shard, direction, () => {
+    if (window.gsap) {
+      window.gsap.to(shard.rotation, {
+        y: shard.rotation.y + (direction * Math.PI * 0.5),
+        duration: 0.6,
+        ease: 'power2.inOut',
+        onComplete: () => {
+          this.updateInfo(shard);
+        }
+      });
+    } else {
       this.updateInfo(shard);
-    });
+    }
   }
   
-  /**
-   * Affiche les infos
-   */
   showInfo(shard) {
     this.updateInfo(shard);
     this.infoOverlay.style.opacity = '1';
     this.infoOverlay.style.pointerEvents = 'auto';
   }
   
-  /**
-   * Met à jour les infos
-   */
-  updateInfo(shard) {
-    const project = getProjectByIndex(shard.userData.index);
-    if (!project) return;
-    
-    const facette = project.facettes[project.activeFacette];
-    if (!facette) return;
-    
-    const total = project.facettes.length;
-    const current = project.activeFacette + 1;
-    
-    // Indicator
-    this.infoOverlay.querySelector('.facette-indicator').textContent = `${current}/${total}`;
-    
-    // Category avec couleur
-    const categoryEl = this.infoOverlay.querySelector('.shard-category');
-    const categoryInfo = CATEGORIES[facette.category] || { label: facette.category, emoji: '' };
-    categoryEl.textContent = `${categoryInfo.emoji || ''} ${categoryInfo.label || facette.category}`;
-    
-    // Titre et description
-    this.infoOverlay.querySelector('.shard-title').textContent = facette.title;
-    this.infoOverlay.querySelector('.shard-description').textContent = facette.longDescription || facette.description;
-    
-    // Technologies
-    const techContainer = this.infoOverlay.querySelector('.shard-technologies');
-    techContainer.innerHTML = facette.technologies
-      .map(tech => `<span class="tech-tag">${tech}</span>`)
-      .join('');
-    
-    // Liens
-    const linksContainer = this.infoOverlay.querySelector('.shard-links');
-    const links = [];
-    
-    if (facette.links?.github) {
-      links.push(`<a href="${facette.links.github}" target="_blank" rel="noopener" class="project-link">GitHub</a>`);
-    }
-    if (facette.links?.demo) {
-      links.push(`<a href="${facette.links.demo}" target="_blank" rel="noopener" class="project-link">Demo</a>`);
-    }
-    if (facette.links?.video) {
-      links.push(`<a href="${facette.links.video}" target="_blank" rel="noopener" class="project-link">Vidéo</a>`);
-    }
-    
-    linksContainer.innerHTML = links.join('');
-  }
-  
-  /**
-   * Cache les infos
-   */
   hideInfo() {
     this.infoOverlay.style.opacity = '0';
     this.infoOverlay.style.pointerEvents = 'none';
   }
   
-  /**
-   * Active/désactive auto-focus
-   */
-  setAutoFocus(enabled) {
-    this.autoFocusEnabled = enabled;
-    if (!enabled && this.autoFocusTimer) {
-      clearTimeout(this.autoFocusTimer);
-      this.autoFocusTimer = null;
+  updateInfo(shard) {
+    const project = getProjectByIndex(shard.userData.index);
+    if (!project) return;
+    
+    const facette = project.facettes[shard.userData.activeFacette];
+    if (!facette) return;
+    
+    const total = project.facettes.length;
+    const current = shard.userData.activeFacette + 1;
+    
+    this.infoOverlay.querySelector('.facette-indicator').textContent = current + '/' + total;
+    
+    const categoryEl = this.infoOverlay.querySelector('.shard-category');
+    const categoryInfo = CATEGORIES[facette.category] || { label: facette.category };
+    categoryEl.textContent = categoryInfo.label || facette.category;
+    
+    this.infoOverlay.querySelector('.shard-title').textContent = facette.title;
+    this.infoOverlay.querySelector('.shard-description').textContent = facette.description;
+    
+    const techContainer = this.infoOverlay.querySelector('.shard-technologies');
+    techContainer.innerHTML = facette.technologies.map(tech => '<span class="tech-badge">' + tech + '</span>').join('');
+    
+    const linksContainer = this.infoOverlay.querySelector('.shard-links');
+    linksContainer.innerHTML = '';
+    if (facette.links) {
+      Object.entries(facette.links).forEach(([key, url]) => {
+        if (url) {
+          const link = document.createElement('a');
+          link.href = url;
+          link.className = 'shard-link';
+          link.textContent = key.charAt(0).toUpperCase() + key.slice(1);
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          linksContainer.appendChild(link);
+        }
+      });
     }
   }
   
-  /**
-   * États
-   */
-  isFocused() { return this.state === FocusState.FOCUSED; }
-  isFocusing() { return this.state === FocusState.FOCUSING; }
-  isUnfocusing() { return this.state === FocusState.UNFOCUSING; }
-  isIdle() { return this.state === FocusState.IDLE; }
-  getFocusedShard() { return this.focusedShard; }
-  getState() { return this.state; }
+  isFocused() {
+    return this.state === FocusState.FOCUSED;
+  }
+  
+  getFocusedShard() {
+    return this.focusedShard;
+  }
+  
+  isScrollingToShard() {
+    return this.state === FocusState.SCROLLING_TO_SHARD;
+  }
+  
+  toggleGuidedScroll(enabled) {
+    this.guidedScrollEnabled = enabled;
+  }
 }

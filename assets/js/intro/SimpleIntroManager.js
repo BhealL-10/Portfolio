@@ -64,45 +64,54 @@ export class SimpleIntroManager {
   }
   
   /**
-   * Crée la jauge de progression
+   * Crée l'indicateur (clics pendant intro, scroll après)
    */
   createGauge() {
-    this.gaugeElement = document.createElement('div');
-    this.gaugeElement.className = 'intro-gauge';
-    this.gaugeElement.innerHTML = `
-      <div class="gauge-container">
-        <div class="gauge-bar">
-          <div class="gauge-fill"></div>
+    // Créer ou récupérer l'indicateur universel
+    this.indicator = document.querySelector('.scroll-indicator');
+    if (!this.indicator) {
+      this.indicator = document.createElement('div');
+      this.indicator.className = 'scroll-indicator';
+      document.body.appendChild(this.indicator);
+    }
+    
+    // Mode intro: indicateur de clics
+    this.indicator.innerHTML = `
+      <div class="indicator-content">
+        <div class="indicator-bar">
+          <div class="indicator-fill"></div>
         </div>
-        <div class="gauge-text">
-          <span class="click-count">0</span> / <span class="click-target">${INTRO.DESTRUCTION_THRESHOLD}</span>
+        <div class="indicator-text">
+          <span class="cell-count">0</span> / <span class="cell-target">${INTRO.DESTRUCTION_THRESHOLD}</span> cellules
         </div>
-        <div class="gauge-hint">Cliquez pour briser le miroir</div>
+        <div class="indicator-hint">Cliquez pour créer des fractures</div>
       </div>
     `;
     
-    this.gaugeElement.style.cssText = `
+    this.indicator.style.cssText = `
       position: fixed;
-      bottom: 80px;
+      bottom: 30px;
       left: 50%;
       transform: translateX(-50%);
-      z-index: ${LAYERS.UI.Z_INDEX + 1};
+      z-index: 200;
       text-align: center;
       font-family: system-ui, -apple-system, sans-serif;
       color: var(--text-primary, white);
       pointer-events: none;
+      opacity: 0.8;
+      transition: opacity 0.3s;
     `;
     
     const style = document.createElement('style');
     style.textContent = `
-      .gauge-container {
+      .indicator-content {
         background: rgba(0,0,0,0.4);
         backdrop-filter: blur(12px);
         padding: 20px 35px;
         border-radius: 16px;
         border: 1px solid rgba(255,255,255,0.1);
       }
-      .gauge-bar {
+      .indicator-bar {
         width: 280px;
         height: 8px;
         background: rgba(255,255,255,0.15);
@@ -110,25 +119,27 @@ export class SimpleIntroManager {
         overflow: hidden;
         margin-bottom: 12px;
       }
-      .gauge-fill {
+      .indicator-fill {
         width: 0%;
         height: 100%;
         background: linear-gradient(90deg, #4a90d9, #67b26f);
         border-radius: 4px;
         transition: width 0.15s ease-out;
       }
-      .gauge-text {
+      .indicator-text {
         font-size: 16px;
         font-weight: 600;
         margin-bottom: 6px;
       }
-      .gauge-hint {
+      .indicator-hint {
         font-size: 13px;
         opacity: 0.7;
       }
     `;
-    document.head.appendChild(style);
-    document.body.appendChild(this.gaugeElement);
+    if (!document.querySelector('#indicator-styles')) {
+      style.id = 'indicator-styles';
+      document.head.appendChild(style);
+    }
   }
   
   /**
@@ -158,19 +169,20 @@ export class SimpleIntroManager {
   }
   
   /**
-   * Met à jour la jauge
+   * Met à jour l'indicateur
    */
   updateGauge() {
-    const percent = this.mirror.getDestructionPercent();
-    const fillBar = this.gaugeElement.querySelector('.gauge-fill');
-    const countText = this.gaugeElement.querySelector('.click-count');
+    const cellCount = this.mirror.cells.length;
+    const percent = cellCount / INTRO.DESTRUCTION_THRESHOLD;
+    const fillBar = this.indicator.querySelector('.indicator-fill');
+    const countText = this.indicator.querySelector('.cell-count');
     
     if (fillBar) {
-      fillBar.style.width = `${percent * 100}%`;
+      fillBar.style.width = `${Math.min(percent * 100, 100)}%`;
     }
     
     if (countText) {
-      countText.textContent = Math.floor(percent * INTRO.DESTRUCTION_THRESHOLD);
+      countText.textContent = cellCount;
     }
   }
   
@@ -206,15 +218,9 @@ export class SimpleIntroManager {
     // Sauvegarder
     localStorage.setItem(INTRO.STORAGE_KEY, 'true');
     
-    // Fade out gauge
-    if (this.gaugeElement) {
-      this.gaugeElement.style.transition = 'opacity 0.4s ease';
-      this.gaugeElement.style.opacity = '0';
-      setTimeout(() => {
-        if (this.gaugeElement?.parentNode) {
-          this.gaugeElement.parentNode.removeChild(this.gaugeElement);
-        }
-      }, 400);
+    // Masquer l'indicateur temporairement (sera transformé en scroll indicator)
+    if (this.indicator) {
+      this.indicator.style.opacity = '0';
     }
     
     // Animation de bris

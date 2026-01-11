@@ -14,7 +14,9 @@ export class SimpleMirror {
     this.canvas = null;
     this.ctx = null;
     this.cells = [];
+    this.fractures = [];  // Liste des fractures (groupes de cellules)
     this.nextCellId = 0;
+    this.nextFractureId = 0;
     this.isDark = document.documentElement.dataset.theme === 'dark';
     this.opacity = 1;
     
@@ -180,31 +182,74 @@ export class SimpleMirror {
   addCrack(x, y) {
     const now = Date.now();
     
-    let foundNearby = false;
-    this.cells.forEach(cell => {
-      const dist = Math.sqrt((cell.x - x) ** 2 + (cell.y - y) ** 2);
-      if (dist < 120) {
-        cell.size = Math.min(cell.size + 0.35, INTRO.CELL_MAX_SIZE);
-        cell.growth += INTRO.GROWTH_PER_CLICK;
-        cell.lastClick = now;
-        foundNearby = true;
+    // Vérifier si le clic est sur une fracture existante
+    let targetFracture = null;
+    for (const fracture of this.fractures) {
+      const dist = Math.sqrt((fracture.centerX - x) ** 2 + (fracture.centerY - y) ** 2);
+      if (dist < INTRO.FRACTURE_DETECTION_RADIUS) {
+        targetFracture = fracture;
+        break;
       }
-    });
+    }
     
-    if (!foundNearby) {
-      for (let i = 0; i < INTRO.INITIAL_CELLS; i++) {
-        const angle = (Math.PI * 2 / INTRO.INITIAL_CELLS) * i + Math.random() * 0.4;
-        const distance = Math.random() * 40;
+    if (targetFracture) {
+      // Clic sur fracture existante: ajouter des cellules à cette fracture
+      console.log(`🔨 Clic sur fracture existante #${targetFracture.id}, ajout de ${INTRO.CELLS_PER_CLICK} cellules`);
+      
+      for (let i = 0; i < INTRO.CELLS_PER_CLICK; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const distance = Math.random() * INTRO.CELL_SPREAD * 0.5;
         
-        this.cells.push({
+        const newCell = {
+          id: this.nextCellId++,
+          x: targetFracture.centerX + Math.cos(angle) * distance,
+          y: targetFracture.centerY + Math.sin(angle) * distance,
+          size: 1.0,
+          fractureId: targetFracture.id,
+          createdAt: now
+        };
+        
+        this.cells.push(newCell);
+        targetFracture.cellIds.push(newCell.id);
+      }
+      
+      targetFracture.lastClick = now;
+      targetFracture.cellCount += INTRO.CELLS_PER_CLICK;
+      
+    } else {
+      // Nouveau clic: créer une nouvelle fracture
+      const fractureId = this.nextFractureId++;
+      console.log(`✨ Nouvelle fracture #${fractureId} à (${Math.round(x)}, ${Math.round(y)})`);
+      
+      const newFracture = {
+        id: fractureId,
+        centerX: x,
+        centerY: y,
+        cellIds: [],
+        cellCount: INTRO.CELLS_PER_CLICK,
+        createdAt: now,
+        lastClick: now
+      };
+      
+      // Créer les cellules initiales autour du point de clic
+      for (let i = 0; i < INTRO.CELLS_PER_CLICK; i++) {
+        const angle = (Math.PI * 2 / INTRO.CELLS_PER_CLICK) * i + Math.random() * 0.3;
+        const distance = Math.random() * 50 + 20;
+        
+        const newCell = {
           id: this.nextCellId++,
           x: x + Math.cos(angle) * distance,
           y: y + Math.sin(angle) * distance,
-          size: 0.35,
-          growth: INTRO.GROWTH_PER_CLICK,
-          lastClick: now
-        });
+          size: 1.0,
+          fractureId: fractureId,
+          createdAt: now
+        };
+        
+        this.cells.push(newCell);
+        newFracture.cellIds.push(newCell.id);
       }
+      
+      this.fractures.push(newFracture);
     }
     
     this.draw();
@@ -214,25 +259,39 @@ export class SimpleMirror {
     const now = Date.now();
     let changed = false;
     
-    this.cells.forEach(cell => {
-      const timeSinceClick = (now - cell.lastClick) / 1000;
+    // Appliquer le decay: supprimer des cellules progressivement
+    const cellsToRemove = Math.floor(deltaTime * INTRO.DECAY_RATE);
+    
+    if (cellsToRemove > 0 && this.cells.length > 0) {
+      // Trouver les cellules les plus anciennes pour les supprimer
+      const sortedCells = [...this.cells].sort((a, b) => a.createdAt - b.createdAt);
       
-      if (timeSinceClick > INTRO.DECAY_DELAY) {
-        if (cell.size > 0.05) {
-          cell.size -= deltaTime * INTRO.CELL_GROWTH_RATE * 0.4;
-          cell.size = Math.max(0.05, cell.size);
-          changed = true;
-        }
+      for (let i = 0; i < Math.min(cellsToRemove, sortedCells.length); i++) {
+        const cellToRemove = sortedCells[i];
+        const fracture = this.fractures.find(f => f.id === cellToRemove.fractureId);
         
-        if (cell.growth > 0) {
-          cell.growth -= deltaTime * INTRO.DECAY_RATE;
-          cell.growth = Math.max(0, cell.growth);
-          changed = true;
+        if (fracture) {
+          const timeSinceLastClick = (now - fracture.lastClick) / 1000;
+          
+          // Ne supprimer que si le délai de decay est passé
+          if (timeSinceLastClick > INTRO.DECAY_DELAY) {
+            // Supprimer la cellule
+            const cellIndex = this.cells.findIndex(c => c.id === cellToRemove.id);
+            if (cellIndex !== -1) {
+              this.cells.splice(cellIndex, 1);
+              changed = true;
+              
+              // Mettre à jour la fracture
+              fracture.cellCount--;
+              fracture.cellIds = fracture.cellIds.filter(id => id !== cellToRemove.id);
+            }
+          }
         }
       }
-    });
+    }
     
-    this.cells = this.cells.filter(c => c.size > 0.05 && c.growth > 0);
+    // Supprimer les fractures vides
+    this.fractures = this.fractures.filter(f => f.cellCount > 0);
     
     if (changed) {
       this.draw();
@@ -240,45 +299,50 @@ export class SimpleMirror {
   }
   
   getDestructionPercent() {
-    const totalGrowth = this.cells.reduce((sum, c) => sum + c.growth, 0);
-    return Math.min(totalGrowth / INTRO.DESTRUCTION_THRESHOLD, 1);
+    // Pourcentage basé sur le nombre total de cellules
+    return Math.min(this.cells.length / INTRO.DESTRUCTION_THRESHOLD, 1);
   }
   
   shatterAnimation(onComplete) {
-    console.log('💥 Starting shatter animation...');
+    console.log('💥 Starting Voronoi shatter animation...');
     
     const duration = INTRO.SHATTER_DURATION * 1000;
     const startTime = Date.now();
-    const shatterPieces = [];
+    const w = this.canvas.width;
+    const h = this.canvas.height;
     
-    // Créer morceaux basés sur les cellules
-    this.cells.forEach(cell => {
-      shatterPieces.push({
-        x: cell.x,
-        y: cell.y,
-        vx: (Math.random() - 0.5) * 900,
-        vy: (Math.random() - 0.5) * 900 - 250,
-        rotation: Math.random() * Math.PI * 2,
-        rotationSpeed: (Math.random() - 0.5) * 10,
-        size: cell.size * 90,
-        opacity: 1
+    // Calculer le diagramme Voronoi final pour obtenir les polygones
+    const voronoiDiagram = this.computeVoronoi(w, h);
+    
+    // Créer des fragments basés sur les cellules Voronoi
+    const fragments = voronoiDiagram.map(cell => {
+      // Calculer le centre du polygone
+      let centerX = 0, centerY = 0;
+      cell.polygon.forEach(point => {
+        centerX += point.x;
+        centerY += point.y;
       });
+      centerX /= cell.polygon.length;
+      centerY /= cell.polygon.length;
+      
+      // Direction d'explosion depuis le centre de l'écran
+      const dx = centerX - w / 2;
+      const dy = centerY - h / 2;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const normalizedDx = distance > 0 ? dx / distance : 0;
+      const normalizedDy = distance > 0 ? dy / distance : 0;
+      
+      return {
+        polygon: cell.polygon.map(p => ({x: p.x, y: p.y})),
+        centerX: centerX,
+        centerY: centerY,
+        vx: normalizedDx * (300 + Math.random() * 400),
+        vy: normalizedDy * (300 + Math.random() * 400) - 200,
+        rotation: 0,
+        rotationSpeed: (Math.random() - 0.5) * 8,
+        opacity: 1
+      };
     });
-    
-    // Ajouter morceaux supplémentaires
-    const targetCount = Math.max(30, this.cells.length * 2);
-    while (shatterPieces.length < targetCount) {
-      shatterPieces.push({
-        x: Math.random() * this.canvas.width,
-        y: Math.random() * this.canvas.height,
-        vx: (Math.random() - 0.5) * 900,
-        vy: (Math.random() - 0.5) * 900 - 250,
-        rotation: Math.random() * Math.PI * 2,
-        rotationSpeed: (Math.random() - 0.5) * 10,
-        size: 40 + Math.random() * 120,
-        opacity: 1
-      });
-    }
     
     const mirrorColor = this.isDark ? '#393F4A' : '#F2DDB8';
     const crackColor = this.isDark ? '#F2DDB8' : '#393F4A';
@@ -286,42 +350,53 @@ export class SimpleMirror {
     const animate = () => {
       const elapsed = Date.now() - startTime;
       const progress = Math.min(elapsed / duration, 1);
+      const deltaTime = 0.016;
       
-      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      this.ctx.clearRect(0, 0, w, h);
       
       // Fade du canvas
       this.opacity = 1 - progress;
       
-      shatterPieces.forEach(piece => {
-        piece.x += piece.vx * 0.016;
-        piece.y += piece.vy * 0.016;
-        piece.vy += 600 * 0.016; // Gravité
-        piece.rotation += piece.rotationSpeed * 0.016;
-        piece.opacity = (1 - progress) * (1 - progress);
+      fragments.forEach(fragment => {
+        // Appliquer physique
+        fragment.centerX += fragment.vx * deltaTime;
+        fragment.centerY += fragment.vy * deltaTime;
+        fragment.vy += 800 * deltaTime; // Gravité
+        fragment.rotation += fragment.rotationSpeed * deltaTime;
+        fragment.opacity = (1 - progress) * (1 - progress);
+        
+        // Calculer offset pour chaque point du polygone
+        const offsetX = fragment.centerX - fragment.polygon[0].x;
+        const offsetY = fragment.centerY - fragment.polygon[0].y;
         
         this.ctx.save();
-        this.ctx.translate(piece.x, piece.y);
-        this.ctx.rotate(piece.rotation);
-        this.ctx.globalAlpha = piece.opacity;
+        this.ctx.translate(fragment.centerX, fragment.centerY);
+        this.ctx.rotate(fragment.rotation);
+        this.ctx.globalAlpha = fragment.opacity;
         
-        // Forme irrégulière
+        // Dessiner le polygone Voronoi
         this.ctx.beginPath();
-        const sides = 5 + Math.floor(Math.random() * 3);
-        for (let i = 0; i < sides; i++) {
-          const angle = (Math.PI * 2 / sides) * i;
-          const r = piece.size * (0.5 + Math.random() * 0.5);
-          const px = Math.cos(angle) * r;
-          const py = Math.sin(angle) * r;
-          if (i === 0) this.ctx.moveTo(px, py);
-          else this.ctx.lineTo(px, py);
-        }
+        fragment.polygon.forEach((point, i) => {
+          const localX = point.x - fragment.polygon[0].x;
+          const localY = point.y - fragment.polygon[0].y;
+          
+          if (i === 0) {
+            this.ctx.moveTo(localX, localY);
+          } else {
+            this.ctx.lineTo(localX, localY);
+          }
+        });
         this.ctx.closePath();
         
+        // Remplissage
         this.ctx.fillStyle = mirrorColor;
         this.ctx.fill();
         
+        // Bordure
         this.ctx.strokeStyle = crackColor;
-        this.ctx.lineWidth = 2;
+        this.ctx.lineWidth = 2.5;
+        this.ctx.lineCap = 'round';
+        this.ctx.lineJoin = 'round';
         this.ctx.stroke();
         
         this.ctx.restore();
@@ -330,7 +405,7 @@ export class SimpleMirror {
       if (progress < 1) {
         requestAnimationFrame(animate);
       } else {
-        console.log('✅ Shatter animation complete');
+        console.log('✅ Voronoi shatter animation complete');
         this.remove();
         if (onComplete) onComplete();
       }
