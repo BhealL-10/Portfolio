@@ -1,10 +1,6 @@
 /**
  * SimpleMirror.js - Miroir Canvas 2D avec effet de bris
  * Portfolio 3D V3.0
- * 
- * - Canvas 2D avec cellules Voronoi
- * - Transition d'opacité pour révéler Three.js
- * - Animation de bris cinématographique
  */
 
 import { INTRO, THEME, LAYERS } from '../config/constants.js';
@@ -14,7 +10,7 @@ export class SimpleMirror {
     this.canvas = null;
     this.ctx = null;
     this.cells = [];
-    this.fractures = [];  // Liste des fractures (groupes de cellules)
+    this.fractures = [];
     this.nextCellId = 0;
     this.nextFractureId = 0;
     this.isDark = document.documentElement.dataset.theme === 'dark';
@@ -43,7 +39,6 @@ export class SimpleMirror {
     this.ctx = this.canvas.getContext('2d');
     document.body.appendChild(this.canvas);
     
-    // Resize
     window.addEventListener('resize', () => {
       this.canvas.width = window.innerWidth;
       this.canvas.height = window.innerHeight;
@@ -75,16 +70,14 @@ export class SimpleMirror {
     
     ctx.clearRect(0, 0, w, h);
     
-    const mirrorColor = this.isDark ? '#393F4A' : '#F2DDB8';
-    const crackColor = this.isDark ? '#F2DDB8' : '#393F4A';
+    const mirrorColor = this.isDark ? '#F2DDB8' : '#393F4A';
+    const crackColor = this.isDark ? '#393F4A' : '#F2DDB8';
     
-    // Fond miroir
     ctx.fillStyle = mirrorColor;
     ctx.globalAlpha = this.opacity;
     ctx.fillRect(0, 0, w, h);
     
-    // Texte hero
-    if (this.opacity > 0.3) {
+    if (this.opacity > 1) {
       ctx.globalAlpha = this.opacity;
       ctx.fillStyle = crackColor;
       ctx.font = 'bold 52px system-ui, -apple-system, sans-serif';
@@ -93,11 +86,10 @@ export class SimpleMirror {
       ctx.fillText(INTRO.HERO_TEXT, w / 2, h / 2 - 35);
       
       ctx.font = '22px system-ui, -apple-system, sans-serif';
-      ctx.globalAlpha = this.opacity * 0.6;
+      ctx.globalAlpha = this.opacity * 1;
       ctx.fillText(INTRO.HERO_SUBTITLE, w / 2, h / 2 + 25);
     }
     
-    // Cellules Voronoi (fissures)
     if (this.cells.length > 0) {
       const voronoiDiagram = this.computeVoronoi(w, h);
       
@@ -182,7 +174,6 @@ export class SimpleMirror {
   addCrack(x, y) {
     const now = Date.now();
     
-    // Vérifier si le clic est sur une fracture existante
     let targetFracture = null;
     for (const fracture of this.fractures) {
       const dist = Math.sqrt((fracture.centerX - x) ** 2 + (fracture.centerY - y) ** 2);
@@ -193,7 +184,6 @@ export class SimpleMirror {
     }
     
     if (targetFracture) {
-      // Clic sur fracture existante: ajouter des cellules à cette fracture
       console.log(`🔨 Clic sur fracture existante #${targetFracture.id}, ajout de ${INTRO.CELLS_PER_CLICK} cellules`);
       
       for (let i = 0; i < INTRO.CELLS_PER_CLICK; i++) {
@@ -217,7 +207,6 @@ export class SimpleMirror {
       targetFracture.cellCount += INTRO.CELLS_PER_CLICK;
       
     } else {
-      // Nouveau clic: créer une nouvelle fracture
       const fractureId = this.nextFractureId++;
       console.log(`✨ Nouvelle fracture #${fractureId} à (${Math.round(x)}, ${Math.round(y)})`);
       
@@ -231,7 +220,6 @@ export class SimpleMirror {
         lastClick: now
       };
       
-      // Créer les cellules initiales autour du point de clic
       for (let i = 0; i < INTRO.CELLS_PER_CLICK; i++) {
         const angle = (Math.PI * 2 / INTRO.CELLS_PER_CLICK) * i + Math.random() * 0.3;
         const distance = Math.random() * 50 + 20;
@@ -259,11 +247,9 @@ export class SimpleMirror {
     const now = Date.now();
     let changed = false;
     
-    // Appliquer le decay: supprimer des cellules progressivement
     const cellsToRemove = Math.floor(deltaTime * INTRO.DECAY_RATE);
     
     if (cellsToRemove > 0 && this.cells.length > 0) {
-      // Trouver les cellules les plus anciennes pour les supprimer
       const sortedCells = [...this.cells].sort((a, b) => a.createdAt - b.createdAt);
       
       for (let i = 0; i < Math.min(cellsToRemove, sortedCells.length); i++) {
@@ -273,15 +259,12 @@ export class SimpleMirror {
         if (fracture) {
           const timeSinceLastClick = (now - fracture.lastClick) / 1000;
           
-          // Ne supprimer que si le délai de decay est passé
           if (timeSinceLastClick > INTRO.DECAY_DELAY) {
-            // Supprimer la cellule
             const cellIndex = this.cells.findIndex(c => c.id === cellToRemove.id);
             if (cellIndex !== -1) {
               this.cells.splice(cellIndex, 1);
               changed = true;
               
-              // Mettre à jour la fracture
               fracture.cellCount--;
               fracture.cellIds = fracture.cellIds.filter(id => id !== cellToRemove.id);
             }
@@ -290,7 +273,6 @@ export class SimpleMirror {
       }
     }
     
-    // Supprimer les fractures vides
     this.fractures = this.fractures.filter(f => f.cellCount > 0);
     
     if (changed) {
@@ -299,7 +281,6 @@ export class SimpleMirror {
   }
   
   getDestructionPercent() {
-    // Pourcentage basé sur le nombre total de cellules
     return Math.min(this.cells.length / INTRO.DESTRUCTION_THRESHOLD, 1);
   }
   
@@ -311,12 +292,9 @@ export class SimpleMirror {
     const w = this.canvas.width;
     const h = this.canvas.height;
     
-    // Calculer le diagramme Voronoi final pour obtenir les polygones
     const voronoiDiagram = this.computeVoronoi(w, h);
     
-    // Créer des fragments basés sur les cellules Voronoi
     const fragments = voronoiDiagram.map(cell => {
-      // Calculer le centre du polygone
       let centerX = 0, centerY = 0;
       cell.polygon.forEach(point => {
         centerX += point.x;
@@ -325,7 +303,6 @@ export class SimpleMirror {
       centerX /= cell.polygon.length;
       centerY /= cell.polygon.length;
       
-      // Direction d'explosion depuis le centre de l'écran
       const dx = centerX - w / 2;
       const dy = centerY - h / 2;
       const distance = Math.sqrt(dx * dx + dy * dy);
@@ -344,7 +321,7 @@ export class SimpleMirror {
       };
     });
     
-    const mirrorColor = this.isDark ? '#393F4A' : '#F2DDB8';
+    const mirrorColor = this.isDark ? '#F2DDB8' : '#393F4A';
     const crackColor = this.isDark ? '#F2DDB8' : '#393F4A';
     
     const animate = () => {
@@ -354,27 +331,20 @@ export class SimpleMirror {
       
       this.ctx.clearRect(0, 0, w, h);
       
-      // Fade du canvas
       this.opacity = 1 - progress;
       
       fragments.forEach(fragment => {
-        // Appliquer physique
         fragment.centerX += fragment.vx * deltaTime;
         fragment.centerY += fragment.vy * deltaTime;
-        fragment.vy += 800 * deltaTime; // Gravité
+        fragment.vy += 800 * deltaTime;
         fragment.rotation += fragment.rotationSpeed * deltaTime;
         fragment.opacity = (1 - progress) * (1 - progress);
-        
-        // Calculer offset pour chaque point du polygone
-        const offsetX = fragment.centerX - fragment.polygon[0].x;
-        const offsetY = fragment.centerY - fragment.polygon[0].y;
         
         this.ctx.save();
         this.ctx.translate(fragment.centerX, fragment.centerY);
         this.ctx.rotate(fragment.rotation);
         this.ctx.globalAlpha = fragment.opacity;
         
-        // Dessiner le polygone Voronoi
         this.ctx.beginPath();
         fragment.polygon.forEach((point, i) => {
           const localX = point.x - fragment.polygon[0].x;
@@ -388,11 +358,9 @@ export class SimpleMirror {
         });
         this.ctx.closePath();
         
-        // Remplissage
         this.ctx.fillStyle = mirrorColor;
         this.ctx.fill();
         
-        // Bordure
         this.ctx.strokeStyle = crackColor;
         this.ctx.lineWidth = 2.5;
         this.ctx.lineCap = 'round';

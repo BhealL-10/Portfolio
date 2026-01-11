@@ -1,10 +1,6 @@
 /**
  * TimelineManager.js - Gestionnaire animations GSAP
  * Portfolio 3D V3.0
- * 
- * - Animations focus/unfocus
- * - Transitions entre états
- * - Changement de facettes
  */
 
 import { FOCUS, SHARD, ANIMATION, FACETTE } from '../config/constants.js';
@@ -13,8 +9,6 @@ export class TimelineManager {
   constructor() {
     this.gsap = window.gsap;
     this.isReady = !!this.gsap;
-    
-    // Timelines actives
     this.activeTimelines = new Map();
     
     if (!this.gsap) {
@@ -22,30 +16,20 @@ export class TimelineManager {
     }
   }
   
-  /**
-   * Initialisation
-   */
   init(shards) {
     console.log('✅ TimelineManager ready');
   }
   
-  /**
-   * Anime le focus d'un shard
-   */
   animateFocus(shard, camera, onComplete) {
     if (!this.gsap || !shard) return null;
     
-    // Annuler timeline existante
     this.killTimeline(shard.uuid);
     
-    // Sauvegarder état original
     shard.userData.originalRotation = shard.rotation.clone();
     shard.userData.originalPosition = shard.position.clone();
     
-    // Position Z cible
     const targetZ = shard.userData.fixedZ + FOCUS.Z_OFFSET;
     
-    // Orienter vers caméra
     const tempQuat = shard.quaternion.clone();
     shard.lookAt(camera.position);
     const targetRotation = {
@@ -55,7 +39,6 @@ export class TimelineManager {
     };
     shard.quaternion.copy(tempQuat);
     
-    // Timeline
     const tl = this.gsap.timeline({
       onComplete: () => {
         shard.userData.isFocused = true;
@@ -66,21 +49,18 @@ export class TimelineManager {
     
     this.activeTimelines.set(shard.uuid, tl);
     
-    // Focus amount
     tl.to(shard.userData, {
       focusAmount: 1,
       duration: FOCUS.FOCUS_DURATION,
       ease: FOCUS.EASE_IN
     }, 0);
     
-    // Position Z
     tl.to(shard.position, {
       z: targetZ,
       duration: FOCUS.FOCUS_DURATION,
       ease: FOCUS.EASE_IN
     }, 0);
     
-    // Position X/Y vers centre
     tl.to(shard.position, {
       x: 0,
       y: 0,
@@ -88,7 +68,6 @@ export class TimelineManager {
       ease: FOCUS.EASE_IN
     }, 0);
     
-    // Rotation vers caméra
     tl.to(shard.rotation, {
       x: targetRotation.x,
       y: targetRotation.y,
@@ -97,7 +76,6 @@ export class TimelineManager {
       ease: FOCUS.EASE_IN
     }, 0);
     
-    // Scale
     const focusScale = SHARD.STATES.FOCUS.scale * shard.userData.baseScale.x;
     tl.to(shard.scale, {
       x: focusScale,
@@ -110,13 +88,9 @@ export class TimelineManager {
     return tl;
   }
   
-  /**
-   * Anime l'unfocus d'un shard
-   */
   animateUnfocus(shard, onComplete) {
     if (!this.gsap || !shard) return null;
     
-    // Annuler timeline existante
     this.killTimeline(shard.uuid);
     
     const originalRot = shard.userData.originalRotation;
@@ -124,7 +98,6 @@ export class TimelineManager {
     const fixedZ = shard.userData.fixedZ;
     const baseScale = shard.userData.baseScale.x;
     
-    // Timeline
     const tl = this.gsap.timeline({
       onComplete: () => {
         shard.userData.isFocused = false;
@@ -136,21 +109,18 @@ export class TimelineManager {
     
     this.activeTimelines.set(shard.uuid, tl);
     
-    // Focus amount
     tl.to(shard.userData, {
       focusAmount: 0,
       duration: FOCUS.UNFOCUS_DURATION,
       ease: FOCUS.EASE_OUT
     }, 0);
     
-    // Position Z
     tl.to(shard.position, {
       z: fixedZ,
       duration: FOCUS.UNFOCUS_DURATION,
       ease: FOCUS.EASE_OUT
     }, 0);
     
-    // Position X/Y
     if (originalPos) {
       tl.to(shard.position, {
         x: originalPos.x,
@@ -160,7 +130,6 @@ export class TimelineManager {
       }, 0);
     }
     
-    // Rotation
     if (originalRot) {
       tl.to(shard.rotation, {
         x: originalRot.x,
@@ -171,7 +140,6 @@ export class TimelineManager {
       }, 0);
     }
     
-    // Scale
     const idleScale = SHARD.STATES.CURRENT.scale * baseScale;
     tl.to(shard.scale, {
       x: idleScale,
@@ -184,9 +152,6 @@ export class TimelineManager {
     return tl;
   }
   
-  /**
-   * Anime le changement de facette
-   */
   animateFacetteChange(shard, direction, onComplete) {
     if (!this.gsap || !shard) return null;
     
@@ -200,9 +165,6 @@ export class TimelineManager {
     });
   }
   
-  /**
-   * Anime la transition d'état d'un shard
-   */
   animateStateTransition(shard, toState, duration = ANIMATION.DURATION.NORMAL) {
     if (!this.gsap || !shard) return null;
     
@@ -210,7 +172,6 @@ export class TimelineManager {
     const baseScale = shard.userData.baseScale?.x || 1;
     const targetScale = config.scale * baseScale;
     
-    // Scale
     this.gsap.to(shard.scale, {
       x: targetScale,
       y: targetScale,
@@ -219,7 +180,6 @@ export class TimelineManager {
       ease: ANIMATION.EASE.OUT
     });
     
-    // Opacity
     if (shard.material) {
       this.gsap.to(shard.material, {
         opacity: config.opacity,
@@ -228,7 +188,6 @@ export class TimelineManager {
       });
     }
     
-    // Emissive
     if (shard.material?.emissive) {
       const intensity = config.emissive;
       this.gsap.to(shard.material.emissive, {
@@ -241,9 +200,6 @@ export class TimelineManager {
     }
   }
   
-  /**
-   * Anime l'entrée post-intro
-   */
   animatePostIntroEntry(camera, targetZ, shards, onComplete) {
     if (!this.gsap) {
       camera.teleportTo(targetZ);
@@ -253,14 +209,12 @@ export class TimelineManager {
     
     const tl = this.gsap.timeline({ onComplete });
     
-    // Animation caméra
     tl.to(camera.targetPosition, {
       z: targetZ,
       duration: 2.5,
       ease: 'power2.inOut'
     }, 0);
     
-    // Fade in des shards
     shards.forEach((shard, index) => {
       tl.fromTo(shard.material, 
         { opacity: 0 },
@@ -276,9 +230,6 @@ export class TimelineManager {
     return tl;
   }
   
-  /**
-   * Annule une timeline
-   */
   killTimeline(id) {
     const tl = this.activeTimelines.get(id);
     if (tl) {
@@ -287,9 +238,6 @@ export class TimelineManager {
     }
   }
   
-  /**
-   * Annule toutes les timelines
-   */
   killAll() {
     this.activeTimelines.forEach(tl => tl.kill());
     this.activeTimelines.clear();

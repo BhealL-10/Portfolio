@@ -230,7 +230,7 @@ body {
 .modal-content {
   position: relative;
   width: 90%;
-  max-width: 900px;
+  max-width: 1050px;
   max-height: 90vh;
   background: var(--bg-primary);
   border-radius: var(--radius-lg);

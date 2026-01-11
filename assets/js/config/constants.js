@@ -5,6 +5,7 @@
  * - 10 shards en boucle infinie
  * - Scroll virtuel avec sous-étapes
  * - Dual canvas (2D + Three.js)
+ * - Animations focus 4 phases améliorées
  */
 
 // ==========================================
@@ -15,14 +16,14 @@ export const INTRO = {
   HERO_SUBTITLE: "Cliquez pour entrer",
   
   // Fractures et cellules Voronoi
-  CELLS_PER_CLICK: 8,              // Nombre de cellules ajoutées par clic
-  CELL_SPREAD: 150,                // Rayon de dispersion des cellules
-  FRACTURE_DETECTION_RADIUS: 120,  // Distance pour détecter si clic sur fracture existante
+  CELLS_PER_CLICK: 8,
+  CELL_SPREAD: 150,
+  FRACTURE_DETECTION_RADIUS: 120,
   
   // Destruction
-  DESTRUCTION_THRESHOLD: 100,      // Nombre total de cellules pour compléter
-  DECAY_RATE: 2.0,                 // Vitesse de suppression des cellules (cellules/sec)
-  DECAY_DELAY: 1.5,                // Délai avant début du decay (secondes)
+  DESTRUCTION_THRESHOLD: 100,
+  DECAY_RATE: 2.0,
+  DECAY_DELAY: 1.5,
   
   // Transition
   FADE_DURATION: 1.5,
@@ -36,35 +37,23 @@ export const INTRO = {
 // CONFIGURATION DU SCROLL VIRTUEL
 // ==========================================
 export const SCROLL = {
-  // Sensibilité
   SPEED: 0.0006,
   TOUCH_MULTIPLIER: 2.5,
-  
-  // Limites (0 = début, 1 = fin, >1 = sections About/Contact)
   MIN: 0,
-  MAX: 1.2, // Extra 20% pour About/Contact
-  
-  // Lissage
+  MAX: 1.2,
   SMOOTHING: 0.04,
-  
-  // Sous-étapes par shard (pour auto-focus progressif)
   SUB_STEPS_PER_SHARD: 5,
   
-  // Seuils de sous-étapes
   SUB_STEP_THRESHOLDS: {
-    APPROACHING: 0.2,   // 0-20%: shard en approche
-    ENTERING: 0.4,      // 20-40%: entrée dans la zone
-    CENTERED: 0.6,      // 40-60%: centré (auto-focus)
-    LEAVING: 0.8,       // 60-80%: sortie de zone
-    EXITING: 1.0        // 80-100%: quitte la zone
+    APPROACHING: 0.2,
+    ENTERING: 0.4,
+    CENTERED: 0.6,
+    LEAVING: 0.8,
+    EXITING: 1.0
   },
   
-  // Durée transition entre sections
   SECTION_TRANSITION: 0.4,
-  
-  // Seuil pour afficher About/Contact
   ABOUT_SECTION_THRESHOLD: 1.0,
-  
   LOCKED: false
 };
 
@@ -72,27 +61,15 @@ export const SCROLL = {
 // CONFIGURATION DE LA CAMÉRA
 // ==========================================
 export const CAMERA = {
-  // Position initiale (derrière premier shard à -60)
   INITIAL_Z: -100,
-  
-  // Position post-intro (même chose)
-  POST_INTRO_START_Z: -120,
-  
-  // FOV
+  POST_INTRO_START_Z: -150,
   FOV: 55,
   NEAR: 0.1,
   FAR: 3000,
-  
-  // Lissage caméra
   SMOOTHING: 0.05,
-  
-  // Distance caméra par rapport au shard courant
   DISTANCE_FROM_SHARD: 25,
-  
-  // LookAt offset (DEVANT car caméra avance)
   LOOK_AHEAD: 20,
   
-  // Déplacement continu
   CONTINUOUS_MOVEMENT: {
     ENABLED: true,
     EASE_FACTOR: 0.06,
@@ -104,31 +81,24 @@ export const CAMERA = {
 // CONFIGURATION DES SHARDS
 // ==========================================
 export const SHARD = {
-  // Géométrie
   GEOMETRY_DETAIL: 1,
   BASE_SCALE: 2.2,
-  
-  // Espacement entre shards sur Z
   Z_SPACING: 60,
   
-  // Configuration boucle infinie
   INFINITE_LOOP: {
     ENABLED: true,
-    BUFFER_COUNT: 3, // Shards en buffer avant/après zone visible
-    WRAP_DISTANCE: 600 // Distance de wrap
+    BUFFER_COUNT: 3,
+    WRAP_DISTANCE: 600
   },
   
-  // Orbite (mouvement X/Y autour de position Z fixe)
-  // Plus le scroll est loin, plus l'orbite est grande
   ORBIT: {
     RADIUS_X: 6,
     RADIUS_Y: 4.5,
     SPEED: 0.25,
     VARIATION: 0.3,
-    DISTANCE_MULTIPLIER: 1.5 // Facteur d'agrandissement selon distance scroll
+    DISTANCE_MULTIPLIER: 15.5
   },
   
-  // Rotation automatique
   ROTATION: {
     SPEED_X: 0.0015,
     SPEED_Y: 0.002,
@@ -138,11 +108,10 @@ export const SHARD = {
     MULTIPLIER_FOCUS: 0.15
   },
   
-  // États visuels
   STATES: {
     IDLE: {
       scale: 0.85,
-      opacity: 0.7,
+      opacity: 1,
       emissive: 0.05,
       blur: 0.2
     },
@@ -170,6 +139,7 @@ export const SHARD = {
       opacity: 1,
       emissive: 0.22,
       flattenAmount: 0.35,
+      morphStrength: 0.15,
       blur: 0
     },
     FOCUS: {
@@ -182,7 +152,6 @@ export const SHARD = {
     }
   },
   
-  // Visibilité constante
   ALWAYS_VISIBLE: true,
   VISIBILITY_RANGE: 500
 };
@@ -193,27 +162,43 @@ export const SHARD = {
 export const FACETTE = {
   COUNT: 3,
   ROTATION_ANGLE: (2 * Math.PI) / 3,
-  TRANSITION_DURATION: 0.7,
-  TRANSITION_EASE: 'power2.inOut'
+  TRANSITION_DURATION: 0.8,
+  TRANSITION_EASE: 'power2.inOut',
+  
+  // Rotation triangulaire
+  TRIANGLE_ROTATION: true,
+  TRIANGLE_SCALE_DEPTH: 0.15,
+  TRIANGLE_ROTATION_AXIS_Y: true,
+  
+  // Animation pendant focus
+  KEEP_FOCUS_STATE: true,
+  MORPH_DURING_TRANSITION: true
 };
 
 // ==========================================
-// CONFIGURATION DU FOCUS
+// CONFIGURATION DU FOCUS (4 PHASES)
 // ==========================================
 export const FOCUS = {
   Z_OFFSET: 12,
+  CAMERA_DISTANCE_BASE: 25,
+  CAMERA_DISTANCE_MULTIPLIER: 1.0,
+  SCALE: 2.0,
+  EMISSIVE: 0.35,
   
-  // Durées
+  // Durées par phase
+  PHASE1_DURATION: 0.5,  // Sphérique → Fragmenté
+  PHASE2_DURATION: 0.7,  // Fragmenté → Plat
+  PHASE3_DURATION: 1.0,  // Approche caméra
+  PHASE4_DURATION: 0.7,  // Transformation matériau
+  
   FOCUS_DURATION: 0.9,
   UNFOCUS_DURATION: 0.7,
   
-  // Auto-focus
   AUTO_FOCUS_ENABLED: true,
   AUTO_FOCUS_DELAY: 0.5,
-  AUTO_FOCUS_SUB_STEP: 0.5, // Sous-étape à laquelle déclencher
+  AUTO_FOCUS_SUB_STEP: 0.5,
   AUTO_UNFOCUS_ON_SCROLL: true,
   
-  // Easing
   EASE_IN: 'power2.out',
   EASE_OUT: 'power2.inOut'
 };
@@ -242,6 +227,13 @@ export const ANIMATION = {
     EASE: 'power2.inOut',
     SCALE_DURATION: 0.7,
     OPACITY_DURATION: 0.5
+  },
+  
+  // Morphing hover
+  MORPH: {
+    STRENGTH: 0.15,
+    FREQUENCY: 2.0,
+    DRAG_STRETCH: 0.4
   }
 };
 
@@ -324,20 +316,17 @@ export const CATEGORIES = {
 // CONFIGURATION UI
 // ==========================================
 export const UI = {
-  // Overlay info projet
   INFO_OVERLAY: {
     FADE_DURATION: 0.4,
     MAX_WIDTH: 550
   },
   
-  // Section About/Contact
   SECTIONS: {
     FADE_IN_DURATION: 0.8,
     FADE_OUT_DURATION: 0.4,
     SCROLL_THRESHOLD: 1.0
   },
   
-  // Indicateurs
   INDICATORS: {
     DOT_SIZE: 12,
     DOT_GAP: 10,

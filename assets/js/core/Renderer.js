@@ -1,9 +1,6 @@
 /**
  * Renderer.js - Configuration WebGL avec gestion dual canvas
  * Portfolio 3D V3.0
- * 
- * - Canvas Three.js toujours actif
- * - Gestion de l'opacité pour transition avec Canvas 2D
  */
 
 import * as THREE from 'three';
@@ -16,7 +13,7 @@ export class Renderer {
     this.instance = new THREE.WebGLRenderer({
       canvas: targetCanvas,
       antialias: true,
-      alpha: true, // Permet transparence pour superposition
+      alpha: true,
       powerPreference: 'high-performance',
       failIfMajorPerformanceCaveat: false
     });
@@ -36,7 +33,6 @@ export class Renderer {
     this.instance.toneMappingExposure = 1.15;
     this.instance.sortObjects = true;
     
-    // Style du canvas Three.js
     const canvas = this.instance.domElement;
     canvas.id = 'three-canvas';
     canvas.style.cssText = `
@@ -49,7 +45,6 @@ export class Renderer {
       pointer-events: auto;
     `;
     
-    // Append si pas déjà dans le DOM
     if (!canvas.parentNode) {
       document.body.appendChild(canvas);
     }
@@ -62,25 +57,16 @@ export class Renderer {
     });
   }
   
-  /**
-   * Render la scène
-   */
   render(scene, camera) {
     if (!this.instance || !this.isVisible) return;
     this.instance.render(scene, camera);
   }
   
-  /**
-   * Définit l'opacité du canvas (pour transition)
-   */
   setOpacity(opacity) {
     this.opacity = Math.max(0, Math.min(1, opacity));
     this.instance.domElement.style.opacity = this.opacity;
   }
   
-  /**
-   * Anime l'opacité
-   */
   animateOpacity(targetOpacity, duration = 0.5, onComplete = null) {
     if (!window.gsap) {
       this.setOpacity(targetOpacity);
@@ -99,9 +85,6 @@ export class Renderer {
     });
   }
   
-  /**
-   * Affiche/masque le renderer
-   */
   show() {
     this.isVisible = true;
     this.instance.domElement.style.display = 'block';
@@ -112,18 +95,7 @@ export class Renderer {
     this.instance.domElement.style.display = 'none';
   }
   
-  /**
-   * Getters
-   */
-  getCanvas() {
-    return this.instance.domElement;
-  }
-  
-  getOpacity() {
-    return this.opacity;
-  }
-  
-  dispose() {
-    this.instance.dispose();
-  }
+  getCanvas() { return this.instance.domElement; }
+  getOpacity() { return this.opacity; }
+  dispose() { this.instance.dispose(); }
 }

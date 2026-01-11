@@ -1,10 +1,6 @@
 /**
  * SimpleIntroManager.js - Gestionnaire intro avec transition Canvas → Three.js
  * Portfolio 3D V3.0
- * 
- * - Canvas 2D toujours visible initialement
- * - Transition progressive révélant Three.js
- * - Gestion de l'opacité
  */
 
 import { INTRO, LAYERS } from '../config/constants.js';
@@ -17,22 +13,21 @@ export class SimpleIntroManager {
     this.clickCount = 0;
     this.lastTime = 0;
     
-    // Callbacks
     this.onComplete = null;
     this.onProgress = null;
     
-    // Gauge UI
-    this.gaugeElement = null;
-    
-    // État de la transition
+    this.indicator = null;
     this.isTransitioning = false;
   }
   
-  /**
-   * Vérifie si l'intro doit être affichée
-   */
   shouldShowIntro(forceReset = false) {
     if (forceReset) {
+      localStorage.removeItem(INTRO.STORAGE_KEY);
+      return true;
+    }
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('intro') || performance.navigation.type === 1) {
       localStorage.removeItem(INTRO.STORAGE_KEY);
       return true;
     }
@@ -41,33 +36,22 @@ export class SimpleIntroManager {
     return completed !== 'true';
   }
   
-  /**
-   * Démarre l'intro
-   */
   start() {
     console.log('🎬 Starting intro with Canvas 2D...');
     
     this.isActive = true;
     
-    // Créer le miroir Canvas
     this.mirror = new SimpleMirror();
     
-    // Créer la jauge
     this.createGauge();
     
-    // Click handler
     this.mirror.canvas.addEventListener('click', (e) => this.handleClick(e));
     
-    // Update loop
     this.lastTime = Date.now();
     this.update();
   }
   
-  /**
-   * Crée l'indicateur (clics pendant intro, scroll après)
-   */
   createGauge() {
-    // Créer ou récupérer l'indicateur universel
     this.indicator = document.querySelector('.scroll-indicator');
     if (!this.indicator) {
       this.indicator = document.createElement('div');
@@ -75,7 +59,6 @@ export class SimpleIntroManager {
       document.body.appendChild(this.indicator);
     }
     
-    // Mode intro: indicateur de clics
     this.indicator.innerHTML = `
       <div class="indicator-content">
         <div class="indicator-bar">
@@ -142,35 +125,25 @@ export class SimpleIntroManager {
     }
   }
   
-  /**
-   * Gère le clic
-   */
   handleClick(e) {
     if (!this.isActive || this.isTransitioning) return;
     
     this.clickCount++;
     
-    // Ajouter fissure
     this.mirror.addCrack(e.clientX, e.clientY);
     
-    // Mettre à jour la jauge
     this.updateGauge();
     
-    // Callback de progression
     const percent = this.mirror.getDestructionPercent();
     if (this.onProgress) {
       this.onProgress(percent);
     }
     
-    // Vérifier si complet
     if (percent >= 1) {
       this.complete();
     }
   }
   
-  /**
-   * Met à jour l'indicateur
-   */
   updateGauge() {
     const cellCount = this.mirror.cells.length;
     const percent = cellCount / INTRO.DESTRUCTION_THRESHOLD;
@@ -186,9 +159,6 @@ export class SimpleIntroManager {
     }
   }
   
-  /**
-   * Update loop
-   */
   update() {
     if (!this.isActive) return;
     
@@ -196,18 +166,13 @@ export class SimpleIntroManager {
     const deltaTime = (now - this.lastTime) / 1000;
     this.lastTime = now;
     
-    // Update mirror
     this.mirror.update(deltaTime);
     
-    // Update gauge
     this.updateGauge();
     
     requestAnimationFrame(() => this.update());
   }
   
-  /**
-   * Complète l'intro
-   */
   complete() {
     if (this.isTransitioning) return;
     
@@ -215,15 +180,12 @@ export class SimpleIntroManager {
     this.isTransitioning = true;
     this.isActive = false;
     
-    // Sauvegarder
     localStorage.setItem(INTRO.STORAGE_KEY, 'true');
     
-    // Masquer l'indicateur temporairement (sera transformé en scroll indicator)
     if (this.indicator) {
       this.indicator.style.opacity = '0';
     }
     
-    // Animation de bris
     this.mirror.shatterAnimation(() => {
       console.log('✅ Mirror shattered - calling onComplete');
       if (this.onComplete) {
@@ -232,22 +194,18 @@ export class SimpleIntroManager {
     });
   }
   
-  /**
-   * Force la fin de l'intro (skip)
-   */
   skip() {
     if (this.isTransitioning) return;
     
     this.isActive = false;
     localStorage.setItem(INTRO.STORAGE_KEY, 'true');
     
-    // Supprimer immédiatement
     if (this.mirror) {
       this.mirror.remove();
     }
     
-    if (this.gaugeElement?.parentNode) {
-      this.gaugeElement.parentNode.removeChild(this.gaugeElement);
+    if (this.indicator?.parentNode) {
+      this.indicator.parentNode.removeChild(this.indicator);
     }
     
     if (this.onComplete) {
@@ -255,16 +213,10 @@ export class SimpleIntroManager {
     }
   }
   
-  /**
-   * Retourne l'opacité actuelle du canvas 2D
-   */
   getCanvasOpacity() {
     return this.mirror ? this.mirror.opacity : 0;
   }
   
-  /**
-   * Dispose
-   */
   dispose() {
     this.isActive = false;
     
@@ -272,8 +224,8 @@ export class SimpleIntroManager {
       this.mirror.remove();
     }
     
-    if (this.gaugeElement?.parentNode) {
-      this.gaugeElement.parentNode.removeChild(this.gaugeElement);
+    if (this.indicator?.parentNode) {
+      this.indicator.parentNode.removeChild(this.indicator);
     }
   }
 }

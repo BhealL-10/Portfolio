@@ -1,17 +1,13 @@
 /**
  * ShardManager.js - Gestionnaire principal des shards
- * Portfolio 3D V3.0
- * 
- * - 10 shards constamment visibles
- * - Boucle infinie
- * - Déplacement continu de la caméra
+ * Portfolio 3D V3.0 - Amélioré avec meilleure gestion hover/morphing
  */
 
 import * as THREE from 'three';
 import { ShardGenerator } from './ShardGenerator.js';
 import { ShardPhysics } from './ShardPhysics.js';
 import { projects } from '../data/projects.js';
-import { SHARD, CAMERA, SCROLL } from '../config/constants.js';
+import { SHARD, CAMERA, SCROLL, ANIMATION } from '../config/constants.js';
 
 export class ShardManager {
   constructor(scene, camera) {
@@ -21,29 +17,21 @@ export class ShardManager {
     this.currentIndex = 0;
     this.previousIndex = -1;
     
-    // Sous-systèmes
     this.generator = new ShardGenerator();
     this.physics = new ShardPhysics();
     
-    // Référence au ScrollManager (sera définie plus tard)
     this.scrollManager = null;
     
-    // État
     this.focusedShard = null;
     this.hoveredShard = null;
     this.draggedShard = null;
     
-    // Temps global
     this.globalTime = 0;
     
-    // Boucle infinie
     this.infiniteLoopEnabled = SHARD.INFINITE_LOOP.ENABLED;
     this.totalDistance = 0;
   }
   
-  /**
-   * Génère tous les shards
-   */
   async generateShards() {
     for (let i = 0; i < projects.length; i++) {
       const shard = this.generator.generateShard(projects[i], i);
@@ -57,28 +45,21 @@ export class ShardManager {
     return this.shards;
   }
   
-  /**
-   * Mise à jour principale
-   */
   update(scrollProgress, deltaTime) {
     this.globalTime += deltaTime;
     
-    // Calculer l'index courant (0-1 scroll → 0-9 index)
     const shardScroll = Math.min(scrollProgress, 1.0);
     const newIndex = Math.floor(shardScroll * this.shards.length);
     this.currentIndex = Math.max(0, Math.min(newIndex, this.shards.length - 1));
     
-    // Détecter changement
     const indexChanged = this.currentIndex !== this.previousIndex;
     if (indexChanged) {
       this.onShardIndexChanged(this.previousIndex, this.currentIndex);
       this.previousIndex = this.currentIndex;
     }
     
-    // Position caméra pour calculs de distance
     const cameraZ = this.camera.position.z;
     
-    // Mettre à jour chaque shard
     this.shards.forEach((shard, index) => {
       this.updateShardState(shard, index, cameraZ, scrollProgress);
       this.updateShardVisuals(shard, index);
@@ -86,48 +67,34 @@ export class ShardManager {
       this.updateShardRotation(shard, index);
     });
     
-    // Physique
     this.physics.update(this.shards, deltaTime);
   }
   
-  /**
-   * Calcule l'état d'un shard basé sur sa distance à la caméra
-   * Caméra AVANCE vers les shards (Z augmente)
-   */
   updateShardState(shard, index, cameraZ, scrollProgress) {
     if (shard.userData.isFocused || shard.userData.isDragging) return;
     
     const shardZ = shard.userData.fixedZ;
-    const distance = shardZ - cameraZ; // Distance DEVANT la caméra (positif = devant)
+    const distance = shardZ - cameraZ;
     
-    // Déterminer l'état basé sur la distance réelle
     let newState = 'idle';
     
-    // Shard très proche devant la caméra (dans les 30 unités)
     if (distance > -30 && distance < 80) {
       if (distance > -10 && distance < 30) {
-        newState = 'current'; // Très proche
+        newState = 'current';
       } else if (distance >= 30 && distance < 80) {
-        newState = 'approaching'; // Devant, approchant
+        newState = 'approaching';
       } else if (distance >= -30 && distance <= -10) {
-        newState = 'leaving'; // Derrière, s'éloignant
+        newState = 'leaving';
       }
     }
-    // Sinon reste 'idle' (trop loin)
     
-    // Appliquer si changement d'état
     if (shard.userData.state !== newState && !shard.userData.isFocused) {
-      const oldState = shard.userData.state;
       shard.userData.state = newState;
       this.animateStateTransition(shard, newState);
     }
   }
   
-  /**
-   * Appelé lors du changement d'index
-   */
   onShardIndexChanged(oldIndex, newIndex) {
-    // Marquer l'ancien comme leaving
     if (oldIndex >= 0 && oldIndex < this.shards.length) {
       const oldShard = this.shards[oldIndex];
       if (oldShard.userData.state === 'current' && !oldShard.userData.isFocused) {
@@ -136,7 +103,6 @@ export class ShardManager {
       }
     }
     
-    // Marquer le nouveau
     const newShard = this.shards[newIndex];
     if (newShard && !newShard.userData.isFocused) {
       newShard.userData.state = 'approaching';
@@ -151,9 +117,6 @@ export class ShardManager {
     }
   }
   
-  /**
-   * Anime la transition d'état
-   */
   animateStateTransition(shard, state) {
     const config = SHARD.STATES[state.toUpperCase()] || SHARD.STATES.IDLE;
     
@@ -176,14 +139,10 @@ export class ShardManager {
     }
   }
   
-  /**
-   * Met à jour les visuels d'un shard
-   */
   updateShardVisuals(shard, index) {
     const state = shard.userData.state;
     const config = SHARD.STATES[state.toUpperCase()] || SHARD.STATES.IDLE;
     
-    // Emissive (augmentation lumière)
     if (shard.material.emissive) {
       const intensity = config.emissive;
       const targetR = intensity;
@@ -195,12 +154,10 @@ export class ShardManager {
       shard.material.emissive.b += (targetB - shard.material.emissive.b) * 0.1;
     }
     
-    // Effet de morphing/déformation au hover
     if (state === 'hover' && !shard.userData.isDragging) {
-      this.applyHoverMorphing(shard);
+      this.applyHoverMorphing(shard, shard.userData.hoverMorphAmount || 1);
     }
     
-    // Flatten pour focus
     if (state === 'focus' && shard.userData.focusAmount > 0) {
       const focusAmount = shard.userData.focusAmount;
       const flattenAmount = config.flattenAmount || 0;
@@ -214,18 +171,13 @@ export class ShardManager {
     }
   }
   
-  /**
-   * Applique l'effet de morphing au hover (déformation organique)
-   */
-  applyHoverMorphing(shard) {
+  applyHoverMorphing(shard, amount = 1) {
     if (!shard.geometry.attributes.position) return;
     
     const positions = shard.geometry.attributes.position;
-    const time = this.globalTime * 2;
+    const time = this.globalTime * ANIMATION.MORPH.FREQUENCY;
     
-    // Déformation subtile des vertices
     if (!shard.userData.originalPositions) {
-      // Sauvegarder positions originales
       shard.userData.originalPositions = [];
       for (let i = 0; i < positions.count; i++) {
         shard.userData.originalPositions.push({
@@ -236,8 +188,7 @@ export class ShardManager {
       }
     }
     
-    // Appliquer déformation ondulante
-    const morphStrength = 0.15; // Intensité de la déformation
+    const morphStrength = ANIMATION.MORPH.STRENGTH * amount;
     for (let i = 0; i < positions.count; i++) {
       const original = shard.userData.originalPositions[i];
       const offset = Math.sin(time + i * 0.5) * morphStrength;
@@ -254,9 +205,6 @@ export class ShardManager {
     shard.geometry.computeVertexNormals();
   }
   
-  /**
-   * Restaure la géométrie originale
-   */
   restoreOriginalGeometry(shard) {
     if (!shard.userData.originalPositions) return;
     
@@ -270,23 +218,17 @@ export class ShardManager {
     shard.geometry.computeVertexNormals();
   }
   
-  /**
-   * Met à jour position orbitale (X/Y)
-   * Plus le scroll est loin de la shard, plus l'orbite est grande
-   */
   updateShardOrbital(shard, index) {
     if (shard.userData.isDragging || shard.userData.isFocused) return;
     if (this.physics.isShardMoving(shard)) return;
     
     const orbitT = this.globalTime * shard.userData.orbitSpeed + shard.userData.orbitAngle;
     
-    // Calculer distance entre scroll et shard
     const scrollProgress = this.scrollManager ? this.scrollManager.getShardProgress() : 0;
     const shardScrollPosition = index / this.shards.length;
     const distanceFromScroll = Math.abs(scrollProgress - shardScrollPosition);
     
-    // Plus on est loin, plus l'orbite est grande (facteur 1.0 à 2.5)
-    const orbitMultiplier = 1.0 + (distanceFromScroll * 1.5);
+    const orbitMultiplier = 1.0 + (distanceFromScroll * SHARD.ORBIT.DISTANCE_MULTIPLIER);
     
     const targetX = Math.cos(orbitT) * SHARD.ORBIT.RADIUS_X * orbitMultiplier;
     const targetY = Math.sin(orbitT) * SHARD.ORBIT.RADIUS_Y * orbitMultiplier;
@@ -295,15 +237,11 @@ export class ShardManager {
     shard.position.x += (targetX - shard.position.x) * smoothing;
     shard.position.y += (targetY - shard.position.y) * smoothing;
     
-    // Z reste fixe
     if (!shard.userData.isFocused) {
       shard.position.z = shard.userData.fixedZ;
     }
   }
   
-  /**
-   * Met à jour rotation
-   */
   updateShardRotation(shard, index) {
     const state = shard.userData.state;
     
@@ -317,8 +255,6 @@ export class ShardManager {
     shard.rotation.y += shard.userData.rotationSpeed.y * mult;
     shard.rotation.z += shard.userData.rotationSpeed.z * mult;
   }
-  
-  // === DRAG ===
   
   startDrag(shard) {
     shard.userData.isDragging = true;
@@ -337,13 +273,11 @@ export class ShardManager {
     shard.position.x = worldPosition.x;
     shard.position.y = worldPosition.y;
     
-    // Étirement dans la direction du mouvement
     const speed = Math.sqrt(velocityX * velocityX + velocityY * velocityY);
     if (speed > 0.1) {
-      const stretchAmount = Math.min(speed * 0.5, 0.4);
+      const stretchAmount = Math.min(speed * 0.5, ANIMATION.MORPH.DRAG_STRETCH);
       const angle = Math.atan2(velocityY, velocityX);
       
-      // Appliquer déformation plus importante pendant le drag
       if (!shard.userData.originalPositions) return;
       
       const positions = shard.geometry.attributes.position;
@@ -352,7 +286,6 @@ export class ShardManager {
         const dx = original.x;
         const dy = original.y;
         
-        // Étirement dans la direction du mouvement
         const alignmentX = Math.cos(angle);
         const alignmentY = Math.sin(angle);
         const alignment = (dx * alignmentX + dy * alignmentY) / 2;
@@ -375,10 +308,8 @@ export class ShardManager {
     shard.userData.state = 'idle';
     this.draggedShard = null;
     
-    // Restaurer géométrie après drag
     this.restoreOriginalGeometry(shard);
     
-    // Impulsion spatiale réduite
     this.physics.applyImpulse(
       shard,
       shard.userData.velocity.x * 2,
@@ -386,11 +317,9 @@ export class ShardManager {
     );
   }
   
-  // === HOVER ===
-  
   setHover(shard) {
     if (this.hoveredShard && this.hoveredShard !== shard) {
-      this.hoveredShard.userData.state = 'idle';
+      this.clearHover();
     }
     
     shard.userData.state = 'hover';
@@ -398,31 +327,37 @@ export class ShardManager {
     
     if (window.gsap) {
       window.gsap.to(shard.userData, {
-        flattenAmount: 1,
+        hoverMorphAmount: 1,
         duration: 0.25,
         ease: 'power2.out'
       });
+    } else {
+      shard.userData.hoverMorphAmount = 1;
     }
   }
   
   clearHover() {
     if (this.hoveredShard) {
-      this.hoveredShard.userData.state = 'idle';
-      // Restaurer géométrie originale
-      this.restoreOriginalGeometry(this.hoveredShard);
+      const shard = this.hoveredShard;
+      shard.userData.state = 'idle';
+      
       if (window.gsap) {
-        window.gsap.to(this.hoveredShard.userData, {
-          flattenAmount: 0,
+        window.gsap.to(shard.userData, {
+          hoverMorphAmount: 0,
           duration: 0.25,
-          ease: 'power2.out'
+          ease: 'power2.out',
+          onComplete: () => {
+            this.restoreOriginalGeometry(shard);
+          }
         });
+      } else {
+        shard.userData.hoverMorphAmount = 0;
+        this.restoreOriginalGeometry(shard);
       }
       
       this.hoveredShard = null;
     }
   }
-  
-  // === FOCUS ===
   
   setFocus(shard) {
     shard.userData.isFocused = true;
@@ -440,16 +375,12 @@ export class ShardManager {
     }
   }
   
-  // === THEME ===
-  
   setTheme(isDarkMode) {
     this.generator.isDarkMode = isDarkMode;
     this.shards.forEach(shard => {
       this.generator.updateShardTheme(shard, isDarkMode);
     });
   }
-  
-  // === GETTERS ===
   
   getAllShards() { return this.shards; }
   getShardByIndex(index) { return this.shards[index] || null; }

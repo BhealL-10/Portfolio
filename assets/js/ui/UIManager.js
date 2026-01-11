@@ -1,9 +1,6 @@
 /**
  * UIManager.js - Gestion des sections About/Contact
  * Portfolio 3D V3.0
- * 
- * - Affichage conditionnel des sections About/Contact
- * - Indicateurs de scroll et navigation
  */
 
 import { LAYERS, UI, SCROLL } from '../config/constants.js';
@@ -19,9 +16,6 @@ export class UIManager {
     this.init();
   }
   
-  /**
-   * Initialisation
-   */
   init() {
     this.scrollIndicator = document.querySelector('.scroll-indicator');
     this.createSectionIndicator();
@@ -29,30 +23,22 @@ export class UIManager {
     this.injectStyles();
   }
   
-  /**
-   * Transforme l'indicateur en mode scroll après l'intro
-   */
   transformIndicatorToScrollMode() {
     if (!this.scrollIndicator) {
       this.scrollIndicator = document.querySelector('.scroll-indicator');
     }
     
     if (this.scrollIndicator) {
-      // Transformer le contenu en indicateur de scroll
       this.scrollIndicator.innerHTML = `
         <div class="scroll-progress-container" style="width: 200px; height: 4px; background: var(--bg-secondary); border-radius: 2px; overflow: hidden;">
           <div class="scroll-progress-bar" style="width: 0%; height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.1s ease-out;"></div>
         </div>
       `;
       
-      // Réafficher immédiatement
       this.scrollIndicator.style.opacity = '0.8';
     }
   }
   
-  /**
-   * Injecte les styles CSS
-   */
   injectStyles() {
     const style = document.createElement('style');
     style.textContent = `
@@ -110,7 +96,7 @@ export class UIManager {
         margin-bottom: 20px;
       }
       
-      .tech-tag {
+      .tech-tag, .tech-badge {
         padding: 5px 12px;
         background: var(--bg-secondary);
         border-radius: 15px;
@@ -124,7 +110,7 @@ export class UIManager {
         justify-content: center;
       }
       
-      .project-link {
+      .project-link, .shard-link {
         padding: 10px 20px;
         background: var(--accent);
         color: white;
@@ -135,7 +121,7 @@ export class UIManager {
         transition: transform 0.2s, box-shadow 0.2s;
       }
       
-      .project-link:hover {
+      .project-link:hover, .shard-link:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 15px rgba(74, 144, 217, 0.4);
       }
@@ -189,9 +175,6 @@ export class UIManager {
     document.head.appendChild(style);
   }
   
-  /**
-   * Crée l'indicateur de scroll
-   */
   createScrollIndicator() {
     this.scrollIndicator = document.createElement('div');
     this.scrollIndicator.className = 'scroll-indicator';
@@ -232,9 +215,6 @@ export class UIManager {
     document.body.appendChild(this.scrollIndicator);
   }
   
-  /**
-   * Crée l'indicateur de section (dots)
-   */
   createSectionIndicator() {
     this.sectionIndicator = document.createElement('div');
     this.sectionIndicator.className = 'section-indicator';
@@ -249,7 +229,6 @@ export class UIManager {
       gap: ${UI.INDICATORS.DOT_GAP}px;
     `;
     
-    // Dots pour chaque projet
     projects.forEach((project, i) => {
       const dot = document.createElement('div');
       dot.className = 'section-dot';
@@ -269,25 +248,14 @@ export class UIManager {
     document.body.appendChild(this.sectionIndicator);
   }
   
-  /**
-   * Configure la section About/Contact
-   */
   setupAboutSection() {
     this.aboutSection = document.getElementById('about');
-    this.contactSection = document.getElementById('contact');
     
-    // Masquer par défaut
     if (this.aboutSection) {
       this.aboutSection.classList.remove('visible');
     }
-    if (this.contactSection) {
-      this.contactSection.classList.remove('visible');
-    }
   }
   
-  /**
-   * Met à jour l'indicateur de section
-   */
   updateSectionIndicator(currentIndex) {
     if (!this.sectionIndicator) return;
     
@@ -303,21 +271,14 @@ export class UIManager {
     });
   }
   
-  /**
-   * Met à jour la barre de progression
-   */
   updateScrollProgress(progress) {
     const bar = this.scrollIndicator?.querySelector('.scroll-progress-bar');
     if (bar) {
-      // Limiter à 100% pour la partie shards
       const displayProgress = Math.min(progress, 1) * 100;
       bar.style.width = `${displayProgress}%`;
     }
   }
   
-  /**
-   * Configure les callbacks de navigation
-   */
   setupNavigation(scrollManager) {
     const dots = this.sectionIndicator?.querySelectorAll('.section-dot');
     dots?.forEach((dot, i) => {
@@ -327,26 +288,18 @@ export class UIManager {
     });
   }
   
-  /**
-   * Affiche la section About/Contact
-   */
   showAboutSection() {
     if (this.isAboutVisible) return;
     this.isAboutVisible = true;
     
     if (this.aboutSection) {
       this.aboutSection.classList.add('visible');
-    }
-    if (this.contactSection) {
-      this.contactSection.classList.add('visible');
+      this.aboutSection.style.overflowY = 'auto';
     }
     
-    console.log('📖 About/Contact sections shown');
+    console.log('📖 About section shown');
   }
   
-  /**
-   * Masque la section About/Contact
-   */
   hideAboutSection() {
     if (!this.isAboutVisible) return;
     this.isAboutVisible = false;
@@ -354,25 +307,16 @@ export class UIManager {
     if (this.aboutSection) {
       this.aboutSection.classList.remove('visible');
     }
-    if (this.contactSection) {
-      this.contactSection.classList.remove('visible');
-    }
     
-    console.log('📖 About/Contact sections hidden');
+    console.log('📖 About section hidden');
   }
   
-  /**
-   * Active le scroll natif pour About/Contact
-   */
   enableAboutContactScroll() {
     console.log('📜 Enabling native scroll for About/Contact sections');
     document.body.style.overflow = 'auto';
     document.body.style.height = 'auto';
   }
   
-  /**
-   * Dispose
-   */
   dispose() {
     if (this.sectionIndicator?.parentNode) {
       this.sectionIndicator.parentNode.removeChild(this.sectionIndicator);
