@@ -25,13 +25,12 @@ export class ShardGenerator {
     
     // Matériau
     const theme = this.isDarkMode ? THEME.DARK : THEME.LIGHT;
-    const category = CATEGORIES[project.facettes[0].category] || CATEGORIES.dev;
     
     const material = new THREE.MeshStandardMaterial({
       color: theme.shardColor,
       metalness: 0.3,
       roughness: 0.4,
-      emissive: new THREE.Color(category.color),
+      emissive: new THREE.Color(theme.shardColor),
       emissiveIntensity: SHARD.STATES.IDLE.emissive,
       transparent: true,
       opacity: 1
@@ -127,11 +126,10 @@ export class ShardGenerator {
    */
   updateShardTheme(shard, isDarkMode) {
     const theme = isDarkMode ? THEME.DARK : THEME.LIGHT;
-    const facette = shard.userData.facettes[shard.userData.activeFacette];
-    const category = CATEGORIES[facette.category] || CATEGORIES.dev;
     
     shard.material.color.setHex(theme.shardColor);
-    shard.material.emissive.setHex(category.color);
+    shard.material.emissive.setHex(theme.shardColor);
+    shard.material.needsUpdate = true;
   }
   
   /**

@@ -10,6 +10,7 @@
  * - Thème light/dark
  */
 
+import { SCROLL, CAMERA } from './config/constants.js';
 import { Scene } from './core/Scene.js';
 import { Camera } from './core/Camera.js';
 import { Renderer } from './core/Renderer.js';
@@ -19,6 +20,7 @@ import { ShardManager } from './shards/ShardManager.js';
 import { RaycastManager } from './interaction/RaycastManager.js';
 import { FocusController } from './interaction/FocusController.js';
 import { ThemeSwitch } from './ui/ThemeSwitch.js';
+import { SimpleIntroManager } from './intro/SimpleIntroManager.js';
 import { projects } from './data/projects.js';
 
 class Portfolio3D {
@@ -32,6 +34,7 @@ class Portfolio3D {
     this.renderer = null;
     
     // Managers
+    this.introManager = null;
     this.scrollManager = null;
     this.timelineManager = null;
     this.shardManager = null;
@@ -63,52 +66,193 @@ class Portfolio3D {
       this.camera = new Camera();
       this.renderer = new Renderer();
       
-      // Scroll Manager (virtuel, sans scrollbar)
-      this.scrollManager = new ScrollManager();
-      this.scrollManager.setTotalSections(projects.length);
+      // Theme Switch (créer AVANT l'intro pour qu'il soit visible)
+      this.themeSwitch = new ThemeSwitch(null, null);
       
-      // Shard Manager
-      this.shardManager = new ShardManager(this.scene.instance, this.camera.instance);
-      await this.shardManager.generateShards();
+      // Vérifier si on doit afficher l'intro
+      const forceReset = this.detectForceRefresh();
       
-      // Timeline Manager
-      this.timelineManager = new TimelineManager();
-      this.timelineManager.init(this.shardManager.getAllShards());
+      // Simple Intro Manager (Canvas 2D pur)
+      this.introManager = new SimpleIntroManager();
       
-      // Raycast Manager
-      this.raycastManager = new RaycastManager(this.camera.instance);
-      this.raycastManager.setShards(this.shardManager.getAllShards());
+      const shouldShowIntro = this.introManager.shouldShowIntro(forceReset);
       
-      // Focus Controller
-      this.focusController = new FocusController(
-        this.camera,
-        this.shardManager,
-        this.timelineManager
-      );
+      if (shouldShowIntro) {
+        // Augmenter z-index du bouton thème
+        if (this.themeSwitch.toggleButton) {
+          this.themeSwitch.toggleButton.style.zIndex = '10001';
+        }
+        
+        // Démarrer l'intro simple (Canvas 2D)
+        this.introManager.onComplete = async () => {
+          await this.startMainExperience();
+          // Animation de transition post-intro (2 secondes)
+          this.playPostIntroAnimation();
+        };
+        this.introManager.start();
+        
+        this.isInitialized = true;
+        console.log('✅ Simple intro démarrée');
+        return;
+      }
       
-      // Theme Switch
-      this.themeSwitch = new ThemeSwitch(this.scene, this.shardManager);
-      
-      // Setup interactions
-      this.setupInteractions();
-      this.setupCallbacks();
-      
-      // Créer l'UI
-      this.createUI();
-      
-      // Démarrer la boucle de rendu
-      this.animate();
-      
-      // Exposer globalement pour debug
-      window.portfolio3D = this;
-      
-      this.isInitialized = true;
-      console.log('✅ Portfolio 3D V2.0 initialisé');
+      // Sinon, démarrer directement l'expérience principale
+      await this.startMainExperience();
       
     } catch (error) {
       console.error('❌ Erreur initialisation:', error);
       this.showError(error);
     }
+  }
+  
+  /**
+   * Détecter Ctrl+F5 ou Shift+R (force refresh)
+   */
+  detectForceRefresh() {
+    // Vérifier si performance.navigation existe (deprecated mais encore supporté)
+    if (performance.navigation && performance.navigation.type === 1) {
+      return true;
+    }
+    
+    // Vérifier via PerformanceNavigationTiming
+    const navEntries = performance.getEntriesByType('navigation');
+    if (navEntries.length > 0) {
+      const navEntry = navEntries[0];
+      return navEntry.type === 'reload';
+    }
+    
+    return false;
+  }
+  
+  /**
+   * Démarrer l'expérience principale (après intro ou si déjà complétée)
+   */
+  async startMainExperience() {
+    console.log('🎮 Démarrage expérience principale...');
+    
+    // Shard Manager (créer seulement si pas déjà créé)
+    if (!this.shardManager) {
+      this.shardManager = new ShardManager(this.scene.instance, this.camera.instance);
+      await this.shardManager.generateShards();
+      
+      // Mettre à jour le ThemeSwitch avec les références
+      if (this.themeSwitch) {
+        this.themeSwitch.scene = this.scene;
+        this.themeSwitch.shardManager = this.shardManager;
+        // Appliquer le thème initial
+        this.themeSwitch.applyTheme();
+      }
+    }
+    
+    // Finaliser la configuration
+    this.completeMainExperienceSetup();
+  }
+  
+  /**
+   * Animation de transition post-intro (2 secondes)
+   */
+  playPostIntroAnimation() {
+    console.log('🎬 Animation post-intro - caméra...');
+    
+    // Attendre un court instant pour que le canvas soit bien supprimé
+    setTimeout(() => {
+      // Position de départ de la caméra (très loin)
+      const startZ = CAMERA.POST_INTRO_START_Z;
+      this.camera.instance.position.z = startZ;
+      this.camera.targetPosition.z = startZ;
+      
+      console.log('📍 Position caméra départ:', startZ);
+      
+      // Rendre les shards visibles immédiatement
+      if (this.shardManager && this.shardManager.shards) {
+        console.log('👁️ Affichage des shards:', this.shardManager.shards.length);
+        this.shardManager.shards.forEach(shard => {
+          shard.visible = true;
+          if (shard.material) {
+            shard.material.opacity = 1;
+            shard.material.transparent = false;
+            shard.material.depthWrite = true;
+          }
+        });
+      }
+      
+      // S'assurer que l'animation loop est active
+      if (!this.animationId) {
+        console.log('⚠️ Animation loop non active, démarrage...');
+        this.animate();
+      }
+      
+      // Utiliser le système d'animation de Camera.js au lieu d'une animation manuelle
+      console.log('🎯 Animation caméra via animateToSection vers section 0');
+      
+      // Bloquer le scroll pendant l'animation
+      this.scrollManager.lock();
+      
+      // Animer vers la section 0 (position initiale)
+      this.camera.animateToSection(0, this.shardManager.getTotalShards(), () => {
+        console.log('✅ Animation post-intro terminée');
+        this.scrollManager.unlock();
+      });
+    }, 100); // Délai de 100ms pour la transition
+  }
+  
+  /**
+   * Finalise la configuration après l'intro ou directement
+   */
+  completeMainExperienceSetup() {
+    console.log('🔧 Finalisation de l\'expérience...');
+    
+    // Scroll Manager (créer si pas déjà créé)
+    if (!this.scrollManager) {
+      this.scrollManager = new ScrollManager();
+      this.scrollManager.setTotalSections(projects.length);
+    }
+    
+    // S'assurer que les shards sont visibles
+    if (this.shardManager) {
+      this.shardManager.shards.forEach(shard => {
+        if (shard.mesh && shard.mesh.material) {
+          shard.mesh.material.opacity = 1;
+        }
+      });
+    }
+    
+    // Timeline Manager
+    this.timelineManager = new TimelineManager();
+    this.timelineManager.init(this.shardManager.getAllShards());
+    
+    // Raycast Manager
+    this.raycastManager = new RaycastManager(this.camera.instance);
+    this.raycastManager.setShards(this.shardManager.getAllShards());
+    
+    // Focus Controller
+    this.focusController = new FocusController(
+      this.camera,
+      this.shardManager,
+      this.timelineManager
+    );
+    
+    // Mettre à jour le ThemeSwitch avec les références
+    this.themeSwitch.scene = this.scene;
+    this.themeSwitch.shardManager = this.shardManager;
+    
+    // Setup interactions
+    this.setupInteractions();
+    this.setupCallbacks();
+    
+    // Créer l'UI
+    this.createUI();
+    
+    // Démarrer la boucle de rendu si pas déjà démarrée
+    if (!this.animationId) {
+      this.animate();
+    }
+    
+    // Exposer globalement pour debug
+    window.portfolio3D = this;
+    
+    this.isInitialized = true;
+    console.log('✅ Portfolio 3D V2.0 initialisé');
   }
   
   /**
@@ -192,6 +336,21 @@ class Portfolio3D {
     // Section change
     this.scrollManager.onSectionChange = (newSection, oldSection) => {
       console.log(`📍 Section ${oldSection} → ${newSection}`);
+      
+      // Ne pas animer si déjà en animation
+      if (this.camera.isAnimating) {
+        console.log('⚠️ Animation déjà en cours, ignoré');
+        return;
+      }
+      
+      // Bloquer le scroll pendant l'animation
+      this.scrollManager.lock();
+      
+      // Animer la caméra vers la nouvelle section
+      this.camera.animateToSection(newSection, this.shardManager.getTotalShards(), () => {
+        // Débloquer le scroll après l'animation
+        this.scrollManager.unlock();
+      });
     };
     
     // Focus events
@@ -213,12 +372,11 @@ class Portfolio3D {
     scrollIndicator.className = 'scroll-indicator';
     scrollIndicator.innerHTML = `
       <div class="scroll-progress"></div>
-      <span class="scroll-hint">Scroll pour naviguer</span>
     `;
     scrollIndicator.style.cssText = `
       position: fixed;
-      bottom: 30px;
-      left: 50%;
+      bottom: 35px;
+      left: 95%;
       transform: translateX(-50%);
       z-index: 100;
       display: flex;
@@ -275,31 +433,52 @@ class Portfolio3D {
     
     if (this.isPaused) return;
     
+    // Vérifier que le renderer existe
+    if (!this.renderer || !this.renderer.instance) {
+      console.error('❌ Renderer not available, stopping animation');
+      return;
+    }
+    
     // Delta time
     const currentTime = (performance.now() - this.clock.start) / 1000;
     const deltaTime = currentTime - this.lastTime;
     this.lastTime = currentTime;
     
+    // Pas besoin d'update intro - elle gère son propre loop Canvas
+    
     // Update scroll (retourne la valeur lissée)
-    const scroll = this.scrollManager.update();
+    if (this.scrollManager) {
+      const scroll = this.scrollManager.update();
+      
+      // Update camera - TOUJOURS en premier pour les animations
+      // Cette méthode met à jour la position de la caméra à chaque frame
+      this.camera.update();
+      
+      // Update camera target basée sur le scroll (SEULEMENT si pas en animation)
+      if (!this.camera.isAnimating) {
+        this.camera.updateFromScroll(scroll, this.shardManager.getTotalShards());
+      }
+      
+      // Update shards (utiliser la position réelle de la caméra, pas le scroll)
+      this.shardManager.update(scroll, deltaTime);
+      
+      // Update timeline (seulement si pas en animation de section)
+      if (!this.camera.isAnimating) {
+        this.timelineManager.update(scroll);
+      }
+      
+      // Update scene lights (suit toujours la caméra)
+      this.scene.updatePointLight(this.camera.instance.position);
+      
+      // Update section indicator
+      this.updateSectionIndicator();
+    } else {
+      // Même sans scrollManager, update la caméra pour l'animation post-intro
+      this.camera.update();
+    }
     
-    // Update camera basée sur le scroll
-    this.camera.updateFromScroll(scroll, this.shardManager.getTotalShards());
-    this.camera.update();
-    
-    // Update shards
-    this.shardManager.update(scroll, deltaTime);
-    
-    // Update timeline
-    this.timelineManager.update(scroll);
-    
-    // Update scene lights
-    this.scene.updatePointLight(this.camera.instance.position);
-    
-    // Update section indicator
-    this.updateSectionIndicator();
-    
-    // Render
+    // RENDER - Appelé à chaque frame, affiche la position actuelle de la caméra
+    // C'est ici que l'animation devient visible
     this.renderer.render(this.scene.instance, this.camera.instance);
   }
   

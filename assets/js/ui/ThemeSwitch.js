@@ -45,7 +45,7 @@ export class ThemeSwitch {
       position: fixed;
       top: 20px;
       right: 20px;
-      z-index: 1000;
+      z-index: 10000;
       width: 50px;
       height: 50px;
       border-radius: 50%;
@@ -101,7 +101,7 @@ export class ThemeSwitch {
       this.scene.setTheme(this.isDarkMode);
     }
     
-    // Shards
+    // Shards - appeler setTheme du ShardManager
     if (this.shardManager) {
       this.shardManager.setTheme(this.isDarkMode);
     }

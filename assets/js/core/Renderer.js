@@ -14,7 +14,8 @@ export class Renderer {
       canvas: targetCanvas,
       antialias: true,
       alpha: false,
-      powerPreference: 'high-performance'
+      powerPreference: 'high-performance',
+      failIfMajorPerformanceCaveat: false
     });
     
     this.setupRenderer();
@@ -42,6 +43,10 @@ export class Renderer {
   }
   
   render(scene, camera) {
+    if (!this.instance) {
+      console.warn('⚠️ Renderer instance not available');
+      return;
+    }
     this.instance.render(scene, camera);
   }
   

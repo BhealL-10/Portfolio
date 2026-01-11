@@ -47,18 +47,30 @@ export class ScrollManager {
    */
   setupWheelListener() {
     window.addEventListener('wheel', (e) => {
-      if (!this.enabled || this.locked) return;
-      
-      e.preventDefault();
-      
-      const delta = e.deltaY * SCROLL.SPEED;
-      this.scrollTarget += delta;
-      this.scrollTarget = Math.max(SCROLL.MIN, Math.min(SCROLL.MAX, this.scrollTarget));
-      
-      // Calculer vélocité pour callback
-      this.velocity = delta;
-      
+      this.onWheel(e);
     }, { passive: false });
+  }
+  
+  /**
+   * Handler de la molette
+   */
+  onWheel(event) {
+    // Bloquer si locked
+    if (this.locked) {
+      event.preventDefault();
+      return;
+    }
+    
+    event.preventDefault();
+    
+    const delta = event.deltaY * SCROLL.SPEED;
+    this.scrollTarget += delta;
+    
+    // Clamp
+    this.scrollTarget = Math.max(SCROLL.MIN, Math.min(SCROLL.MAX, this.scrollTarget));
+    
+    // Calculer vélocité pour callback
+    this.velocity = delta;
   }
   
   /**
@@ -66,33 +78,37 @@ export class ScrollManager {
    */
   setupTouchListeners() {
     window.addEventListener('touchstart', (e) => {
-      if (!this.enabled || this.locked) return;
-      
+      if (this.locked) return;
       this.touchStartY = e.touches[0].clientY;
-      this.lastTouchY = this.touchStartY;
     }, { passive: true });
     
     window.addEventListener('touchmove', (e) => {
-      if (!this.enabled || this.locked) return;
-      
-      const currentY = e.touches[0].clientY;
-      const deltaY = this.lastTouchY - currentY;
-      this.lastTouchY = currentY;
-      
-      const delta = deltaY * SCROLL.SPEED * SCROLL.TOUCH_MULTIPLIER;
-      this.scrollTarget += delta;
-      this.scrollTarget = Math.max(SCROLL.MIN, Math.min(SCROLL.MAX, this.scrollTarget));
-      
-      this.velocity = delta;
-      
-      e.preventDefault();
+      this.onTouchMove(e);
     }, { passive: false });
     
     window.addEventListener('touchend', () => {
-      // Reset touch state
-      this.touchStartY = 0;
+      this.touchStartY = null;
       this.lastTouchY = 0;
     }, { passive: true });
+  }
+  
+  onTouchMove(event) {
+    if (this.locked) {
+      event.preventDefault();
+      return;
+    }
+    
+    if (this.touchStartY === null) return;
+    
+    event.preventDefault();
+    
+    const touchY = event.touches[0].clientY;
+    const delta = (this.touchStartY - touchY) * SCROLL.SPEED * SCROLL.TOUCH_MULTIPLIER;
+    
+    this.scrollTarget += delta;
+    this.scrollTarget = Math.max(SCROLL.MIN, Math.min(SCROLL.MAX, this.scrollTarget));
+    
+    this.touchStartY = touchY;
   }
   
   /**
@@ -100,7 +116,14 @@ export class ScrollManager {
    */
   setupKeyboardListener() {
     window.addEventListener('keydown', (e) => {
-      if (!this.enabled || this.locked) return;
+      if (this.locked) {
+        if (['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'PageDown', 'PageUp', 'Home', 'End'].includes(e.key)) {
+          e.preventDefault();
+        }
+        return;
+      }
+      
+      if (!this.enabled) return;
       
       let delta = 0;
       const sectionSize = 1 / this.totalSections;
@@ -142,6 +165,9 @@ export class ScrollManager {
   update() {
     if (!this.enabled) return this.scroll;
     
+    // Si locked, ne pas lisser mais retourner la valeur actuelle
+    if (this.locked) return this.scroll;
+    
     // Lissage du scroll
     const diff = this.scrollTarget - this.scroll;
     this.scroll += diff * SCROLL.SMOOTHING;
@@ -174,8 +200,12 @@ export class ScrollManager {
    * Calcule la section actuelle basée sur le scroll
    */
   calculateCurrentSection() {
+    if (this.totalSections <= 0) return 0;
+    
     const sectionSize = 1 / this.totalSections;
-    return Math.floor(this.scroll / sectionSize);
+    const section = Math.floor(this.scroll / sectionSize);
+    // Clamper pour éviter les dépassements
+    return Math.max(0, Math.min(section, this.totalSections - 1));
   }
   
   /**

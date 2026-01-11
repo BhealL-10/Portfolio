@@ -4,6 +4,31 @@
  */
 
 // ==========================================
+// CONFIGURATION DE L'INTRO (Canvas 2D)
+// ==========================================
+export const INTRO = {
+  // Hero text
+  HERO_TEXT: "Bienvenue dans mon univers",
+  HERO_SUBTITLE: "Cliquez pour entrer",
+  
+  // Voronoi cells (effet bris de miroir)
+  INITIAL_CELLS: 10, // Cellules initiales par clic
+  CELL_SPREAD: 120, // Rayon de dispersion
+  CELL_GROWTH_RATE: 1.8, // Vitesse de croissance par seconde
+  CELL_MAX_SIZE: 3, // Taille max d'une cellule
+  CELL_SPLIT_THRESHOLD: 1.0, // Taille pour se diviser
+  
+  // Destruction
+  DESTRUCTION_THRESHOLD: 50, // 10 clics pour détruire
+  GROWTH_PER_CLICK: 1, // Growth ajouté par clic
+  DECAY_RATE: 0.3, // Vitesse de réduction par seconde
+  DECAY_DELAY: 0.8, // Délai avant decay (secondes)
+  
+  // LocalStorage key
+  STORAGE_KEY: 'portfolio_intro_completed'
+};
+
+// ==========================================
 // CONFIGURATION DU SCROLL VIRTUEL
 // ==========================================
 export const SCROLL = {
@@ -16,21 +41,27 @@ export const SCROLL = {
   MAX: 1,
   
   // Lissage (plus petit = plus fluide, plus lent)
-  SMOOTHING: 0.08,
+  SMOOTHING: 0.02,
   
   // Sections par shard (découpage de la timeline)
   SECTION_SIZE: null, // Calculé dynamiquement selon nombre de shards
   
   // Durée de transition entre sections (secondes)
-  SECTION_TRANSITION: 0.3
+  SECTION_TRANSITION: 0.3,
+  
+  // Blocage pendant intro
+  LOCKED: false
 };
 
 // ==========================================
 // CONFIGURATION DE LA CAMÉRA
 // ==========================================
 export const CAMERA = {
-  // Position initiale
+  // Position initiale (navigation normale)
   INITIAL_Z: 30,
+  
+  // Position de départ post-intro (très loin)
+  POST_INTRO_START_Z: 150,
   
   // Distance de déplacement sur l'axe Z (début → fin)
   Z_TRAVEL: 150,
@@ -40,8 +71,8 @@ export const CAMERA = {
   NEAR: 0.1,
   FAR: 1000,
   
-  // Lissage de la caméra
-  SMOOTHING: 0.1,
+  // Lissage de la caméra (plus bas = plus lent et fluide)
+  SMOOTHING: 0.05,
   
   // LookAt offset
   LOOK_AHEAD: 10
@@ -56,7 +87,7 @@ export const SHARD = {
   BASE_SCALE: 1.5,
   
   // Espacement entre shards sur Z
-  Z_SPACING: 20,
+  Z_SPACING: 25,
   
   // Orbite (mouvement orbital autour de la position centrale)
   ORBIT: {
@@ -206,6 +237,14 @@ export const ANIMATION = {
 };
 
 // ==========================================
+// COULEURS (pour CSS et Three.js)
+// ==========================================
+export const COLORS = {
+  LIGHT_HEX: '#F2DDB8',
+  DARK_HEX: '#393F4A'
+};
+
+// ==========================================
 // CONFIGURATION DU THÈME
 // ==========================================
 export const THEME = {
@@ -229,8 +268,8 @@ export const THEME = {
 // CATÉGORIES DE PROJETS
 // ==========================================
 export const CATEGORIES = {
-  dev: { label: 'Développement'},
-  realisation: { label: 'Réalisation'},
-  video: { label: 'Vidéo'},
-  graphisme: { label: 'Graphisme'}
+  dev: { label: 'Développement', color: 0x5ce1e6 },
+  realisation: { label: 'Réalisation', color: 0xe74c3c },
+  video: { label: 'Vidéo', color: 0x9b59b6 },
+  graphisme: { label: 'Graphisme', color: 0xf39c12 }
 };
