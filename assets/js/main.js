@@ -87,6 +87,7 @@ class PortfolioApp {
       this.timelineManager
     );
     this.focusController.setRenderer(this.renderer);
+    this.focusController.setDeviceManager(this.deviceManager);
     
     console.log('✅ Managers initialized');
   }
@@ -201,10 +202,19 @@ class PortfolioApp {
     };
     
     this.scrollManager.onAboutSectionEnter = () => {
+      if (this.focusController.isFocused()) {
+        this.focusController.unfocus();
+      }
+      if (this.shardManager.shardTitle) {
+        this.shardManager.shardTitle.hide();
+      }
       this.uiManager.showAboutSection();
     };
     
     this.scrollManager.onAboutSectionLeave = () => {
+      if (this.shardManager.shardTitle) {
+        this.shardManager.shardTitle.show();
+      }
       this.uiManager.hideAboutSection();
     };
     

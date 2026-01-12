@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { ShardGenerator } from './ShardGenerator.js';
 import { ShardPhysics } from './ShardPhysics.js';
+import { ShardTitle } from './ShardTitle.js';
 import { projects } from '../data/projects.js';
 import { SHARD, CAMERA, SCROLL, ANIMATION, DRAG, FACETTE, THEME } from '../config/constants.js';
 
@@ -19,8 +20,16 @@ export class ShardManager {
     
     this.generator = new ShardGenerator();
     this.physics = new ShardPhysics();
+    this.shardTitle = null;
+    
+    try {
+      this.shardTitle = new ShardTitle(scene, camera);
+    } catch (e) {
+      console.warn('ShardTitle init failed:', e);
+    }
     
     this.scrollManager = null;
+    this.isDarkMode = false;
     
     this.focusedShard = null;
     this.hoveredShard = null;
@@ -37,6 +46,8 @@ export class ShardManager {
       const shard = this.generator.generateShard(projects[i], i);
       this.shards.push(shard);
       this.scene.add(shard);
+      
+      this.shardTitle?.createTitleSprite(shard);
     }
     
     this.totalDistance = projects.length * SHARD.Z_SPACING;
@@ -66,6 +77,10 @@ export class ShardManager {
       this.updateShardOrbit(shard, index);
       this.updateShardRotation(shard, index);
       this.updateContinuousMorphing(shard);
+      
+      const isCurrentShard = index === this.currentIndex;
+      const isFocused = shard.userData.isFocused || false;
+      this.shardTitle?.updatePosition(shard, isCurrentShard, isFocused);
     });
     
     this.physics.update(this.shards, deltaTime);
@@ -465,7 +480,11 @@ export class ShardManager {
   }
   
   setTheme(isDarkMode) {
+    this.isDarkMode = isDarkMode;
     this.generator.isDarkMode = isDarkMode;
+    
+    this.shardTitle?.setTheme(isDarkMode);
+    
     this.shards.forEach(shard => {
       if (shard.userData.isFocused) {
         const theme = isDarkMode ? THEME.DARK : THEME.LIGHT;

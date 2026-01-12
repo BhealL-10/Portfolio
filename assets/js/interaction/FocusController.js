@@ -10,7 +10,7 @@
 
 import * as THREE from 'three';
 import { getActiveFacette, getProjectByIndex } from '../data/projects.js';
-import { FOCUS, FACETTE, SCROLL, CATEGORIES, SHARD, CAMERA, ANIMATION, DRAG } from '../config/constants.js';
+import { FOCUS, FACETTE, SCROLL, CATEGORIES, SHARD, CAMERA, ANIMATION, DRAG, DEVICE } from '../config/constants.js';
 
 const FocusState = {
   IDLE: 'idle',
@@ -28,6 +28,7 @@ export class FocusController {
     this.camera = camera;
     this.scrollManager = scrollManager;
     this.timelineManager = timelineManager;
+    this.deviceManager = null;
     
     this.dragStartRotationY = 0;
     this.dragAccumulatedDelta = 0;
@@ -77,6 +78,26 @@ export class FocusController {
   
   setRenderer(renderer) {
     this.renderer = renderer;
+  }
+  
+  setDeviceManager(deviceManager) {
+    this.deviceManager = deviceManager;
+  }
+  
+  getDeviceFocusConfig() {
+    if (!FOCUS.RESPONSIVE || !this.deviceManager) {
+      return { scale: FOCUS.SCALE, cameraDistance: FOCUS.CAMERA_DISTANCE, zOffset: FOCUS.Z_OFFSET };
+    }
+    
+    const width = this.deviceManager.screenWidth;
+    
+    if (width < DEVICE.BREAKPOINTS.MOBILE) {
+      return DEVICE.FOCUS.MOBILE;
+    } else if (width < DEVICE.BREAKPOINTS.TABLET) {
+      return DEVICE.FOCUS.TABLET;
+    } else {
+      return DEVICE.FOCUS.DESKTOP;
+    }
   }
   
   createInfoOverlay() {
@@ -329,6 +350,10 @@ export class FocusController {
       this.onNavigationBarToggle(false);
     }
     
+    if (this.shardManager.shardTitle) {
+      this.shardManager.shardTitle.setFocusActive(true);
+    }
+    
     this.preFocusPosition = {
       x: shard.position.x,
       y: shard.position.y,
@@ -362,7 +387,11 @@ export class FocusController {
     if (this.onFocusStart) this.onFocusStart(shard);
     
     const shardZ = shard.userData.fixedZ;
-    this.focusPosition.set(0, 0, shardZ - FOCUS.CAMERA_DISTANCE);
+    const deviceConfig = this.getDeviceFocusConfig();
+    const cameraDistance = deviceConfig.CAMERA_DISTANCE || deviceConfig.cameraDistance || FOCUS.CAMERA_DISTANCE;
+    const focusScale = deviceConfig.SCALE || deviceConfig.scale || FOCUS.SCALE;
+    
+    this.focusPosition.set(0, 0, shardZ - cameraDistance);
     this.focusRotation.set(0, 0, 0);
     
     this.camera.setFocusMode(true, shardZ);
@@ -388,8 +417,8 @@ export class FocusController {
         }
       });
       
-      const focusScaleX = FOCUS.SCALE * 2.5 * shard.userData.baseScale.x;
-      const focusScaleY = FOCUS.SCALE * 2.5 * shard.userData.baseScale.y;
+      const focusScaleX = focusScale * 2.5 * shard.userData.baseScale.x;
+      const focusScaleY = focusScale * 2.5 * shard.userData.baseScale.y;
       
       let timeOffset = 0;
       
@@ -461,8 +490,8 @@ export class FocusController {
       
       timeline.to(shard.material, {
         emissiveIntensity: 0,
-        metalness: 0.1,
-        roughness: 0.3,
+        metalness: 0,
+        roughness: 1,
         duration: FOCUS.POSITION_DURATION,
         ease: 'power2.out'
       }, timeOffset);
@@ -621,6 +650,10 @@ export class FocusController {
       this.onNavigationBarToggle(true);
     }
     
+    if (this.shardManager.shardTitle) {
+      this.shardManager.shardTitle.setFocusActive(false);
+    }
+    
     setTimeout(() => {
       this.state = FocusState.IDLE;
       
@@ -674,8 +707,11 @@ export class FocusController {
     
     shard.userData.activeFacette = newFacette;
     
-    const focusScaleX = FOCUS.SCALE * 2.5 * shard.userData.baseScale.x;
-    const focusScaleY = FOCUS.SCALE * 2.5 * shard.userData.baseScale.y;
+    const deviceConfig = this.getDeviceFocusConfig();
+    const focusScale = deviceConfig.SCALE || deviceConfig.scale || FOCUS.SCALE;
+    
+    const focusScaleX = focusScale * 2.5 * shard.userData.baseScale.x;
+    const focusScaleY = focusScale * 2.5 * shard.userData.baseScale.y;
     const focusScaleZ = 0.05;
     
     if (window.gsap) {

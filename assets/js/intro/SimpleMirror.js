@@ -3,7 +3,7 @@
  * Portfolio 3D V4.0
  */
 
-import { INTRO, THEME, LAYERS } from '../config/constants.js';
+import { INTRO, THEME, LAYERS, DEVICE } from '../config/constants.js';
 
 export class SimpleMirror {
   constructor() {
@@ -15,9 +15,24 @@ export class SimpleMirror {
     this.nextFractureId = 0;
     this.isDark = document.documentElement.dataset.theme === 'dark';
     this.opacity = 1;
+    this.logoImage = null;
+    this.logoLoaded = false;
     
     this.createCanvas();
     this.setupThemeListener();
+    this.loadLogo();
+  }
+  
+  getDeviceConfig() {
+    const width = window.innerWidth;
+    
+    if (width < DEVICE.BREAKPOINTS.MOBILE) {
+      return INTRO.RESPONSIVE.MOBILE;
+    } else if (width < DEVICE.BREAKPOINTS.TABLET) {
+      return INTRO.RESPONSIVE.TABLET;
+    } else {
+      return INTRO.RESPONSIVE.DESKTOP;
+    }
   }
   
   createCanvas() {
@@ -53,7 +68,7 @@ export class SimpleMirror {
       const newTheme = document.documentElement.dataset.theme === 'dark';
       if (this.isDark !== newTheme) {
         this.isDark = newTheme;
-        this.draw();
+        this.loadLogo();
       }
     });
     
@@ -61,6 +76,25 @@ export class SimpleMirror {
       attributes: true,
       attributeFilter: ['data-theme']
     });
+  }
+  
+  loadLogo() {
+    const logoPath = this.isDark ? INTRO.LOGO.DARK : INTRO.LOGO.LIGHT;
+    const img = new Image();
+    
+    img.onload = () => {
+      this.logoImage = img;
+      this.logoLoaded = true;
+      this.draw();
+    };
+    
+    img.onerror = () => {
+      console.warn('Failed to load logo:', logoPath);
+      this.logoLoaded = false;
+      this.draw();
+    };
+    
+    img.src = logoPath;
   }
   
   draw() {
@@ -78,16 +112,33 @@ export class SimpleMirror {
     ctx.fillRect(0, 0, w, h);
     
     if (this.opacity > 0.5) {
+      const deviceConfig = this.getDeviceConfig();
+      const heroFontSize = deviceConfig.HERO_FONT_SIZE || 52;
+      const subtitleFontSize = deviceConfig.SUBTITLE_FONT_SIZE || 22;
+      
+      const logoHeight = INTRO.LOGO.HEIGHT;
+      const logoMargin = INTRO.LOGO.MARGIN_BOTTOM;
+      const totalLogoSpace = this.logoLoaded ? logoHeight + logoMargin : 0;
+      
+      if (this.logoLoaded && this.logoImage) {
+        ctx.globalAlpha = this.opacity;
+        const logoWidth = INTRO.LOGO.WIDTH;
+        const logoX = (w - logoWidth) / 2;
+        const logoY = h / 2 - totalLogoSpace - (heroFontSize * 0.7);
+        
+        ctx.drawImage(this.logoImage, logoX, logoY, logoWidth, logoHeight);
+      }
+      
       ctx.globalAlpha = this.opacity;
       ctx.fillStyle = crackColor;
-      ctx.font = 'bold 52px system-ui, -apple-system, sans-serif';
+      ctx.font = `bold ${heroFontSize}px system-ui, -apple-system, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(INTRO.HERO_TEXT, w / 2, h / 2 - 35);
+      ctx.fillText(INTRO.HERO_TEXT, w / 2, h / 2 - (heroFontSize * 0.7));
       
-      ctx.font = '22px system-ui, -apple-system, sans-serif';
+      ctx.font = `${subtitleFontSize}px system-ui, -apple-system, sans-serif`;
       ctx.globalAlpha = this.opacity;
-      ctx.fillText(INTRO.HERO_SUBTITLE, w / 2, h / 2 + 25);
+      ctx.fillText(INTRO.HERO_SUBTITLE, w / 2, h / 2 + (heroFontSize * 0.5));
     }
     
     if (this.cells.length > 0) {
@@ -173,11 +224,14 @@ export class SimpleMirror {
   
   addCrack(x, y) {
     const now = Date.now();
+    const deviceConfig = this.getDeviceConfig();
+    const detectionRadius = deviceConfig.FRACTURE_DETECTION_RADIUS || INTRO.FRACTURE_DETECTION_RADIUS;
+    const cellSpread = deviceConfig.CELL_SPREAD || INTRO.CELL_SPREAD;
     
     let targetFracture = null;
     for (const fracture of this.fractures) {
       const dist = Math.sqrt((fracture.centerX - x) ** 2 + (fracture.centerY - y) ** 2);
-      if (dist < INTRO.FRACTURE_DETECTION_RADIUS) {
+      if (dist < detectionRadius) {
         targetFracture = fracture;
         break;
       }
@@ -186,7 +240,7 @@ export class SimpleMirror {
     if (targetFracture) {
       for (let i = 0; i < INTRO.CELLS_PER_CLICK; i++) {
         const angle = Math.random() * Math.PI * 2;
-        const distance = Math.random() * INTRO.CELL_SPREAD * 0.5;
+        const distance = Math.random() * cellSpread * 0.5;
         
         const newCell = {
           id: this.nextCellId++,
@@ -219,7 +273,8 @@ export class SimpleMirror {
       
       for (let i = 0; i < INTRO.CELLS_PER_CLICK; i++) {
         const angle = (Math.PI * 2 / INTRO.CELLS_PER_CLICK) * i + Math.random() * 0.3;
-        const distance = Math.random() * 50 + 20;
+        const baseDistance = cellSpread * 0.3;
+        const distance = Math.random() * baseDistance + (baseDistance * 0.4);
         
         const newCell = {
           id: this.nextCellId++,

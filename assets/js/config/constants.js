@@ -7,8 +7,16 @@
 // CONFIGURATION DE L'INTRO (Canvas 2D)
 // ==========================================
 export const INTRO = {
-  HERO_TEXT: "Bienvenue dans mon univers",
-  HERO_SUBTITLE: "Cliquez pour entrer",
+  LOGO: {
+    DARK: "assets/images/Logo/logomodedark.svg",
+    LIGHT: "assets/images/Logo/logomodelight.svg",
+    WIDTH: 180,
+    HEIGHT: 180,
+    MARGIN_BOTTOM: 30
+  },
+  
+  HERO_TEXT: "Portfolio",
+  HERO_SUBTITLE: "Bilel (El Ouaer) Kharbouche",
   
   CELLS_PER_CLICK: 8,
   CELL_SPREAD: 150,
@@ -21,7 +29,28 @@ export const INTRO = {
   FADE_DURATION: 1.5,
   SHATTER_DURATION: 1.2,
   
-  STORAGE_KEY: 'portfolio_intro_completed'
+  STORAGE_KEY: 'portfolio_intro_completed',
+  
+  RESPONSIVE: {
+    MOBILE: {
+      HERO_FONT_SIZE: 28,
+      SUBTITLE_FONT_SIZE: 14,
+      CELL_SPREAD: 80,
+      FRACTURE_DETECTION_RADIUS: 80
+    },
+    TABLET: {
+      HERO_FONT_SIZE: 40,
+      SUBTITLE_FONT_SIZE: 18,
+      CELL_SPREAD: 120,
+      FRACTURE_DETECTION_RADIUS: 100
+    },
+    DESKTOP: {
+      HERO_FONT_SIZE: 52,
+      SUBTITLE_FONT_SIZE: 22,
+      CELL_SPREAD: 150,
+      FRACTURE_DETECTION_RADIUS: 120
+    }
+  }
 };
 
 // ==========================================
@@ -172,6 +201,8 @@ export const FOCUS = {
   Z_OFFSET: 12,
   CAMERA_DISTANCE: 30,
   SCALE: 1.8,
+  
+  RESPONSIVE: true,
   EMISSIVE: 0.3,
   DEFRAG_INTENSITY: 4.0,
   DEFRAG_DURATION: 0.5,
@@ -297,8 +328,78 @@ export const DRAG = {
 // ==========================================
 export const COLORS = {
   LIGHT_HEX: '#F2DDB8',
+  LIGHT_RGB: '242, 221, 184',
   DARK_HEX: '#393F4A',
+  DARK_RGB: '57, 63, 74',
+  TITLE_TEXT: '#2d2d2d',
   ACCENT: '#4a90d9'
+};
+
+// ==========================================
+// CONFIGURATION RESPONSIVE (DEVICE)
+// ==========================================
+export const DEVICE = {
+  BREAKPOINTS: {
+    MOBILE: 576,
+    TABLET: 992,
+    DESKTOP: 1200
+  },
+  
+  FOCUS: {
+    MOBILE: {
+      SCALE: 1.2,
+      CAMERA_DISTANCE: 45,
+      Z_OFFSET: 8
+    },
+    TABLET: {
+      SCALE: 1.5,
+      CAMERA_DISTANCE: 38,
+      Z_OFFSET: 10
+    },
+    DESKTOP: {
+      SCALE: 1.8,
+      CAMERA_DISTANCE: 30,
+      Z_OFFSET: 12
+    }
+  },
+  
+  SHARD_TITLE: {
+    MOBILE: {
+      BASE_SCALE: 6,
+      FONT_SIZE: 100
+    },
+    TABLET: {
+      BASE_SCALE: 8,
+      FONT_SIZE: 120
+    },
+    DESKTOP: {
+      BASE_SCALE: 10,
+      FONT_SIZE: 140
+    }
+  }
+};
+
+// ==========================================
+// CONFIGURATION DES TITRES DE SHARD
+// ==========================================
+export const TITLE = {
+  CANVAS_WIDTH: 512,
+  CANVAS_HEIGHT: 128,
+  FONT_SIZE: 120,
+  FONT_FAMILY: "'Orbitron', 'Arial', sans-serif",
+  SHADOW_BLUR: 15,
+  
+  OFFSET_Y: 0,
+  OFFSET_Z: 5,
+  
+  BASE_SCALE: 4,
+  MIN_SCALE: 2,
+  MAX_SCALE: 6,
+  DISTANCE_SCALE_FACTOR: 0.02,
+  
+  OPACITY_IDLE: 0.9,
+  OPACITY_CURRENT: 0,
+  OPACITY_FOCUS: 0
 };
 
 // ==========================================

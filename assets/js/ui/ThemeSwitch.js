@@ -191,11 +191,6 @@ export class ThemeSwitch {
     localStorage.setItem('theme', this.isDarkMode ? 'dark' : 'light');
     document.documentElement.setAttribute('data-theme', this.isDarkMode ? 'dark' : 'light');
     
-    document.documentElement.style.setProperty('--bg-primary', this.isDarkMode ? '#393F4A' : '#F2DDB8');
-    document.documentElement.style.setProperty('--bg-secondary', this.isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)');
-    document.documentElement.style.setProperty('--text-primary', this.isDarkMode ? '#F2DDB8' : '#393F4A');
-    document.documentElement.style.setProperty('--text-secondary', this.isDarkMode ? 'rgba(242,221,184,0.7)' : 'rgba(57,63,74,0.7)');
-    
     if (this.scene) {
       this.scene.setTheme(this.isDarkMode);
     }

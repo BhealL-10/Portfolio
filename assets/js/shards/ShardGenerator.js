@@ -56,6 +56,7 @@ export class ShardGenerator {
     
     shard.userData = {
       projectId: project.id,
+      projectTitle: project.title,
       index: index,
       
       facettes: project.facettes,

@@ -35,8 +35,8 @@ export class NavigationBar {
       user-select: none;
     `;
     
-    const homeButton = this.createNavButton('Accueil', () => this.scrollToTop());
-    const aboutButton = this.createNavButton('About', () => this.scrollToAbout());
+    const homeButton = this.createNavButton('Intro', () => this.scrollToTop());
+    const aboutButton = this.createNavButton('Outro', () => this.scrollToAbout());
     
     this.navBar.appendChild(homeButton);
     this.navBar.appendChild(aboutButton);
@@ -114,18 +114,5 @@ export class NavigationBar {
   }
   
   updateTheme() {
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    
-    if (isDark) {
-      document.documentElement.style.setProperty('--nav-bg', 'rgba(57, 63, 74, 0.8)');
-      document.documentElement.style.setProperty('--nav-border', 'rgba(242, 221, 184, 0.2)');
-      document.documentElement.style.setProperty('--nav-text', '#F2DDB8');
-      document.documentElement.style.setProperty('--nav-hover-bg', 'rgba(242, 221, 184, 0.1)');
-    } else {
-      document.documentElement.style.setProperty('--nav-bg', 'rgba(242, 221, 184, 0.8)');
-      document.documentElement.style.setProperty('--nav-border', 'rgba(57, 63, 74, 0.2)');
-      document.documentElement.style.setProperty('--nav-text', '#393F4A');
-      document.documentElement.style.setProperty('--nav-hover-bg', 'rgba(57, 63, 74, 0.1)');
-    }
   }
 }

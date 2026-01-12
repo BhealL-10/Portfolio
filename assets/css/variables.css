@@ -4,14 +4,25 @@
   /* Couleurs principales */
   --color-light: #F2DDB8;
   --color-dark: #393F4A;
+  --color-title: #2d2d2d;
   
   /* Couleurs dérivées - Light Mode par défaut */
   --bg-primary: var(--color-light);
   --bg-secondary: rgba(242, 221, 184, 0.7);
   --text-primary: var(--color-dark);
   --text-secondary: rgba(57, 63, 74, 0.7);
-  --accent: var(--color-dark);
-  --accent-hover: #2A2F3A;
+  --accent: #4a90d9;
+  --accent-hover: #3a80c9;
+  
+  /* Couleurs spécifiques au mode focus (inversées) */
+  --focus-text: var(--color-light);
+  --focus-text-secondary: rgba(242, 221, 184, 0.8);
+  
+  /* Navigation */
+  --nav-bg: rgba(242, 221, 184, 0.8);
+  --nav-border: rgba(57, 63, 74, 0.2);
+  --nav-text: var(--color-dark);
+  --nav-hover-bg: rgba(57, 63, 74, 0.1);
   
   /* Ombres */
   --shadow-sm: 0 2px 4px rgba(57, 63, 74, 0.1);
@@ -69,8 +80,18 @@
   --bg-secondary: rgba(57, 63, 74, 0.7);
   --text-primary: var(--color-light);
   --text-secondary: rgba(242, 221, 184, 0.7);
-  --accent: var(--color-light);
-  --accent-hover: rgba(242, 221, 184, 0.9);
+  --accent: #4a90d9;
+  --accent-hover: #5aa0e9;
+  
+  /* Couleurs spécifiques au mode focus (inversées) */
+  --focus-text: var(--color-dark);
+  --focus-text-secondary: rgba(57, 63, 74, 0.8);
+  
+  /* Navigation */
+  --nav-bg: rgba(57, 63, 74, 0.8);
+  --nav-border: rgba(242, 221, 184, 0.2);
+  --nav-text: var(--color-light);
+  --nav-hover-bg: rgba(242, 221, 184, 0.1);
   
   --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.4);

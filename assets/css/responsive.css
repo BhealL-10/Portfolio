@@ -156,7 +156,4 @@
     font-size: var(--font-size-2xl);
   }
   
-  .scroll-indicator {
-    display: none;
-  }
 }

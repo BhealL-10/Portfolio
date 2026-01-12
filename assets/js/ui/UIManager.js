@@ -17,46 +17,14 @@ export class UIManager {
   }
   
   init() {
-    this.scrollIndicator = document.querySelector('.scroll-indicator');
     this.createSectionIndicator();
     this.setupAboutSection();
     this.injectStyles();
   }
   
-  transformIndicatorToScrollMode() {
-    if (!this.scrollIndicator) {
-      this.scrollIndicator = document.querySelector('.scroll-indicator');
-    }
-    
-    if (this.scrollIndicator) {
-      this.scrollIndicator.innerHTML = `
-        <div class="scroll-progress-container" style="width: 200px; height: 4px; background: var(--bg-secondary); border-radius: 2px; overflow: hidden;">
-          <div class="scroll-progress-bar" style="width: 0%; height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.1s ease-out;"></div>
-        </div>
-      `;
-      
-      this.scrollIndicator.style.opacity = '0.8';
-    }
-  }
-  
   injectStyles() {
     const style = document.createElement('style');
     style.textContent = `
-      :root {
-        --bg-primary: #F2DDB8;
-        --bg-secondary: rgba(0,0,0,0.1);
-        --text-primary: #393F4A;
-        --text-secondary: rgba(57,63,74,0.7);
-        --accent: #4a90d9;
-      }
-      
-      [data-theme="dark"] {
-        --bg-primary: #393F4A;
-        --bg-secondary: rgba(255,255,255,0.1);
-        --text-primary: #F2DDB8;
-        --text-secondary: rgba(242,221,184,0.7);
-      }
-      
       .shard-info-content {
         font-family: system-ui, -apple-system, sans-serif;
         background: transparent;
@@ -81,13 +49,13 @@ export class UIManager {
         font-size: 28px;
         font-weight: 700;
         margin: 0 0 12px 0;
-        color: var(--text-primary);
+        color: var(--focus-text);
       }
       
       .shard-description {
         font-size: 16px;
         line-height: 1.6;
-        color: var(--text-secondary);
+        color: var(--focus-text-secondary);
         margin: 0 0 20px 0;
       }
       
@@ -101,10 +69,10 @@ export class UIManager {
       
       .tech-tag, .tech-badge {
         padding: 5px 12px;
-        background: var(--bg-secondary);
+        background: rgba(74, 144, 217, 0.2);
         border-radius: 15px;
         font-size: 13px;
-        color: var(--text-primary);
+        color: var(--focus-text);
       }
       
       .shard-links {
@@ -133,7 +101,7 @@ export class UIManager {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 200px;
+        gap: 120px;
         margin-bottom: 20px;
       }
       
@@ -142,8 +110,8 @@ export class UIManager {
         height: 40px;
         border-radius: 50%;
         border: none;
-        background: var(--bg-secondary);
-        color: var(--text-primary);
+        background: rgba(74, 144, 217, 0.3);
+        color: var(--focus-text);
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -161,7 +129,7 @@ export class UIManager {
       .facette-indicator {
         font-size: 14px;
         font-weight: 600;
-        color: var(--text-secondary);
+        color: var(--focus-text-secondary);
       }
       
       .about-section, .contact-section {
@@ -176,46 +144,6 @@ export class UIManager {
       }
     `;
     document.head.appendChild(style);
-  }
-  
-  createScrollIndicator() {
-    this.scrollIndicator = document.createElement('div');
-    this.scrollIndicator.className = 'scroll-indicator';
-    this.scrollIndicator.innerHTML = `
-      <div class="scroll-progress-container">
-        <div class="scroll-progress-bar"></div>
-      </div>
-    `;
-    this.scrollIndicator.style.cssText = `
-      position: fixed;
-      bottom: 30px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: ${LAYERS.UI.Z_INDEX};
-      opacity: 0.8;
-      transition: opacity 0.3s;
-    `;
-    
-    const containerStyle = `
-      width: 200px;
-      height: 4px;
-      background: var(--bg-secondary);
-      border-radius: 2px;
-      overflow: hidden;
-    `;
-    
-    const barStyle = `
-      width: 0%;
-      height: 100%;
-      background: var(--accent);
-      border-radius: 2px;
-      transition: width 0.1s ease-out;
-    `;
-    
-    this.scrollIndicator.querySelector('.scroll-progress-container').style.cssText = containerStyle;
-    this.scrollIndicator.querySelector('.scroll-progress-bar').style.cssText = barStyle;
-    
-    document.body.appendChild(this.scrollIndicator);
   }
   
   createSectionIndicator() {
@@ -290,11 +218,22 @@ export class UIManager {
       dot.addEventListener('click', () => {
         console.log('🖱️ Dot clicked: index=' + i);
         
+        if (scrollManager && shardManager) {
+          const totalShards = shardManager.getTotalShards();
+          const targetScroll = i / totalShards;
+          
+          scrollManager.setScroll(targetScroll);
+          
+          this.updateSectionIndicator(i);
+        }
+        
         if (focusController && shardManager) {
           const shard = shardManager.getShardByIndex(i);
-          console.log('  → Shard found: ' + !!shard);
+          console.log('  → Shard found: ' + !!shard + ', scrollUpdated=true');
           if (shard) {
-            focusController.focus(shard, false);
+            setTimeout(() => {
+              focusController.focus(shard, false);
+            }, 50);
           }
         }
       });

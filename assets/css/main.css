@@ -175,15 +175,6 @@ body {
   margin-bottom: var(--spacing-lg);
 }
 
-.scroll-indicator {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--spacing-xs);
-  color: var(--text-secondary);
-  animation: bounce 2s infinite;
-}
-
 @keyframes bounce {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-10px); }
@@ -619,18 +610,6 @@ body {
   position: relative;
   min-height: 500vh; /* Hauteur pour permettre le scroll à travers tous les shards */
   pointer-events: none;
-}
-
-/* ==================== SCROLL INDICATOR ==================== */
-.scroll-indicator {
-  position: fixed;
-  right: 30px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: var(--z-overlay);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 .scroll-dot {
