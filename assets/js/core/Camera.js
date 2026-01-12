@@ -37,9 +37,13 @@ export class Camera {
   
   setupResize() {
     window.addEventListener('resize', () => {
-      this.instance.aspect = window.innerWidth / window.innerHeight;
-      this.instance.updateProjectionMatrix();
+      this.updateAspect();
     });
+  }
+  
+  updateAspect() {
+    this.instance.aspect = window.innerWidth / window.innerHeight;
+    this.instance.updateProjectionMatrix();
   }
   
   setTotalShards(count) {

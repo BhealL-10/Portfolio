@@ -8,6 +8,7 @@ import { Scene } from './core/Scene.js';
 import { Renderer } from './core/Renderer.js';
 import { ScrollManager } from './core/ScrollManager.js';
 import { TimelineManager } from './core/TimelineManager.js';
+import { deviceManager } from './core/DeviceManager.js';
 import { ShardManager } from './shards/ShardManager.js';
 import { RaycastManager } from './interaction/RaycastManager.js';
 import { FocusController } from './interaction/FocusController.js';
@@ -28,6 +29,7 @@ class PortfolioApp {
     this.renderer = null;
     this.scrollManager = null;
     this.timelineManager = null;
+    this.deviceManager = deviceManager;
     this.shardManager = null;
     this.raycastManager = null;
     this.focusController = null;
@@ -40,6 +42,9 @@ class PortfolioApp {
     console.log('🚀 Initializing Portfolio 3D V4.0...');
     
     try {
+      this.deviceManager.applyResponsiveStyles();
+      this.setupDeviceCallbacks();
+      
       this.initCore();
       this.initManagers();
       await this.initShards();
@@ -108,10 +113,16 @@ class PortfolioApp {
       }
     };
     
-    this.raycastManager.onShardClick = (shard) => {
+    this.raycastManager.onShardClick = (shard, clickSide) => {
       if (this.focusController.isFocused()) {
         if (this.focusController.getFocusedShard() === shard) {
-          this.focusController.unfocus();
+          if (this.focusController.canUnfocus()) {
+            const direction = clickSide === 'left' ? -1 : 1;
+            console.log('👆 Shard clicked while focused: changing facette ' + clickSide + ' (direction=' + direction + ')');
+            this.focusController.changeFacette(direction);
+          } else {
+            console.log('🔒 Shard click ignored: state=' + (this.focusController.isChangingFacette() ? 'CHANGING_FACETTE' : 'UNFOCUSING'));
+          }
         } else {
           this.focusController.focus(shard);
         }
@@ -133,8 +144,10 @@ class PortfolioApp {
     };
     
     this.raycastManager.onBackgroundClick = () => {
-      if (this.focusController.isFocused()) {
+      if (this.focusController.isFocused() && this.focusController.canUnfocus()) {
         this.focusController.unfocus();
+      } else if (this.focusController.isFocused()) {
+        console.log('🚫 Background click ignored: cannot unfocus (state=' + (this.focusController.isChangingFacette() ? 'CHANGING_FACETTE' : 'UNFOCUSING') + ')');
       }
     };
     
@@ -169,6 +182,22 @@ class PortfolioApp {
     
     this.focusController.onLastShardVisited = () => {
       console.log('🎉 All shards visited - unlocking About section');
+    };
+  }
+  
+  setupDeviceCallbacks() {
+    this.deviceManager.onResize = (info) => {
+      this.deviceManager.applyResponsiveStyles();
+      if (this.renderer) {
+        this.renderer.resize();
+      }
+      if (this.camera) {
+        this.camera.updateAspect();
+      }
+    };
+    
+    this.deviceManager.onOrientationChange = (info) => {
+      this.deviceManager.applyResponsiveStyles();
     };
   }
   

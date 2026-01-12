@@ -31,7 +31,7 @@ export class SimpleMirror {
       left: 0;
       width: 100%;
       height: 100%;
-      z-index: ${LAYERS.CANVAS_2D.Z_INDEX};
+      z-index: 9999;
       pointer-events: auto;
       cursor: pointer;
     `;

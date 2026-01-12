@@ -36,7 +36,7 @@ export class ThemeSwitch {
       position: fixed;
       top: 24px;
       right: 24px;
-      z-index: ${LAYERS.UI.Z_INDEX};
+      z-index: 10000;
       width: 48px;
       height: 48px;
       border-radius: 50%;

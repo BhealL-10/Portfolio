@@ -83,8 +83,8 @@ export const SHARD = {
   },
   
   ORBIT: {
-    RADIUS_X: 6,
-    RADIUS_Y: 4.5,
+    RADIUS_X: 12,
+    RADIUS_Y: 8.5,
     SPEED: 0.25,
     VARIATION: 0.3,
     DISTANCE_MULTIPLIER: 15.5
@@ -108,7 +108,7 @@ export const SHARD = {
     },
     APPROACHING: {
       scale: 1.1,
-      opacity: 0.9,
+      opacity: 1,
       emissive: 0.12,
       blur: 0.05
     },
@@ -120,7 +120,7 @@ export const SHARD = {
     },
     LEAVING: {
       scale: 1.1,
-      opacity: 0.9,
+      opacity: 1,
       emissive: 0.12,
       blur: 0.05
     },
@@ -130,21 +130,21 @@ export const SHARD = {
       opacity: 1,
       emissive: 0.22,
       flattenAmount: 0.35,
-      morphStrength: 0.15,
+      morphStrength: 0.35,
       blur: 0
     },
     FOCUS: {
       scale: 2.0,
       opacity: 1,
-      emissive: 0.35,
-      flattenAmount: 0.92,
-      zOffset: 12,
+      emissive: 0,
+      flattenAmount: 0.99,
+      zOffset: 4,
       blur: 0
     }
   },
   
   ALWAYS_VISIBLE: true,
-  VISIBILITY_RANGE: 500
+  VISIBILITY_RANGE: 5500
 };
 
 // ==========================================
@@ -157,7 +157,7 @@ export const FACETTE = {
   TRANSITION_EASE: 'power2.inOut',
   
   TRIANGLE_ROTATION: true,
-  TRIANGLE_SCALE_DEPTH: 0.3,
+  TRIANGLE_SCALE_DEPTH: 0.2,
   
   TEXT_FADE_DURATION: 0.3,
   TEXT_FADE_DELAY: 0.2,
@@ -173,7 +173,7 @@ export const FOCUS = {
   Z_OFFSET: 12,
   CAMERA_DISTANCE: 30,
   SCALE: 2.0,
-  EMISSIVE: 0.35,
+  EMISSIVE: 0,
   
   PHASE1_DURATION: 0.5,
   PHASE2_DURATION: 0.7,
@@ -186,7 +186,7 @@ export const FOCUS = {
   AUTO_FOCUS_ENABLED: true,
   AUTO_FOCUS_DELAY: 0.5,
   AUTO_FOCUS_SUB_STEP: 0.5,
-  AUTO_UNFOCUS_ON_SCROLL: false,
+  AUTO_UNFOCUS_ON_SCROLL: true,
   
   QUICK_FOCUS: {
     ENABLED: true,
@@ -232,15 +232,15 @@ export const ANIMATION = {
   },
   
   MORPH: {
-    STRENGTH: 0.15,
-    FREQUENCY: 2.0,
-    DRAG_STRETCH: 0.4,
+    STRENGTH: 0.01,
+    FREQUENCY: 0.5,
+    DRAG_STRETCH: 5.4,
     FOCUS_FRAGMENT: 0.12
   },
   
   HOVER: {
-    FRAGMENT_STRENGTH: 0.12,
-    FRAGMENT_FREQUENCY: 1.5,
+    FRAGMENT_STRENGTH: 0.01,
+    FRAGMENT_FREQUENCY: 0.5,
     CONTINUOUS: true
   }
 };
@@ -263,7 +263,7 @@ export const PHYSICS = {
   },
   
   RETURN: {
-    STRENGTH: 0.025,
+    STRENGTH: 0.015,
     SNAP_THRESHOLD: 0.08
   }
 };
@@ -278,7 +278,7 @@ export const DRAG = {
   
   DEFORM: {
     ENABLED: true,
-    STRENGTH: 0.25,
+    STRENGTH: 0.55,
     COMBINES_WITH_HOVER: true
   }
 };

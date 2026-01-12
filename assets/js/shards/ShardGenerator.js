@@ -25,7 +25,7 @@ export class ShardGenerator {
       metalness: 0.35,
       flatShading: true,
       transparent: true,
-      opacity: 0,
+      opacity: 1,
       emissive: new THREE.Color(theme.emissiveColor),
       emissiveIntensity: SHARD.STATES.IDLE.emissive
     });
@@ -35,8 +35,16 @@ export class ShardGenerator {
     const fixedZ = (index * SHARD.Z_SPACING) - SHARD.Z_SPACING;
     
     const initialOrbitAngle = Math.random() * Math.PI * 2;
-    const initialX = Math.cos(initialOrbitAngle) * SHARD.ORBIT.RADIUS_X * 0.5;
-    const initialY = Math.sin(initialOrbitAngle) * SHARD.ORBIT.RADIUS_Y * 0.5;
+    
+    const scrollProgress = 0;
+    const shardScrollPosition = index / 10;
+    const distanceFromScroll = Math.abs(scrollProgress - shardScrollPosition);
+    const baseOrbitMultiplier = 0.3;
+    const maxOrbitMultiplier = 3.0;
+    const initialOrbitMultiplier = baseOrbitMultiplier + (distanceFromScroll * (maxOrbitMultiplier - baseOrbitMultiplier) * SHARD.ORBIT.DISTANCE_MULTIPLIER);
+    
+    const initialX = Math.cos(initialOrbitAngle) * SHARD.ORBIT.RADIUS_X * initialOrbitMultiplier;
+    const initialY = Math.sin(initialOrbitAngle) * SHARD.ORBIT.RADIUS_Y * initialOrbitMultiplier;
     
     shard.position.set(initialX, initialY, fixedZ);
     
@@ -114,6 +122,11 @@ export class ShardGenerator {
   }
   
   updateShardTheme(shard, isDarkMode) {
+    if (shard.userData.isFocused) {
+      console.log('⏭️ Skipping theme update for focused shard');
+      return;
+    }
+    
     const theme = isDarkMode ? THEME.DARK : THEME.LIGHT;
     
     shard.material.color.setHex(theme.shardColor);

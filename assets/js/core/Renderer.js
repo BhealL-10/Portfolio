@@ -54,9 +54,13 @@ export class Renderer {
   
   setupResize() {
     window.addEventListener('resize', () => {
-      this.instance.setSize(window.innerWidth, window.innerHeight);
-      this.instance.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      this.resize();
     });
+  }
+  
+  resize() {
+    this.instance.setSize(window.innerWidth, window.innerHeight);
+    this.instance.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   }
   
   render(scene, camera) {

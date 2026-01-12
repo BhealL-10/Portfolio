@@ -58,12 +58,7 @@ export class Scene {
   }
   
   setupFog() {
-    const theme = this.isDarkMode ? THEME.DARK : THEME.LIGHT;
-    this.instance.fog = new THREE.Fog(
-      theme.background,
-      theme.fogNear,
-      theme.fogFar
-    );
+    this.instance.fog = null;
   }
   
   setTheme(isDark) {
@@ -78,9 +73,11 @@ export class Scene {
     this.hemisphereLight.color.setHex(theme.ambient);
     this.hemisphereLight.groundColor.setHex(theme.background);
     
-    this.instance.fog.color.setHex(theme.background);
-    this.instance.fog.near = theme.fogNear;
-    this.instance.fog.far = theme.fogFar;
+    if (this.instance.fog) {
+      this.instance.fog.color.setHex(theme.background);
+      this.instance.fog.near = theme.fogNear;
+      this.instance.fog.far = theme.fogFar;
+    }
   }
   
   updatePointLight(cameraPosition) {

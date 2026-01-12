@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { ShardGenerator } from './ShardGenerator.js';
 import { ShardPhysics } from './ShardPhysics.js';
 import { projects } from '../data/projects.js';
-import { SHARD, CAMERA, SCROLL, ANIMATION, DRAG } from '../config/constants.js';
+import { SHARD, CAMERA, SCROLL, ANIMATION, DRAG, FACETTE, THEME } from '../config/constants.js';
 
 export class ShardManager {
   constructor(scene, camera) {
@@ -63,7 +63,7 @@ export class ShardManager {
     this.shards.forEach((shard, index) => {
       this.updateShardState(shard, index, cameraZ, scrollProgress);
       this.updateShardVisuals(shard, index);
-      this.updateShardOrbital(shard, index);
+      this.updateShardOrbit(shard, index);
       this.updateShardRotation(shard, index);
       this.updateContinuousMorphing(shard);
     });
@@ -168,6 +168,7 @@ export class ShardManager {
   
   applyCombinedMorphing(shard, hoverAmount = 0, dragAmount = 0) {
     if (!shard.geometry.attributes.position) return;
+    if (shard.userData.isFragmenting) return;
     
     const positions = shard.geometry.attributes.position;
     const time = this.globalTime * ANIMATION.MORPH.FREQUENCY;
@@ -210,8 +211,55 @@ export class ShardManager {
     this.applyCombinedMorphing(shard, amount, shard.userData.dragMorphAmount || 0);
   }
   
+  applyFacetteFragmentation(shard, rotationProgress = 0, direction = 1, defragAmount = 1) {
+    if (!shard.geometry.attributes.position) return;
+    
+    shard.userData.isFragmenting = true;
+    
+    const positions = shard.geometry.attributes.position;
+    
+    if (!shard.userData.originalPositions) {
+      shard.userData.originalPositions = [];
+      for (let i = 0; i < positions.count; i++) {
+        shard.userData.originalPositions.push({
+          x: positions.getX(i),
+          y: positions.getY(i),
+          z: positions.getZ(i)
+        });
+      }
+    }
+    
+    const angle = rotationProgress * Math.PI * direction;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    
+    const time = this.globalTime * ANIMATION.MORPH.FREQUENCY;
+    const defragStrength = ANIMATION.MORPH.STRENGTH * defragAmount * 0.3;
+    
+    for (let i = 0; i < positions.count; i++) {
+      const original = shard.userData.originalPositions[i];
+      
+      const rotatedX = original.x * cos - original.z * sin;
+      const rotatedZ = original.x * sin + original.z * cos;
+      
+      const defragOffset = Math.sin(time + i * 0.5) * defragStrength;
+      
+      positions.setXYZ(
+        i,
+        rotatedX * (1 + defragOffset),
+        original.y * (1 + defragOffset * 0.8),
+        rotatedZ * (1 + defragOffset * 0.2)
+      );
+    }
+    
+    positions.needsUpdate = true;
+    shard.geometry.computeVertexNormals();
+  }
+  
   restoreOriginalGeometry(shard) {
     if (!shard.userData.originalPositions) return;
+    
+    shard.userData.isFragmenting = false;
     
     const positions = shard.geometry.attributes.position;
     for (let i = 0; i < positions.count; i++) {
@@ -223,17 +271,27 @@ export class ShardManager {
     shard.geometry.computeVertexNormals();
   }
   
-  updateShardOrbital(shard, index) {
+  updateShardOrbit(shard, index) {
     if (shard.userData.isDragging || shard.userData.isFocused) return;
     if (this.physics.isShardMoving(shard)) return;
     
     const orbitT = this.globalTime * shard.userData.orbitSpeed + shard.userData.orbitAngle;
     
     const scrollProgress = this.scrollManager ? this.scrollManager.getShardProgress() : 0;
-    const shardScrollPosition = index / this.shards.length;
-    const distanceFromScroll = Math.abs(scrollProgress - shardScrollPosition);
+    const currentShardIndex = Math.round(scrollProgress * this.shards.length);
+    const indexDistance = Math.abs(currentShardIndex - index);
     
-    const orbitMultiplier = 1.0 + (distanceFromScroll * SHARD.ORBIT.DISTANCE_MULTIPLIER);
+    let orbitMultiplier;
+    if (indexDistance <= 1) {
+      const shardScrollPosition = index / this.shards.length;
+      const distanceFromScroll = Math.abs(scrollProgress - shardScrollPosition);
+      const baseOrbitMultiplier = 0.3;
+      const maxOrbitMultiplier = 1.5;
+      orbitMultiplier = baseOrbitMultiplier + (distanceFromScroll * (maxOrbitMultiplier - baseOrbitMultiplier) * SHARD.ORBIT.DISTANCE_MULTIPLIER);
+    } else {
+      const normalizedIndex = index / this.shards.length;
+      orbitMultiplier = 0.3 + (normalizedIndex * 2.7);
+    }
     
     const targetX = Math.cos(orbitT) * SHARD.ORBIT.RADIUS_X * orbitMultiplier;
     const targetY = Math.sin(orbitT) * SHARD.ORBIT.RADIUS_Y * orbitMultiplier;
@@ -328,12 +386,16 @@ export class ShardManager {
     
     this.physics.applyImpulse(
       shard,
-      shard.userData.velocity.x * 2,
-      shard.userData.velocity.y * 2
+      shard.userData.velocity.x * 0.3,
+      shard.userData.velocity.y * 0.3
     );
   }
   
   setHover(shard) {
+    if (shard.userData.isFocused) {
+      return;
+    }
+    
     if (this.hoveredShard && this.hoveredShard !== shard) {
       this.clearHover();
     }
@@ -398,7 +460,14 @@ export class ShardManager {
   setTheme(isDarkMode) {
     this.generator.isDarkMode = isDarkMode;
     this.shards.forEach(shard => {
-      this.generator.updateShardTheme(shard, isDarkMode);
+      if (shard.userData.isFocused) {
+        const theme = isDarkMode ? THEME.DARK : THEME.LIGHT;
+        shard.material.color.setHex(theme.shardColor);
+        shard.material.emissive.setHex(theme.emissiveColor);
+        shard.material.needsUpdate = true;
+      } else {
+        this.generator.updateShardTheme(shard, isDarkMode);
+      }
     });
   }
   

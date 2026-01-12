@@ -92,10 +92,17 @@ export class FocusController {
       </div>
     `;
     
-    this.infoOverlay.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:150;pointer-events:none;opacity:0;transition:opacity 0.4s ease;max-width:550px;width:90%;text-align:center;';
+    this.infoOverlay.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:150;pointer-events:auto;opacity:0;transition:opacity 0.4s ease;max-width:550px;width:90%;text-align:center;';
     
     document.body.appendChild(this.infoOverlay);
     this.setupFacetteNavigation();
+    this.setupInfoOverlayProtection();
+  }
+  
+  setupInfoOverlayProtection() {
+    this.infoOverlay.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
   }
   
   setupFacetteNavigation() {
@@ -104,16 +111,20 @@ export class FocusController {
     
     prevBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (this.state === FocusState.FOCUSED || this.state === FocusState.CHANGING_FACETTE) {
+      if (this.state === FocusState.FOCUSED) {
         this.changeFacette(-1);
+      } else if (this.state === FocusState.CHANGING_FACETTE) {
+        console.log('🔒 Facette prev ignored: already changing facette');
       } else {
         console.warn('⚠️ Facette prev button clicked but state=' + this.state);
       }
     });
     nextBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (this.state === FocusState.FOCUSED || this.state === FocusState.CHANGING_FACETTE) {
+      if (this.state === FocusState.FOCUSED) {
         this.changeFacette(1);
+      } else if (this.state === FocusState.CHANGING_FACETTE) {
+        console.log('🔒 Facette next ignored: already changing facette');
       } else {
         console.warn('⚠️ Facette next button clicked but state=' + this.state);
       }
@@ -172,7 +183,9 @@ export class FocusController {
         this.autoFocusTimer = null;
       }
       
-      if (this.state === FocusState.FOCUSED || this.state === FocusState.CHANGING_FACETTE) {
+      if (this.state === FocusState.CHANGING_FACETTE) {
+        console.log('🔒 Ignoring scroll during facette change (state=CHANGING_FACETTE)');
+      } else if (this.state === FocusState.FOCUSED) {
         if (this.focusedShard && currentShardIndex !== this.focusedShard.userData.index) {
           console.log('⚠️ User scrolled to different shard (current=' + currentShardIndex + ', focused=' + this.focusedShard.userData.index + ') - calling unfocus()');
           this.unfocus();
@@ -407,7 +420,7 @@ export class FocusController {
       
       const phase4Start = phase3Start + 0.3;
       timeline.to(shard.material, {
-        opacity: 0.95,
+        opacity: 1,
         emissiveIntensity: FOCUS.EMISSIVE * 1.5,
         metalness: 0.1,
         roughness: 0.3,
@@ -456,8 +469,22 @@ export class FocusController {
   }
   
   unfocus() {
-    if (!this.focusedShard) return;
-    if (this.state !== FocusState.FOCUSED && this.state !== FocusState.CHANGING_FACETTE) {
+    if (!this.focusedShard) {
+      console.warn('❌ unfocus() called but no focused shard');
+      return;
+    }
+    
+    if (this.state === FocusState.CHANGING_FACETTE) {
+      console.warn('🚫 unfocus() BLOCKED: Cannot unfocus during facette change (state=CHANGING_FACETTE)');
+      return;
+    }
+    
+    if (this.state === FocusState.UNFOCUSING) {
+      console.warn('🚫 unfocus() BLOCKED: Already unfocusing (state=UNFOCUSING)');
+      return;
+    }
+    
+    if (this.state !== FocusState.FOCUSED) {
       console.warn('❌ unfocus() called in invalid state: ' + this.state);
       return;
     }
@@ -576,8 +603,13 @@ export class FocusController {
       return;
     }
     
-    if (this.state !== FocusState.FOCUSED && this.state !== FocusState.CHANGING_FACETTE) {
-      console.warn('❌ changeFacette: invalid state=' + this.state + ' (must be FOCUSED or CHANGING_FACETTE)');
+    if (this.state === FocusState.CHANGING_FACETTE) {
+      console.warn('🚫 changeFacette BLOCKED: Already changing facette, ignoring new request');
+      return;
+    }
+    
+    if (this.state !== FocusState.FOCUSED) {
+      console.warn('❌ changeFacette: invalid state=' + this.state + ' (must be FOCUSED)');
       return;
     }
     
@@ -588,6 +620,10 @@ export class FocusController {
     }
     
     this.state = FocusState.CHANGING_FACETTE;
+    
+    if (this.scrollManager) {
+      this.scrollManager.setLocked(true);
+    }
     
     const shard = this.focusedShard;
     const currentFacette = shard.userData.activeFacette;
@@ -608,6 +644,10 @@ export class FocusController {
           this.state = FocusState.FOCUSED;
           this.enforceFocusPositionImmediate();
           this.currentTimeline = null;
+          
+          if (this.scrollManager) {
+            this.scrollManager.setLocked(true);
+          }
         }
       });
       
@@ -619,14 +659,7 @@ export class FocusController {
         ease: 'power2.in'
       }, 0);
       
-      timeline.to(shard.userData, {
-        hoverMorphAmount: 0.5,
-        duration: 0.3,
-        ease: 'power2.out',
-        onUpdate: () => {
-          this.shardManager.applyHoverMorphing(shard, shard.userData.hoverMorphAmount || 0);
-        }
-      }, 0);
+      shard.userData.hoverMorphAmount = 0;
       
       timeline.to(shard.scale, {
         x: focusScaleX * 0.8,
@@ -636,40 +669,57 @@ export class FocusController {
         ease: 'power2.in'
       }, FACETTE.TEXT_FADE_DELAY);
       
-      const rotationAmount = direction * FACETTE.ROTATION_ANGLE;
-      console.log('🔄 Facette rotation: direction=' + direction + ', angle=' + (rotationAmount * 180 / Math.PI).toFixed(1) + '°');
       
-      timeline.to(shard.rotation, {
-        y: shard.rotation.y + rotationAmount,
-        duration: FACETTE.TRANSITION_DURATION,
-        ease: FACETTE.TRANSITION_EASE
-      }, 0.3);
+      console.log('🔄 Facette fragmentation: direction=' + direction);
       
-      timeline.to(shard.userData, {
-        hoverMorphAmount: 0.3,
-        duration: 0.4,
+      const rotationProgress = { value: 0 };
+      const defragAmount = { value: 1 };
+      
+      const phaseDuration = FACETTE.TRANSITION_DURATION / 3;
+      let timeOffset = 0.2;
+      
+      timeline.to(defragAmount, {
+        value: 0,
+        duration: phaseDuration,
         ease: 'power2.in',
         onUpdate: () => {
-          this.shardManager.applyHoverMorphing(shard, shard.userData.hoverMorphAmount || 0);
+          this.shardManager.applyFacetteFragmentation(shard, rotationProgress.value, direction, defragAmount.value);
         }
-      }, FACETTE.TRANSITION_DURATION - 0.5);
+      }, timeOffset);
+      timeOffset += phaseDuration;
+      
+      timeline.to(rotationProgress, {
+        value: 1,
+        duration: phaseDuration,
+        ease: 'linear',
+        onUpdate: () => {
+          this.shardManager.applyFacetteFragmentation(shard, rotationProgress.value, direction, defragAmount.value);
+        }
+      }, timeOffset);
+      timeOffset += phaseDuration;
+      
+      timeline.to(defragAmount, {
+        value: 1,
+        duration: phaseDuration,
+        ease: 'power2.out',
+        onUpdate: () => {
+          this.shardManager.applyFacetteFragmentation(shard, rotationProgress.value, direction, defragAmount.value);
+        },
+        onComplete: () => {
+          this.shardManager.restoreOriginalGeometry(shard);
+        }
+      }, timeOffset);
+      
       
       timeline.to(shard.scale, {
         x: focusScaleX,
         y: focusScaleY,
-        z: focusScaleZ,
+        z: 0.05,
         duration: 0.5,
         ease: 'power2.out'
       }, FACETTE.TRANSITION_DURATION - 0.2);
       
-      timeline.to(shard.userData, {
-        hoverMorphAmount: 0,
-        duration: 0.3,
-        ease: 'power2.out',
-        onUpdate: () => {
-          this.shardManager.applyHoverMorphing(shard, shard.userData.hoverMorphAmount || 0);
-        }
-      }, FACETTE.TRANSITION_DURATION + 0.1);
+      
       
       timeline.call(() => {
         this.updateInfo(shard);
@@ -704,19 +754,26 @@ export class FocusController {
     this.camera.targetPosition.set(0, 0, shardZ - FOCUS.CAMERA_DISTANCE);
     this.camera.lookAtTarget.set(0, 0, shardZ);
     
-    shard.material.opacity = 0.95;
+    shard.material.opacity = 1.0;
     shard.material.emissiveIntensity = FOCUS.EMISSIVE * 1.5;
   }
   
   showInfo(shard) {
+    if (!this.infoOverlay) return;
+    
     this.updateInfo(shard);
     this.infoOverlay.style.opacity = '1';
     this.infoOverlay.style.pointerEvents = 'auto';
   }
   
   hideInfo() {
+    if (!this.infoOverlay) return;
     this.infoOverlay.style.opacity = '0';
-    this.infoOverlay.style.pointerEvents = 'none';
+    setTimeout(() => {
+      if (this.infoOverlay && this.infoOverlay.style.opacity === '0') {
+        this.infoOverlay.style.pointerEvents = 'none';
+      }
+    }, 400);
   }
   
   updateInfo(shard) {
@@ -762,5 +819,11 @@ export class FocusController {
   getFocusedShard() { return this.focusedShard; }
   isScrollingToShard() { return this.state === FocusState.SCROLLING_TO_SHARD; }
   isChangingFacette() { return this.state === FocusState.CHANGING_FACETTE; }
+  isUnfocusing() { return this.state === FocusState.UNFOCUSING; }
+  canUnfocus() { 
+    return this.state === FocusState.FOCUSED && 
+           this.state !== FocusState.CHANGING_FACETTE && 
+           this.state !== FocusState.UNFOCUSING;
+  }
   toggleGuidedScroll(enabled) { this.guidedScrollEnabled = enabled; }
 }
