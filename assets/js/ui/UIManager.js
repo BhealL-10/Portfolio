@@ -59,11 +59,9 @@ export class UIManager {
       
       .shard-info-content {
         font-family: system-ui, -apple-system, sans-serif;
-        background: rgba(0,0,0,0.6);
-        backdrop-filter: blur(20px);
+        background: transparent;
         padding: 30px;
         border-radius: 20px;
-        border: 1px solid rgba(255,255,255,0.1);
       }
       
       .shard-category {
@@ -135,7 +133,7 @@ export class UIManager {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 16px;
+        gap: 200px;
         margin-bottom: 20px;
       }
       
@@ -298,9 +296,6 @@ export class UIManager {
           if (shard) {
             focusController.focus(shard, false);
           }
-        } else {
-          console.log('  → Fallback to scrollToSection');
-          scrollManager.scrollToSection(i);
         }
       });
     });

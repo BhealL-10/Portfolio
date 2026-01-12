@@ -12,8 +12,18 @@ export class ThemeSwitch {
     this.isDarkMode = this.detectInitialTheme();
     
     this.toggleButton = null;
+    this.isDragging = false;
+    this.hasMoved = false;
+    this.dragOffset = { x: 0, y: 0 };
+    this.dragStartPos = { x: 0, y: 0 };
+    this.navigationBar = null;
+    
     this.createToggleButton();
     this.applyTheme();
+  }
+  
+  setNavigationBar(navigationBar) {
+    this.navigationBar = navigationBar;
   }
   
   detectInitialTheme() {
@@ -32,11 +42,14 @@ export class ThemeSwitch {
     this.toggleButton.setAttribute('aria-label', 'Toggle theme');
     this.toggleButton.innerHTML = this.getIcon();
     
+    const savedPosition = this.loadPosition();
+    
     this.toggleButton.style.cssText = `
       position: fixed;
-      top: 24px;
-      right: 24px;
+      top: ${savedPosition.top}px;
+      right: ${savedPosition.right}px;
       z-index: 10000;
+      cursor: move;
       width: 48px;
       height: 48px;
       border-radius: 50%;
@@ -52,7 +65,19 @@ export class ThemeSwitch {
       box-shadow: 0 4px 15px rgba(0,0,0,0.1);
     `;
     
-    this.toggleButton.addEventListener('click', () => this.toggle());
+    this.toggleButton.addEventListener('click', (e) => {
+      e.preventDefault();
+    });
+    
+    this.toggleButton.addEventListener('mousedown', (e) => this.onDragStart(e));
+    this.toggleButton.addEventListener('touchstart', (e) => this.onDragStart(e), { passive: false });
+    
+    document.addEventListener('mousemove', (e) => this.onDragMove(e));
+    document.addEventListener('touchmove', (e) => this.onDragMove(e), { passive: false });
+    
+    document.addEventListener('mouseup', () => this.onDragEnd());
+    document.addEventListener('touchend', () => this.onDragEnd());
+    
     this.toggleButton.addEventListener('mouseenter', () => {
       this.toggleButton.style.transform = 'scale(1.1)';
       this.toggleButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.15)';
@@ -63,6 +88,86 @@ export class ThemeSwitch {
     });
     
     document.body.appendChild(this.toggleButton);
+  }
+  
+  loadPosition() {
+    const saved = localStorage.getItem('theme-toggle-position');
+    if (saved) {
+      return JSON.parse(saved);
+    }
+    return { top: 24, right: 24 };
+  }
+  
+  savePosition() {
+    const rect = this.toggleButton.getBoundingClientRect();
+    const position = {
+      top: rect.top,
+      right: window.innerWidth - rect.right
+    };
+    localStorage.setItem('theme-toggle-position', JSON.stringify(position));
+  }
+  
+  getCurrentTheme() {
+    return this.isDarkMode ? 'dark' : 'light';
+  }
+  
+  onDragStart(e) {
+    const clientX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
+    const clientY = e.type === 'touchstart' ? e.touches[0].clientY : e.clientY;
+    
+    this.dragStartPos.x = clientX;
+    this.dragStartPos.y = clientY;
+    this.hasMoved = false;
+    this.isDragging = true;
+    
+    const rect = this.toggleButton.getBoundingClientRect();
+    this.dragOffset.x = clientX - rect.left;
+    this.dragOffset.y = clientY - rect.top;
+  }
+  
+  onDragMove(e) {
+    if (!this.isDragging) return;
+    
+    const clientX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
+    const clientY = e.type === 'touchmove' ? e.touches[0].clientY : e.clientY;
+    
+    const deltaX = Math.abs(clientX - this.dragStartPos.x);
+    const deltaY = Math.abs(clientY - this.dragStartPos.y);
+    
+    if (deltaX > 5 || deltaY > 5) {
+      this.hasMoved = true;
+      e.preventDefault();
+      
+      this.toggleButton.style.cursor = 'grabbing';
+      
+      let left = clientX - this.dragOffset.x;
+      let top = clientY - this.dragOffset.y;
+      
+      const buttonWidth = this.toggleButton.offsetWidth;
+      const buttonHeight = this.toggleButton.offsetHeight;
+      
+      left = Math.max(0, Math.min(left, window.innerWidth - buttonWidth));
+      top = Math.max(0, Math.min(top, window.innerHeight - buttonHeight));
+      
+      this.toggleButton.style.left = left + 'px';
+      this.toggleButton.style.top = top + 'px';
+      this.toggleButton.style.right = 'auto';
+    }
+  }
+  
+  onDragEnd() {
+    if (!this.isDragging) return;
+    
+    this.isDragging = false;
+    this.toggleButton.style.cursor = 'move';
+    
+    if (this.hasMoved) {
+      this.savePosition();
+    } else {
+      this.toggle();
+    }
+    
+    this.hasMoved = false;
   }
   
   getIcon() {
@@ -97,6 +202,10 @@ export class ThemeSwitch {
     
     if (this.shardManager) {
       this.shardManager.setTheme(this.isDarkMode);
+    }
+    
+    if (this.navigationBar) {
+      this.navigationBar.updateTheme();
     }
   }
   

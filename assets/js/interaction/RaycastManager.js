@@ -19,11 +19,15 @@ export class RaycastManager {
     this.onShardDragStart = null;
     this.onShardDrag = null;
     this.onShardDragEnd = null;
+    this.onShardDragFocus = null;
+    this.onShardDragStartFocus = null;
+    this.onShardDragEndFocus = null;
     this.onBackgroundClick = null;
     
     this.isDragging = false;
     this.draggedShard = null;
     this.dragStartTime = 0;
+    this.dragStartX = 0;
     this.dragThreshold = 150;
     this.dragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
     
@@ -76,18 +80,28 @@ export class RaycastManager {
     
     if (this.isDragging && this.draggedShard) {
       const worldPos = this.getWorldPosition();
-      if (this.onShardDrag) {
+      const deltaX = event.clientX - this.dragStartX;
+      
+      if (this.draggedShard.userData.isFocused && this.onShardDragFocus) {
+        this.onShardDragFocus(this.draggedShard, deltaX);
+      } else if (this.onShardDrag) {
         this.onShardDrag(this.draggedShard, worldPos);
       }
     } else {
       const intersect = this.raycast();
-      const hoveredShard = intersect ? intersect.object : null;
       
-      if (hoveredShard !== this.lastHoveredShard) {
-        this.lastHoveredShard = hoveredShard;
-        if (this.onShardHover) {
-          this.onShardHover(hoveredShard);
+      if (intersect) {
+        if (this.lastHoveredShard !== intersect.object) {
+          if (this.onShardHover) {
+            this.onShardHover(intersect.object);
+          }
+          this.lastHoveredShard = intersect.object;
         }
+      } else {
+        if (this.lastHoveredShard && this.onShardHover) {
+          this.onShardHover(null);
+        }
+        this.lastHoveredShard = null;
       }
     }
   }
@@ -105,6 +119,7 @@ export class RaycastManager {
     
     if (intersect) {
       this.dragStartTime = Date.now();
+      this.dragStartX = event.clientX;
       this.startDrag(intersect.object);
     }
   }
@@ -160,6 +175,7 @@ export class RaycastManager {
     const intersect = this.raycast();
     if (intersect) {
       this.dragStartTime = Date.now();
+      this.dragStartX = touch.clientX;
       this.startDrag(intersect.object);
       event.preventDefault();
     }
@@ -176,9 +192,15 @@ export class RaycastManager {
     const touch = event.touches[0];
     this.updateMouse(touch.clientX, touch.clientY);
     
-    const worldPos = this.getWorldPosition();
-    if (this.onShardDrag) {
-      this.onShardDrag(this.draggedShard, worldPos);
+    const deltaX = touch.clientX - this.dragStartX;
+    
+    if (this.draggedShard.userData.isFocused && this.onShardDragFocus) {
+      this.onShardDragFocus(this.draggedShard, deltaX);
+    } else {
+      const worldPos = this.getWorldPosition();
+      if (this.onShardDrag) {
+        this.onShardDrag(this.draggedShard, worldPos);
+      }
     }
     
     event.preventDefault();
@@ -222,18 +244,25 @@ export class RaycastManager {
       shard.position
     );
     
-    if (this.onShardDragStart) {
+    if (shard.userData.isFocused && this.onShardDragStartFocus) {
+      this.onShardDragStartFocus(shard);
+    } else if (this.onShardDragStart) {
       this.onShardDragStart(shard);
     }
   }
   
   endDrag() {
-    if (this.onShardDragEnd && this.draggedShard) {
-      this.onShardDragEnd(this.draggedShard);
+    if (this.draggedShard) {
+      if (this.draggedShard.userData.isFocused && this.onShardDragEndFocus) {
+        this.onShardDragEndFocus(this.draggedShard);
+      } else if (this.onShardDragEnd) {
+        this.onShardDragEnd(this.draggedShard);
+      }
     }
     
     this.isDragging = false;
     this.draggedShard = null;
+    this.dragStartX = 0;
   }
   
   handleShardClick(shard, clientX, clientY) {

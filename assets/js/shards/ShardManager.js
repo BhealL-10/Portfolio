@@ -159,9 +159,8 @@ export class ShardManager {
   updateContinuousMorphing(shard) {
     const hoverAmount = shard.userData.hoverMorphAmount || 0;
     const dragAmount = shard.userData.dragMorphAmount || 0;
-    const isFocused = shard.userData.isFocused;
     
-    if (hoverAmount > 0 || dragAmount > 0 || (isFocused && ANIMATION.HOVER.CONTINUOUS)) {
+    if (hoverAmount > 0 || dragAmount > 0) {
       this.applyCombinedMorphing(shard, hoverAmount, dragAmount);
     }
   }
@@ -186,9 +185,7 @@ export class ShardManager {
     
     const hoverStrength = ANIMATION.MORPH.STRENGTH * hoverAmount;
     const dragStrength = DRAG.DEFORM.STRENGTH * dragAmount;
-    const focusStrength = shard.userData.isFocused ? ANIMATION.MORPH.FOCUS_FRAGMENT : 0;
-    
-    const totalStrength = hoverStrength + focusStrength;
+    const totalStrength = hoverStrength;
     
     for (let i = 0; i < positions.count; i++) {
       const original = shard.userData.originalPositions[i];
@@ -329,6 +326,10 @@ export class ShardManager {
   updateDrag(shard, worldPosition) {
     if (!shard.userData.isDragging) return;
     
+    if (shard.userData.isFocused) {
+      return;
+    }
+    
     const velocityX = worldPosition.x - shard.position.x;
     const velocityY = worldPosition.y - shard.position.y;
     
@@ -377,6 +378,12 @@ export class ShardManager {
   }
   
   endDrag(shard) {
+    if (shard.userData.isFocused) {
+      shard.userData.isDragging = false;
+      this.draggedShard = null;
+      return;
+    }
+    
     shard.userData.isDragging = false;
     shard.userData.state = 'idle';
     shard.userData.dragMorphAmount = 0;
@@ -405,12 +412,12 @@ export class ShardManager {
     
     if (window.gsap) {
       window.gsap.to(shard.userData, {
-        hoverMorphAmount: 1,
+        hoverMorphAmount: ANIMATION.MORPH.MAX_AMOUNT,
         duration: 0.25,
         ease: 'power2.out'
       });
     } else {
-      shard.userData.hoverMorphAmount = 1;
+      shard.userData.hoverMorphAmount = ANIMATION.MORPH.MAX_AMOUNT;
     }
   }
   

@@ -10,7 +10,7 @@
 
 import * as THREE from 'three';
 import { getActiveFacette, getProjectByIndex } from '../data/projects.js';
-import { FOCUS, FACETTE, SCROLL, CATEGORIES, SHARD, CAMERA, ANIMATION } from '../config/constants.js';
+import { FOCUS, FACETTE, SCROLL, CATEGORIES, SHARD, CAMERA, ANIMATION, DRAG } from '../config/constants.js';
 
 const FocusState = {
   IDLE: 'idle',
@@ -23,10 +23,14 @@ const FocusState = {
 };
 
 export class FocusController {
-  constructor(camera, shardManager, timelineManager) {
-    this.camera = camera;
+  constructor(shardManager, camera, scrollManager, timelineManager) {
     this.shardManager = shardManager;
+    this.camera = camera;
+    this.scrollManager = scrollManager;
     this.timelineManager = timelineManager;
+    
+    this.dragStartRotationY = 0;
+    this.dragAccumulatedDelta = 0;
     
     this.focusedShard = null;
     this.state = FocusState.IDLE;
@@ -60,6 +64,7 @@ export class FocusController {
     this.onFocusComplete = null;
     this.onUnfocusComplete = null;
     this.onLastShardVisited = null;
+    this.onNavigationBarToggle = null;
     this.onScrollBlur = null;
     
     this.infoOverlay = null;
@@ -167,6 +172,10 @@ export class FocusController {
           }
           setTimeout(() => {
             this.executeFocus(this.focusedShard);
+            
+            if (this.focusedShard && this.scrollManager && this.scrollManager.onSectionChange) {
+              this.scrollManager.onSectionChange(this.focusedShard.userData.index, -1);
+            }
           }, 200);
         }
       }
@@ -187,11 +196,16 @@ export class FocusController {
         console.log('🔒 Ignoring scroll during facette change (state=CHANGING_FACETTE)');
       } else if (this.state === FocusState.FOCUSED) {
         if (this.focusedShard && currentShardIndex !== this.focusedShard.userData.index) {
-          console.log('⚠️ User scrolled to different shard (current=' + currentShardIndex + ', focused=' + this.focusedShard.userData.index + ') - calling unfocus()');
-          this.unfocus();
+          console.log('⚠️ User scrolled to different shard (current=' + currentShardIndex + ', focused=' + this.focusedShard.userData.index + ') - scheduling unfocus()');
+          this.state = FocusState.UNFOCUSING;
+          setTimeout(() => {
+            this.unfocus();
+          }, 100);
         } else {
           console.log('🔒 Ignoring micro-scroll during focus (still on shard ' + currentShardIndex + ')');
         }
+      } else if (this.state === FocusState.UNFOCUSING) {
+        console.log('🔒 Ignoring scroll during unfocus animation');
       }
       
       this.lastShardIndex = currentShardIndex;
@@ -268,6 +282,23 @@ export class FocusController {
     }
     
     if (this.focusedShard) {
+      const shard = this.focusedShard;
+      
+      if (this.preFocusPosition && this.preFocusRotation && this.preFocusScale) {
+        shard.position.set(this.preFocusPosition.x, this.preFocusPosition.y, this.preFocusPosition.z);
+        shard.rotation.set(this.preFocusRotation.x, this.preFocusRotation.y, this.preFocusRotation.z);
+        shard.scale.set(this.preFocusScale.x, this.preFocusScale.y, this.preFocusScale.z);
+        
+        shard.material.emissiveIntensity = 0;
+        shard.material.metalness = 0.35;
+        shard.material.roughness = 0.65;
+      }
+      
+      shard.userData.state = 'idle';
+      shard.userData.isFragmenting = false;
+      shard.userData.hoverMorphAmount = 0;
+      
+      this.shardManager.restoreOriginalGeometry(shard);
       this.shardManager.clearFocus();
       this.hideInfo();
     }
@@ -277,7 +308,12 @@ export class FocusController {
     }
     
     this.camera.setFocusMode(false);
+    this.focusedShard = null;
     this.state = FocusState.IDLE;
+    
+    if (this.onNavigationBarToggle) {
+      this.onNavigationBarToggle(true);
+    }
   }
   
   executeFocus(shard) {
@@ -288,6 +324,10 @@ export class FocusController {
     this.focusedShard = shard;
     this.state = FocusState.FOCUSING;
     this.guidedScrollPaused = true;
+    
+    if (this.onNavigationBarToggle) {
+      this.onNavigationBarToggle(false);
+    }
     
     this.preFocusPosition = {
       x: shard.position.x,
@@ -348,85 +388,84 @@ export class FocusController {
         }
       });
       
+      const focusScaleX = FOCUS.SCALE * 2.5 * shard.userData.baseScale.x;
+      const focusScaleY = FOCUS.SCALE * 2.5 * shard.userData.baseScale.y;
+      
+      let timeOffset = 0;
+      
       timeline.to(shard.userData, {
-        hoverMorphAmount: 1,
-        duration: FOCUS.PHASE1_DURATION,
+        hoverMorphAmount: FOCUS.DEFRAG_INTENSITY || 1,
+        duration: FOCUS.DEFRAG_DURATION,
         ease: 'power2.out',
         onUpdate: () => {
           this.shardManager.applyHoverMorphing(shard, shard.userData.hoverMorphAmount || 0);
         }
-      }, 0);
-      
-      timeline.to(shard.scale, {
-        x: shard.scale.x * 1.15,
-        y: shard.scale.y * 1.15,
-        z: shard.scale.z * 0.65,
-        duration: FOCUS.PHASE1_DURATION,
-        ease: 'power2.out'
-      }, 0);
-      
-      const focusScaleX = FOCUS.SCALE * 2.5 * shard.userData.baseScale.x;
-      const focusScaleY = FOCUS.SCALE * 2.5 * shard.userData.baseScale.y;
-      
-      timeline.to(shard.scale, {
-        x: focusScaleX,
-        y: focusScaleY,
-        z: 0.05,
-        duration: FOCUS.PHASE2_DURATION,
-        ease: 'power2.inOut'
-      }, FOCUS.PHASE1_DURATION);
-      
-      timeline.to(shard.userData, {
-        hoverMorphAmount: 0,
-        duration: 0.4,
-        ease: 'power2.in',
-        onUpdate: () => {
-          this.shardManager.applyHoverMorphing(shard, shard.userData.hoverMorphAmount || 0);
-        }
-      }, FOCUS.PHASE1_DURATION);
+      }, timeOffset);
+      timeOffset += FOCUS.DEFRAG_DURATION;
       
       timeline.to(shard.rotation, {
         x: 0,
         y: 0,
         z: 0,
-        duration: FOCUS.PHASE2_DURATION,
+        duration: FOCUS.ROTATION_DURATION,
         ease: 'power2.inOut'
-      }, FOCUS.PHASE1_DURATION);
+      }, timeOffset);
       
-      const phase3Start = FOCUS.PHASE1_DURATION + FOCUS.PHASE2_DURATION;
       timeline.to(shard.position, {
         x: 0,
         y: 0,
-        z: shardZ,
-        duration: FOCUS.PHASE3_DURATION,
+        duration: FOCUS.ROTATION_DURATION,
         ease: 'power2.inOut'
-      }, phase3Start);
+      }, timeOffset);
+      timeOffset += FOCUS.ROTATION_DURATION;
+      
+      timeline.to(shard.userData, {
+        hoverMorphAmount: 0,
+        duration: FOCUS.REFRAG_DURATION,
+        ease: 'power2.in',
+        onUpdate: () => {
+          this.shardManager.applyHoverMorphing(shard, shard.userData.hoverMorphAmount || 0);
+        }
+      }, timeOffset);
+      
+      timeline.to(shard.scale, {
+        x: focusScaleX,
+        y: focusScaleY,
+        z: 0.05,
+        duration: FOCUS.REFRAG_DURATION,
+        ease: 'power2.in'
+      }, timeOffset);
+      timeOffset += FOCUS.REFRAG_DURATION;
+      
+      timeline.to(shard.position, {
+        z: shardZ,
+        duration: FOCUS.POSITION_DURATION,
+        ease: 'power2.inOut'
+      }, timeOffset);
       
       timeline.to(this.camera.targetPosition, {
         x: this.focusPosition.x,
         y: this.focusPosition.y,
         z: this.focusPosition.z,
-        duration: FOCUS.PHASE3_DURATION,
+        duration: FOCUS.POSITION_DURATION,
         ease: 'power2.inOut'
-      }, phase3Start);
+      }, timeOffset);
       
       timeline.to(this.camera.lookAtTarget, {
         x: 0,
         y: 0,
         z: shardZ,
-        duration: FOCUS.PHASE3_DURATION,
+        duration: FOCUS.POSITION_DURATION,
         ease: 'power2.inOut'
-      }, phase3Start);
+      }, timeOffset);
       
-      const phase4Start = phase3Start + 0.3;
       timeline.to(shard.material, {
-        opacity: 1,
-        emissiveIntensity: FOCUS.EMISSIVE * 1.5,
+        emissiveIntensity: 0,
         metalness: 0.1,
         roughness: 0.3,
-        duration: FOCUS.PHASE4_DURATION,
+        duration: FOCUS.POSITION_DURATION,
         ease: 'power2.out'
-      }, phase4Start);
+      }, timeOffset);
       
       this.currentTimeline = timeline;
     } else {
@@ -475,16 +514,6 @@ export class FocusController {
     }
     
     if (this.state === FocusState.CHANGING_FACETTE) {
-      console.warn('🚫 unfocus() BLOCKED: Cannot unfocus during facette change (state=CHANGING_FACETTE)');
-      return;
-    }
-    
-    if (this.state === FocusState.UNFOCUSING) {
-      console.warn('🚫 unfocus() BLOCKED: Already unfocusing (state=UNFOCUSING)');
-      return;
-    }
-    
-    if (this.state !== FocusState.FOCUSED) {
       console.warn('❌ unfocus() called in invalid state: ' + this.state);
       return;
     }
@@ -503,73 +532,76 @@ export class FocusController {
         }
       });
       
-      timeline.to(this.camera.targetPosition, {
-        z: this.camera.targetPosition.z - 15,
-        duration: 0.8,
-        ease: 'power2.inOut'
-      }, 0);
-      
-      timeline.to(shard.material, {
-        opacity: SHARD.STATES.IDLE.opacity,
-        emissiveIntensity: SHARD.STATES.IDLE.emissive,
-        metalness: 0.35,
-        roughness: 0.65,
-        duration: 0.5,
-        ease: 'power2.out'
-      }, 0);
-      
-      timeline.to(shard.scale, {
-        x: this.preFocusScale.x * 1.15,
-        y: this.preFocusScale.y * 1.15,
-        z: this.preFocusScale.z * 0.65,
-        duration: 0.5,
-        ease: 'power2.out'
-      }, 0.3);
+      let timeOffset = 0;
       
       timeline.to(shard.userData, {
-        hoverMorphAmount: 1,
-        duration: 0.4,
+        hoverMorphAmount: FOCUS.DEFRAG_INTENSITY || 1,
+        duration: FOCUS.REFRAG_DURATION,
         ease: 'power2.out',
         onUpdate: () => {
           this.shardManager.applyHoverMorphing(shard, shard.userData.hoverMorphAmount || 0);
         }
-      }, 0.3);
+      }, timeOffset);
+      
+      timeline.to(shard.scale, {
+        x: this.preFocusScale.x * 1.2,
+        y: this.preFocusScale.y * 1.2,
+        z: this.preFocusScale.z * 0.5,
+        duration: FOCUS.REFRAG_DURATION,
+        ease: 'power2.out'
+      }, timeOffset);
+      timeOffset += FOCUS.REFRAG_DURATION;
+      
+      timeline.to(shard.rotation, {
+        x: this.preFocusRotation.x,
+        y: this.preFocusRotation.y,
+        z: this.preFocusRotation.z,
+        duration: FOCUS.ROTATION_DURATION,
+        ease: 'power2.inOut'
+      }, timeOffset);
       
       timeline.to(shard.userData, {
         hoverMorphAmount: 0,
-        duration: 0.5,
-        ease: 'power2.inOut',
+        duration: FOCUS.ROTATION_DURATION,
+        ease: 'power2.in',
         onUpdate: () => {
           this.shardManager.applyHoverMorphing(shard, shard.userData.hoverMorphAmount || 0);
         },
         onComplete: () => {
           this.shardManager.restoreOriginalGeometry(shard);
         }
-      }, 0.8);
+      }, timeOffset);
       
       timeline.to(shard.scale, {
         x: this.preFocusScale.x,
         y: this.preFocusScale.y,
         z: this.preFocusScale.z,
-        duration: 0.5,
-        ease: 'power2.inOut'
-      }, 0.8);
+        duration: FOCUS.ROTATION_DURATION,
+        ease: 'power2.in'
+      }, timeOffset);
+      timeOffset += FOCUS.ROTATION_DURATION;
       
       timeline.to(shard.position, {
         x: this.preFocusPosition.x,
         y: this.preFocusPosition.y,
         z: this.preFocusPosition.z,
-        duration: 0.8,
+        duration: FOCUS.UNFOCUS_DURATION,
         ease: 'power2.out'
-      }, 1.0);
+      }, timeOffset);
       
-      timeline.to(shard.rotation, {
-        x: this.preFocusRotation.x,
-        y: this.preFocusRotation.y,
-        z: this.preFocusRotation.z,
-        duration: 0.8,
+      timeline.to(this.camera.targetPosition, {
+        z: this.camera.targetPosition.z - 15,
+        duration: FOCUS.UNFOCUS_DURATION,
+        ease: 'power2.inOut'
+      }, timeOffset);
+      
+      timeline.to(shard.material, {
+        emissiveIntensity: SHARD.STATES.IDLE.emissive,
+        metalness: 0.35,
+        roughness: 0.65,
+        duration: FOCUS.UNFOCUS_DURATION,
         ease: 'power2.out'
-      }, 1.0);
+      }, timeOffset);
       
       this.currentTimeline = timeline;
     } else {
@@ -578,15 +610,25 @@ export class FocusController {
   }
   
   repositionShardAfterUnfocus(shard) {
-    this.shardManager.clearFocus();
-    this.focusedShard = null;
-    this.state = FocusState.IDLE;
-    this.guidedScrollPaused = false;
-    this.currentTimeline = null;
+    if (!shard) return;
     
-    if (this.scrollManager) {
-      this.scrollManager.setLocked(false);
+    shard.userData.state = 'idle';
+    shard.userData.isFragmenting = false;
+    
+    this.focusedShard = null;
+    
+    if (this.onNavigationBarToggle) {
+      this.onNavigationBarToggle(true);
     }
+    
+    setTimeout(() => {
+      this.state = FocusState.IDLE;
+      
+      if (this.scrollManager) {
+        this.scrollManager.setLocked(false);
+        console.log('✅ Scroll réactivé après unfocus complet');
+      }
+    }, 100);
     
     if (this.hasVisitedLastShard && this.onLastShardVisited) {
       this.onLastShardVisited();
@@ -595,8 +637,8 @@ export class FocusController {
     if (this.onUnfocusComplete) this.onUnfocusComplete(shard);
   }
   
-  changeFacette(direction) {
-    console.log('🔄 changeFacette() called: direction=' + direction + ', state=' + this.state + ', focusedShard=' + (this.focusedShard ? this.focusedShard.userData.index : 'null'));
+  changeFacette(direction, fromDrag = false) {
+    console.log('🔄 changeFacette() called: direction=' + direction + ', fromDrag=' + fromDrag + ', state=' + this.state + ', focusedShard=' + (this.focusedShard ? this.focusedShard.userData.index : 'null'));
     
     if (!this.focusedShard) {
       console.warn('❌ changeFacette: no focused shard');
@@ -659,82 +701,163 @@ export class FocusController {
         ease: 'power2.in'
       }, 0);
       
-      shard.userData.hoverMorphAmount = 0;
+      let timeOffset = FACETTE.TEXT_FADE_DELAY;
       
-      timeline.to(shard.scale, {
-        x: focusScaleX * 0.8,
-        y: focusScaleY * 0.8,
-        z: FACETTE.TRIANGLE_SCALE_DEPTH,
-        duration: 0.5,
-        ease: 'power2.in'
-      }, FACETTE.TEXT_FADE_DELAY);
-      
-      
-      console.log('🔄 Facette fragmentation: direction=' + direction);
-      
-      const rotationProgress = { value: 0 };
-      const defragAmount = { value: 1 };
-      
-      const phaseDuration = FACETTE.TRANSITION_DURATION / 3;
-      let timeOffset = 0.2;
-      
-      timeline.to(defragAmount, {
-        value: 0,
-        duration: phaseDuration,
-        ease: 'power2.in',
-        onUpdate: () => {
-          this.shardManager.applyFacetteFragmentation(shard, rotationProgress.value, direction, defragAmount.value);
-        }
-      }, timeOffset);
-      timeOffset += phaseDuration;
-      
-      timeline.to(rotationProgress, {
-        value: 1,
-        duration: phaseDuration,
-        ease: 'linear',
-        onUpdate: () => {
-          this.shardManager.applyFacetteFragmentation(shard, rotationProgress.value, direction, defragAmount.value);
-        }
-      }, timeOffset);
-      timeOffset += phaseDuration;
-      
-      timeline.to(defragAmount, {
-        value: 1,
-        duration: phaseDuration,
+      timeline.to(shard.userData, {
+        hoverMorphAmount: FACETTE.DEFRAG_INTENSITY || 1,
+        duration: FACETTE.DEFRAG_DURATION,
         ease: 'power2.out',
         onUpdate: () => {
-          this.shardManager.applyFacetteFragmentation(shard, rotationProgress.value, direction, defragAmount.value);
+          this.shardManager.applyHoverMorphing(shard, shard.userData.hoverMorphAmount || 0);
+        }
+      }, timeOffset);
+      
+      timeline.to(shard.scale, {
+        x: focusScaleX * 0.85,
+        y: focusScaleY * 0.85,
+        z: FACETTE.SCALE_DEPTH,
+        duration: FACETTE.DEFRAG_DURATION,
+        ease: 'power2.out'
+      }, timeOffset);
+      timeOffset += FACETTE.DEFRAG_DURATION;
+      
+      const currentRotation = shard.rotation.y;
+      let targetRotation;
+      
+      if (fromDrag) {
+        const absCurrentRotation = Math.abs(currentRotation);
+        const remainingRotation = Math.PI - absCurrentRotation;
+        
+        if (currentRotation > 0) {
+          targetRotation = currentRotation + remainingRotation;
+        } else {
+          targetRotation = currentRotation - remainingRotation;
+        }
+      } else {
+        targetRotation = currentRotation + (Math.PI * direction);
+      }
+      
+      timeline.to(shard.rotation, {
+        y: targetRotation,
+        duration: FACETTE.ROTATION_DURATION,
+        ease: 'power2.inOut',
+        onComplete: () => {
+          shard.rotation.y = 0;
+        }
+      }, timeOffset);
+      timeOffset += FACETTE.ROTATION_DURATION;
+      
+      timeline.to(shard.userData, {
+        hoverMorphAmount: 0,
+        duration: FACETTE.REFRAG_DURATION,
+        ease: 'power2.in',
+        onUpdate: () => {
+          this.shardManager.applyHoverMorphing(shard, shard.userData.hoverMorphAmount || 0);
         },
         onComplete: () => {
           this.shardManager.restoreOriginalGeometry(shard);
         }
       }, timeOffset);
       
-      
       timeline.to(shard.scale, {
         x: focusScaleX,
         y: focusScaleY,
         z: 0.05,
-        duration: 0.5,
-        ease: 'power2.out'
-      }, FACETTE.TRANSITION_DURATION - 0.2);
+        duration: FACETTE.REFRAG_DURATION,
+        ease: 'power2.in'
+      }, timeOffset);
       
-      
+      const totalDuration = timeOffset + FACETTE.REFRAG_DURATION;
       
       timeline.call(() => {
         this.updateInfo(shard);
-      }, [], FACETTE.TRANSITION_DURATION * 0.7);
+      }, [], totalDuration * 0.6);
       
       timeline.to(infoContent, {
         opacity: 1,
         duration: FACETTE.TEXT_FADE_DURATION,
         ease: 'power2.out'
-      }, FACETTE.TRANSITION_DURATION);
+      }, totalDuration - FACETTE.TEXT_FADE_DURATION);
       
     } else {
       this.updateInfo(shard);
       this.state = FocusState.FOCUSED;
     }
+  }
+  
+  updateDragRotation(shard, deltaX) {
+    if (!this.focusedShard || this.focusedShard !== shard) return;
+    if (this.state !== FocusState.FOCUSED) return;
+    if (this.state === FocusState.CHANGING_FACETTE) return;
+    
+    const rotationAmount = deltaX * DRAG.FOCUS.ROTATION_SPEED;
+    let targetRotationY = this.dragStartRotationY + rotationAmount;
+    
+    const rotationDelta = targetRotationY - this.dragStartRotationY;
+    const clampedDelta = Math.max(-DRAG.FOCUS.MAX_ROTATION_ANGLE, Math.min(DRAG.FOCUS.MAX_ROTATION_ANGLE, rotationDelta));
+    targetRotationY = this.dragStartRotationY + clampedDelta;
+    
+    const absDelta = Math.abs(clampedDelta);
+    const threshold = DRAG.FOCUS.MAX_ROTATION_ANGLE * DRAG.FOCUS.AUTO_CHANGE_THRESHOLD;
+    
+    if (absDelta >= threshold && !this.autoChangeFacetteTriggered) {
+      this.autoChangeFacetteTriggered = true;
+      const direction = clampedDelta > 0 ? 1 : -1;
+      
+      if (window.gsap) {
+        const targetRotation = this.dragStartRotationY + (direction === 1 ? DRAG.FOCUS.MAX_ROTATION_ANGLE : -DRAG.FOCUS.MAX_ROTATION_ANGLE);
+        window.gsap.to(shard.rotation, {
+          y: targetRotation,
+          duration: 0.2,
+          ease: 'power2.out',
+          onComplete: () => {
+            this.changeFacette(direction, true);
+          }
+        });
+      } else {
+        this.changeFacette(direction, true);
+      }
+      return;
+    }
+    
+    shard.rotation.y += (targetRotationY - shard.rotation.y) * DRAG.FOCUS.SMOOTH_ROTATION;
+    
+    this.dragAccumulatedDelta = deltaX;
+  }
+  
+  onDragEndInFocus(shard) {
+    if (!this.focusedShard || this.focusedShard !== shard) return;
+    if (this.state !== FocusState.FOCUSED && this.state !== FocusState.CHANGING_FACETTE) return;
+    
+    if (!this.autoChangeFacetteTriggered) {
+      const currentRotation = shard.rotation.y;
+      const rotationDelta = currentRotation - this.dragStartRotationY;
+      
+      if (Math.abs(rotationDelta) > 0.01) {
+        if (window.gsap) {
+          window.gsap.to(shard.rotation, {
+            y: this.dragStartRotationY,
+            duration: 0.3,
+            ease: 'power2.out'
+          });
+        } else {
+          shard.rotation.y = this.dragStartRotationY;
+        }
+      }
+    }
+    
+    this.dragAccumulatedDelta = 0;
+    this.autoChangeFacetteTriggered = false;
+  }
+  
+  onDragStartInFocus(shard) {
+    if (!this.focusedShard || this.focusedShard !== shard) return;
+    if (this.state !== FocusState.FOCUSED) return;
+    
+    shard.rotation.y = 0;
+    this.dragStartRotationY = 0;
+    this.dragAccumulatedDelta = 0;
+    this.autoChangeFacetteTriggered = false;
   }
   
   enforceFocusPositionImmediate() {

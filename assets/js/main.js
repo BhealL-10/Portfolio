@@ -15,6 +15,7 @@ import { FocusController } from './interaction/FocusController.js';
 import { SimpleIntroManager } from './intro/SimpleIntroManager.js';
 import { UIManager } from './ui/UIManager.js';
 import { ThemeSwitch } from './ui/ThemeSwitch.js';
+import { NavigationBar } from './ui/NavigationBar.js';
 import { CAMERA, SHARD, INTRO } from './config/constants.js';
 
 class PortfolioApp {
@@ -33,9 +34,10 @@ class PortfolioApp {
     this.shardManager = null;
     this.raycastManager = null;
     this.focusController = null;
-    this.introManager = null;
     this.uiManager = null;
     this.themeSwitch = null;
+    this.navigationBar = null;
+    this.introManager = null;
   }
   
   async init() {
@@ -79,11 +81,11 @@ class PortfolioApp {
     this.raycastManager = new RaycastManager(this.camera.instance);
     
     this.focusController = new FocusController(
-      this.camera,
       this.shardManager,
+      this.camera,
+      this.scrollManager,
       this.timelineManager
     );
-    this.focusController.setScrollManager(this.scrollManager);
     this.focusController.setRenderer(this.renderer);
     
     console.log('✅ Managers initialized');
@@ -143,6 +145,18 @@ class PortfolioApp {
       this.shardManager.endDrag(shard);
     };
     
+    this.raycastManager.onShardDragStartFocus = (shard) => {
+      this.focusController.onDragStartInFocus(shard);
+    };
+    
+    this.raycastManager.onShardDragFocus = (shard, deltaX) => {
+      this.focusController.updateDragRotation(shard, deltaX);
+    };
+    
+    this.raycastManager.onShardDragEndFocus = (shard) => {
+      this.focusController.onDragEndInFocus(shard);
+    };
+    
     this.raycastManager.onBackgroundClick = () => {
       if (this.focusController.isFocused() && this.focusController.canUnfocus()) {
         this.focusController.unfocus();
@@ -155,8 +169,22 @@ class PortfolioApp {
   }
   
   initUI() {
-    this.uiManager = new UIManager();
+    this.uiManager = new UIManager(this.focusController, this.shardManager);
     this.themeSwitch = new ThemeSwitch(this.scene, this.shardManager);
+    this.navigationBar = new NavigationBar(this.scrollManager);
+    
+    this.themeSwitch.setNavigationBar(this.navigationBar);
+    this.navigationBar.updateTheme(this.themeSwitch.getCurrentTheme());
+    
+    this.focusController.onNavigationBarToggle = (show) => {
+      if (this.navigationBar) {
+        if (show) {
+          this.navigationBar.show();
+        } else {
+          this.navigationBar.hide();
+        }
+      }
+    };
     
     this.uiManager.setupNavigation(this.scrollManager, this.shardManager, this.focusController);
     
@@ -222,15 +250,21 @@ class PortfolioApp {
     
     this.introManager.onComplete = () => {
       console.log('✅ Intro complete - transitioning to main experience');
-      this.transitionToMainExperience();
+      this.isIntroComplete = true;
+      this.scrollManager.setLocked(false);
+      
+      if (this.navigationBar) {
+        this.navigationBar.show();
+      }
+      
+      this.startRenderLoop();
+      console.log('✅ Intro complete, animation started');
     };
     
     this.introManager.onProgress = (progress) => {
     };
     
     this.introManager.start();
-    
-    this.startRenderLoop();
   }
   
   startWithoutIntro() {

@@ -1,0 +1,131 @@
+/**
+ * NavigationBar.js - Barre de navigation Accueil/About
+ * Portfolio 3D V4.0
+ */
+
+export class NavigationBar {
+  constructor(scrollManager) {
+    this.scrollManager = scrollManager;
+    this.navBar = null;
+    this.isVisible = false;
+    
+    this.createNavigationBar();
+  }
+  
+  createNavigationBar() {
+    this.navBar = document.createElement('nav');
+    this.navBar.className = 'navigation-bar';
+    this.navBar.style.cssText = `
+      position: fixed;
+      top: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 9999;
+      display: flex;
+      gap: 12px;
+      padding: 8px 16px;
+      background: var(--nav-bg);
+      border: 1px solid var(--nav-border);
+      border-radius: 24px;
+      backdrop-filter: blur(10px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease, transform 0.4s ease;
+      transform: translateX(-50%) translateY(-20px);
+      user-select: none;
+    `;
+    
+    const homeButton = this.createNavButton('Accueil', () => this.scrollToTop());
+    const aboutButton = this.createNavButton('About', () => this.scrollToAbout());
+    
+    this.navBar.appendChild(homeButton);
+    this.navBar.appendChild(aboutButton);
+    
+    document.body.appendChild(this.navBar);
+    
+    this.updateTheme();
+  }
+  
+  createNavButton(label, onClick) {
+    const button = document.createElement('button');
+    button.className = 'nav-button';
+    button.textContent = label;
+    button.style.cssText = `
+      padding: 8px 20px;
+      background: transparent;
+      border: none;
+      color: var(--nav-text);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border-radius: 16px;
+      transition: all 0.2s ease;
+      font-family: inherit;
+    `;
+    
+    button.addEventListener('mouseenter', () => {
+      button.style.background = 'var(--nav-hover-bg)';
+    });
+    
+    button.addEventListener('mouseleave', () => {
+      button.style.background = 'transparent';
+    });
+    
+    button.addEventListener('click', onClick);
+    
+    return button;
+  }
+  
+  scrollToTop() {
+    if (this.scrollManager) {
+      this.scrollManager.setScroll(0);
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+  
+  scrollToAbout() {
+    if (this.scrollManager) {
+      this.scrollManager.setScroll(1);
+    } else {
+      const aboutSection = document.getElementById('about');
+      if (aboutSection) {
+        aboutSection.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  }
+  
+  show() {
+    if (!this.isVisible) {
+      this.isVisible = true;
+      this.navBar.style.opacity = '1';
+      this.navBar.style.transform = 'translateX(-50%) translateY(0)';
+      this.navBar.style.pointerEvents = 'auto';
+    }
+  }
+  
+  hide() {
+    if (this.isVisible) {
+      this.isVisible = false;
+      this.navBar.style.opacity = '0';
+      this.navBar.style.transform = 'translateX(-50%) translateY(-20px)';
+      this.navBar.style.pointerEvents = 'none';
+    }
+  }
+  
+  updateTheme() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    
+    if (isDark) {
+      document.documentElement.style.setProperty('--nav-bg', 'rgba(57, 63, 74, 0.8)');
+      document.documentElement.style.setProperty('--nav-border', 'rgba(242, 221, 184, 0.2)');
+      document.documentElement.style.setProperty('--nav-text', '#F2DDB8');
+      document.documentElement.style.setProperty('--nav-hover-bg', 'rgba(242, 221, 184, 0.1)');
+    } else {
+      document.documentElement.style.setProperty('--nav-bg', 'rgba(242, 221, 184, 0.8)');
+      document.documentElement.style.setProperty('--nav-border', 'rgba(57, 63, 74, 0.2)');
+      document.documentElement.style.setProperty('--nav-text', '#393F4A');
+      document.documentElement.style.setProperty('--nav-hover-bg', 'rgba(57, 63, 74, 0.1)');
+    }
+  }
+}
