@@ -49,7 +49,7 @@ export class SimpleMirror {
     this.canvas.id = 'mirror-canvas';
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
-    this.canvas.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999;pointer-events:auto;cursor:pointer;`;
+    this.canvas.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100dvh;z-index:9999;pointer-events:auto;cursor:pointer;`;
     
     this.ctx = this.canvas.getContext('2d');
     document.body.appendChild(this.canvas);
@@ -57,6 +57,9 @@ export class SimpleMirror {
     window.addEventListener('resize', () => {
       this.canvas.width = window.innerWidth;
       this.canvas.height = window.innerHeight;
+      
+      // Update canvas style to use actual viewport height
+      this.canvas.style.height = '100dvh';
       this.draw();
     });
     

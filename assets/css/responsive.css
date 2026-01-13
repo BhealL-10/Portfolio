@@ -1,4 +1,4 @@
-/* Responsive Styles */
+/* Responsive Styles - Optimisé avec safe areas iOS */
 
 /* Tablet */
 @media (max-width: 1024px) {
@@ -26,6 +26,8 @@
     --font-size-4xl: 2.5rem;
     --font-size-3xl: 2rem;
     --font-size-2xl: 1.5rem;
+    --safe-area-top: env(safe-area-inset-top, 0px);
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
   }
   
   /* Navigation */
@@ -122,10 +124,33 @@
   
   /* Theme Toggle */
   .theme-toggle {
-    top: var(--spacing-sm);
+    top: calc(var(--safe-area-top, 0px) + var(--spacing-sm));
     right: var(--spacing-sm);
     width: 45px;
     height: 45px;
+  }
+  
+  /* Shard Info Overlay - Mobile optimisé */
+  .shard-info-overlay {
+    max-width: 95vw;
+    max-height: calc(100dvh - var(--safe-area-top, 0px) - var(--safe-area-bottom, 0px) - 20px);
+  }
+  
+  .shard-info-content {
+    padding: clamp(0.75rem, 2vh, 1.25rem);
+    gap: clamp(0.5rem, 1.5vh, 1rem);
+  }
+  
+  .shard-title {
+    font-size: clamp(1.25rem, 4vh, 1.75rem);
+  }
+  
+  .shard-description {
+    font-size: clamp(0.8rem, 2vh, 1rem);
+  }
+  
+  .facette-nav {
+    gap: 60px;
   }
 }
 
@@ -148,12 +173,20 @@
 /* Landscape Mobile */
 @media (max-height: 600px) and (orientation: landscape) {
   .hero-section {
-    min-height: auto;
-    padding: var(--spacing-lg) var(--spacing-md);
+    min-height: 100dvh;
+    padding: calc(var(--safe-area-top, 0px) + var(--spacing-md)) var(--spacing-md) calc(var(--safe-area-bottom, 0px) + var(--spacing-md));
   }
   
   .hero-title {
     font-size: var(--font-size-2xl);
+  }
+  
+  .shard-info-overlay {
+    max-height: calc(100dvh - var(--safe-area-top, 0px) - var(--safe-area-bottom, 0px) - 10px);
+  }
+  
+  .about-section .container, .contact-section .container {
+    padding: calc(var(--safe-area-top, 0px) + 0.5rem) 1rem calc(var(--safe-area-bottom, 0px) + 0.5rem);
   }
 }
 

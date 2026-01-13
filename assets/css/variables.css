@@ -41,7 +41,13 @@
 }
 
 :root {
-  /* ==================== COULEURS DE BASE ==================== */
+  /* ==================== SAFE AREAS iOS ==================== */
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  
+  /* ==================== COULEURS DE BASE ====================
   /* 
    * POUR DÉBUTANTS : Palette de couleurs principale du site
    * 
