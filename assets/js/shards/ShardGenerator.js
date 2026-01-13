@@ -1,14 +1,15 @@
 /**
- * ShardGenerator.js - Génération des shards V5.0
- * Portfolio 3D - Génération responsive optimisée
+ * ShardGenerator.js - Génération des shards V6.0
+ * Portfolio 3D - Génération responsive optimisée avec logos intégrés
  */
 
 import * as THREE from 'three';
 import { SHARD, THEME } from '../config/constants.js';
 
 export class ShardGenerator {
-  constructor(deviceManager) {
+  constructor(deviceManager, shardLogo = null) {
     this.deviceManager = deviceManager;
+    this.shardLogo = shardLogo;
     this.isDarkMode = document.documentElement.dataset.theme === 'dark';
     this.generatedCount = 0;
   }
@@ -40,6 +41,7 @@ export class ShardGenerator {
     });
     
     const shard = new THREE.Mesh(geometry, material);
+    shard.renderOrder = 0;
     
     const fixedZ = (index * zSpacing) - zSpacing;
     const initialOrbitAngle = Math.random() * Math.PI * 2;
@@ -113,16 +115,22 @@ export class ShardGenerator {
     return shard;
   }
   
-  generateAllShards(projects, scene) {
+  async generateAllShards(projects, scene) {
     const shards = [];
     
-    projects.forEach((project, index) => {
+    for (let index = 0; index < projects.length; index++) {
+      const project = projects[index];
       const shard = this.generateShard(project, index);
       shards.push(shard);
       scene.add(shard);
-    });
+      
+      // Attacher les logos si ShardLogo est disponible
+      if (this.shardLogo) {
+        await this.shardLogo.attachLogosToShard(shard);
+      }
+    }
     
-    console.log(`✅ Generated ${shards.length} shards`);
+    console.log(`✅ Generated ${shards.length} shards with logos`);
     return shards;
   }
   

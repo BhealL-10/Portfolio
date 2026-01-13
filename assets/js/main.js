@@ -91,7 +91,7 @@ class PortfolioApp {
       this.focusController.setRenderer(this.renderer);
       this.focusController.setDeviceManager(this.deviceManager);
       
-      this.raycastManager = new RaycastManager(this.camera.getCamera());
+      this.raycastManager = new RaycastManager(this.camera.getCamera(), this.deviceManager);
       this.raycastManager.setShards(this.shardManager.getAllShards());
       
       this.uiManager = new UIManager(this.deviceManager);

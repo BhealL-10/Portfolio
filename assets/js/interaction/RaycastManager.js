@@ -6,8 +6,9 @@
 import * as THREE from 'three';
 
 export class RaycastManager {
-  constructor(camera) {
+  constructor(camera, deviceManager = null) {
     this.camera = camera;
+    this.deviceManager = deviceManager;
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
     this.shards = [];
@@ -29,12 +30,23 @@ export class RaycastManager {
     this.draggedShard = null;
     this.dragStartTime = 0;
     this.dragStartX = 0;
-    this.dragThreshold = 150;
+    this.dragStartY = 0;
+    this.dragThreshold = this.getDragThreshold();
     this.dragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
     
     this.lastHoveredShard = null;
     
     this.setupListeners();
+  }
+  
+  getDragThreshold() {
+    if (!this.deviceManager) return 150;
+    
+    const deviceType = this.deviceManager.deviceType;
+    
+    if (deviceType.includes('MOBILE')) return 200;
+    if (deviceType.includes('TABLET')) return 180;
+    return 150;
   }
   
   setShards(shards) {
@@ -83,8 +95,16 @@ export class RaycastManager {
   
   raycast() {
     this.raycaster.setFromCamera(this.mouse, this.camera);
-    const intersects = this.raycaster.intersectObjects(this.shards);
-    return intersects.length > 0 ? intersects[0] : null;
+    const intersects = this.raycaster.intersectObjects(this.shards, true);
+    
+    for (const intersect of intersects) {
+      if (intersect.object.userData.isLogoPlane) continue;
+      
+      const shard = intersect.object.parent?.isMesh ? intersect.object.parent : intersect.object;
+      return { ...intersect, object: shard };
+    }
+    
+    return null;
   }
   
   getWorldPosition() {
@@ -136,6 +156,7 @@ export class RaycastManager {
     if (intersect) {
       this.dragStartTime = Date.now();
       this.dragStartX = event.clientX;
+      this.dragStartY = event.clientY;
       this.startDrag(intersect.object);
     }
   }
@@ -147,9 +168,14 @@ export class RaycastManager {
     if (mirrorCanvas && mirrorCanvas.style.display !== 'none') return;
     
     const dragDuration = Date.now() - this.dragStartTime;
+    const dragDistanceX = Math.abs(event.clientX - this.dragStartX);
+    const dragDistanceY = Math.abs(event.clientY - this.dragStartY);
+    const dragDistance = Math.sqrt(dragDistanceX * dragDistanceX + dragDistanceY * dragDistanceY);
+    
+    const maxClickDistance = this.deviceManager && this.deviceManager.deviceType.includes('MOBILE') ? 15 : 10;
     
     if (this.isDragging && this.draggedShard) {
-      if (dragDuration < this.dragThreshold) {
+      if (dragDuration < this.dragThreshold && dragDistance < maxClickDistance) {
         this.endDrag();
         const intersect = this.raycast();
         if (intersect) this.handleShardClick(intersect.object, event.clientX, event.clientY, event);
@@ -186,6 +212,7 @@ export class RaycastManager {
     if (intersect) {
       this.dragStartTime = Date.now();
       this.dragStartX = touch.clientX;
+      this.dragStartY = touch.clientY;
       this.startDrag(intersect.object);
       event.preventDefault();
     }
@@ -218,12 +245,18 @@ export class RaycastManager {
     
     if (this.isInteractiveElement(target)) return;
     
-    if (this.isDragging) {
-      if (dragDuration < this.dragThreshold) {
+    if (this.isDragging && event.changedTouches.length > 0) {
+      const touch = event.changedTouches[0];
+      const dragDistanceX = Math.abs(touch.clientX - this.dragStartX);
+      const dragDistanceY = Math.abs(touch.clientY - this.dragStartY);
+      const dragDistance = Math.sqrt(dragDistanceX * dragDistanceX + dragDistanceY * dragDistanceY);
+      
+      const maxClickDistance = this.deviceManager && this.deviceManager.deviceType.includes('MOBILE') ? 20 : 15;
+      
+      if (dragDuration < this.dragThreshold && dragDistance < maxClickDistance) {
         const shard = this.draggedShard;
         this.endDrag();
         if (shard) {
-          const touch = event.changedTouches[0];
           this.handleShardClick(shard, touch.clientX, touch.clientY, event);
         }
       } else {

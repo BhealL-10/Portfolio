@@ -494,23 +494,25 @@ export class FocusController {
         onUpdate: () => this.shardManager.applyHoverMorphing(shard, shard.userData.hoverMorphAmount || 0)
       }, timeOffset);
       
-      timeline.to(shard.scale, { x: this.preFocusScale.x * 1.2, y: this.preFocusScale.y * 1.2, z: this.preFocusScale.z * 0.5, duration: FOCUS.REFRAG_DURATION, ease: 'power2.out' }, timeOffset);
-      timeOffset += FOCUS.REFRAG_DURATION;
-      
-      timeline.to(shard.rotation, { x: this.preFocusRotation.x, y: this.preFocusRotation.y, z: this.preFocusRotation.z, duration: FOCUS.ROTATION_DURATION, ease: 'power2.inOut' }, timeOffset);
-      
-      timeline.to(shard.userData, {
-        hoverMorphAmount: 0,
-        duration: FOCUS.ROTATION_DURATION,
-        ease: 'power2.in',
-        onUpdate: () => this.shardManager.applyHoverMorphing(shard, shard.userData.hoverMorphAmount || 0),
-        onComplete: () => this.shardManager.restoreOriginalGeometry(shard)
-      }, timeOffset);
-      
-      timeline.to(shard.scale, { x: this.preFocusScale.x, y: this.preFocusScale.y, z: this.preFocusScale.z, duration: FOCUS.ROTATION_DURATION, ease: 'power2.in' }, timeOffset);
-      timeOffset += FOCUS.ROTATION_DURATION;
-      
-      timeline.to(shard.position, { x: this.preFocusPosition.x, y: this.preFocusPosition.y, z: this.preFocusPosition.z, duration: FOCUS.UNFOCUS_DURATION, ease: 'power2.out' }, timeOffset);
+      if (this.preFocusScale && this.preFocusRotation && this.preFocusPosition) {
+        timeline.to(shard.scale, { x: this.preFocusScale.x * 1.2, y: this.preFocusScale.y * 1.2, z: this.preFocusScale.z * 0.5, duration: FOCUS.REFRAG_DURATION, ease: 'power2.out' }, timeOffset);
+        timeOffset += FOCUS.REFRAG_DURATION;
+        
+        timeline.to(shard.rotation, { x: this.preFocusRotation.x, y: this.preFocusRotation.y, z: this.preFocusRotation.z, duration: FOCUS.ROTATION_DURATION, ease: 'power2.inOut' }, timeOffset);
+        
+        timeline.to(shard.userData, {
+          hoverMorphAmount: 0,
+          duration: FOCUS.ROTATION_DURATION,
+          ease: 'power2.in',
+          onUpdate: () => this.shardManager.applyHoverMorphing(shard, shard.userData.hoverMorphAmount || 0),
+          onComplete: () => this.shardManager.restoreOriginalGeometry(shard)
+        }, timeOffset);
+        
+        timeline.to(shard.scale, { x: this.preFocusScale.x, y: this.preFocusScale.y, z: this.preFocusScale.z, duration: FOCUS.ROTATION_DURATION, ease: 'power2.in' }, timeOffset);
+        timeOffset += FOCUS.ROTATION_DURATION;
+        
+        timeline.to(shard.position, { x: this.preFocusPosition.x, y: this.preFocusPosition.y, z: this.preFocusPosition.z, duration: FOCUS.UNFOCUS_DURATION, ease: 'power2.out' }, timeOffset);
+      }
       timeline.to(this.camera.targetPosition, { z: this.camera.targetPosition.z - 15, duration: FOCUS.UNFOCUS_DURATION, ease: 'power2.inOut' }, timeOffset);
       timeline.to(shard.material, { emissiveIntensity: SHARD.STATES.IDLE.emissive, metalness: 0.35, roughness: 0.65, duration: FOCUS.UNFOCUS_DURATION, ease: 'power2.out' }, timeOffset);
       

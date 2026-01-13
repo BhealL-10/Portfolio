@@ -83,9 +83,9 @@ export const CAMERA = {
   LOOK_AHEAD: 20,
   CONTINUOUS_MOVEMENT: { ENABLED: true, EASE_FACTOR: 0.08, ANTICIPATION: 0.3 },
   RESPONSIVE: {
-    MOBILE: { FOV: 65, DISTANCE_FROM_SHARD: 35, LOOK_AHEAD: 15, SMOOTHING: 0.1 },
-    TABLET: { FOV: 60, DISTANCE_FROM_SHARD: 30, LOOK_AHEAD: 18, SMOOTHING: 0.09 },
-    DESKTOP: { FOV: 55, DISTANCE_FROM_SHARD: 25, LOOK_AHEAD: 20, SMOOTHING: 0.08 }
+    MOBILE: { FOV: 65, DISTANCE_FROM_SHARD: 28, LOOK_AHEAD: 12, SMOOTHING: 0.1 },
+    TABLET: { FOV: 60, DISTANCE_FROM_SHARD: 24, LOOK_AHEAD: 16, SMOOTHING: 0.09 },
+    DESKTOP: { FOV: 55, DISTANCE_FROM_SHARD: 22, LOOK_AHEAD: 18, SMOOTHING: 0.08 }
   }
 };
 
@@ -202,7 +202,7 @@ export const FACETTE = {
 // ==========================================
 export const FOCUS = {
   Z_OFFSET: 12,
-  CAMERA_DISTANCE: 25,
+  CAMERA_DISTANCE: 18,
   SCALE: 1.8,
   RESPONSIVE: true,
   EMISSIVE: 0.3,
@@ -317,20 +317,31 @@ export const TITLE = {
 };
 
 // ==========================================
-// LOGO SHARD - Remplace ShardTitle
+// LOGO SHARD - Logos intégrés sur géométrie V6.0
 // ==========================================
 export const SHARD_LOGO = {
+  // Logos par défaut (utilisés si pas de config personnalisée dans shardLogosConfig.js)
   DARK: "assets/images/Logo/logomodedark.svg",
   LIGHT: "assets/images/Logo/logomodelight.svg",
-  OFFSET_Z: 8,
-  BASE_SCALE: 2.5,
-  OPACITY_IDLE: 0.85,
+  
+  // Taille de base des logos (sprites attachés à la shard)
+  BASE_SCALE: 1.8,
+  
+  // Opacité
+  OPACITY_IDLE: 1.0,
+  OPACITY_CURRENT: 0,
+  OPACITY_FOCUSED: 0,
   OPACITY_HIDDEN: 0,
   FADE_SPEED: 0.12,
+  
+  // Canvas texture size (résolution du logo)
+  CANVAS_SIZE: 512,
+  
+  // Configuration responsive
   RESPONSIVE: {
-    MOBILE: { BASE_SCALE: 1.5 },
-    TABLET: { BASE_SCALE: 2.0 },
-    DESKTOP: { BASE_SCALE: 2.5 }
+    MOBILE: { BASE_SCALE: 1.2 },
+    TABLET: { BASE_SCALE: 1.5 },
+    DESKTOP: { BASE_SCALE: 1.8 }
   }
 };
 

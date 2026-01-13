@@ -1,6 +1,6 @@
 /**
- * ShardManager.js - Gestionnaire principal des shards V5.0
- * Portfolio 3D - Physique fluide et retour orbital optimisé
+ * ShardManager.js - Gestionnaire principal des shards V6.0
+ * Portfolio 3D - Physique fluide avec logos intégrés sur géométrie
  */
 
 import * as THREE from 'three';
@@ -19,15 +19,16 @@ export class ShardManager {
     this.currentIndex = 0;
     this.previousIndex = -1;
     
-    this.generator = new ShardGenerator(deviceManager);
-    this.physics = new ShardPhysics();
     this.shardLogo = null;
     
     try {
-      this.shardLogo = new ShardLogo(scene, camera, deviceManager);
+      this.shardLogo = new ShardLogo(scene, deviceManager, camera);
     } catch (e) {
       console.warn('ShardLogo init failed:', e);
     }
+    
+    this.generator = new ShardGenerator(deviceManager, this.shardLogo);
+    this.physics = new ShardPhysics();
     
     this.scrollManager = null;
     this.isDarkMode = false;
@@ -43,19 +44,13 @@ export class ShardManager {
   }
   
   async generateShards() {
-    for (let i = 0; i < projects.length; i++) {
-      const shard = this.generator.generateShard(projects[i], i);
-      this.shards.push(shard);
-      this.scene.add(shard);
-      
-      this.shardLogo?.createLogoSprite(shard);
-    }
+    this.shards = await this.generator.generateAllShards(projects, this.scene);
     
     const config = this.deviceManager ? this.deviceManager.getShardConfig() : SHARD.RESPONSIVE.DESKTOP;
     const zSpacing = config.Z_SPACING || SHARD.Z_SPACING;
     this.totalDistance = projects.length * zSpacing;
     
-    console.log(`✅ Generated ${this.shards.length} shards (total distance: ${this.totalDistance})`);
+    console.log(`✅ Generated ${this.shards.length} shards with integrated logos (total distance: ${this.totalDistance})`);
     return this.shards;
   }
   
@@ -84,7 +79,7 @@ export class ShardManager {
       
       const isCurrentShard = index === this.currentIndex;
       const isFocused = shard.userData.isFocused || false;
-      this.shardLogo?.updatePosition(shard, isCurrentShard, isFocused);
+      this.shardLogo?.updateLogoVisibility(shard, isCurrentShard, isFocused);
     });
     
     this.physics.update(this.shards, deltaTime);
@@ -232,18 +227,22 @@ export class ShardManager {
     }
     
     const hoverStrength = ANIMATION.MORPH.STRENGTH * hoverAmount;
-    const dragStrength = DRAG.DEFORM.STRENGTH * dragAmount * 0.1;
-    const totalStrength = hoverStrength;
+    const dragStrength = DRAG.DEFORM.STRENGTH * dragAmount;
+    
+    const dragDirX = shard.userData.dragDirectionX ?? 0.5;
+    const dragDirY = shard.userData.dragDirectionY ?? 0.5;
     
     for (let i = 0; i < positions.count; i++) {
       const original = shard.userData.originalPositions[i];
-      const hoverOffset = Math.sin(time + i * 0.5) * totalStrength;
-      const dragOffset = dragStrength * Math.sin(i * 0.3);
+      const hoverOffset = Math.sin(time + i * 0.5) * hoverStrength;
+      
+      const flattenX = 1 - (dragDirY * dragStrength);
+      const flattenY = 1 - (dragDirX * dragStrength);
       
       positions.setXYZ(
         i,
-        original.x * (1 + hoverOffset + dragOffset),
-        original.y * (1 + hoverOffset * 0.8 + dragOffset * 0.5),
+        original.x * (1 + hoverOffset) * flattenX,
+        original.y * (1 + hoverOffset * 0.8) * flattenY,
         original.z * (1 + hoverOffset * 0.6)
       );
     }
@@ -375,9 +374,19 @@ export class ShardManager {
       const speed = Math.sqrt(velocityX * velocityX + velocityY * velocityY);
       shard.userData.dragMorphAmount = Math.min(speed * 2, 1);
       
-      if (DRAG.DEFORM.COMBINES_WITH_HOVER && shard.userData.hoverMorphAmount > 0) {
-        this.applyCombinedMorphing(shard, shard.userData.hoverMorphAmount, shard.userData.dragMorphAmount);
+      const absVelX = Math.abs(velocityX);
+      const absVelY = Math.abs(velocityY);
+      const totalVel = absVelX + absVelY;
+      
+      if (totalVel > 0.001) {
+        shard.userData.dragDirectionX = absVelX / totalVel;
+        shard.userData.dragDirectionY = absVelY / totalVel;
+      } else {
+        shard.userData.dragDirectionX = 0.5;
+        shard.userData.dragDirectionY = 0.5;
       }
+      
+      this.applyCombinedMorphing(shard, shard.userData.hoverMorphAmount || 0, shard.userData.dragMorphAmount);
     }
   }
   
@@ -396,6 +405,20 @@ export class ShardManager {
     
     if (!shard.userData.isFocused) {
       shard.userData.state = 'idle';
+    }
+    
+    if (DRAG.DEFORM.ENABLED && shard.userData.dragMorphAmount > 0) {
+      gsap.to(shard.userData, {
+        dragMorphAmount: 0,
+        duration: 0.4,
+        ease: 'power2.out',
+        onUpdate: () => {
+          this.applyCombinedMorphing(shard, shard.userData.hoverMorphAmount || 0, shard.userData.dragMorphAmount);
+        },
+        onComplete: () => {
+          this.restoreOriginalGeometry(shard);
+        }
+      });
     }
     
     setTimeout(() => {
