@@ -18,26 +18,7 @@ export class NavigationBar {
   createNavigationBar() {
     this.navBar = document.createElement('nav');
     this.navBar.className = 'navigation-bar';
-    this.navBar.style.cssText = `
-      position: fixed;
-      top: 24px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 9999;
-      display: flex;
-      gap: 12px;
-      padding: 8px 16px;
-      background: var(--nav-bg);
-      border: 1px solid var(--nav-border);
-      border-radius: 24px;
-      backdrop-filter: blur(10px);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.4s ease, transform 0.4s ease;
-      transform: translateX(-50%) translateY(-20px);
-      user-select: none;
-      font-family: ${TYPOGRAPHY.PRIMARY_FONT};
-    `;
+    this.navBar.className = 'navigation-bar';
     
     const homeButton = this.createNavButton('Intro', () => this.scrollToTop());
     const aboutButton = this.createNavButton('Outro', () => this.scrollToAbout());
@@ -54,29 +35,7 @@ export class NavigationBar {
     const button = document.createElement('button');
     button.className = 'nav-button';
     button.textContent = label;
-    button.style.cssText = `
-      padding: 8px 20px;
-      background: transparent;
-      border: none;
-      color: var(--nav-text);
-      font-size: 14px;
-      font-weight: ${TYPOGRAPHY.FONT_WEIGHTS.MEDIUM};
-      cursor: pointer;
-      border-radius: 16px;
-      transition: all 0.2s ease;
-      font-family: ${TYPOGRAPHY.PRIMARY_FONT};
-    `;
-    
-    button.addEventListener('mouseenter', () => {
-      button.style.background = 'var(--nav-hover-bg)';
-    });
-    
-    button.addEventListener('mouseleave', () => {
-      button.style.background = 'transparent';
-    });
-    
     button.addEventListener('click', onClick);
-    
     return button;
   }
   

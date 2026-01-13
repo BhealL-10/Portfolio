@@ -1,111 +1,327 @@
-/* Design System Variables */
+/* ==================== DESIGN SYSTEM - VARIABLES CSS ==================== */
+/* 
+ * GUIDE POUR DÉBUTANTS : Ce fichier contient toutes les variables CSS du projet
+ * 
+ * QU'EST-CE QU'UNE VARIABLE CSS ?
+ * - Format : --nom-variable: valeur;
+ * - Utilisation : var(--nom-variable)
+ * - Avantage : Changer une valeur ici la change partout dans le projet
+ * 
+ * EXEMPLE :
+ * - Définir : --accent: #4a90d9;
+ * - Utiliser : background: var(--accent);
+ * 
+ * COMMENT MODIFIER LES COULEURS DU SITE ?
+ * 1. Trouvez la variable de couleur ci-dessous
+ * 2. Changez sa valeur hexadécimale (ex: #4a90d9)
+ * 3. Sauvegardez - le changement s'applique automatiquement partout !
+ */
+
+/* ==================== POLICE DU PROJET ==================== */
+/* 
+ * POUR DÉBUTANTS : Import de la police personnalisée
+ * 
+ * @font-face = Déclare une police locale (stockée dans le projet)
+ * - font-family = Nom qu'on donnera à la police
+ * - src = Chemin vers le fichier de police
+ * - font-weight = Épaisseur (400 = normal, 700 = gras)
+ * - font-display: swap = Affiche un texte temporaire pendant le chargement
+ * 
+ * POUR CHANGER LA POLICE :
+ * 1. Ajoutez votre fichier .ttf ou .woff2 dans /assets/fonts/
+ * 2. Changez le chemin dans src: url('...')
+ * 3. Changez le nom dans font-family si vous voulez
+ */
+@font-face {
+  font-family: 'Text Me One'; /* Nom de la police - utilisé dans --font-body */
+  src: url('../fonts/text-me-one.regular.ttf') format('truetype');
+  font-weight: 400; /* Poids normal */
+  font-style: normal; /* Style normal (pas italique) */
+  font-display: swap; /* Améliore les performances de chargement */
+}
 
 :root {
-  /* Couleurs principales */
-  --color-light: #F2DDB8;
-  --color-dark: #393F4A;
-  --color-title: #2d2d2d;
+  /* ==================== COULEURS DE BASE ==================== */
+  /* 
+   * POUR DÉBUTANTS : Palette de couleurs principale du site
+   * 
+   * Ces couleurs sont utilisées pour créer les thèmes clair et sombre
+   * Format hexadécimal : #RRGGBB (Rouge, Vert, Bleu)
+   * 
+   * MODIFICATION FACILE :
+   * - Changez ces valeurs pour modifier l'apparence globale
+   * - Utilisez un color picker en ligne pour choisir vos couleurs
+   * - Exemple : https://htmlcolorcodes.com/color-picker/
+   */
+  --color-light: #F2DDB8; /* Beige clair - utilisé pour le fond en mode clair */
+  --color-dark: #393F4A; /* Gris foncé - utilisé pour le fond en mode sombre */
+  --color-title: #2d2d2d; /* Gris très foncé - pour les titres importants */
   
-  /* Couleurs dérivées - Light Mode par défaut */
-  --bg-primary: var(--color-light);
-  --bg-secondary: rgba(242, 221, 184, 0.7);
-  --text-primary: var(--color-dark);
-  --text-secondary: rgba(57, 63, 74, 0.7);
-  --accent: #4a90d9;
-  --accent-hover: #3a80c9;
+  /* ==================== THÈME CLAIR (par défaut) ==================== */
+  /* 
+   * POUR DÉBUTANTS : Couleurs utilisées en mode clair
+   * 
+   * --bg-primary = Couleur de fond principale
+   * --bg-secondary = Couleur de fond secondaire (plus claire/transparente)
+   * --text-primary = Couleur du texte principal (doit contraster avec bg-primary)
+   * --text-secondary = Couleur du texte secondaire (moins visible)
+   * --accent = Couleur d'accentuation (boutons, liens, éléments importants)
+   * 
+   * rgba(R, G, B, A) = Rouge, Vert, Bleu, Alpha (transparence de 0 à 1)
+   */
+  --bg-primary: var(--color-light); /* Fond principal = beige clair */
+  --bg-secondary: rgba(242, 221, 184, 0.7); /* Fond secondaire = beige 70% opaque */
+  --text-primary: var(--color-dark); /* Texte principal = gris foncé */
+  --text-secondary: rgba(57, 63, 74, 0.7); /* Texte secondaire = gris 70% opaque */
+  --accent: #4a90d9; /* Bleu vif - CHANGEZ ICI pour modifier la couleur d'accent */
+  --accent-hover: #3a80c9; /* Bleu plus foncé au survol */
   
-  /* Couleurs spécifiques au mode focus (inversées) */
-  --focus-text: var(--color-light);
-  --focus-text-secondary: rgba(242, 221, 184, 0.8);
+  /* ==================== MODE FOCUS (quand on clique sur un projet) ==================== */
+  /* 
+   * POUR DÉBUTANTS : Couleurs utilisées quand un projet est en focus
+   * 
+   * En mode focus, les couleurs sont inversées pour créer un contraste
+   * Le fond devient sombre et le texte devient clair
+   */
+  --focus-text: var(--color-light); /* Texte en mode focus = beige clair */
+  --focus-text-secondary: rgba(242, 221, 184, 0.8); /* Texte secondaire focus */
   
-  /* Navigation */
-  --nav-bg: rgba(242, 221, 184, 0.8);
-  --nav-border: rgba(57, 63, 74, 0.2);
-  --nav-text: var(--color-dark);
-  --nav-hover-bg: rgba(57, 63, 74, 0.1);
+  /* ==================== BARRE DE NAVIGATION ==================== */
+  /* 
+   * POUR DÉBUTANTS : Couleurs de la barre de navigation en haut
+   * 
+   * --nav-bg = Fond de la barre de navigation
+   * --nav-border = Couleur de la bordure
+   * --nav-text = Couleur du texte des boutons
+   * --nav-hover-bg = Fond des boutons au survol
+   * 
+   * ASTUCE : Utilisez rgba() pour des fonds semi-transparents élégants
+   */
+  --nav-bg: rgba(242, 221, 184, 0.8); /* Fond beige semi-transparent */
+  --nav-border: rgba(57, 63, 74, 0.2); /* Bordure grise très transparente */
+  --nav-text: var(--color-dark); /* Texte gris foncé */
+  --nav-hover-bg: rgba(57, 63, 74, 0.1); /* Fond gris très clair au survol */
   
-  /* Ombres */
-  --shadow-sm: 0 2px 4px rgba(57, 63, 74, 0.1);
-  --shadow-md: 0 4px 8px rgba(57, 63, 74, 0.15);
-  --shadow-lg: 0 8px 16px rgba(57, 63, 74, 0.2);
+  /* ==================== OMBRES ==================== */
+  /* 
+   * POUR DÉBUTANTS : Ombres portées pour donner de la profondeur
+   * 
+   * Format : décalage-X décalage-Y flou couleur
+   * - 0 2px = Ombre 2px vers le bas
+   * - 4px = Flou de 4 pixels
+   * - rgba(..., 0.1) = Noir avec 10% d'opacité
+   * 
+   * UTILISATION :
+   * - sm (small) = Petite ombre pour éléments légers
+   * - md (medium) = Ombre moyenne pour cartes
+   * - lg (large) = Grande ombre pour modals et overlays
+   */
+  --shadow-sm: 0 2px 4px rgba(57, 63, 74, 0.1); /* Petite ombre */
+  --shadow-md: 0 4px 8px rgba(57, 63, 74, 0.15); /* Ombre moyenne */
+  --shadow-lg: 0 8px 16px rgba(57, 63, 74, 0.2); /* Grande ombre */
   
-  /* Espacements */
-  --spacing-xs: 0.5rem;
-  --spacing-sm: 1rem;
-  --spacing-md: 2rem;
-  --spacing-lg: 4rem;
-  --spacing-xl: 6rem;
+  /* ==================== ESPACEMENTS ==================== */
+  /* 
+   * POUR DÉBUTANTS : Espacements standardisés (marges et padding)
+   * 
+   * rem = Unité relative à la taille de police de base (16px par défaut)
+   * - 1rem = 16px
+   * - 2rem = 32px
+   * 
+   * UTILISATION :
+   * - xs (extra small) = Très petit espacement
+   * - sm (small) = Petit espacement
+   * - md (medium) = Espacement moyen
+   * - lg (large) = Grand espacement
+   * - xl (extra large) = Très grand espacement
+   * 
+   * MODIFICATION : Augmentez ces valeurs pour plus d'espace, réduisez pour moins
+   */
+  --spacing-xs: 0.5rem; /* 8px - Espacement minimal */
+  --spacing-sm: 1rem; /* 16px - Petit espacement */
+  --spacing-md: 2rem; /* 32px - Espacement moyen */
+  --spacing-lg: 4rem; /* 64px - Grand espacement */
+  --spacing-xl: 6rem; /* 96px - Très grand espacement */
   
-  /* Typographie */
-  --font-heading: 'Montserrat', sans-serif;
-  --font-body: 'Inter', sans-serif;
+  /* ==================== POLICES ==================== */
+  /* 
+   * POUR DÉBUTANTS : Polices utilisées dans le projet
+   * 
+   * Format : 'Police Principale', 'Police de secours 1', 'Police de secours 2'
+   * - Si la première police ne charge pas, la suivante est utilisée
+   * - system-ui = Police système de l'appareil
+   * - sans-serif = Police sans empattement générique
+   * 
+   * MODIFICATION :
+   * - Changez 'Text Me One' par le nom de votre police
+   * - Assurez-vous d'avoir déclaré la police avec @font-face ci-dessus
+   */
+  --font-heading: 'Text Me One', system-ui, -apple-system, sans-serif; /* Police des titres */
+  --font-body: 'Text Me One', system-ui, -apple-system, sans-serif; /* Police du texte */
   
-  --font-size-xs: 0.75rem;
-  --font-size-sm: 0.875rem;
-  --font-size-base: 1rem;
-  --font-size-lg: 1.25rem;
-  --font-size-xl: 1.5rem;
-  --font-size-2xl: 2rem;
-  --font-size-3xl: 3rem;
-  --font-size-4xl: 4rem;
+  /* ==================== TAILLES DE TEXTE ==================== */
+  /* 
+   * POUR DÉBUTANTS : Tailles de police standardisées
+   * 
+   * 1rem = 16px (taille de base du navigateur)
+   * 
+   * UTILISATION :
+   * - xs = Très petit (12px) - Notes, légendes
+   * - sm = Petit (14px) - Texte secondaire
+   * - base = Normal (16px) - Texte principal
+   * - lg = Grand (20px) - Sous-titres
+   * - xl à 4xl = Très grand - Titres principaux
+   * 
+   * MODIFICATION : Multipliez toutes les valeurs par 1.2 pour agrandir tout le texte
+   */
+  --font-size-xs: 0.75rem; /* 12px - Très petit */
+  --font-size-sm: 0.875rem; /* 14px - Petit */
+  --font-size-base: 1rem; /* 16px - Taille normale */
+  --font-size-lg: 1.25rem; /* 20px - Grand */
+  --font-size-xl: 1.5rem; /* 24px - Très grand */
+  --font-size-2xl: 2rem; /* 32px - Titre */
+  --font-size-3xl: 3rem; /* 48px - Grand titre */
+  --font-size-4xl: 4rem; /* 64px - Titre héro */
   
-  --font-weight-light: 300;
-  --font-weight-normal: 400;
-  --font-weight-medium: 500;
-  --font-weight-semibold: 600;
-  --font-weight-bold: 700;
+  /* ==================== ÉPAISSEURS DE POLICE ==================== */
+  /* 
+   * POUR DÉBUTANTS : Poids du texte (finesse ou épaisseur)
+   * 
+   * Échelle de 100 (ultra-fin) à 900 (ultra-gras)
+   * 
+   * UTILISATION :
+   * - light (300) = Texte fin et élégant
+   * - normal (400) = Texte standard
+   * - medium (500) = Légèrement plus épais
+   * - semibold (600) = Semi-gras
+   * - bold (700) = Gras pour titres
+   * 
+   * NOTE : Toutes les polices ne supportent pas tous les poids
+   */
+  --font-weight-light: 300; /* Fin */
+  --font-weight-normal: 400; /* Normal */
+  --font-weight-medium: 500; /* Moyen */
+  --font-weight-semibold: 600; /* Semi-gras */
+  --font-weight-bold: 700; /* Gras */
   
-  /* Transitions */
-  --transition-fast: 0.15s ease;
-  --transition-base: 0.3s ease;
-  --transition-slow: 0.6s ease;
+  /* ==================== VITESSES D'ANIMATION ==================== */
+  /* 
+   * POUR DÉBUTANTS : Durées des transitions et animations
+   * 
+   * Format : durée type-d'animation
+   * - 0.15s = 150 millisecondes
+   * - ease = Animation qui accélère puis ralentit (naturelle)
+   * 
+   * UTILISATION :
+   * - fast = Animations rapides (hover, petits changements)
+   * - base = Animations normales (la plupart des transitions)
+   * - slow = Animations lentes (apparitions, grandes transitions)
+   * 
+   * MODIFICATION : Réduisez pour des animations plus rapides, augmentez pour plus lentes
+   */
+  --transition-fast: 0.15s ease; /* 150ms - Rapide */
+  --transition-base: 0.3s ease; /* 300ms - Normal */
+  --transition-slow: 0.6s ease; /* 600ms - Lent */
   
-  /* Border radius */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 16px;
-  --radius-full: 9999px;
+  /* ==================== ARRONDIS DES COINS ==================== */
+  /* 
+   * POUR DÉBUTANTS : Rayon de courbure des coins (border-radius)
+   * 
+   * Plus la valeur est grande, plus les coins sont arrondis
+   * 
+   * UTILISATION :
+   * - sm = Légèrement arrondi (boutons rectangulaires)
+   * - md = Moyennement arrondi (cartes)
+   * - lg = Très arrondi (modals, overlays)
+   * - full = Complètement arrondi (cercles, pilules)
+   * 
+   * MODIFICATION : Augmentez pour un style plus doux, réduisez pour plus anguleux
+   */
+  --radius-sm: 4px; /* Petit arrondi */
+  --radius-md: 8px; /* Arrondi moyen */
+  --radius-lg: 16px; /* Grand arrondi */
+  --radius-full: 9999px; /* Cercle parfait (pour width = height) */
   
-  /* Z-index */
-  --z-canvas: 0;
-  --z-content: 10;
-  --z-nav: 100;
-  --z-modal: 1000;
-  --z-theme-toggle: 1001;
+  /* ==================== ORDRE D'EMPILEMENT (Z-INDEX) ==================== */
+  /* 
+   * POUR DÉBUTANTS : Ordre de superposition des éléments
+   * 
+   * Plus le nombre est élevé, plus l'élément est au-dessus
+   * Imaginez des couches empilées comme des feuilles de papier
+   * 
+   * UTILISATION :
+   * - canvas (0) = Canvas 3D en arrière-plan
+   * - content (10) = Contenu principal
+   * - nav (100) = Navigation et indicateurs
+   * - modal (1000) = Overlays et modals
+   * - theme-toggle (1001) = Bouton de thème (toujours visible)
+   * 
+   * RÈGLE : Gardez des écarts de 10 ou 100 pour pouvoir insérer des éléments entre
+   */
+  --z-canvas: 0; /* Canvas 3D - Tout en arrière */
+  --z-content: 10; /* Contenu principal */
+  --z-nav: 100; /* Navigation */
+  --z-modal: 1000; /* Overlays */
+  --z-theme-toggle: 1001; /* Bouton de thème - Au-dessus de tout */
 }
 
-/* Dark Mode */
+/* ==================== THÈME SOMBRE ==================== */
+/* 
+ * POUR DÉBUTANTS : Couleurs utilisées en mode sombre
+ * 
+ * [data-theme="dark"] = Sélecteur activé quand l'attribut data-theme="dark" est sur <html>
+ * 
+ * PRINCIPE : Les couleurs sont inversées par rapport au mode clair
+ * - Fond clair → Fond sombre
+ * - Texte sombre → Texte clair
+ * - Les ombres deviennent plus prononcées
+ * 
+ * MODIFICATION : Ajustez ces valeurs pour personnaliser le mode sombre
+ * Les changements ici n'affectent QUE le mode sombre
+ */
 [data-theme="dark"] {
-  --bg-primary: var(--color-dark);
-  --bg-secondary: rgba(57, 63, 74, 0.7);
-  --text-primary: var(--color-light);
-  --text-secondary: rgba(242, 221, 184, 0.7);
-  --accent: #4a90d9;
-  --accent-hover: #5aa0e9;
+  /* Couleurs principales inversées */
+  --bg-primary: var(--color-dark); /* Fond principal = gris foncé */
+  --bg-secondary: rgba(57, 63, 74, 0.7); /* Fond secondaire = gris 70% opaque */
+  --text-primary: var(--color-light); /* Texte principal = beige clair */
+  --text-secondary: rgba(242, 221, 184, 0.7); /* Texte secondaire = beige 70% opaque */
+  --accent: #4a90d9; /* Même bleu que le mode clair */
+  --accent-hover: #5aa0e9; /* Bleu plus clair au survol (inverse du mode clair) */
   
-  /* Couleurs spécifiques au mode focus (inversées) */
-  --focus-text: var(--color-dark);
+  /* Mode focus inversé */
+  --focus-text: var(--color-dark); /* En mode sombre, le focus utilise du texte sombre */
   --focus-text-secondary: rgba(57, 63, 74, 0.8);
   
-  /* Navigation */
-  --nav-bg: rgba(57, 63, 74, 0.8);
-  --nav-border: rgba(242, 221, 184, 0.2);
-  --nav-text: var(--color-light);
-  --nav-hover-bg: rgba(242, 221, 184, 0.1);
+  /* Navigation en mode sombre */
+  --nav-bg: rgba(57, 63, 74, 0.8); /* Fond gris foncé semi-transparent */
+  --nav-border: rgba(242, 221, 184, 0.2); /* Bordure beige très transparente */
+  --nav-text: var(--color-light); /* Texte beige clair */
+  --nav-hover-bg: rgba(242, 221, 184, 0.1); /* Fond beige très clair au survol */
   
-  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.5);
+  /* Ombres plus prononcées en mode sombre */
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3); /* Ombre noire 30% */
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.4); /* Ombre noire 40% */
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.5); /* Ombre noire 50% */
 }
 
-/* Utilitaires globaux */
+/* ==================== CLASSES UTILITAIRES ==================== */
+/* 
+ * POUR DÉBUTANTS : Classes réutilisables dans tout le projet
+ * 
+ * Ces classes peuvent être ajoutées à n'importe quel élément HTML
+ * pour appliquer rapidement un style commun
+ */
+
+/* Conteneur centré avec largeur maximale */
 .container {
-  width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 var(--spacing-md);
+  width: 100%; /* Prend toute la largeur disponible */
+  max-width: 1200px; /* Mais ne dépasse jamais 1200px */
+  margin: 0 auto; /* Centre horizontalement */
+  padding: 0 var(--spacing-md); /* Espacement sur les côtés */
 }
 
+/* Cache visuellement mais reste accessible aux lecteurs d'écran */
+/* Utile pour l'accessibilité (textes pour malvoyants) */
 .visually-hidden {
   position: absolute;
   width: 1px;

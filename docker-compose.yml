@@ -1,0 +1,44 @@
+# =============================================================================
+# Portfolio 3D - Docker Compose
+# =============================================================================
+# Usage:
+#   Build: docker compose build
+#   Start: docker compose up -d
+#   Stop:  docker compose down
+#   Logs:  docker compose logs -f
+# =============================================================================
+
+services:
+  portfolio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: portfolio-3d:${TAG:-latest}
+    container_name: portfolio-3d
+    restart: unless-stopped
+    networks:
+      global_cloudflared:
+        ipv4_address: 10.25.10.6
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  global_cloudflared:
+    external: true

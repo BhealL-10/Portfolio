@@ -56,7 +56,6 @@ class PortfolioApp {
     
     this.aboutSectionCheckInterval = null;
     
-    console.log('🚀 Portfolio 3D V5.0 - Initializing...');
     this.init();
   }
   
@@ -109,8 +108,6 @@ class PortfolioApp {
       
       this.checkIntroOrStart();
       
-      console.log('✅ Portfolio V5.0 initialized successfully');
-      console.log('📱 Device:', this.deviceManager.getDeviceInfo());
       
     } catch (error) {
       console.error('❌ Initialization error:', error);
@@ -190,7 +187,6 @@ class PortfolioApp {
     };
     
     this.focusController.onLastShardVisited = () => {
-      console.log('🎯 Last shard visited - enabling About navigation');
       if (this.navigationBar) {
         this.navigationBar.show();
       }
@@ -205,17 +201,14 @@ class PortfolioApp {
   
   setupDeviceCallbacks() {
     this.deviceManager.onResize = (info) => {
-      console.log('📐 Window resized:', info.width, 'x', info.height);
       this.camera.onResize();
       this.renderer.onResize();
     };
     
     this.deviceManager.onOrientationChange = (info) => {
-      console.log('🔄 Orientation changed:', info.isLandscape ? 'landscape' : 'portrait');
     };
     
     this.deviceManager.onDeviceTypeChange = (info) => {
-      console.log('📱 Device type changed:', info.oldType, '→', info.newType);
     };
   }
   
@@ -223,8 +216,6 @@ class PortfolioApp {
     this.introManager = new SimpleIntroManager(this.deviceManager);
     
     if (this.introManager.shouldShowIntro()) {
-      console.log('🎬 Showing intro sequence');
-      
       this.renderer.setOpacity(0);
       
       this.introManager.onComplete = () => {
@@ -233,13 +224,11 @@ class PortfolioApp {
       
       this.introManager.start();
     } else {
-      console.log('⏭️ Skipping intro - already completed');
       this.onIntroComplete();
     }
   }
   
   onIntroComplete() {
-    console.log('✨ Intro complete - starting main experience');
     this.isIntroComplete = true;
     
     this.renderer.animateOpacity(1, 1.0);
@@ -267,7 +256,6 @@ class PortfolioApp {
       const isAboutVisible = aboutSection.classList.contains('visible');
       
       if (isAboutVisible && this.focusController && this.focusController.isFocused()) {
-        console.log('⚠️ About section visible with focus active - forcing unfocus');
         if (this.focusController.focusedShard) {
           const shard = this.focusController.focusedShard;
           this.focusController.focusedShard = null;
@@ -324,8 +312,6 @@ class PortfolioApp {
   }
   
   dispose() {
-    console.log('🧹 Disposing Portfolio app...');
-    
     this.isInitialized = false;
     
     if (this.aboutSectionCheckInterval) {

@@ -332,8 +332,6 @@ export class SimpleMirror {
   }
   
   shatterAnimation(onComplete) {
-    console.log('💥 Starting Voronoi shatter animation...');
-    
     const duration = INTRO.SHATTER_DURATION * 1000;
     const startTime = Date.now();
     const w = this.canvas.width;
@@ -416,7 +414,6 @@ export class SimpleMirror {
       if (progress < 1) {
         requestAnimationFrame(animate);
       } else {
-        console.log('✅ Voronoi shatter animation complete');
         this.remove();
         if (onComplete) onComplete();
       }

@@ -10,14 +10,9 @@ export class TimelineManager {
     this.gsap = window.gsap;
     this.isReady = !!this.gsap;
     this.activeTimelines = new Map();
-    
-    if (!this.gsap) {
-      console.warn('⚠️ GSAP not found - animations will be limited');
-    }
   }
   
   init(shards) {
-    console.log('✅ TimelineManager ready');
   }
   
   animateFocus(shard, camera, onComplete) {

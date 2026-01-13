@@ -742,3 +742,720 @@ body {
   transform: translateY(-2px);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
+
+/* ==================== SECTION INDICATOR (Points de navigation latéraux) ==================== */
+/* 
+ * POUR DÉBUTANTS : Indicateur de section avec points cliquables
+ * 
+ * .section-indicator = Conteneur fixé sur le côté droit de l'écran
+ * - position: fixed = Reste toujours visible même en scrollant
+ * - right: 24px = Distance de 24 pixels depuis le bord droit
+ * - top: 50% + transform = Centre verticalement sur l'écran
+ * - z-index = Ordre d'empilement (plus élevé = au-dessus)
+ * 
+ * .section-dot = Chaque point représentant un projet
+ * - border-radius: 50% = Forme circulaire parfaite
+ * - cursor: pointer = Indique que c'est cliquable
+ * - transition = Animation fluide lors des changements
+ * 
+ * MODIFICATION FACILE :
+ * - Changer la taille : modifier width et height de .section-dot
+ * - Changer l'espacement : modifier gap dans .section-indicator
+ * - Changer la position : modifier right et top
+ */
+.section-indicator {
+  position: fixed;
+  right: 24px; /* Distance depuis le bord droit - augmentez pour éloigner */
+  top: 50%;
+  transform: translateY(-50%); /* Centre verticalement */
+  z-index: 100; /* Au-dessus du contenu principal */
+  display: flex;
+  flex-direction: column; /* Empile les points verticalement */
+  gap: 12px; /* Espace entre chaque point - augmentez pour plus d'espace */
+}
+
+.section-dot {
+  width: 12px; /* Largeur du point - augmentez pour des points plus gros */
+  height: 12px; /* Hauteur du point - doit être égal à width pour un cercle */
+  border-radius: 50%; /* Crée la forme circulaire */
+  background: var(--text-secondary); /* Couleur par défaut (gris) */
+  cursor: pointer; /* Curseur en forme de main au survol */
+  transition: transform 0.3s, background 0.3s; /* Animation de 0.3 secondes */
+}
+
+/* Point actif (projet actuellement visible) */
+.section-dot.active {
+  background: var(--accent); /* Couleur d'accent (bleu) */
+  transform: scale(1.3); /* Agrandit de 30% */
+}
+
+/* ==================== LOADING SCREEN (Écran de chargement) ==================== */
+/* 
+ * POUR DÉBUTANTS : Écran affiché pendant le chargement initial
+ * 
+ * .loading-screen = Overlay plein écran
+ * - position: fixed = Couvre tout l'écran
+ * - z-index: 9999 = Au-dessus de tout le reste
+ * - display: flex = Permet de centrer le contenu facilement
+ * 
+ * .loading-spinner = Animation de rotation
+ * - animation: spin = Fait tourner indéfiniment
+ * - border-top-color = Seule la partie supérieure est colorée
+ * 
+ * MODIFICATION FACILE :
+ * - Changer la taille du spinner : modifier width et height
+ * - Changer la couleur : modifier border-top-color
+ * - Changer la vitesse : modifier 1s dans animation
+ */
+.loading-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%; /* Prend toute la largeur */
+  height: 100%; /* Prend toute la hauteur */
+  background: var(--bg-primary, #0a0a0a); /* Fond sombre */
+  display: flex;
+  flex-direction: column; /* Empile spinner et texte verticalement */
+  align-items: center; /* Centre horizontalement */
+  justify-content: center; /* Centre verticalement */
+  z-index: 9999; /* Au-dessus de tout */
+  transition: opacity 0.5s ease, visibility 0.5s ease; /* Fondu de 0.5s */
+}
+
+.loading-screen.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.loading-spinner {
+  width: 60px; /* Taille du cercle - augmentez pour un spinner plus grand */
+  height: 60px;
+  border: 3px solid rgba(255,255,255,0.1); /* Bordure grise transparente */
+  border-top-color: var(--accent, #4a90d9); /* Seule la partie haute est colorée */
+  border-radius: 50%; /* Forme circulaire */
+  animation: spin 1s linear infinite; /* Tourne en 1 seconde, sans fin */
+}
+
+/* Animation de rotation du spinner */
+@keyframes spin {
+  to { transform: rotate(360deg); } /* Fait un tour complet */
+}
+
+.loading-text {
+  margin-top: 20px; /* Espace au-dessus du texte */
+  color: var(--text-secondary, rgba(255,255,255,0.6)); /* Texte gris clair */
+  font-family: var(--font-body); /* Police du projet */
+}
+
+/* ==================== THEME TOGGLE (Bouton de changement de thème) ==================== */
+/* 
+ * POUR DÉBUTANTS : Bouton flottant pour basculer entre mode clair/sombre
+ * 
+ * .theme-toggle = Bouton circulaire draggable
+ * - position: fixed = Reste visible en permanence
+ * - cursor: move = Indique qu'on peut le déplacer
+ * - backdrop-filter = Effet de flou derrière le bouton
+ * - z-index: 10000 = Au-dessus de tout (même la navigation)
+ * 
+ * MODIFICATION FACILE :
+ * - Changer la taille : modifier width et height
+ * - Changer la position initiale : modifier top et right
+ * - Changer l'effet de flou : modifier backdrop-filter blur(12px)
+ * - Changer la couleur : modifier background dans variables.css
+ */
+.theme-toggle {
+  position: fixed;
+  top: 24px; /* Distance depuis le haut - modifiable */
+  right: 24px; /* Distance depuis la droite - modifiable */
+  z-index: 10000; /* Au-dessus de tout */
+  cursor: move; /* Indique qu'on peut déplacer */
+  width: 48px; /* Largeur du bouton - augmentez pour plus grand */
+  height: 48px; /* Hauteur du bouton - doit être égal à width */
+  border-radius: 50%; /* Forme circulaire parfaite */
+  border: none;
+  background: var(--bg-secondary, rgba(255,255,255,0.1)); /* Fond semi-transparent */
+  backdrop-filter: blur(12px); /* Effet de flou - augmentez pour plus de flou */
+  font-size: 22px; /* Taille de l'icône */
+  display: flex;
+  align-items: center; /* Centre l'icône horizontalement */
+  justify-content: center; /* Centre l'icône verticalement */
+  transition: transform 0.3s ease, background 0.3s ease, box-shadow 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1); /* Ombre portée */
+  color: var(--text-primary); /* Couleur de l'icône */
+}
+
+/* Effet au survol du bouton de thème */
+.theme-toggle:hover {
+  transform: scale(1.1); /* Agrandit de 10% */
+  box-shadow: 0 6px 20px rgba(0,0,0,0.15); /* Ombre plus prononcée */
+}
+
+/* Pendant le drag (déplacement) */
+.theme-toggle.dragging {
+  cursor: grabbing; /* Curseur en train de saisir */
+  transform: scale(1.05); /* Légèrement agrandi */
+}
+
+/* ==================== NAVIGATION BAR (Barre de navigation supérieure) ==================== */
+/* 
+ * POUR DÉBUTANTS : Barre de navigation en haut de l'écran
+ * 
+ * .navigation-bar = Conteneur de la barre
+ * - position: fixed = Reste en haut même en scrollant
+ * - left: 50% + transform = Centre horizontalement
+ * - backdrop-filter = Effet de flou pour transparence élégante
+ * 
+ * .nav-button = Boutons individuels (Intro, Outro)
+ * - background: transparent = Fond transparent par défaut
+ * - transition = Animation fluide au survol
+ * 
+ * MODIFICATION FACILE :
+ * - Changer la position : modifier top
+ * - Changer l'espacement des boutons : modifier gap
+ * - Changer la forme : modifier border-radius
+ * - Ajouter plus de boutons : dupliquer .nav-button dans le HTML
+ */
+.navigation-bar {
+  position: fixed;
+  top: 24px; /* Distance depuis le haut - réduisez pour plus haut */
+  left: 50%; /* Positionne au centre */
+  transform: translateX(-50%); /* Centre parfaitement */
+  z-index: 9999; /* Au-dessus du contenu */
+  display: flex;
+  gap: 12px; /* Espace entre les boutons - augmentez pour plus d'espace */
+  padding: 8px 16px; /* Espace intérieur de la barre */
+  background: var(--nav-bg); /* Couleur de fond (définie dans variables.css) */
+  border: 1px solid var(--nav-border); /* Bordure subtile */
+  border-radius: 24px; /* Coins très arrondis - réduisez pour moins arrondi */
+  backdrop-filter: blur(10px); /* Flou d'arrière-plan - augmentez pour plus de flou */
+  opacity: 0; /* Invisible par défaut */
+  pointer-events: none; /* Non cliquable par défaut */
+  transition: opacity 0.4s ease, transform 0.4s ease; /* Animation d'apparition */
+  user-select: none; /* Empêche la sélection du texte */
+}
+
+/* Navigation visible (activée par JavaScript) */
+.navigation-bar.visible {
+  opacity: 1; /* Complètement visible */
+  pointer-events: auto; /* Cliquable */
+  transform: translateX(-50%) translateY(0); /* Position normale */
+}
+
+/* Boutons de navigation individuels */
+.nav-button {
+  padding: 8px 20px; /* Espace intérieur - augmentez pour boutons plus grands */
+  background: transparent; /* Fond transparent par défaut */
+  border: none;
+  color: var(--nav-text); /* Couleur du texte */
+  font-size: 14px; /* Taille du texte - augmentez pour plus grand */
+  font-weight: 500; /* Poids moyen */
+  cursor: pointer; /* Curseur en forme de main */
+  border-radius: 16px; /* Coins arrondis */
+  transition: all 0.2s ease; /* Animation rapide */
+  font-family: var(--font-body); /* Police du projet */
+}
+
+/* Effet au survol des boutons */
+.nav-button:hover {
+  background: var(--nav-hover-bg); /* Fond coloré au survol */
+  transform: translateY(-1px); /* Légère élévation */
+}
+
+/* ==================== SHARD INFO OVERLAY (Overlay d'information des projets) ==================== */
+/* 
+ * POUR DÉBUTANTS : Panneau qui s'affiche quand on clique sur un projet
+ * 
+ * .shard-info-overlay = Conteneur principal de l'overlay
+ * .shard-info-content = Contenu à l'intérieur
+ * .shard-category = Badge de catégorie (ex: "WEB", "3D")
+ * .shard-title = Titre du projet
+ * .shard-description = Description du projet
+ * 
+ * MODIFICATION FACILE :
+ * - Changer l'espacement : modifier padding
+ * - Changer les tailles de texte : modifier font-size
+ * - Changer les couleurs : utiliser les variables CSS
+ */
+.shard-info-overlay {
+  font-family: var(--font-body);
+  color: var(--text-primary);
+}
+
+.shard-info-content {
+  background: transparent;
+  padding: 30px; /* Espace intérieur - augmentez pour plus d'espace */
+  border-radius: 20px; /* Coins arrondis */
+}
+
+[data-theme="light"] .shard-info-content {
+  background: transparent;
+}
+
+.manual-unfocus-btn {
+  display: block;
+  margin: 0 auto 15px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent);
+  color: var(--text-primary);
+  padding: 8px 20px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  font-family: inherit;
+}
+
+.manual-unfocus-btn:hover {
+  background: var(--accent);
+  color: var(--bg-primary);
+  transform: scale(1.05);
+}
+
+/* ==================== FACETTE NAVIGATION (Navigation entre facettes d'un projet) ==================== */
+/* 
+ * POUR DÉBUTANTS : Boutons pour naviguer entre les différentes vues d'un projet
+ * 
+ * .facette-nav = Conteneur avec boutons précédent/suivant
+ * .facette-prev / .facette-next = Boutons de navigation circulaires
+ * .facette-indicator = Indicateur de position (ex: "1 / 3")
+ * 
+ * MODIFICATION FACILE :
+ * - Changer l'espacement : modifier gap
+ * - Changer la taille des boutons : modifier width et height
+ * - Changer la couleur : modifier background
+ */
+.facette-nav {
+  display: flex;
+  align-items: center; /* Centre verticalement */
+  justify-content: center; /* Centre horizontalement */
+  gap: 120px; /* Espace entre les boutons - augmentez pour plus d'espace */
+  margin-bottom: 20px; /* Espace en dessous */
+}
+
+/* Boutons précédent et suivant */
+.facette-prev, .facette-next {
+  width: 40px; /* Largeur du bouton - augmentez pour plus grand */
+  height: 40px; /* Hauteur du bouton - doit être égal à width */
+  border-radius: 50%; /* Forme circulaire */
+  border: none;
+  background: rgba(74, 144, 217, 0.3); /* Bleu semi-transparent */
+  color: var(--focus-text); /* Couleur du texte */
+  cursor: pointer; /* Curseur en forme de main */
+  display: flex;
+  align-items: center; /* Centre l'icône */
+  justify-content: center;
+  transition: background 0.2s, transform 0.2s; /* Animation rapide */
+  pointer-events: auto; /* Toujours cliquable */
+}
+
+/* Effet au survol des boutons de facette */
+.facette-prev:hover, .facette-next:hover {
+  background: var(--accent); /* Bleu plein */
+  color: white; /* Texte blanc */
+  transform: scale(1.1); /* Agrandit de 10% */
+}
+
+/* Indicateur de position (ex: "2 / 4") */
+.facette-indicator {
+  font-size: 14px; /* Taille du texte */
+  font-weight: 600; /* Texte semi-gras */
+  color: var(--focus-text-secondary); /* Couleur grise */
+}
+
+/* Badge de catégorie du projet */
+.shard-category {
+  display: inline-block;
+  padding: 6px 14px; /* Espace intérieur - augmentez pour badge plus grand */
+  background: var(--accent); /* Couleur d'accent (bleu) */
+  color: white; /* Texte blanc */
+  border-radius: 20px; /* Coins très arrondis */
+  font-size: 13px; /* Taille du texte - augmentez pour plus grand */
+  font-weight: 600; /* Texte semi-gras */
+  text-transform: uppercase; /* Tout en majuscules */
+  letter-spacing: 0.5px; /* Espacement entre les lettres */
+  margin-bottom: 12px; /* Espace en dessous */
+}
+
+/* Titre du projet */
+.shard-title {
+  font-size: 28px; /* Taille du titre - augmentez pour plus grand */
+  font-weight: 700; /* Texte gras */
+  margin: 0 0 12px 0; /* Espace en dessous uniquement */
+  color: var(--focus-text); /* Couleur du texte en mode focus */
+}
+
+/* Description du projet */
+.shard-description {
+  font-size: 16px; /* Taille du texte - augmentez pour plus lisible */
+  line-height: 1.6; /* Hauteur de ligne (1.6 = 160% de la taille) */
+  color: var(--focus-text-secondary); /* Couleur grise pour texte secondaire */
+  margin: 0 0 20px 0; /* Espace en dessous */
+}
+
+/* ==================== SHARD IMAGES & SLIDESHOW ==================== */
+.shard-images {
+  margin: 15px 0 20px;
+  width: 100%;
+  min-height: 180px;
+}
+
+.shard-images:empty {
+  display: none;
+  margin: 0;
+  min-height: 0;
+}
+
+.slideshow-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+  cursor: pointer;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.shard-image {
+  width: 100%;
+  height: 180px;
+  border-radius: 10px;
+  object-fit: cover;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  display: block;
+}
+
+.slideshow-image {
+  border-radius: 0;
+}
+
+.slideshow-wrapper:hover .shard-image {
+  transform: scale(1.02);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+}
+
+.slideshow-indicator {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(0,0,0,0.7);
+  color: white;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.slideshow-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--accent);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slideshow-arrow:hover {
+  background: var(--accent);
+  color: var(--bg-primary);
+  transform: translateY(-50%) scale(1.1);
+}
+
+[data-theme="light"] .slideshow-arrow {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--accent);
+}
+
+[data-theme="light"] .slideshow-arrow:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.slideshow-arrow-left {
+  left: 10px;
+}
+
+.slideshow-arrow-right {
+  right: 10px;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.shard-images.grid-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  max-width: 400px;
+  margin: 15px auto 20px;
+}
+
+.shard-image-grid {
+  width: 100%;
+  height: 120px;
+  border-radius: 8px;
+  object-fit: cover;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  transition: all 0.3s ease;
+}
+
+.shard-image-grid:hover {
+  transform: translateY(-4px) scale(1.05);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+}
+
+/* ==================== SHARD TECHNOLOGIES & LINKS ==================== */
+.shard-technologies {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+/* Badge de technologie (ex: React, Three.js) */
+.tech-badge, .tech-tag {
+  padding: 5px 12px; /* Espace intérieur */
+  background: rgba(57, 63, 74); /* Fond gris foncé */
+  color: #F2DDB8; /* Couleur beige clair */
+  border-radius: 15px; /* Coins arrondis */
+  font-size: 13px; /* Taille du texte */
+}
+
+.shard-links {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+}
+
+/* Liens du projet (GitHub, Demo, etc.) */
+.shard-link, .project-link {
+  padding: 10px 20px; /* Espace intérieur */
+  background: var(--accent); /* Fond bleu */
+  color: white; /* Texte blanc */
+  text-decoration: none; /* Pas de soulignement */
+  border-radius: 8px; /* Coins légèrement arrondis */
+  font-weight: 600; /* Texte semi-gras */
+  font-size: 14px; /* Taille du texte */
+  transition: transform 0.2s, box-shadow 0.2s; /* Animation rapide */
+  display: inline-block;
+}
+
+/* Effet au survol des liens */
+.shard-link:hover, .project-link:hover {
+  transform: translateY(-2px); /* Légère élévation */
+  box-shadow: 0 4px 15px rgba(74, 144, 217, 0.4); /* Ombre bleue */
+}
+
+/* ==================== SCROLL INDICATOR ==================== */
+.scroll-progress {
+  width: 2px;
+  height: 40px;
+  background: var(--text-secondary);
+  border-radius: 1px;
+  position: relative;
+  overflow: hidden;
+}
+
+.scroll-progress::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  background: var(--accent);
+  animation: scrollHint 1.5s ease-in-out infinite;
+}
+
+@keyframes scrollHint {
+  0%, 100% { transform: translateY(0); opacity: 1; }
+  50% { transform: translateY(100%); opacity: 0.5; }
+}
+
+.scroll-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+}
+
+/* ==================== ABOUT & CONTACT SECTIONS ==================== */
+.about-section, .contact-section {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  background: var(--bg-primary);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+  font-family: var(--font-body);
+  overflow: hidden;
+}
+
+.about-section.visible, .contact-section.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.about-section .container, .contact-section .container {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  padding: clamp(0.75rem, 1.5vh, 1.5rem) clamp(0.75rem, 2vw, 1.5rem);
+  padding-top: clamp(3rem, 8vh, 4rem);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+.about-section h2, .contact-section h2 {
+  font-size: clamp(1rem, 2.8vh, 1.8rem);
+  font-weight: 700;
+  margin-bottom: clamp(0.5rem, 1.2vh, 0.875rem);
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.about-content {
+  width: 100%;
+  max-width: 1200px;
+  margin-bottom: clamp(0.625rem, 1.8vh, 1.25rem);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.5rem, 1.5vh, 1rem);
+}
+
+.about-text {
+  margin-bottom: clamp(0.5rem, 1.2vh, 0.875rem);
+}
+
+.about-text p {
+  font-size: clamp(0.625rem, 1.4vh, 0.8rem);
+  line-height: 1.4;
+  color: var(--text-secondary);
+  margin-bottom: clamp(0.375rem, 0.8vh, 0.5rem);
+}
+
+.skills-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: clamp(0.375rem, 1vh, 0.625rem);
+  width: 100%;
+  max-width: 1200px;
+}
+
+.skill-card {
+  background: var(--bg-secondary);
+  padding: clamp(0.5rem, 1.2vh, 0.75rem) clamp(0.375rem, 1vw, 0.625rem);
+  border-radius: clamp(6px, 0.8vh, 8px);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 0;
+}
+
+.skill-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+}
+
+.skill-card h3 {
+  font-size: clamp(0.75rem, 1.6vh, 0.9rem);
+  font-weight: 600;
+  margin-bottom: clamp(0.1875rem, 0.5vh, 0.3125rem);
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.skill-card p {
+  font-size: clamp(0.5rem, 1.2vh, 0.65rem);
+  color: var(--text-secondary);
+  line-height: 1.3;
+  margin: 0;
+}
+
+.contact-content {
+  width: 100%;
+  max-width: 600px;
+  margin-top: clamp(0.625rem, 1.2vh, 1rem);
+}
+
+.contact-content > p {
+  font-size: clamp(0.625rem, 1.4vh, 0.8rem);
+  color: var(--text-secondary);
+  margin-bottom: clamp(0.5rem, 1.2vh, 0.875rem);
+  line-height: 1.4;
+}
+
+.contact-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: clamp(0.375rem, 1vh, 0.625rem);
+}
+
+.contact-link {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.25rem, 0.6vh, 0.375rem);
+  padding: clamp(0.375rem, 1vh, 0.625rem) clamp(0.5rem, 1.5vw, 0.875rem);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  text-decoration: none;
+  border-radius: clamp(5px, 0.8vh, 8px);
+  font-weight: 500;
+  font-size: clamp(0.625rem, 1.3vh, 0.75rem);
+  transition: transform 0.3s, background 0.3s, box-shadow 0.3s;
+  white-space: nowrap;
+}
+
+.contact-link:hover {
+  transform: translateY(-2px);
+  background: var(--accent);
+  color: var(--text-primary);
+  box-shadow: 0 6px 20px rgba(74, 144, 217, 0.3);
+}
+
+.contact-link svg {
+  flex-shrink: 0;
+  width: clamp(14px, 2vh, 18px);
+  height: clamp(14px, 2vh, 18px);
+}
+
+.about-section h2[style*="margin-top"] {
+  margin-top: clamp(1.5rem, 3vh, 2.5rem) !important;
+}

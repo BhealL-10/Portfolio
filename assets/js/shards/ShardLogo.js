@@ -63,7 +63,6 @@ export class ShardLogo {
     try {
       texture = await this._loadTexture(logoPath);
     } catch (e) {
-      console.warn(`⚠️ Logo texture load failed for shard ${shardId}:`, logoPath);
       return;
     }
 
@@ -213,7 +212,6 @@ export class ShardLogo {
       try {
         texture = await this._loadTexture(newPath);
       } catch (e) {
-        console.warn(`⚠️ Theme logo load failed for shard ${shardId}:`, newPath);
         continue;
       }
 

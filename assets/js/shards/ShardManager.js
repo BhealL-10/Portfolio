@@ -24,7 +24,6 @@ export class ShardManager {
     try {
       this.shardLogo = new ShardLogo(scene, deviceManager, camera);
     } catch (e) {
-      console.warn('ShardLogo init failed:', e);
     }
     
     this.generator = new ShardGenerator(deviceManager, this.shardLogo);
@@ -50,7 +49,6 @@ export class ShardManager {
     const zSpacing = config.Z_SPACING || SHARD.Z_SPACING;
     this.totalDistance = projects.length * zSpacing;
     
-    console.log(`✅ Generated ${this.shards.length} shards with integrated logos (total distance: ${this.totalDistance})`);
     return this.shards;
   }
   

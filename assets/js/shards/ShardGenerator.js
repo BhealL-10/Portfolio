@@ -130,7 +130,6 @@ export class ShardGenerator {
       }
     }
     
-    console.log(`✅ Generated ${shards.length} shards with logos`);
     return shards;
   }
   

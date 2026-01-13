@@ -42,26 +42,9 @@ export class ThemeSwitch {
     
     const savedPosition = this.loadPosition();
     
-    this.toggleButton.style.cssText = `
-      position: fixed;
-      top: ${savedPosition.top}px;
-      right: ${savedPosition.right}px;
-      z-index: 10000;
-      cursor: move;
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      border: none;
-      background: var(--bg-secondary, rgba(255,255,255,0.1));
-      backdrop-filter: blur(12px);
-      cursor: pointer;
-      font-size: 22px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: transform 0.3s ease, background 0.3s ease, box-shadow 0.3s ease;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    `;
+    this.toggleButton.className = 'theme-toggle';
+    this.toggleButton.style.top = `${savedPosition.top}px`;
+    this.toggleButton.style.right = `${savedPosition.right}px`;
     
     this.toggleButton.addEventListener('click', (e) => e.preventDefault());
     

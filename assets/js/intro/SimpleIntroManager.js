@@ -38,8 +38,6 @@ export class SimpleIntroManager {
   }
   
   start() {
-    console.log('🎬 Starting intro with Canvas 2D...');
-    
     this.isActive = true;
     
     this.mirror = new SimpleMirror(this.deviceManager);
@@ -82,7 +80,8 @@ export class SimpleIntroManager {
       font-family: ${TYPOGRAPHY.PRIMARY_FONT};
       color: var(--text-primary, white);
       pointer-events: none;
-      opacity: 0.8;
+      opacity: 0;
+      display: none;
       transition: opacity 0.3s;
     `;
     
@@ -178,7 +177,6 @@ export class SimpleIntroManager {
   complete() {
     if (this.isTransitioning) return;
     
-    console.log('✅ Intro complete - starting transition');
     this.isTransitioning = true;
     this.isActive = false;
     
@@ -187,7 +185,6 @@ export class SimpleIntroManager {
     if (this.indicator) this.indicator.style.opacity = '0';
     
     this.mirror.shatterAnimation(() => {
-      console.log('✅ Mirror shattered - calling onComplete');
       if (this.onComplete) this.onComplete();
     });
   }

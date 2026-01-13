@@ -1,21 +1,99 @@
 /**
- * Constants.js - Configuration centralisée V5.0
- * Portfolio 3D - Architecture optimisée avec physique fluide
- * Améliorations: Mouvement 100% fluide, navigation centralisée, transitions obligatoires
+ * ==================== CONSTANTS.JS - CONFIGURATION CENTRALE ====================
+ * 
+ * GUIDE POUR DÉBUTANTS : Ce fichier contient TOUTES les valeurs de configuration du projet
+ * 
+ * POURQUOI CE FICHIER EST IMPORTANT ?
+ * - Centralise tous les paramètres en un seul endroit
+ * - Permet de modifier le comportement sans toucher au code
+ * - Facilite les ajustements et le fine-tuning
+ * 
+ * COMMENT L'UTILISER ?
+ * 1. Trouvez la section qui vous intéresse (TYPOGRAPHIE, COULEURS, SCROLL, etc.)
+ * 2. Modifiez les valeurs selon vos besoins
+ * 3. Sauvegardez - les changements s'appliquent automatiquement
+ * 
+ * ASTUCE : Commencez par de petits changements et testez immédiatement
+ * 
+ * Portfolio 3D V5.0 - Architecture optimisée avec physique fluide
  */
 
 // ==========================================
-// TYPOGRAPHIE
+// TYPOGRAPHIE (Police et tailles de texte)
 // ==========================================
+/* 
+ * POUR DÉBUTANTS : Configuration de la police et des tailles de texte
+ * 
+ * PRIMARY_FONT = Police principale utilisée partout dans le projet
+ * - Correspond à la police définie dans variables.css
+ * - Les polices de secours (system-ui, etc.) sont utilisées si la principale ne charge pas
+ * 
+ * FONT_WEIGHTS = Épaisseurs de police disponibles
+ * - LIGHT (300) = Texte fin
+ * - REGULAR (400) = Texte normal
+ * - MEDIUM (500) = Légèrement plus épais
+ * - SEMIBOLD (600) = Semi-gras
+ * - BOLD (700) = Gras
+ * 
+ * SCALE = Échelle de tailles de texte en pixels
+ * - XS à HERO = Du plus petit au plus grand
+ * - Utilisé pour les titres 3D et les textes dynamiques
+ * 
+ * MODIFICATION FACILE :
+ * - Changez PRIMARY_FONT si vous changez de police
+ * - Multipliez toutes les valeurs de SCALE par 1.2 pour agrandir tous les textes
+ */
 export const TYPOGRAPHY = {
-  PRIMARY_FONT: "'Quicksand', 'Comfortaa', system-ui, -apple-system, sans-serif",
-  FONT_WEIGHTS: { LIGHT: 300, REGULAR: 400, MEDIUM: 500, SEMIBOLD: 600, BOLD: 700 },
-  SCALE: { XS: 11, SM: 13, BASE: 16, MD: 18, LG: 22, XL: 28, XXL: 36, HERO: 52 }
+  PRIMARY_FONT: "'Text Me One', system-ui, -apple-system, sans-serif", // Police principale
+  FONT_WEIGHTS: { 
+    LIGHT: 300,      // Texte fin
+    REGULAR: 400,    // Texte normal
+    MEDIUM: 500,     // Légèrement épais
+    SEMIBOLD: 600,   // Semi-gras
+    BOLD: 700        // Gras
+  },
+  SCALE: { 
+    XS: 11,      // Très petit texte
+    SM: 13,      // Petit texte
+    BASE: 16,    // Taille normale
+    MD: 18,      // Moyen
+    LG: 22,      // Grand
+    XL: 28,      // Très grand
+    XXL: 36,     // Extra grand
+    HERO: 52     // Titre héro (le plus grand)
+  }
 };
 
 // ==========================================
-// INTRO (Canvas 2D)
+// INTRO (Séquence d'introduction Canvas 2D)
 // ==========================================
+/* 
+ * POUR DÉBUTANTS : Configuration de l'animation d'introduction
+ * 
+ * Cette section contrôle l'effet de miroir brisé au démarrage
+ * 
+ * LOGO = Chemins vers les logos et leurs dimensions
+ * - DARK/LIGHT = Logos pour mode sombre/clair
+ * - WIDTH/HEIGHT = Taille du logo en pixels
+ * - RESPONSIVE = Ajustements automatiques selon la taille d'écran
+ * 
+ * HERO_TEXT = Texte principal affiché ("Portfolio")
+ * HERO_SUBTITLE = Sous-titre (votre nom)
+ * 
+ * CELLS_PER_CLICK = Nombre de fractures créées par clic
+ * - Augmentez pour plus de fractures par clic
+ * 
+ * DESTRUCTION_THRESHOLD = Nombre de cellules avant fin de l'intro
+ * - Réduisez pour une intro plus courte (ex: 50)
+ * - Augmentez pour une intro plus longue (ex: 150)
+ * 
+ * FADE_DURATION = Durée du fondu en secondes
+ * SHATTER_DURATION = Durée de l'effet d'éclatement
+ * 
+ * MODIFICATION FACILE :
+ * - Changez DESTRUCTION_THRESHOLD pour contrôler la durée de l'intro
+ * - Modifiez CELLS_PER_CLICK pour rendre l'intro plus rapide/lente
+ */
 export const INTRO = {
   LOGO: {
     DARK: "assets/images/Logo/logomodedark.svg",
@@ -28,7 +106,7 @@ export const INTRO = {
     }
   },
   HERO_TEXT: "Portfolio",
-  HERO_SUBTITLE: "Bilel (El Ouaer) Kharbouche",
+  HERO_SUBTITLE: "Bilel (Kharbouche) El Ouaer",
   CELLS_PER_CLICK: 8,
   CELL_SPREAD: 150,
   FRACTURE_DETECTION_RADIUS: 120,
@@ -49,14 +127,38 @@ export const INTRO = {
 };
 
 // ==========================================
-// SCROLL VIRTUEL - Optimisé pour fluidité
+// SCROLL VIRTUEL (Navigation dans les projets)
 // ==========================================
+/* 
+ * POUR DÉBUTANTS : Configuration du défilement virtuel
+ * 
+ * Le scroll virtuel permet de naviguer entre les projets 3D de manière fluide
+ * 
+ * SPEED = Vitesse de défilement (0.0006 = lent et fluide)
+ * - Augmentez pour défiler plus vite (ex: 0.001)
+ * - Réduisez pour défiler plus lentement (ex: 0.0003)
+ * 
+ * TOUCH_MULTIPLIER = Multiplicateur pour écrans tactiles
+ * - Plus élevé = défilement plus rapide au doigt
+ * 
+ * MIN/MAX = Limites du scroll (0 = début, 1.2 = fin avec section About)
+ * 
+ * SMOOTHING = Lissage du mouvement (0.06 = très fluide)
+ * - Plus petit = plus fluide mais plus lent à réagir
+ * - Plus grand = plus réactif mais moins fluide
+ * 
+ * ABOUT_SECTION_THRESHOLD = Position où la section About apparaît (1.0 = à la fin)
+ * 
+ * MODIFICATION FACILE :
+ * - Changez SPEED pour ajuster la vitesse de navigation
+ * - Ajustez SMOOTHING pour modifier la fluidité
+ */
 export const SCROLL = {
-  SPEED: 0.0006,
-  TOUCH_MULTIPLIER: 2.5,
-  MIN: 0,
-  MAX: 1.2,
-  SMOOTHING: 0.06,
+  SPEED: 0.0006,              // Vitesse de base - MODIFIEZ ICI pour changer la vitesse
+  TOUCH_MULTIPLIER: 2.5,      // Multiplicateur tactile
+  MIN: 0,                     // Début du scroll
+  MAX: 1.2,                   // Fin du scroll (inclut section About)
+  SMOOTHING: 0.06,            // Lissage - MODIFIEZ ICI pour la fluidité
   SUB_STEPS_PER_SHARD: 5,
   SUB_STEP_THRESHOLDS: { APPROACHING: 0.2, ENTERING: 0.4, CENTERED: 0.6, LEAVING: 0.8, EXITING: 1.0 },
   SECTION_TRANSITION: 0.4,
@@ -70,17 +172,45 @@ export const SCROLL = {
 };
 
 // ==========================================
-// CAMÉRA - Mouvement 100% fluide
+// CAMÉRA (Point de vue 3D)
 // ==========================================
+/* 
+ * POUR DÉBUTANTS : Configuration de la caméra 3D
+ * 
+ * La caméra détermine ce que vous voyez et comment vous le voyez
+ * 
+ * INITIAL_Z = Position de départ de la caméra (-100 = reculée)
+ * POST_INTRO_START_Z = Position après l'intro
+ * 
+ * FOV (Field of View) = Angle de vision en degrés
+ * - 55° = Vue normale (comme l'œil humain)
+ * - Plus petit = Vue téléobjectif (zoom)
+ * - Plus grand = Vue grand angle (fish-eye)
+ * 
+ * DISTANCE_FROM_SHARD = Distance entre caméra et projet actuel
+ * - Augmentez pour voir de plus loin (ex: 30)
+ * - Réduisez pour voir de plus près (ex: 20)
+ * 
+ * LOOK_AHEAD = Anticipation du mouvement
+ * - La caméra regarde légèrement vers l'avant
+ * 
+ * SMOOTHING = Fluidité du mouvement de caméra
+ * - Plus petit = plus fluide (ex: 0.05)
+ * - Plus grand = plus réactif (ex: 0.12)
+ * 
+ * MODIFICATION FACILE :
+ * - Changez FOV pour modifier l'angle de vue
+ * - Ajustez DISTANCE_FROM_SHARD pour voir les projets de plus près/loin
+ */
 export const CAMERA = {
-  INITIAL_Z: -100,
-  POST_INTRO_START_Z: -150,
-  FOV: 55,
-  NEAR: 0.1,
-  FAR: 3000,
-  SMOOTHING: 0.08,
-  DISTANCE_FROM_SHARD: 25,
-  LOOK_AHEAD: 20,
+  INITIAL_Z: -100,            // Position initiale
+  POST_INTRO_START_Z: -150,   // Position après intro
+  FOV: 55,                    // Angle de vision - MODIFIEZ ICI pour changer la perspective
+  NEAR: 0.1,                  // Distance minimale de rendu
+  FAR: 3000,                  // Distance maximale de rendu
+  SMOOTHING: 0.08,            // Fluidité du mouvement
+  DISTANCE_FROM_SHARD: 25,    // Distance du projet - MODIFIEZ ICI pour zoomer/dézoomer
+  LOOK_AHEAD: 20,             // Anticipation
   CONTINUOUS_MOVEMENT: { ENABLED: true, EASE_FACTOR: 0.08, ANTICIPATION: 0.3 },
   RESPONSIVE: {
     MOBILE: { FOV: 65, DISTANCE_FROM_SHARD: 28, LOOK_AHEAD: 12, SMOOTHING: 0.1 },
@@ -90,12 +220,41 @@ export const CAMERA = {
 };
 
 // ==========================================
-// SHARDS - Paramètres optimisés sans tremblements
+// SHARDS (Projets 3D flottants)
 // ==========================================
+/* 
+ * POUR DÉBUTANTS : Configuration des shards (fragments 3D représentant vos projets)
+ * 
+ * Les shards sont les objets 3D qui flottent et tournent dans l'espace
+ * 
+ * BASE_SCALE = Taille de base des shards
+ * - Augmentez pour des projets plus grands (ex: 2.5)
+ * - Réduisez pour des projets plus petits (ex: 1.8)
+ * 
+ * Z_SPACING = Distance entre chaque projet en profondeur
+ * - Plus grand = projets plus espacés (ex: 80)
+ * - Plus petit = projets plus rapprochés (ex: 40)
+ * 
+ * ORBIT = Mouvement orbital des shards
+ * - RADIUS_X/Y = Rayon de l'orbite horizontale/verticale
+ * - SPEED = Vitesse de rotation (0.15 = lent)
+ * - Augmentez RADIUS pour orbites plus larges
+ * 
+ * STATES = États visuels des shards
+ * - IDLE = Au repos (loin)
+ * - CURRENT = Projet actuel (au centre)
+ * - HOVER = Survol avec la souris
+ * - FOCUS = Projet sélectionné (agrandi)
+ * 
+ * MODIFICATION FACILE :
+ * - Changez BASE_SCALE pour la taille globale
+ * - Ajustez Z_SPACING pour l'espacement entre projets
+ * - Modifiez ORBIT.RADIUS_X/Y pour l'amplitude du mouvement
+ */
 export const SHARD = {
-  GEOMETRY_DETAIL: 1,
-  BASE_SCALE: 2.2,
-  Z_SPACING: 60,
+  GEOMETRY_DETAIL: 1,         // Détail de la géométrie (1 = normal)
+  BASE_SCALE: 2.2,            // Taille de base - MODIFIEZ ICI pour changer la taille
+  Z_SPACING: 60,              // Espacement entre projets - MODIFIEZ ICI pour l'espacement
   INFINITE_LOOP: { ENABLED: true, BUFFER_COUNT: 3, WRAP_DISTANCE: 600 },
   ORBIT: {
     RADIUS_X: 12,
@@ -255,29 +414,77 @@ export const ANIMATION = {
 };
 
 // ==========================================
-// COULEURS
+// COULEURS (Palette de couleurs du projet)
 // ==========================================
+/* 
+ * POUR DÉBUTANTS : Couleurs principales utilisées dans le JavaScript
+ * 
+ * Ces couleurs doivent correspondre à celles définies dans variables.css
+ * 
+ * Format HEX = #RRGGBB (Rouge, Vert, Bleu en hexadécimal)
+ * Format RGB = 'R, G, B' (Rouge, Vert, Bleu en décimal)
+ * 
+ * LIGHT = Couleur beige clair (mode clair)
+ * DARK = Couleur gris foncé (mode sombre)
+ * ACCENT = Couleur d'accentuation (bleu)
+ * 
+ * MODIFICATION FACILE :
+ * - Changez ces valeurs pour modifier les couleurs du site
+ * - Utilisez un color picker : https://htmlcolorcodes.com/
+ * - IMPORTANT : Changez aussi les couleurs dans variables.css pour la cohérence
+ * 
+ * EXEMPLE :
+ * Pour un thème vert :
+ * - LIGHT_HEX: '#E8F5E9' (vert clair)
+ * - DARK_HEX: '#1B5E20' (vert foncé)
+ * - ACCENT: '#4CAF50' (vert vif)
+ */
 export const COLORS = {
-  LIGHT_HEX: '#F2DDB8',
-  LIGHT_RGB: '242, 221, 184',
-  DARK_HEX: '#393F4A',
-  DARK_RGB: '57, 63, 74',
-  TITLE_TEXT: '#2d2d2d',
-  ACCENT: '#4a90d9'
+  LIGHT_HEX: '#F2DDB8',       // Beige clair - MODIFIEZ pour changer la couleur claire
+  LIGHT_RGB: '242, 221, 184', // Même couleur en format RGB
+  DARK_HEX: '#393F4A',        // Gris foncé - MODIFIEZ pour changer la couleur sombre
+  DARK_RGB: '57, 63, 74',     // Même couleur en format RGB
+  TITLE_TEXT: '#2d2d2d',      // Gris très foncé pour titres
+  ACCENT: '#4a90d9'           // Bleu d'accent - MODIFIEZ pour changer la couleur d'accent
 };
 
 // ==========================================
-// DEVICE RESPONSIVE
+// DEVICE RESPONSIVE (Adaptation aux écrans)
 // ==========================================
+/* 
+ * POUR DÉBUTANTS : Points de rupture pour le design responsive
+ * 
+ * Les breakpoints définissent à quelles largeurs d'écran le design change
+ * 
+ * BREAKPOINTS = Largeurs en pixels où le design s'adapte
+ * - MOBILE_SMALL (375px) = Petits téléphones (iPhone SE)
+ * - MOBILE (576px) = Téléphones standards
+ * - TABLET (768px) = Tablettes portrait (iPad)
+ * - TABLET_LANDSCAPE (992px) = Tablettes paysage
+ * - DESKTOP (1200px) = Ordinateurs
+ * - DESKTOP_LARGE (1440px) = Grands écrans
+ * - DESKTOP_XL (1920px) = Écrans Full HD et plus
+ * 
+ * Le système détecte automatiquement la taille d'écran et ajuste :
+ * - Taille des shards
+ * - Distance de la caméra
+ * - Vitesse de scroll
+ * - Taille des textes
+ * - Espacement des éléments
+ * 
+ * MODIFICATION FACILE :
+ * - Ces valeurs sont standards, ne les changez que si nécessaire
+ * - Testez sur différents appareils après modification
+ */
 export const DEVICE = {
   BREAKPOINTS: {
-    MOBILE_SMALL: 375,
-    MOBILE: 576,
-    TABLET: 768,
-    TABLET_LANDSCAPE: 992,
-    DESKTOP: 1200,
-    DESKTOP_LARGE: 1440,
-    DESKTOP_XL: 1920
+    MOBILE_SMALL: 375,      // Petits téléphones
+    MOBILE: 576,            // Téléphones standards
+    TABLET: 768,            // Tablettes portrait
+    TABLET_LANDSCAPE: 992,  // Tablettes paysage
+    DESKTOP: 1200,          // Ordinateurs
+    DESKTOP_LARGE: 1440,    // Grands écrans
+    DESKTOP_XL: 1920        // Écrans Full HD+
   },
   ASPECT_RATIOS: { PORTRAIT: 0.75, SQUARE: 1.0, LANDSCAPE: 1.33, WIDE: 1.78, ULTRAWIDE: 2.35 },
   FOCUS: {
@@ -383,12 +590,34 @@ export const CATEGORIES = {
 };
 
 // ==========================================
-// UI
+// UI (Interface utilisateur)
 // ==========================================
+/* 
+ * POUR DÉBUTANTS : Configuration de l'interface utilisateur
+ * 
+ * INFO_OVERLAY = Panneau d'information qui s'affiche quand on clique sur un projet
+ * - FADE_DURATION = Durée de l'animation d'apparition (0.35s)
+ * - MAX_WIDTH = Largeur maximale du panneau en pixels
+ * 
+ * SECTIONS = Sections About et Contact
+ * - FADE_IN_DURATION = Durée d'apparition
+ * - FADE_OUT_DURATION = Durée de disparition
+ * - SCROLL_THRESHOLD = Position où elles apparaissent (1.0 = à la fin)
+ * 
+ * INDICATORS = Points de navigation sur le côté
+ * - DOT_SIZE = Taille des points en pixels
+ * - DOT_GAP = Espace entre les points
+ * - ACTIVE_SCALE = Agrandissement du point actif (1.4 = 40% plus grand)
+ * 
+ * MODIFICATION FACILE :
+ * - Changez MAX_WIDTH pour un panneau plus large/étroit
+ * - Ajustez DOT_SIZE pour des indicateurs plus visibles
+ * - Modifiez FADE_DURATION pour des animations plus rapides/lentes
+ */
 export const UI = {
   INFO_OVERLAY: {
-    FADE_DURATION: 0.35,
-    MAX_WIDTH: 550,
+    FADE_DURATION: 0.35,    // Durée d'animation du panneau
+    MAX_WIDTH: 550,         // Largeur max du panneau - MODIFIEZ ICI
     RESPONSIVE: {
       MOBILE: { MAX_WIDTH: '90vw', PADDING: 20 },
       TABLET: { MAX_WIDTH: 450, PADDING: 25 },
