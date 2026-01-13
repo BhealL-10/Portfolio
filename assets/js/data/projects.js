@@ -1,6 +1,6 @@
 /**
- * Projects.js - Données des 10 projets avec 3 facettes chacun
- * Portfolio 3D V4.0
+ * Projects.js - Données des 10 projets avec 3 facettes V5.0
+ * Portfolio 3D
  */
 
 export const projects = [
@@ -8,7 +8,7 @@ export const projects = [
     id: 1,
     title: "Présentation",
     facettes: [
-      { id: 1, title: "Moi", category: "presentation", description: "Développeur créatif passionné par l'innovation", longDescription: "Je suis un développeur full-stack avec une passion pour les expériences interactives et immersives.", technologies: ["JavaScript", "Three.js", "React", "Node.js", "Creative Coding"], images: ["assets/images/projects/placeholder.svg"], links: { github: "https://github.com/votre-username", demo: null, video: null }, featured: true },
+      { id: 1, title: "Moi", category: "presentation", description: "Développeur créatif passionné par l'innovation", longDescription: "Je suis un développeur full-stack avec une passion pour les expériences interactives et immersives.", technologies: ["JavaScript", "Three.js", "React", "Node.js", "Creative Coding"], images: ["assets/images/projects/placeholder.svg", "assets/images/projects/placeholder.svg"], links: { github: "https://github.com/votre-username", demo: null, video: null }, featured: true },
       { id: 2, title: "Compétences", category: "skills", description: "Stack technique et expertise", longDescription: "Maîtrise du développement front-end et back-end, avec une spécialisation en WebGL.", technologies: ["WebGL", "GSAP", "Ruby on Rails", "PostgreSQL", "Docker"], images: ["assets/images/projects/placeholder.svg"], links: { github: null, demo: null, video: null }, featured: false },
       { id: 3, title: "Contact", category: "contact", description: "Travaillons ensemble", longDescription: "Disponible pour des projets freelance, des collaborations créatives ou des opportunités d'emploi.", technologies: ["Email", "LinkedIn", "GitHub", "Discord"], images: ["assets/images/projects/placeholder.svg"], links: { github: "https://github.com/votre-username", demo: "mailto:contact@example.com", video: null }, featured: false }
     ],

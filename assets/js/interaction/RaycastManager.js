@@ -1,6 +1,6 @@
 /**
- * RaycastManager.js - Gestion du raycasting
- * Portfolio 3D V4.0
+ * RaycastManager.js - Gestion du raycasting V5.0
+ * Portfolio 3D - Interactions responsive optimisées
  */
 
 import * as THREE from 'three';
@@ -16,6 +16,7 @@ export class RaycastManager {
     this.onShardClick = null;
     this.onShardClickLeft = null;
     this.onShardClickRight = null;
+    this.onShardClickInFocus = null;
     this.onShardDragStart = null;
     this.onShardDrag = null;
     this.onShardDragEnd = null;
@@ -72,9 +73,7 @@ export class RaycastManager {
   
   onMouseMove(event) {
     const mirrorCanvas = document.getElementById('mirror-canvas');
-    if (mirrorCanvas && mirrorCanvas.style.display !== 'none') {
-      return;
-    }
+    if (mirrorCanvas && mirrorCanvas.style.display !== 'none') return;
     
     this.updateMouse(event.clientX, event.clientY);
     
@@ -92,15 +91,11 @@ export class RaycastManager {
       
       if (intersect) {
         if (this.lastHoveredShard !== intersect.object) {
-          if (this.onShardHover) {
-            this.onShardHover(intersect.object);
-          }
+          if (this.onShardHover) this.onShardHover(intersect.object);
           this.lastHoveredShard = intersect.object;
         }
       } else {
-        if (this.lastHoveredShard && this.onShardHover) {
-          this.onShardHover(null);
-        }
+        if (this.lastHoveredShard && this.onShardHover) this.onShardHover(null);
         this.lastHoveredShard = null;
       }
     }
@@ -110,9 +105,7 @@ export class RaycastManager {
     if (event.button !== 0) return;
     
     const mirrorCanvas = document.getElementById('mirror-canvas');
-    if (mirrorCanvas && mirrorCanvas.style.display !== 'none') {
-      return;
-    }
+    if (mirrorCanvas && mirrorCanvas.style.display !== 'none') return;
     
     this.updateMouse(event.clientX, event.clientY);
     const intersect = this.raycast();
@@ -128,9 +121,7 @@ export class RaycastManager {
     if (event.button !== 0) return;
     
     const mirrorCanvas = document.getElementById('mirror-canvas');
-    if (mirrorCanvas && mirrorCanvas.style.display !== 'none') {
-      return;
-    }
+    if (mirrorCanvas && mirrorCanvas.style.display !== 'none') return;
     
     const dragDuration = Date.now() - this.dragStartTime;
     
@@ -138,25 +129,20 @@ export class RaycastManager {
       if (dragDuration < this.dragThreshold) {
         this.endDrag();
         const intersect = this.raycast();
-        if (intersect) {
-          this.handleShardClick(intersect.object, event.clientX, event.clientY);
-        }
+        if (intersect) this.handleShardClick(intersect.object, event.clientX, event.clientY, event);
       } else {
         this.endDrag();
       }
     } else {
       const target = event.target;
-      if (target && (target.classList.contains('theme-toggle') || target.closest('.theme-toggle'))) {
-        return;
-      }
+      if (target && (target.classList.contains('theme-toggle') || target.closest('.theme-toggle'))) return;
+      if (target && (target.closest('.shard-images') || target.closest('.slideshow-wrapper') || target.closest('.shard-info-overlay'))) return;
       
       const intersect = this.raycast();
       if (intersect) {
-        this.handleShardClick(intersect.object, event.clientX, event.clientY);
+        this.handleShardClick(intersect.object, event.clientX, event.clientY, event);
       } else {
-        if (this.onBackgroundClick) {
-          this.onBackgroundClick();
-        }
+        if (this.onBackgroundClick) this.onBackgroundClick();
       }
     }
   }
@@ -165,11 +151,15 @@ export class RaycastManager {
     if (event.touches.length !== 1) return;
     
     const mirrorCanvas = document.getElementById('mirror-canvas');
-    if (mirrorCanvas && mirrorCanvas.style.display !== 'none') {
-      return;
-    }
+    if (mirrorCanvas && mirrorCanvas.style.display !== 'none') return;
     
     const touch = event.touches[0];
+    const target = event.target;
+    
+    // Ignorer si clic sur theme toggle ou shard-images
+    if (target && (target.classList.contains('theme-toggle') || target.closest('.theme-toggle'))) return;
+    if (target && (target.closest('.shard-images') || target.closest('.slideshow-wrapper') || target.closest('.shard-info-overlay'))) return;
+    
     this.updateMouse(touch.clientX, touch.clientY);
     
     const intersect = this.raycast();
@@ -183,9 +173,7 @@ export class RaycastManager {
   
   onTouchMove(event) {
     const mirrorCanvas = document.getElementById('mirror-canvas');
-    if (mirrorCanvas && mirrorCanvas.style.display !== 'none') {
-      return;
-    }
+    if (mirrorCanvas && mirrorCanvas.style.display !== 'none') return;
     
     if (!this.isDragging || event.touches.length !== 1) return;
     
@@ -198,9 +186,7 @@ export class RaycastManager {
       this.onShardDragFocus(this.draggedShard, deltaX);
     } else {
       const worldPos = this.getWorldPosition();
-      if (this.onShardDrag) {
-        this.onShardDrag(this.draggedShard, worldPos);
-      }
+      if (this.onShardDrag) this.onShardDrag(this.draggedShard, worldPos);
     }
     
     event.preventDefault();
@@ -208,6 +194,11 @@ export class RaycastManager {
   
   onTouchEnd(event) {
     const dragDuration = Date.now() - this.dragStartTime;
+    const target = event.target;
+    
+    // Ignorer si clic sur theme toggle ou shard-images
+    if (target && (target.classList.contains('theme-toggle') || target.closest('.theme-toggle'))) return;
+    if (target && (target.closest('.shard-images') || target.closest('.slideshow-wrapper') || target.closest('.shard-info-overlay'))) return;
     
     if (this.isDragging) {
       if (dragDuration < this.dragThreshold) {
@@ -215,7 +206,7 @@ export class RaycastManager {
         this.endDrag();
         if (shard) {
           const touch = event.changedTouches[0];
-          this.handleShardClick(shard, touch.clientX, touch.clientY);
+          this.handleShardClick(shard, touch.clientX, touch.clientY, event);
         }
       } else {
         this.endDrag();
@@ -226,11 +217,9 @@ export class RaycastManager {
       
       const intersect = this.raycast();
       if (intersect) {
-        this.handleShardClick(intersect.object, touch.clientX, touch.clientY);
+        this.handleShardClick(intersect.object, touch.clientX, touch.clientY, event);
       } else {
-        if (this.onBackgroundClick) {
-          this.onBackgroundClick();
-        }
+        if (this.onBackgroundClick) this.onBackgroundClick();
       }
     }
   }
@@ -265,13 +254,20 @@ export class RaycastManager {
     this.dragStartX = 0;
   }
   
-  handleShardClick(shard, clientX, clientY) {
+  handleShardClick(shard, clientX, clientY, event) {
     const screenCenterX = window.innerWidth / 2;
     const clickSide = clientX < screenCenterX ? 'left' : 'right';
     
-    if (this.onShardClick) {
-      this.onShardClick(shard, clickSide);
+    if (shard.userData.isFocused && this.onShardClickInFocus) {
+      const target = event?.target;
+      if (target && (target.closest('.slideshow-arrow') || target.closest('.shard-image-grid'))) {
+        return;
+      }
+      this.onShardClickInFocus(shard, clickSide);
+      return;
     }
+    
+    if (this.onShardClick) this.onShardClick(shard, clickSide);
     
     if (clickSide === 'left' && this.onShardClickLeft) {
       this.onShardClickLeft(shard);

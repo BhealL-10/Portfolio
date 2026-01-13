@@ -1,22 +1,31 @@
 /**
- * ShardGenerator.js - Génération des shards
- * Portfolio 3D V4.0
+ * ShardGenerator.js - Génération des shards V5.0
+ * Portfolio 3D - Génération responsive optimisée
  */
 
 import * as THREE from 'three';
 import { SHARD, THEME } from '../config/constants.js';
 
 export class ShardGenerator {
-  constructor() {
+  constructor(deviceManager) {
+    this.deviceManager = deviceManager;
     this.isDarkMode = document.documentElement.dataset.theme === 'dark';
     this.generatedCount = 0;
   }
   
+  getShardConfig() {
+    if (this.deviceManager) {
+      return this.deviceManager.getShardConfig();
+    }
+    return SHARD.RESPONSIVE.DESKTOP;
+  }
+  
   generateShard(project, index) {
-    const geometry = new THREE.IcosahedronGeometry(
-      SHARD.BASE_SCALE,
-      SHARD.GEOMETRY_DETAIL
-    );
+    const config = this.getShardConfig();
+    const baseScale = config.BASE_SCALE || SHARD.BASE_SCALE;
+    const zSpacing = config.Z_SPACING || SHARD.Z_SPACING;
+    
+    const geometry = new THREE.IcosahedronGeometry(baseScale, SHARD.GEOMETRY_DETAIL);
     
     const theme = this.isDarkMode ? THEME.DARK : THEME.LIGHT;
     const material = new THREE.MeshStandardMaterial({
@@ -32,19 +41,17 @@ export class ShardGenerator {
     
     const shard = new THREE.Mesh(geometry, material);
     
-    const fixedZ = (index * SHARD.Z_SPACING) - SHARD.Z_SPACING;
-    
+    const fixedZ = (index * zSpacing) - zSpacing;
     const initialOrbitAngle = Math.random() * Math.PI * 2;
     
-    const scrollProgress = 0;
-    const shardScrollPosition = index / 10;
-    const distanceFromScroll = Math.abs(scrollProgress - shardScrollPosition);
-    const baseOrbitMultiplier = 0.3;
-    const maxOrbitMultiplier = 3.0;
-    const initialOrbitMultiplier = baseOrbitMultiplier + (distanceFromScroll * (maxOrbitMultiplier - baseOrbitMultiplier) * SHARD.ORBIT.DISTANCE_MULTIPLIER);
+    const orbitConfig = config.ORBIT || SHARD.ORBIT;
+    const radiusX = orbitConfig.RADIUS_X || SHARD.ORBIT.RADIUS_X;
+    const radiusY = orbitConfig.RADIUS_Y || SHARD.ORBIT.RADIUS_Y;
     
-    const initialX = Math.cos(initialOrbitAngle) * SHARD.ORBIT.RADIUS_X * initialOrbitMultiplier;
-    const initialY = Math.sin(initialOrbitAngle) * SHARD.ORBIT.RADIUS_Y * initialOrbitMultiplier;
+    const initialOrbitMultiplier = 0.5 + Math.random() * 0.5;
+    
+    const initialX = Math.cos(initialOrbitAngle) * radiusX * initialOrbitMultiplier;
+    const initialY = Math.sin(initialOrbitAngle) * radiusY * initialOrbitMultiplier;
     
     shard.position.set(initialX, initialY, fixedZ);
     
@@ -74,12 +81,13 @@ export class ShardGenerator {
       
       velocity: new THREE.Vector2(0, 0),
       isDragging: false,
+      wasRecentlyDragged: false,
       
       isFocused: false,
       focusZOffset: 0,
       
       orbitAngle: initialOrbitAngle,
-      orbitSpeed: SHARD.ORBIT.SPEED * (0.7 + Math.random() * SHARD.ORBIT.VARIATION),
+      orbitSpeed: SHARD.ORBIT.SPEED * (0.8 + Math.random() * SHARD.ORBIT.VARIATION),
       
       rotationSpeed: {
         x: SHARD.ROTATION.SPEED_X * (0.6 + Math.random() * 0.8),
@@ -87,11 +95,7 @@ export class ShardGenerator {
         z: SHARD.ROTATION.SPEED_Z * (0.6 + Math.random() * 0.8)
       },
       
-      baseScale: new THREE.Vector3(
-        SHARD.BASE_SCALE,
-        SHARD.BASE_SCALE,
-        SHARD.BASE_SCALE
-      ),
+      baseScale: new THREE.Vector3(baseScale, baseScale, baseScale),
       
       originalRotation: null,
       originalPosition: null,
@@ -101,7 +105,7 @@ export class ShardGenerator {
       wrapOffset: 0
     };
     
-    const idleScale = SHARD.STATES.IDLE.scale * SHARD.BASE_SCALE;
+    const idleScale = SHARD.STATES.IDLE.scale * baseScale;
     shard.scale.set(idleScale, idleScale, idleScale);
     
     this.generatedCount++;
@@ -123,10 +127,7 @@ export class ShardGenerator {
   }
   
   updateShardTheme(shard, isDarkMode) {
-    if (shard.userData.isFocused) {
-      console.log('⏭️ Skipping theme update for focused shard');
-      return;
-    }
+    if (shard.userData.isFocused) return;
     
     const theme = isDarkMode ? THEME.DARK : THEME.LIGHT;
     
@@ -136,7 +137,9 @@ export class ShardGenerator {
   }
   
   getTotalDistance(shardCount) {
-    return shardCount * SHARD.Z_SPACING;
+    const config = this.getShardConfig();
+    const zSpacing = config.Z_SPACING || SHARD.Z_SPACING;
+    return shardCount * zSpacing;
   }
   
   disposeShard(shard) {

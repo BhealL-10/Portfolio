@@ -1,11 +1,14 @@
 /**
- * NavigationBar.js - Barre de navigation Accueil/About
- * Portfolio 3D V4.0
+ * NavigationBar.js - Barre de navigation V5.0
+ * Portfolio 3D - Navigation responsive
  */
 
+import { TYPOGRAPHY } from '../config/constants.js';
+
 export class NavigationBar {
-  constructor(scrollManager) {
+  constructor(scrollManager, deviceManager) {
     this.scrollManager = scrollManager;
+    this.deviceManager = deviceManager;
     this.navBar = null;
     this.isVisible = false;
     
@@ -33,6 +36,7 @@ export class NavigationBar {
       transition: opacity 0.4s ease, transform 0.4s ease;
       transform: translateX(-50%) translateY(-20px);
       user-select: none;
+      font-family: ${TYPOGRAPHY.PRIMARY_FONT};
     `;
     
     const homeButton = this.createNavButton('Intro', () => this.scrollToTop());
@@ -56,11 +60,11 @@ export class NavigationBar {
       border: none;
       color: var(--nav-text);
       font-size: 14px;
-      font-weight: 500;
+      font-weight: ${TYPOGRAPHY.FONT_WEIGHTS.MEDIUM};
       cursor: pointer;
       border-radius: 16px;
       transition: all 0.2s ease;
-      font-family: inherit;
+      font-family: ${TYPOGRAPHY.PRIMARY_FONT};
     `;
     
     button.addEventListener('mouseenter', () => {
@@ -89,9 +93,7 @@ export class NavigationBar {
       this.scrollManager.setScroll(1);
     } else {
       const aboutSection = document.getElementById('about');
-      if (aboutSection) {
-        aboutSection.scrollIntoView({ behavior: 'smooth' });
-      }
+      if (aboutSection) aboutSection.scrollIntoView({ behavior: 'smooth' });
     }
   }
   
@@ -113,6 +115,5 @@ export class NavigationBar {
     }
   }
   
-  updateTheme() {
-  }
+  updateTheme() {}
 }

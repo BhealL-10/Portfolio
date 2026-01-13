@@ -1,6 +1,6 @@
 /**
- * ShardManager.js - Gestionnaire principal des shards
- * Portfolio 3D V4.0 - Hover/Drag morphing amélioré
+ * ShardManager.js - Gestionnaire principal des shards V5.0
+ * Portfolio 3D - Physique fluide et retour orbital optimisé
  */
 
 import * as THREE from 'three';
@@ -11,19 +11,20 @@ import { projects } from '../data/projects.js';
 import { SHARD, CAMERA, SCROLL, ANIMATION, DRAG, FACETTE, THEME } from '../config/constants.js';
 
 export class ShardManager {
-  constructor(scene, camera) {
+  constructor(scene, camera, deviceManager) {
     this.scene = scene;
     this.camera = camera;
+    this.deviceManager = deviceManager;
     this.shards = [];
     this.currentIndex = 0;
     this.previousIndex = -1;
     
-    this.generator = new ShardGenerator();
+    this.generator = new ShardGenerator(deviceManager);
     this.physics = new ShardPhysics();
     this.shardTitle = null;
     
     try {
-      this.shardTitle = new ShardTitle(scene, camera);
+      this.shardTitle = new ShardTitle(scene, camera, deviceManager);
     } catch (e) {
       console.warn('ShardTitle init failed:', e);
     }
@@ -50,7 +51,9 @@ export class ShardManager {
       this.shardTitle?.createTitleSprite(shard);
     }
     
-    this.totalDistance = projects.length * SHARD.Z_SPACING;
+    const config = this.deviceManager ? this.deviceManager.getShardConfig() : SHARD.RESPONSIVE.DESKTOP;
+    const zSpacing = config.Z_SPACING || SHARD.Z_SPACING;
+    this.totalDistance = projects.length * zSpacing;
     
     console.log(`✅ Generated ${this.shards.length} shards (total distance: ${this.totalDistance})`);
     return this.shards;
@@ -199,7 +202,7 @@ export class ShardManager {
     }
     
     const hoverStrength = ANIMATION.MORPH.STRENGTH * hoverAmount;
-    const dragStrength = DRAG.DEFORM.STRENGTH * dragAmount;
+    const dragStrength = DRAG.DEFORM.STRENGTH * dragAmount * 0.1;
     const totalStrength = hoverStrength;
     
     for (let i = 0; i < positions.count; i++) {
@@ -223,51 +226,6 @@ export class ShardManager {
     this.applyCombinedMorphing(shard, amount, shard.userData.dragMorphAmount || 0);
   }
   
-  applyFacetteFragmentation(shard, rotationProgress = 0, direction = 1, defragAmount = 1) {
-    if (!shard.geometry.attributes.position) return;
-    
-    shard.userData.isFragmenting = true;
-    
-    const positions = shard.geometry.attributes.position;
-    
-    if (!shard.userData.originalPositions) {
-      shard.userData.originalPositions = [];
-      for (let i = 0; i < positions.count; i++) {
-        shard.userData.originalPositions.push({
-          x: positions.getX(i),
-          y: positions.getY(i),
-          z: positions.getZ(i)
-        });
-      }
-    }
-    
-    const angle = rotationProgress * Math.PI * direction;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    
-    const time = this.globalTime * ANIMATION.MORPH.FREQUENCY;
-    const defragStrength = ANIMATION.MORPH.STRENGTH * defragAmount * 0.3;
-    
-    for (let i = 0; i < positions.count; i++) {
-      const original = shard.userData.originalPositions[i];
-      
-      const rotatedX = original.x * cos - original.z * sin;
-      const rotatedZ = original.x * sin + original.z * cos;
-      
-      const defragOffset = Math.sin(time + i * 0.5) * defragStrength;
-      
-      positions.setXYZ(
-        i,
-        rotatedX * (1 + defragOffset),
-        original.y * (1 + defragOffset * 0.8),
-        rotatedZ * (1 + defragOffset * 0.2)
-      );
-    }
-    
-    positions.needsUpdate = true;
-    shard.geometry.computeVertexNormals();
-  }
-  
   restoreOriginalGeometry(shard) {
     if (!shard.userData.originalPositions) return;
     
@@ -287,7 +245,14 @@ export class ShardManager {
     if (shard.userData.isDragging || shard.userData.isFocused) return;
     if (this.physics.isShardMoving(shard)) return;
     
-    const orbitT = this.globalTime * shard.userData.orbitSpeed + shard.userData.orbitAngle;
+    const config = this.deviceManager ? this.deviceManager.getShardConfig() : SHARD.RESPONSIVE.DESKTOP;
+    const orbitConfig = config.ORBIT || SHARD.ORBIT;
+    const radiusX = orbitConfig.RADIUS_X || SHARD.ORBIT.RADIUS_X;
+    const radiusY = orbitConfig.RADIUS_Y || SHARD.ORBIT.RADIUS_Y;
+    
+    shard.userData.orbitAngle += shard.userData.orbitSpeed * 0.016;
+    
+    const orbitT = shard.userData.orbitAngle;
     
     const scrollProgress = this.scrollManager ? this.scrollManager.getShardProgress() : 0;
     const currentShardIndex = Math.round(scrollProgress * this.shards.length);
@@ -298,17 +263,17 @@ export class ShardManager {
       const shardScrollPosition = index / this.shards.length;
       const distanceFromScroll = Math.abs(scrollProgress - shardScrollPosition);
       const baseOrbitMultiplier = 0.3;
-      const maxOrbitMultiplier = 1.5;
+      const maxOrbitMultiplier = 1.2;
       orbitMultiplier = baseOrbitMultiplier + (distanceFromScroll * (maxOrbitMultiplier - baseOrbitMultiplier) * SHARD.ORBIT.DISTANCE_MULTIPLIER);
     } else {
       const normalizedIndex = index / this.shards.length;
-      orbitMultiplier = 0.3 + (normalizedIndex * 2.7);
+      orbitMultiplier = 0.4 + (normalizedIndex * 1.5);
     }
     
-    const targetX = Math.cos(orbitT) * SHARD.ORBIT.RADIUS_X * orbitMultiplier;
-    const targetY = Math.sin(orbitT) * SHARD.ORBIT.RADIUS_Y * orbitMultiplier;
+    const targetX = Math.cos(orbitT) * radiusX * orbitMultiplier;
+    const targetY = Math.sin(orbitT) * radiusY * orbitMultiplier;
     
-    const smoothing = 0.04;
+    const smoothing = SHARD.ORBIT.SMOOTHING;
     shard.position.x += (targetX - shard.position.x) * smoothing;
     shard.position.y += (targetY - shard.position.y) * smoothing;
     
@@ -341,9 +306,7 @@ export class ShardManager {
   updateDrag(shard, worldPosition) {
     if (!shard.userData.isDragging) return;
     
-    if (shard.userData.isFocused) {
-      return;
-    }
+    if (shard.userData.isFocused) return;
     
     const velocityX = worldPosition.x - shard.position.x;
     const velocityY = worldPosition.y - shard.position.y;
@@ -358,65 +321,38 @@ export class ShardManager {
       
       if (DRAG.DEFORM.COMBINES_WITH_HOVER && shard.userData.hoverMorphAmount > 0) {
         this.applyCombinedMorphing(shard, shard.userData.hoverMorphAmount, shard.userData.dragMorphAmount);
-      } else {
-        this.applyDragDeformation(shard, velocityX, velocityY, speed);
       }
     }
   }
   
-  applyDragDeformation(shard, velocityX, velocityY, speed) {
-    if (!shard.userData.originalPositions) return;
-    
-    const stretchAmount = Math.min(speed * 0.5, ANIMATION.MORPH.DRAG_STRETCH);
-    const angle = Math.atan2(velocityY, velocityX);
-    
-    const positions = shard.geometry.attributes.position;
-    for (let i = 0; i < positions.count; i++) {
-      const original = shard.userData.originalPositions[i];
-      const dx = original.x;
-      const dy = original.y;
-      
-      const alignmentX = Math.cos(angle);
-      const alignmentY = Math.sin(angle);
-      const alignment = (dx * alignmentX + dy * alignmentY) / 2;
-      
-      positions.setXYZ(
-        i,
-        original.x * (1 + alignment * stretchAmount),
-        original.y * (1 + alignment * stretchAmount * 0.5),
-        original.z
-      );
-    }
-    
-    positions.needsUpdate = true;
-    shard.geometry.computeVertexNormals();
-  }
-  
   endDrag(shard) {
-    if (shard.userData.isFocused) {
-      shard.userData.isDragging = false;
-      this.draggedShard = null;
-      return;
-    }
+    if (!shard) return;
     
     shard.userData.isDragging = false;
-    shard.userData.state = 'idle';
-    shard.userData.dragMorphAmount = 0;
+    shard.userData.wasRecentlyDragged = true;
     this.draggedShard = null;
-    
-    this.restoreOriginalGeometry(shard);
     
     this.physics.applyImpulse(
       shard,
-      shard.userData.velocity.x * 0.3,
-      shard.userData.velocity.y * 0.3
+      shard.userData.velocity.x,
+      shard.userData.velocity.y
     );
+    
+    if (!shard.userData.isFocused) {
+      shard.userData.state = 'idle';
+    }
+    
+    setTimeout(() => {
+      shard.userData.wasRecentlyDragged = false;
+    }, DRAG.RETURN_DELAY);
+  }
+  
+  onShardDragEnd(shard) {
+    this.endDrag(shard);
   }
   
   setHover(shard) {
-    if (shard.userData.isFocused) {
-      return;
-    }
+    if (shard.userData.isFocused) return;
     
     if (this.hoveredShard && this.hoveredShard !== shard) {
       this.clearHover();

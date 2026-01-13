@@ -1,6 +1,6 @@
 /**
- * ThemeSwitch.js - Gestion du thème light/dark
- * Portfolio 3D V4.0
+ * ThemeSwitch.js - Gestion du thème V5.0
+ * Portfolio 3D - Basculement light/dark avec drag
  */
 
 import { LAYERS } from '../config/constants.js';
@@ -22,9 +22,7 @@ export class ThemeSwitch {
     this.applyTheme();
   }
   
-  setNavigationBar(navigationBar) {
-    this.navigationBar = navigationBar;
-  }
+  setNavigationBar(navigationBar) { this.navigationBar = navigationBar; }
   
   detectInitialTheme() {
     const stored = localStorage.getItem('theme');
@@ -65,9 +63,7 @@ export class ThemeSwitch {
       box-shadow: 0 4px 15px rgba(0,0,0,0.1);
     `;
     
-    this.toggleButton.addEventListener('click', (e) => {
-      e.preventDefault();
-    });
+    this.toggleButton.addEventListener('click', (e) => e.preventDefault());
     
     this.toggleButton.addEventListener('mousedown', (e) => this.onDragStart(e));
     this.toggleButton.addEventListener('touchstart', (e) => this.onDragStart(e), { passive: false });
@@ -92,9 +88,7 @@ export class ThemeSwitch {
   
   loadPosition() {
     const saved = localStorage.getItem('theme-toggle-position');
-    if (saved) {
-      return JSON.parse(saved);
-    }
+    if (saved) return JSON.parse(saved);
     return { top: 24, right: 24 };
   }
   
@@ -107,9 +101,7 @@ export class ThemeSwitch {
     localStorage.setItem('theme-toggle-position', JSON.stringify(position));
   }
   
-  getCurrentTheme() {
-    return this.isDarkMode ? 'dark' : 'light';
-  }
+  getCurrentTheme() { return this.isDarkMode ? 'dark' : 'light'; }
   
   onDragStart(e) {
     const clientX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
@@ -119,10 +111,13 @@ export class ThemeSwitch {
     this.dragStartPos.y = clientY;
     this.hasMoved = false;
     this.isDragging = true;
+    this.dragStartTime = Date.now();
     
     const rect = this.toggleButton.getBoundingClientRect();
     this.dragOffset.x = clientX - rect.left;
     this.dragOffset.y = clientY - rect.top;
+    
+    if (e.type === 'touchstart') e.preventDefault();
   }
   
   onDragMove(e) {
@@ -134,9 +129,11 @@ export class ThemeSwitch {
     const deltaX = Math.abs(clientX - this.dragStartPos.x);
     const deltaY = Math.abs(clientY - this.dragStartPos.y);
     
-    if (deltaX > 5 || deltaY > 5) {
+    const dragThreshold = e.type === 'touchmove' ? 10 : 5;
+    
+    if (deltaX > dragThreshold || deltaY > dragThreshold) {
       this.hasMoved = true;
-      e.preventDefault();
+      if (e.type === 'touchmove') e.preventDefault();
       
       this.toggleButton.style.cursor = 'grabbing';
       
@@ -158,10 +155,12 @@ export class ThemeSwitch {
   onDragEnd() {
     if (!this.isDragging) return;
     
+    const dragDuration = Date.now() - this.dragStartTime;
+    
     this.isDragging = false;
     this.toggleButton.style.cursor = 'move';
     
-    if (this.hasMoved) {
+    if (this.hasMoved && dragDuration > 100) {
       this.savePosition();
     } else {
       this.toggle();
@@ -191,20 +190,10 @@ export class ThemeSwitch {
     localStorage.setItem('theme', this.isDarkMode ? 'dark' : 'light');
     document.documentElement.setAttribute('data-theme', this.isDarkMode ? 'dark' : 'light');
     
-    if (this.scene) {
-      this.scene.setTheme(this.isDarkMode);
-    }
-    
-    if (this.shardManager) {
-      this.shardManager.setTheme(this.isDarkMode);
-    }
-    
-    if (this.navigationBar) {
-      this.navigationBar.updateTheme();
-    }
+    if (this.scene) this.scene.setTheme(this.isDarkMode);
+    if (this.shardManager) this.shardManager.setTheme(this.isDarkMode);
+    if (this.navigationBar) this.navigationBar.updateTheme();
   }
   
-  getIsDarkMode() {
-    return this.isDarkMode;
-  }
+  getIsDarkMode() { return this.isDarkMode; }
 }

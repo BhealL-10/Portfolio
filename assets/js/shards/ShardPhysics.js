@@ -1,10 +1,10 @@
 /**
- * ShardPhysics.js - Physique des shards (X/Y uniquement)
- * Portfolio 3D V4.0
+ * ShardPhysics.js - Physique des shards V5.0
+ * Portfolio 3D - Retour fluide sans tremblements ni téléportation
  */
 
 import * as THREE from 'three';
-import { PHYSICS } from '../config/constants.js';
+import { PHYSICS, SHARD } from '../config/constants.js';
 
 export class ShardPhysics {
   constructor() {
@@ -20,13 +20,18 @@ export class ShardPhysics {
     shards.forEach(shard => {
       if (shard.userData.isFocused || shard.userData.isDragging) return;
       
-      this.applyOrbitalAttraction(shard);
+      this.applyOrbitalAttraction(shard, deltaTime);
       
-      if (shard.userData.velocity.lengthSq() > 0.0001) {
-        shard.position.x += shard.userData.velocity.x * 0.5;
-        shard.position.y += shard.userData.velocity.y * 0.5;
+      if (shard.userData.velocity.lengthSq() > 0.00001) {
+        const velocityScale = Math.min(deltaTime * 60, 1.5);
+        shard.position.x += shard.userData.velocity.x * velocityScale;
+        shard.position.y += shard.userData.velocity.y * velocityScale;
         
-        shard.userData.velocity.multiplyScalar(0.98);
+        shard.userData.velocity.multiplyScalar(PHYSICS.FRICTION);
+        
+        if (shard.userData.velocity.lengthSq() < 0.00001) {
+          shard.userData.velocity.set(0, 0);
+        }
         
         this.applyBounce(shard);
       }
@@ -35,26 +40,42 @@ export class ShardPhysics {
     this.applyRepulsion(shards);
   }
   
-  applyOrbitalAttraction(shard) {
+  applyOrbitalAttraction(shard, deltaTime) {
     const orbitalAngle = shard.userData.orbitAngle;
-    const targetX = Math.cos(orbitalAngle) * 8;
-    const targetY = Math.sin(orbitalAngle) * 6;
+    const targetX = Math.cos(orbitalAngle) * SHARD.ORBIT.RADIUS_X;
+    const targetY = Math.sin(orbitalAngle) * SHARD.ORBIT.RADIUS_Y;
     
     const dx = targetX - shard.position.x;
     const dy = targetY - shard.position.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
     
-    if (distance > 0.5) {
-      const attractionForce = 0.002;
-      shard.userData.velocity.x += (dx / distance) * attractionForce;
-      shard.userData.velocity.y += (dy / distance) * attractionForce;
+    if (distance > PHYSICS.ORBITAL.SNAP_DISTANCE) {
+      const attractionForce = PHYSICS.ORBITAL.ATTRACTION_BASE * Math.min(distance / 5, PHYSICS.ORBITAL.ATTRACTION_SCALE);
+      
+      const dirX = dx / distance;
+      const dirY = dy / distance;
+      
+      shard.userData.velocity.x += dirX * attractionForce;
+      shard.userData.velocity.y += dirY * attractionForce;
+      
+      const maxVel = PHYSICS.MAX_VELOCITY;
+      const currentVel = shard.userData.velocity.length();
+      if (currentVel > maxVel) {
+        shard.userData.velocity.multiplyScalar(maxVel / currentVel);
+      }
+    } else if (distance < PHYSICS.ORBITAL.SNAP_DISTANCE) {
+      const snapFactor = SHARD.ORBIT.SMOOTHING;
+      shard.position.x += (targetX - shard.position.x) * snapFactor;
+      shard.position.y += (targetY - shard.position.y) * snapFactor;
+      
+      shard.userData.velocity.multiplyScalar(PHYSICS.ORBITAL.SNAP_VELOCITY_FACTOR);
     }
   }
   
   applyBounce(shard) {
     const pos = shard.position;
     const vel = shard.userData.velocity;
-    const damping = 0.5;
+    const damping = PHYSICS.BOUNCE.DAMPING;
     
     if (pos.x < this.bounds.minX) {
       pos.x = this.bounds.minX;
@@ -86,10 +107,10 @@ export class ShardPhysics {
         const dy = shardA.position.y - shardB.position.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         
-        const repulsionDistance = 8;
+        const repulsionDistance = PHYSICS.REPULSION.DISTANCE;
         
         if (distance < repulsionDistance && distance > 0.1) {
-          const force = 0.005 * (1 - distance / repulsionDistance);
+          const force = PHYSICS.REPULSION.STRENGTH * 0.01 * (1 - distance / repulsionDistance);
           
           const dirX = dx / distance;
           const dirY = dy / distance;
@@ -104,19 +125,20 @@ export class ShardPhysics {
   }
   
   applyImpulse(shard, impulseX, impulseY) {
-    shard.userData.velocity.x += impulseX * 0.3;
-    shard.userData.velocity.y += impulseY * 0.3;
+    const multiplier = 0.15;
+    shard.userData.velocity.x += impulseX * multiplier;
+    shard.userData.velocity.y += impulseY * multiplier;
     
     const vel = shard.userData.velocity;
     const speed = vel.length();
-    const maxSpeed = 0.5;
+    const maxSpeed = PHYSICS.MAX_VELOCITY * 0.8;
     if (speed > maxSpeed) {
       vel.multiplyScalar(maxSpeed / speed);
     }
   }
   
   isShardMoving(shard) {
-    return shard.userData.velocity && shard.userData.velocity.lengthSq() > 0.01;
+    return shard.userData.velocity && shard.userData.velocity.lengthSq() > 0.001;
   }
   
   updateBounds(width, height) {

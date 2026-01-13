@@ -1,41 +1,34 @@
 /**
- * Renderer.js - Configuration WebGL avec gestion dual canvas
- * Portfolio 3D V4.0
+ * Renderer.js - Configuration WebGL renderer V5.0
+ * Portfolio 3D - Rendu optimisé responsive
  */
 
 import * as THREE from 'three';
 import { LAYERS } from '../config/constants.js';
 
 export class Renderer {
-  constructor(canvas = null) {
-    const targetCanvas = canvas || document.createElement('canvas');
+  constructor(deviceManager) {
+    this.deviceManager = deviceManager;
     
-    this.instance = new THREE.WebGLRenderer({
-      canvas: targetCanvas,
+    this.renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: true,
-      powerPreference: 'high-performance',
-      failIfMajorPerformanceCaveat: false
+      powerPreference: 'high-performance'
     });
     
-    this.opacity = 1;
-    this.isVisible = true;
-    this.blurAmount = 0;
+    const pixelRatio = deviceManager ? deviceManager.getOptimalPixelRatio() : Math.min(window.devicePixelRatio, 2);
+    this.renderer.setPixelRatio(pixelRatio);
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
     
-    this.setupRenderer();
-    this.setupResize();
+    this.setupCanvas();
+    this.setupResizeListener();
   }
   
-  setupRenderer() {
-    this.instance.setSize(window.innerWidth, window.innerHeight);
-    this.instance.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.instance.outputColorSpace = THREE.SRGBColorSpace;
-    this.instance.toneMapping = THREE.ACESFilmicToneMapping;
-    this.instance.toneMappingExposure = 1.15;
-    this.instance.sortObjects = true;
-    
-    const canvas = this.instance.domElement;
-    canvas.id = 'three-canvas';
+  setupCanvas() {
+    const canvas = this.renderer.domElement;
     canvas.style.cssText = `
       position: fixed;
       top: 0;
@@ -44,87 +37,69 @@ export class Renderer {
       height: 100%;
       z-index: ${LAYERS.THREE_JS.Z_INDEX};
       pointer-events: auto;
-      transition: filter 0.3s ease;
     `;
-    
-    if (!canvas.parentNode) {
-      document.body.appendChild(canvas);
-    }
+    document.body.appendChild(canvas);
   }
   
-  setupResize() {
-    window.addEventListener('resize', () => {
-      this.resize();
-    });
+  setupResizeListener() {
+    window.addEventListener('resize', () => this.onResize());
   }
   
-  resize() {
-    this.instance.setSize(window.innerWidth, window.innerHeight);
-    this.instance.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  onResize() {
+    const pixelRatio = this.deviceManager ? this.deviceManager.getOptimalPixelRatio() : Math.min(window.devicePixelRatio, 2);
+    this.renderer.setPixelRatio(pixelRatio);
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
   }
   
   render(scene, camera) {
-    if (!this.instance || !this.isVisible) return;
-    this.instance.render(scene, camera);
+    this.renderer.render(scene, camera);
   }
   
-  setOpacity(opacity) {
-    this.opacity = Math.max(0, Math.min(1, opacity));
-    this.instance.domElement.style.opacity = this.opacity;
+  setOpacity(value) {
+    this.renderer.domElement.style.opacity = value;
+  }
+  
+  animateOpacity(targetOpacity, duration = 0.5) {
+    if (window.gsap) {
+      window.gsap.to(this.renderer.domElement, {
+        opacity: targetOpacity,
+        duration: duration,
+        ease: 'power2.out'
+      });
+    } else {
+      this.renderer.domElement.style.opacity = targetOpacity;
+    }
   }
   
   setBlur(amount) {
-    this.blurAmount = Math.max(0, Math.min(20, amount));
-    this.instance.domElement.style.filter = amount > 0 ? `blur(${amount}px)` : 'none';
+    this.renderer.domElement.style.filter = amount > 0 ? `blur(${amount}px)` : 'none';
   }
   
   animateBlur(targetBlur, duration = 0.3) {
-    if (!window.gsap) {
+    const currentBlur = parseFloat(this.renderer.domElement.style.filter?.match(/blur\(([\d.]+)px\)/)?.[1] || 0);
+    
+    if (window.gsap) {
+      const obj = { blur: currentBlur };
+      window.gsap.to(obj, {
+        blur: targetBlur,
+        duration: duration,
+        ease: 'power2.out',
+        onUpdate: () => {
+          this.renderer.domElement.style.filter = obj.blur > 0.1 ? `blur(${obj.blur}px)` : 'none';
+        }
+      });
+    } else {
       this.setBlur(targetBlur);
-      return;
     }
-    
-    window.gsap.to(this, {
-      blurAmount: targetBlur,
-      duration: duration,
-      ease: 'power2.out',
-      onUpdate: () => {
-        this.instance.domElement.style.filter = this.blurAmount > 0.1 
-          ? `blur(${this.blurAmount}px)` 
-          : 'none';
-      }
-    });
   }
   
-  animateOpacity(targetOpacity, duration = 0.5, onComplete = null) {
-    if (!window.gsap) {
-      this.setOpacity(targetOpacity);
-      if (onComplete) onComplete();
-      return;
+  getRenderer() { return this.renderer; }
+  getDomElement() { return this.renderer.domElement; }
+  
+  dispose() {
+    this.renderer.dispose();
+    if (this.renderer.domElement.parentNode) {
+      this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
     }
-    
-    window.gsap.to(this, {
-      opacity: targetOpacity,
-      duration: duration,
-      ease: 'power2.inOut',
-      onUpdate: () => {
-        this.instance.domElement.style.opacity = this.opacity;
-      },
-      onComplete: onComplete
-    });
   }
-  
-  show() {
-    this.isVisible = true;
-    this.instance.domElement.style.display = 'block';
-  }
-  
-  hide() {
-    this.isVisible = false;
-    this.instance.domElement.style.display = 'none';
-  }
-  
-  getCanvas() { return this.instance.domElement; }
-  getOpacity() { return this.opacity; }
-  dispose() { this.instance.dispose(); }
 }

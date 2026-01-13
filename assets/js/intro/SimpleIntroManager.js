@@ -1,13 +1,14 @@
 /**
- * SimpleIntroManager.js - Gestionnaire intro avec transition Canvas → Three.js
- * Portfolio 3D V4.0
+ * SimpleIntroManager.js - Gestionnaire intro V5.0
+ * Portfolio 3D - Intro responsive optimisée
  */
 
-import { INTRO, LAYERS } from '../config/constants.js';
+import { INTRO, LAYERS, TYPOGRAPHY } from '../config/constants.js';
 import { SimpleMirror } from './SimpleMirror.js';
 
 export class SimpleIntroManager {
-  constructor() {
+  constructor(deviceManager) {
+    this.deviceManager = deviceManager;
     this.mirror = null;
     this.isActive = false;
     this.clickCount = 0;
@@ -41,7 +42,7 @@ export class SimpleIntroManager {
     
     this.isActive = true;
     
-    this.mirror = new SimpleMirror();
+    this.mirror = new SimpleMirror(this.deviceManager);
     
     this.createGauge();
     
@@ -78,7 +79,7 @@ export class SimpleIntroManager {
       transform: translateX(-50%);
       z-index: 200;
       text-align: center;
-      font-family: system-ui, -apple-system, sans-serif;
+      font-family: ${TYPOGRAPHY.PRIMARY_FONT};
       color: var(--text-primary, white);
       pointer-events: none;
       opacity: 0.8;
@@ -93,6 +94,7 @@ export class SimpleIntroManager {
         padding: 20px 35px;
         border-radius: 16px;
         border: 1px solid rgba(255,255,255,0.1);
+        font-family: ${TYPOGRAPHY.PRIMARY_FONT};
       }
       .indicator-bar {
         width: 280px;
@@ -113,10 +115,19 @@ export class SimpleIntroManager {
         font-size: 16px;
         font-weight: 600;
         margin-bottom: 6px;
+        font-family: ${TYPOGRAPHY.PRIMARY_FONT};
       }
       .indicator-hint {
         font-size: 13px;
         opacity: 0.7;
+        font-family: ${TYPOGRAPHY.PRIMARY_FONT};
+      }
+      
+      @media (max-width: 576px) {
+        .indicator-content { padding: 15px 25px; }
+        .indicator-bar { width: 200px; }
+        .indicator-text { font-size: 14px; }
+        .indicator-hint { font-size: 11px; }
       }
     `;
     if (!document.querySelector('#indicator-styles')) {
@@ -135,13 +146,9 @@ export class SimpleIntroManager {
     this.updateGauge();
     
     const percent = this.mirror.getDestructionPercent();
-    if (this.onProgress) {
-      this.onProgress(percent);
-    }
+    if (this.onProgress) this.onProgress(percent);
     
-    if (percent >= 1) {
-      this.complete();
-    }
+    if (percent >= 1) this.complete();
   }
   
   updateGauge() {
@@ -150,13 +157,8 @@ export class SimpleIntroManager {
     const fillBar = this.indicator.querySelector('.indicator-fill');
     const countText = this.indicator.querySelector('.cell-count');
     
-    if (fillBar) {
-      fillBar.style.width = `${Math.min(percent * 100, 100)}%`;
-    }
-    
-    if (countText) {
-      countText.textContent = cellCount;
-    }
+    if (fillBar) fillBar.style.width = `${Math.min(percent * 100, 100)}%`;
+    if (countText) countText.textContent = cellCount;
   }
   
   update() {
@@ -182,15 +184,11 @@ export class SimpleIntroManager {
     
     localStorage.setItem(INTRO.STORAGE_KEY, 'true');
     
-    if (this.indicator) {
-      this.indicator.style.opacity = '0';
-    }
+    if (this.indicator) this.indicator.style.opacity = '0';
     
     this.mirror.shatterAnimation(() => {
       console.log('✅ Mirror shattered - calling onComplete');
-      if (this.onComplete) {
-        this.onComplete();
-      }
+      if (this.onComplete) this.onComplete();
     });
   }
   
@@ -200,32 +198,17 @@ export class SimpleIntroManager {
     this.isActive = false;
     localStorage.setItem(INTRO.STORAGE_KEY, 'true');
     
-    if (this.mirror) {
-      this.mirror.remove();
-    }
+    if (this.mirror) this.mirror.remove();
+    if (this.indicator?.parentNode) this.indicator.parentNode.removeChild(this.indicator);
     
-    if (this.indicator?.parentNode) {
-      this.indicator.parentNode.removeChild(this.indicator);
-    }
-    
-    if (this.onComplete) {
-      this.onComplete();
-    }
+    if (this.onComplete) this.onComplete();
   }
   
-  getCanvasOpacity() {
-    return this.mirror ? this.mirror.opacity : 0;
-  }
+  getCanvasOpacity() { return this.mirror ? this.mirror.opacity : 0; }
   
   dispose() {
     this.isActive = false;
-    
-    if (this.mirror) {
-      this.mirror.remove();
-    }
-    
-    if (this.indicator?.parentNode) {
-      this.indicator.parentNode.removeChild(this.indicator);
-    }
+    if (this.mirror) this.mirror.remove();
+    if (this.indicator?.parentNode) this.indicator.parentNode.removeChild(this.indicator);
   }
 }

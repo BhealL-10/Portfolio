@@ -1,19 +1,31 @@
 /**
- * UIManager.js - Gestion UI et sections About/Contact
- * Portfolio 3D V4.0
+ * UIManager.js - Gestion UI V5.0
+ * Portfolio 3D - Interface responsive optimisée
  */
 
-import { LAYERS, UI, SCROLL } from '../config/constants.js';
+import { LAYERS, UI, SCROLL, TYPOGRAPHY } from '../config/constants.js';
 import { projects } from '../data/projects.js';
 
 export class UIManager {
-  constructor() {
+  constructor(deviceManager) {
+    this.deviceManager = deviceManager;
     this.sectionIndicator = null;
     this.scrollIndicator = null;
     this.aboutSection = null;
     this.isAboutVisible = false;
     
+    this.focusController = null;
+    
     this.init();
+  }
+  
+  getConfig() {
+    if (this.deviceManager) return this.deviceManager.getUIConfig();
+    return {
+      infoOverlay: UI.INFO_OVERLAY.RESPONSIVE.DESKTOP,
+      indicators: UI.INDICATORS.RESPONSIVE.DESKTOP,
+      scale: 1
+    };
   }
   
   init() {
@@ -26,7 +38,7 @@ export class UIManager {
     const style = document.createElement('style');
     style.textContent = `
       .shard-info-content {
-        font-family: system-ui, -apple-system, sans-serif;
+        font-family: ${TYPOGRAPHY.PRIMARY_FONT};
         background: transparent;
         padding: 30px;
         border-radius: 20px;
@@ -39,17 +51,19 @@ export class UIManager {
         color: white;
         border-radius: 20px;
         font-size: 13px;
-        font-weight: 600;
+        font-weight: ${TYPOGRAPHY.FONT_WEIGHTS.SEMIBOLD};
         margin-bottom: 12px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
+        font-family: ${TYPOGRAPHY.PRIMARY_FONT};
       }
       
       .shard-title {
         font-size: 28px;
-        font-weight: 700;
+        font-weight: ${TYPOGRAPHY.FONT_WEIGHTS.BOLD};
         margin: 0 0 12px 0;
         color: var(--focus-text);
+        font-family: ${TYPOGRAPHY.PRIMARY_FONT};
       }
       
       .shard-description {
@@ -57,6 +71,7 @@ export class UIManager {
         line-height: 1.6;
         color: var(--focus-text-secondary);
         margin: 0 0 20px 0;
+        font-family: ${TYPOGRAPHY.PRIMARY_FONT};
       }
       
       .shard-technologies {
@@ -73,6 +88,7 @@ export class UIManager {
         border-radius: 15px;
         font-size: 13px;
         color: var(--focus-text);
+        font-family: ${TYPOGRAPHY.PRIMARY_FONT};
       }
       
       .shard-links {
@@ -87,9 +103,10 @@ export class UIManager {
         color: white;
         text-decoration: none;
         border-radius: 8px;
-        font-weight: 600;
+        font-weight: ${TYPOGRAPHY.FONT_WEIGHTS.SEMIBOLD};
         font-size: 14px;
         transition: transform 0.2s, box-shadow 0.2s;
+        font-family: ${TYPOGRAPHY.PRIMARY_FONT};
       }
       
       .project-link:hover, .shard-link:hover {
@@ -118,6 +135,7 @@ export class UIManager {
         justify-content: center;
         transition: background 0.2s, transform 0.2s;
         pointer-events: auto;
+        font-family: ${TYPOGRAPHY.PRIMARY_FONT};
       }
       
       .facette-prev:hover, .facette-next:hover {
@@ -128,8 +146,9 @@ export class UIManager {
       
       .facette-indicator {
         font-size: 14px;
-        font-weight: 600;
+        font-weight: ${TYPOGRAPHY.FONT_WEIGHTS.SEMIBOLD};
         color: var(--focus-text-secondary);
+        font-family: ${TYPOGRAPHY.PRIMARY_FONT};
       }
       
       .about-section, .contact-section {
@@ -142,11 +161,28 @@ export class UIManager {
         opacity: 1;
         pointer-events: auto;
       }
+      
+      @media (max-width: 576px) {
+        .shard-info-content { padding: 20px; }
+        .shard-title { font-size: 22px; }
+        .shard-description { font-size: 14px; }
+        .facette-nav { gap: 60px; }
+        .facette-prev, .facette-next { width: 36px; height: 36px; }
+      }
+      
+      @media (max-width: 768px) {
+        .shard-info-content { padding: 25px; }
+        .shard-title { font-size: 24px; }
+        .facette-nav { gap: 80px; }
+      }
     `;
     document.head.appendChild(style);
   }
   
   createSectionIndicator() {
+    const config = this.getConfig();
+    const indicatorConfig = config.indicators || UI.INDICATORS.RESPONSIVE.DESKTOP;
+    
     this.sectionIndicator = document.createElement('div');
     this.sectionIndicator.className = 'section-indicator';
     this.sectionIndicator.style.cssText = `
@@ -157,7 +193,7 @@ export class UIManager {
       z-index: ${LAYERS.UI.Z_INDEX};
       display: flex;
       flex-direction: column;
-      gap: ${UI.INDICATORS.DOT_GAP}px;
+      gap: ${indicatorConfig.DOT_GAP}px;
     `;
     
     projects.forEach((project, i) => {
@@ -166,8 +202,8 @@ export class UIManager {
       dot.dataset.index = i;
       dot.title = project.title;
       dot.style.cssText = `
-        width: ${UI.INDICATORS.DOT_SIZE}px;
-        height: ${UI.INDICATORS.DOT_SIZE}px;
+        width: ${indicatorConfig.DOT_SIZE}px;
+        height: ${indicatorConfig.DOT_SIZE}px;
         border-radius: 50%;
         background: var(--text-secondary);
         cursor: pointer;
@@ -181,20 +217,20 @@ export class UIManager {
   
   setupAboutSection() {
     this.aboutSection = document.getElementById('about');
-    
-    if (this.aboutSection) {
-      this.aboutSection.classList.remove('visible');
-    }
+    if (this.aboutSection) this.aboutSection.classList.remove('visible');
   }
   
   updateSectionIndicator(currentIndex) {
     if (!this.sectionIndicator) return;
     
+    const config = this.getConfig();
+    const indicatorConfig = config.indicators || UI.INDICATORS.RESPONSIVE.DESKTOP;
+    
     const dots = this.sectionIndicator.querySelectorAll('.section-dot');
     dots.forEach((dot, i) => {
       if (i === currentIndex) {
         dot.style.background = 'var(--accent)';
-        dot.style.transform = `scale(${UI.INDICATORS.ACTIVE_SCALE})`;
+        dot.style.transform = `scale(${indicatorConfig.ACTIVE_SCALE})`;
       } else {
         dot.style.background = 'var(--text-secondary)';
         dot.style.transform = 'scale(1)';
@@ -211,31 +247,20 @@ export class UIManager {
   }
   
   setupNavigation(scrollManager, shardManager, focusController) {
+    this.focusController = focusController;
     const dots = this.sectionIndicator?.querySelectorAll('.section-dot');
-    console.log('🎯 setupNavigation: dots=' + dots?.length + ', focusController=' + !!focusController + ', shardManager=' + !!shardManager);
     
     dots?.forEach((dot, i) => {
       dot.addEventListener('click', () => {
-        console.log('🖱️ Dot clicked: index=' + i);
-        
-        if (scrollManager && shardManager) {
+        if (focusController) {
+          focusController.navigateToSection(i, true);
+        } else if (scrollManager && shardManager) {
           const totalShards = shardManager.getTotalShards();
           const targetScroll = i / totalShards;
-          
           scrollManager.setScroll(targetScroll);
-          
-          this.updateSectionIndicator(i);
         }
         
-        if (focusController && shardManager) {
-          const shard = shardManager.getShardByIndex(i);
-          console.log('  → Shard found: ' + !!shard + ', scrollUpdated=true');
-          if (shard) {
-            setTimeout(() => {
-              focusController.focus(shard, false);
-            }, 50);
-          }
-        }
+        this.updateSectionIndicator(i);
       });
     });
   }
@@ -248,33 +273,22 @@ export class UIManager {
       this.aboutSection.classList.add('visible');
       this.aboutSection.style.overflowY = 'auto';
     }
-    
-    console.log('📖 About section shown');
   }
   
   hideAboutSection() {
     if (!this.isAboutVisible) return;
     this.isAboutVisible = false;
     
-    if (this.aboutSection) {
-      this.aboutSection.classList.remove('visible');
-    }
-    
-    console.log('📖 About section hidden');
+    if (this.aboutSection) this.aboutSection.classList.remove('visible');
   }
   
   enableAboutContactScroll() {
-    console.log('📜 Enabling native scroll for About/Contact sections');
     document.body.style.overflow = 'auto';
     document.body.style.height = 'auto';
   }
   
   dispose() {
-    if (this.sectionIndicator?.parentNode) {
-      this.sectionIndicator.parentNode.removeChild(this.sectionIndicator);
-    }
-    if (this.scrollIndicator?.parentNode) {
-      this.scrollIndicator.parentNode.removeChild(this.scrollIndicator);
-    }
+    if (this.sectionIndicator?.parentNode) this.sectionIndicator.parentNode.removeChild(this.sectionIndicator);
+    if (this.scrollIndicator?.parentNode) this.scrollIndicator.parentNode.removeChild(this.scrollIndicator);
   }
 }

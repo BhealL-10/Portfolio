@@ -1,17 +1,20 @@
 /**
- * ScrollManager.js - Gestionnaire scroll virtuel avec sous-étapes
- * Portfolio 3D V4.0
+ * ScrollManager.js - Gestionnaire scroll virtuel V5.0
+ * Portfolio 3D - Navigation centralisée avec verrouillage obligatoire pendant unfocus
  */
 
-import { SCROLL } from '../config/constants.js';
+import { SCROLL, NAVIGATION } from '../config/constants.js';
 
 export class ScrollManager {
-  constructor() {
+  constructor(deviceManager) {
+    this.deviceManager = deviceManager;
+    
     this.scroll = 0;
     this.scrollTarget = 0;
     
     this.enabled = true;
     this.locked = false;
+    this.lockedByUnfocus = false;
     
     this.touchStartY = 0;
     this.lastTouchY = 0;
@@ -34,6 +37,13 @@ export class ScrollManager {
     this.init();
   }
   
+  getConfig() {
+    if (this.deviceManager) {
+      return this.deviceManager.getScrollConfig();
+    }
+    return SCROLL.RESPONSIVE.DESKTOP;
+  }
+  
   init() {
     this.setupWheelListener();
     this.setupTouchListeners();
@@ -41,20 +51,19 @@ export class ScrollManager {
   }
   
   setupWheelListener() {
-    window.addEventListener('wheel', (e) => {
-      this.onWheel(e);
-    }, { passive: false });
+    window.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
   }
   
   onWheel(event) {
-    if (this.locked) {
+    if (this.locked || this.lockedByUnfocus) {
       event.preventDefault();
       return;
     }
     
     event.preventDefault();
     
-    const delta = event.deltaY * SCROLL.SPEED;
+    const config = this.getConfig();
+    const delta = event.deltaY * (config.SPEED || SCROLL.SPEED);
     this.scrollTarget += delta;
     this.scrollTarget = Math.max(SCROLL.MIN, Math.min(SCROLL.MAX, this.scrollTarget));
     
@@ -64,13 +73,11 @@ export class ScrollManager {
   
   setupTouchListeners() {
     window.addEventListener('touchstart', (e) => {
-      if (this.locked) return;
+      if (this.locked || this.lockedByUnfocus) return;
       this.touchStartY = e.touches[0].clientY;
     }, { passive: true });
     
-    window.addEventListener('touchmove', (e) => {
-      this.onTouchMove(e);
-    }, { passive: false });
+    window.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
     
     window.addEventListener('touchend', () => {
       this.touchStartY = null;
@@ -79,7 +86,7 @@ export class ScrollManager {
   }
   
   onTouchMove(event) {
-    if (this.locked) {
+    if (this.locked || this.lockedByUnfocus) {
       event.preventDefault();
       return;
     }
@@ -88,8 +95,11 @@ export class ScrollManager {
     
     event.preventDefault();
     
+    const config = this.getConfig();
     const touchY = event.touches[0].clientY;
-    const delta = (this.touchStartY - touchY) * SCROLL.SPEED * SCROLL.TOUCH_MULTIPLIER;
+    const touchMultiplier = config.TOUCH_MULTIPLIER || SCROLL.TOUCH_MULTIPLIER;
+    const speed = config.SPEED || SCROLL.SPEED;
+    const delta = (this.touchStartY - touchY) * speed * touchMultiplier;
     
     this.scrollTarget += delta;
     this.scrollTarget = Math.max(SCROLL.MIN, Math.min(SCROLL.MAX, this.scrollTarget));
@@ -100,7 +110,7 @@ export class ScrollManager {
   
   setupKeyboardListener() {
     window.addEventListener('keydown', (e) => {
-      if (this.locked) {
+      if (this.locked || this.lockedByUnfocus) {
         if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End'].includes(e.key)) {
           e.preventDefault();
         }
@@ -145,7 +155,7 @@ export class ScrollManager {
   }
   
   addScroll(delta) {
-    if (this.locked) return;
+    if (this.locked || this.lockedByUnfocus) return;
     this.scrollTarget += delta;
     this.scrollTarget = Math.max(SCROLL.MIN, Math.min(SCROLL.MAX, this.scrollTarget));
   }
@@ -157,10 +167,13 @@ export class ScrollManager {
   
   update() {
     if (!this.enabled) return this.scroll;
-    if (this.locked) return this.scroll;
+    if (this.locked || this.lockedByUnfocus) return this.scroll;
+    
+    const config = this.getConfig();
+    const smoothing = config.SMOOTHING || SCROLL.SMOOTHING;
     
     const diff = this.scrollTarget - this.scroll;
-    this.scroll += diff * SCROLL.SMOOTHING;
+    this.scroll += diff * smoothing;
     
     if (Math.abs(diff) < 0.0001) {
       this.scroll = this.scrollTarget;
@@ -254,7 +267,19 @@ export class ScrollManager {
   
   lock() { this.locked = true; }
   unlock() { this.locked = false; }
-  setLocked(value) { this.locked = value; }
+  
+  lockForUnfocus() {
+    this.lockedByUnfocus = true;
+  }
+  
+  unlockAfterUnfocus() {
+    this.lockedByUnfocus = false;
+  }
+  
+  setLocked(locked) {
+    this.locked = locked;
+  }
+  
   enable() { this.enabled = true; }
   disable() { this.enabled = false; }
   
@@ -274,6 +299,6 @@ export class ScrollManager {
   getProgress() { return this.scroll; }
   getShardProgress() { return Math.min(this.scroll, 1.0); }
   isInAbout() { return this.isInAboutSection; }
-  getLocked() { return this.locked; }
+  getLocked() { return this.locked || this.lockedByUnfocus; }
   getEnabled() { return this.enabled; }
 }

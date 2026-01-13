@@ -1,6 +1,13 @@
 /**
- * Main.js - Point d'entrée principal
- * Portfolio 3D V4.0 - Focus Optimisé
+ * Main.js - Point d'entrée principal V5.0
+ * Portfolio 3D - Architecture optimisée avec navigation centralisée
+ * 
+ * Améliorations V5.0:
+ * - Physique 100% fluide sans tremblements
+ * - Navigation centralisée (section dots, focus, scroll)
+ * - Unfocus obligatoire avant changement de section
+ * - Retour orbital fluide après drag
+ * - Transitions coordonnées
  */
 
 import { Camera } from './core/Camera.js';
@@ -8,129 +15,129 @@ import { Scene } from './core/Scene.js';
 import { Renderer } from './core/Renderer.js';
 import { ScrollManager } from './core/ScrollManager.js';
 import { TimelineManager } from './core/TimelineManager.js';
-import { deviceManager } from './core/DeviceManager.js';
+import { DeviceManager } from './core/DeviceManager.js';
+
 import { ShardManager } from './shards/ShardManager.js';
-import { RaycastManager } from './interaction/RaycastManager.js';
+
 import { FocusController } from './interaction/FocusController.js';
+import { RaycastManager } from './interaction/RaycastManager.js';
+
 import { SimpleIntroManager } from './intro/SimpleIntroManager.js';
+
 import { UIManager } from './ui/UIManager.js';
 import { ThemeSwitch } from './ui/ThemeSwitch.js';
 import { NavigationBar } from './ui/NavigationBar.js';
-import { CAMERA, SHARD, INTRO } from './config/constants.js';
+
+import { CAMERA, SHARD } from './config/constants.js';
 
 class PortfolioApp {
   constructor() {
-    this.isInitialized = false;
-    this.isIntroComplete = false;
-    this.animationFrameId = null;
-    this.lastTime = 0;
-    
-    this.camera = null;
+    this.deviceManager = null;
     this.scene = null;
+    this.camera = null;
     this.renderer = null;
     this.scrollManager = null;
     this.timelineManager = null;
-    this.deviceManager = deviceManager;
+    
     this.shardManager = null;
-    this.raycastManager = null;
+    
     this.focusController = null;
+    this.raycastManager = null;
+    
+    this.introManager = null;
+    
     this.uiManager = null;
     this.themeSwitch = null;
     this.navigationBar = null;
-    this.introManager = null;
+    
+    this.isInitialized = false;
+    this.isIntroComplete = false;
+    this.lastTime = 0;
+    
+    this.aboutSectionCheckInterval = null;
+    
+    console.log('🚀 Portfolio 3D V5.0 - Initializing...');
+    this.init();
   }
   
   async init() {
-    console.log('🚀 Initializing Portfolio 3D V4.0...');
-    
     try {
+      this.deviceManager = new DeviceManager();
       this.deviceManager.applyResponsiveStyles();
+      
+      this.scene = new Scene();
+      this.camera = new Camera(this.deviceManager);
+      this.renderer = new Renderer(this.deviceManager);
+      
+      this.scrollManager = new ScrollManager(this.deviceManager);
+      this.timelineManager = new TimelineManager();
+      
+      this.shardManager = new ShardManager(
+        this.scene.getScene(),
+        this.camera.getCamera(),
+        this.deviceManager
+      );
+      await this.shardManager.generateShards();
+      
+      this.shardManager.scrollManager = this.scrollManager;
+      
+      this.focusController = new FocusController(
+        this.shardManager,
+        this.camera,
+        this.scrollManager,
+        this.timelineManager
+      );
+      this.focusController.setScrollManager(this.scrollManager);
+      this.focusController.setRenderer(this.renderer);
+      this.focusController.setDeviceManager(this.deviceManager);
+      
+      this.raycastManager = new RaycastManager(this.camera.getCamera());
+      this.raycastManager.setShards(this.shardManager.getAllShards());
+      
+      this.uiManager = new UIManager(this.deviceManager);
+      this.themeSwitch = new ThemeSwitch(this.scene, this.shardManager);
+      this.navigationBar = new NavigationBar(this.scrollManager, this.deviceManager);
+      
+      this.themeSwitch.setNavigationBar(this.navigationBar);
+      
+      this.setupCallbacks();
       this.setupDeviceCallbacks();
       
-      this.initCore();
-      this.initManagers();
-      await this.initShards();
-      this.initInteraction();
-      this.initUI();
-      this.setupCallbacks();
+      this.scrollManager.setTotalSections(this.shardManager.getTotalShards());
       
       this.isInitialized = true;
-      console.log('✅ Portfolio initialized successfully');
       
       this.checkIntroOrStart();
       
+      console.log('✅ Portfolio V5.0 initialized successfully');
+      console.log('📱 Device:', this.deviceManager.getDeviceInfo());
+      
     } catch (error) {
-      console.error('❌ Initialization failed:', error);
+      console.error('❌ Initialization error:', error);
     }
   }
   
-  initCore() {
-    this.scene = new Scene();
-    this.camera = new Camera();
-    this.renderer = new Renderer();
-    this.scrollManager = new ScrollManager();
-    this.timelineManager = new TimelineManager();
-    
-    console.log('✅ Core modules initialized');
-  }
-  
-  initManagers() {
-    this.shardManager = new ShardManager(this.scene.instance, this.camera.instance);
-    this.shardManager.scrollManager = this.scrollManager;
-    
-    this.raycastManager = new RaycastManager(this.camera.instance);
-    
-    this.focusController = new FocusController(
-      this.shardManager,
-      this.camera,
-      this.scrollManager,
-      this.timelineManager
-    );
-    this.focusController.setRenderer(this.renderer);
-    this.focusController.setDeviceManager(this.deviceManager);
-    
-    console.log('✅ Managers initialized');
-  }
-  
-  async initShards() {
-    await this.shardManager.generateShards();
-    
-    this.raycastManager.setShards(this.shardManager.getAllShards());
-    
-    this.scrollManager.setTotalSections(this.shardManager.getTotalShards());
-    this.camera.setTotalShards(this.shardManager.getTotalShards());
-    
-    this.timelineManager.init(this.shardManager.getAllShards());
-    
-    console.log('✅ Shards generated');
-  }
-  
-  initInteraction() {
+  setupCallbacks() {
     this.raycastManager.onShardHover = (shard) => {
       if (shard) {
         this.shardManager.setHover(shard);
-        document.body.style.cursor = 'pointer';
       } else {
         this.shardManager.clearHover();
-        document.body.style.cursor = 'default';
       }
     };
     
-    this.raycastManager.onShardClick = (shard, clickSide) => {
+    this.raycastManager.onShardClick = (shard, side) => {
       if (this.focusController.isFocused()) {
         if (this.focusController.getFocusedShard() === shard) {
-          if (this.focusController.canUnfocus()) {
-            const direction = clickSide === 'left' ? -1 : 1;
-            console.log('👆 Shard clicked while focused: changing facette ' + clickSide + ' (direction=' + direction + ')');
-            this.focusController.changeFacette(direction);
-          } else {
-            console.log('🔒 Shard click ignored: state=' + (this.focusController.isChangingFacette() ? 'CHANGING_FACETTE' : 'UNFOCUSING'));
-          }
-        } else {
-          this.focusController.focus(shard);
+          return;
         }
-      } else {
-        this.focusController.focus(shard);
+      }
+      this.focusController.focus(shard, false);
+    };
+    
+    this.raycastManager.onBackgroundClick = () => {
+      if (this.focusController.isFocused()) {
+        this.focusController.unfocus();
       }
     };
     
@@ -158,222 +165,193 @@ class PortfolioApp {
       this.focusController.onDragEndInFocus(shard);
     };
     
-    this.raycastManager.onBackgroundClick = () => {
-      if (this.focusController.isFocused() && this.focusController.canUnfocus()) {
-        this.focusController.unfocus();
-      } else if (this.focusController.isFocused()) {
-        console.log('🚫 Background click ignored: cannot unfocus (state=' + (this.focusController.isChangingFacette() ? 'CHANGING_FACETTE' : 'UNFOCUSING') + ')');
-      }
+    this.raycastManager.onShardClickInFocus = (shard, clickSide) => {
+      this.focusController.onShardClickInFocus(shard, clickSide);
     };
     
-    console.log('✅ Interactions initialized');
-  }
-  
-  initUI() {
-    this.uiManager = new UIManager(this.focusController, this.shardManager);
-    this.themeSwitch = new ThemeSwitch(this.scene, this.shardManager);
-    this.navigationBar = new NavigationBar(this.scrollManager);
-    
-    this.themeSwitch.setNavigationBar(this.navigationBar);
-    this.navigationBar.updateTheme(this.themeSwitch.getCurrentTheme());
-    
-    this.focusController.onNavigationBarToggle = (show) => {
-      if (this.navigationBar) {
-        if (show) {
-          this.navigationBar.show();
-        } else {
-          this.navigationBar.hide();
-        }
-      }
-    };
-    
-    this.uiManager.setupNavigation(this.scrollManager, this.shardManager, this.focusController);
-    
-    console.log('✅ UI initialized');
-  }
-  
-  setupCallbacks() {
     this.scrollManager.onSectionChange = (newSection, oldSection) => {
       this.uiManager.updateSectionIndicator(newSection);
     };
     
-    this.scrollManager.onScrollChange = (scroll) => {
-      this.uiManager.updateScrollProgress(scroll);
-    };
-    
     this.scrollManager.onAboutSectionEnter = () => {
-      if (this.focusController.isFocused()) {
-        this.focusController.unfocus();
-      }
-      if (this.shardManager.shardTitle) {
-        this.shardManager.shardTitle.hide();
-      }
       this.uiManager.showAboutSection();
     };
     
     this.scrollManager.onAboutSectionLeave = () => {
-      if (this.shardManager.shardTitle) {
-        this.shardManager.shardTitle.show();
-      }
       this.uiManager.hideAboutSection();
     };
     
-    this.focusController.onLastShardVisited = () => {
-      console.log('🎉 All shards visited - unlocking About section');
+    this.focusController.onNavigationBarToggle = (show) => {
+      if (show) {
+        this.navigationBar.show();
+      } else {
+        this.navigationBar.hide();
+      }
     };
+    
+    this.focusController.onLastShardVisited = () => {
+      console.log('🎯 Last shard visited - enabling About navigation');
+    };
+    
+    this.uiManager.setupNavigation(
+      this.scrollManager,
+      this.shardManager,
+      this.focusController
+    );
   }
   
   setupDeviceCallbacks() {
     this.deviceManager.onResize = (info) => {
-      this.deviceManager.applyResponsiveStyles();
-      if (this.renderer) {
-        this.renderer.resize();
-      }
-      if (this.camera) {
-        this.camera.updateAspect();
-      }
+      console.log('📐 Window resized:', info.width, 'x', info.height);
+      this.camera.onResize();
+      this.renderer.onResize();
     };
     
     this.deviceManager.onOrientationChange = (info) => {
-      this.deviceManager.applyResponsiveStyles();
+      console.log('🔄 Orientation changed:', info.isLandscape ? 'landscape' : 'portrait');
+    };
+    
+    this.deviceManager.onDeviceTypeChange = (info) => {
+      console.log('📱 Device type changed:', info.oldType, '→', info.newType);
     };
   }
   
   checkIntroOrStart() {
-    this.introManager = new SimpleIntroManager();
+    this.introManager = new SimpleIntroManager(this.deviceManager);
     
     if (this.introManager.shouldShowIntro()) {
-      this.startWithIntro();
+      console.log('🎬 Showing intro sequence');
+      
+      this.renderer.setOpacity(0);
+      
+      this.introManager.onComplete = () => {
+        this.onIntroComplete();
+      };
+      
+      this.introManager.start();
     } else {
-      this.startWithoutIntro();
+      console.log('⏭️ Skipping intro - already completed');
+      this.onIntroComplete();
     }
   }
   
-  startWithIntro() {
-    console.log('🎬 Starting with intro...');
-    
-    this.camera.teleportTo(CAMERA.INITIAL_Z);
-    
-    this.shardManager.getAllShards().forEach(shard => {
-      shard.material.opacity = 0;
-    });
-    
-    this.introManager.onComplete = () => {
-      console.log('✅ Intro complete - transitioning to main experience');
-      this.isIntroComplete = true;
-      this.scrollManager.setLocked(false);
-      
-      if (this.navigationBar) {
-        this.navigationBar.show();
-      }
-      
-      this.startRenderLoop();
-      console.log('✅ Intro complete, animation started');
-    };
-    
-    this.introManager.onProgress = (progress) => {
-    };
-    
-    this.introManager.start();
-  }
-  
-  startWithoutIntro() {
-    console.log('⏭️ Skipping intro...');
-    
+  onIntroComplete() {
+    console.log('✨ Intro complete - starting main experience');
     this.isIntroComplete = true;
     
-    const firstShardZ = -SHARD.Z_SPACING - 40;
-    this.camera.teleportTo(firstShardZ);
+    this.renderer.animateOpacity(1, 1.0);
     
-    this.shardManager.getAllShards().forEach(shard => {
-      shard.material.opacity = SHARD.STATES.IDLE.opacity;
-    });
+    const targetZ = CAMERA.POST_INTRO_START_Z;
+    this.camera.teleportTo(targetZ);
     
-    this.uiManager.transformIndicatorToScrollMode();
+    this.navigationBar.show();
     
-    this.startRenderLoop();
-  }
-  
-  transitionToMainExperience() {
-    this.isIntroComplete = true;
+    this.startAboutSectionCheck();
     
-    const targetZ = -SHARD.Z_SPACING - 40;
-    
-    this.uiManager.transformIndicatorToScrollMode();
-    
-    if (window.gsap) {
-      this.camera.animateTo(targetZ, 2.0);
-      
-      this.shardManager.getAllShards().forEach((shard, index) => {
-        window.gsap.to(shard.material, {
-          opacity: SHARD.STATES.IDLE.opacity,
-          duration: 1.5,
-          delay: 0.1 * index,
-          ease: 'power2.out'
-        });
-      });
-    } else {
-      this.camera.teleportTo(targetZ);
-      this.shardManager.getAllShards().forEach(shard => {
-        shard.material.opacity = SHARD.STATES.IDLE.opacity;
-      });
-    }
-  }
-  
-  startRenderLoop() {
     this.lastTime = performance.now();
-    this.render();
+    this.animate();
   }
   
-  render() {
-    this.animationFrameId = requestAnimationFrame(() => this.render());
+  startAboutSectionCheck() {
+    if (this.aboutSectionCheckInterval) {
+      clearInterval(this.aboutSectionCheckInterval);
+    }
+    
+    this.aboutSectionCheckInterval = setInterval(() => {
+      const aboutSection = document.getElementById('about');
+      if (!aboutSection) return;
+      
+      const isAboutVisible = aboutSection.classList.contains('visible');
+      
+      if (isAboutVisible && this.focusController && this.focusController.isFocused()) {
+        console.log('⚠️ About section visible with focus active - forcing unfocus');
+        if (this.focusController.focusedShard) {
+          const shard = this.focusController.focusedShard;
+          this.focusController.focusedShard = null;
+          this.focusController.state = 'idle';
+          
+          if (this.focusController.infoOverlay) {
+            this.focusController.infoOverlay.style.opacity = '0';
+            this.focusController.infoOverlay.style.pointerEvents = 'none';
+          }
+          
+          this.focusController.stopSlideshow();
+          this.camera.setFocusMode(false);
+          
+          if (this.scrollManager) {
+            this.scrollManager.setLocked(false);
+          }
+          
+          if (shard && shard.userData) {
+            shard.userData.isFocused = false;
+          }
+        }
+      }
+    }, 5000);
+  }
+  
+  animate() {
+    if (!this.isInitialized || !this.isIntroComplete) return;
+    
+    requestAnimationFrame(() => this.animate());
     
     const now = performance.now();
     const deltaTime = Math.min((now - this.lastTime) / 1000, 0.1);
     this.lastTime = now;
     
-    if (this.isIntroComplete) {
-      const scrollProgress = this.scrollManager.update();
-      
-      this.camera.updateFromScroll(
-        scrollProgress,
-        this.shardManager.getTotalShards(),
-        this.scrollManager.getCurrentSection()
-      );
-      this.camera.update(deltaTime);
-      
-      this.shardManager.update(scrollProgress, deltaTime);
-      
-      this.focusController.update(
-        this.scrollManager.getCurrentSection(),
-        this.scrollManager.getCurrentSubStep(),
-        deltaTime
-      );
-      
-      this.scene.updatePointLight(this.camera.instance.position);
-    }
+    const scrollProgress = this.scrollManager.update();
     
-    this.renderer.render(this.scene.instance, this.camera.instance);
+    this.camera.update(scrollProgress, deltaTime);
+    
+    this.shardManager.update(scrollProgress, deltaTime);
+    
+    this.focusController.update(
+      this.scrollManager.getCurrentSection(),
+      this.scrollManager.getCurrentSubStep(),
+      deltaTime
+    );
+    
+    this.scene.updatePointLightPosition(this.camera.position.z);
+    
+    this.renderer.render(this.scene.getScene(), this.camera.getCamera());
   }
   
   dispose() {
-    if (this.animationFrameId) {
-      cancelAnimationFrame(this.animationFrameId);
+    console.log('🧹 Disposing Portfolio app...');
+    
+    this.isInitialized = false;
+    
+    if (this.aboutSectionCheckInterval) {
+      clearInterval(this.aboutSectionCheckInterval);
+      this.aboutSectionCheckInterval = null;
     }
     
-    this.timelineManager?.dispose();
-    this.renderer?.dispose();
-    this.scene?.dispose();
-    this.uiManager?.dispose();
-    this.introManager?.dispose();
+    if (this.introManager) {
+      this.introManager.dispose();
+    }
     
-    console.log('🧹 Portfolio disposed');
+    if (this.uiManager) {
+      this.uiManager.dispose();
+    }
+    
+    if (this.renderer) {
+      this.renderer.dispose();
+    }
+    
+    if (this.timelineManager) {
+      this.timelineManager.dispose();
+    }
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', () => {
   window.portfolioApp = new PortfolioApp();
-  window.portfolioApp.init();
 });
 
-export { PortfolioApp };
+window.addEventListener('beforeunload', () => {
+  if (window.portfolioApp) {
+    window.portfolioApp.dispose();
+  }
+});
+
+export default PortfolioApp;

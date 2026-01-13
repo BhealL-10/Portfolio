@@ -1,154 +1,208 @@
 /**
- * DeviceManager.js - Gestion responsive multi-appareils
- * Portfolio 3D V4.0 - Compatible mobile/tablet/desktop
+ * DeviceManager.js - Gestionnaire responsive optimisé V5.0
+ * Portfolio 3D - Détection device et configurations adaptatives
  */
+
+import { DEVICE, INTRO, SCROLL, CAMERA, SHARD, UI, FOCUS, ResponsiveUtils } from '../config/constants.js';
 
 export class DeviceManager {
   constructor() {
-    this.isMobile = false;
-    this.isTablet = false;
-    this.isDesktop = true;
-    this.isTouchDevice = false;
-    this.isLandscape = true;
-    
     this.screenWidth = window.innerWidth;
     this.screenHeight = window.innerHeight;
     this.pixelRatio = window.devicePixelRatio || 1;
+    this.isLandscape = this.screenWidth > this.screenHeight;
+    this.aspectRatio = this.screenWidth / this.screenHeight;
     
-    this.breakpoints = {
-      mobile: 576,
-      tablet: 992,
-      desktop: 1200
-    };
+    this.deviceType = this.detectDeviceType();
+    this.isMobile = this.deviceType.includes('MOBILE');
+    this.isTablet = this.deviceType.includes('TABLET');
+    this.isDesktop = this.deviceType.includes('DESKTOP');
+    this.isTouchDevice = this.detectTouchDevice();
     
     this.onResize = null;
     this.onOrientationChange = null;
+    this.onDeviceTypeChange = null;
     
-    this.detectDevice();
     this.setupListeners();
+    this.applyBodyClasses();
   }
   
-  detectDevice() {
-    this.screenWidth = window.innerWidth;
-    this.screenHeight = window.innerHeight;
-    this.isLandscape = this.screenWidth > this.screenHeight;
-    
-    this.isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    
-    if (this.screenWidth < this.breakpoints.mobile) {
-      this.isMobile = true;
-      this.isTablet = false;
-      this.isDesktop = false;
-    } else if (this.screenWidth < this.breakpoints.tablet) {
-      this.isMobile = false;
-      this.isTablet = true;
-      this.isDesktop = false;
-    } else {
-      this.isMobile = false;
-      this.isTablet = false;
-      this.isDesktop = true;
-    }
-    
-    console.log('📱 Device detected:', {
-      type: this.isMobile ? 'mobile' : this.isTablet ? 'tablet' : 'desktop',
-      touch: this.isTouchDevice,
-      orientation: this.isLandscape ? 'landscape' : 'portrait',
-      size: this.screenWidth + 'x' + this.screenHeight
-    });
+  detectDeviceType() {
+    return ResponsiveUtils.getDeviceType(this.screenWidth, this.screenHeight);
+  }
+  
+  detectTouchDevice() {
+    return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
   }
   
   setupListeners() {
-    var manager = this;
+    let resizeTimeout;
     
-    window.addEventListener('resize', function() {
-      var oldWidth = manager.screenWidth;
-      var oldOrientation = manager.isLandscape;
-      
-      manager.detectDevice();
-      
-      if (manager.onResize) {
-        manager.onResize({
-          width: manager.screenWidth,
-          height: manager.screenHeight,
-          isMobile: manager.isMobile,
-          isTablet: manager.isTablet,
-          isDesktop: manager.isDesktop
-        });
-      }
-      
-      if (oldOrientation !== manager.isLandscape && manager.onOrientationChange) {
-        manager.onOrientationChange({
-          isLandscape: manager.isLandscape,
-          width: manager.screenWidth,
-          height: manager.screenHeight
-        });
-      }
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => this.handleResize(), 100);
     });
     
-    window.addEventListener('orientationchange', function() {
-      setTimeout(function() {
-        manager.detectDevice();
-        if (manager.onOrientationChange) {
-          manager.onOrientationChange({
-            isLandscape: manager.isLandscape,
-            width: manager.screenWidth,
-            height: manager.screenHeight
-          });
-        }
-      }, 100);
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => this.handleOrientationChange(), 150);
     });
   }
   
+  handleResize() {
+    const oldType = this.deviceType;
+    const oldLandscape = this.isLandscape;
+    
+    this.screenWidth = window.innerWidth;
+    this.screenHeight = window.innerHeight;
+    this.isLandscape = this.screenWidth > this.screenHeight;
+    this.aspectRatio = this.screenWidth / this.screenHeight;
+    this.deviceType = this.detectDeviceType();
+    
+    this.isMobile = this.deviceType.includes('MOBILE');
+    this.isTablet = this.deviceType.includes('TABLET');
+    this.isDesktop = this.deviceType.includes('DESKTOP');
+    
+    this.applyBodyClasses();
+    
+    if (this.onResize) {
+      this.onResize({
+        width: this.screenWidth,
+        height: this.screenHeight,
+        deviceType: this.deviceType,
+        isLandscape: this.isLandscape
+      });
+    }
+    
+    if (oldType !== this.deviceType && this.onDeviceTypeChange) {
+      this.onDeviceTypeChange({
+        oldType: oldType,
+        newType: this.deviceType,
+        width: this.screenWidth,
+        height: this.screenHeight
+      });
+    }
+    
+    if (oldLandscape !== this.isLandscape && this.onOrientationChange) {
+      this.onOrientationChange({
+        isLandscape: this.isLandscape,
+        width: this.screenWidth,
+        height: this.screenHeight
+      });
+    }
+  }
+  
+  handleOrientationChange() {
+    this.handleResize();
+  }
+  
+  applyBodyClasses() {
+    const body = document.body;
+    
+    body.classList.remove(
+      'device-mobile', 'device-mobile-landscape',
+      'device-tablet', 'device-tablet-landscape',
+      'device-desktop', 'device-desktop-large',
+      'orientation-portrait', 'orientation-landscape',
+      'touch-device', 'pointer-device'
+    );
+    
+    const typeClass = 'device-' + this.deviceType.toLowerCase().replace('_', '-');
+    body.classList.add(typeClass);
+    body.classList.add(this.isLandscape ? 'orientation-landscape' : 'orientation-portrait');
+    body.classList.add(this.isTouchDevice ? 'touch-device' : 'pointer-device');
+    
+    body.dataset.deviceType = this.deviceType.toLowerCase();
+  }
+  
   applyResponsiveStyles() {
-    var body = document.body;
+    const existingStyle = document.getElementById('device-responsive-styles');
+    if (existingStyle) existingStyle.remove();
     
-    body.classList.remove('device-mobile', 'device-tablet', 'device-desktop', 'device-touch', 'orientation-landscape', 'orientation-portrait');
+    const style = document.createElement('style');
+    style.id = 'device-responsive-styles';
     
-    if (this.isMobile) {
-      body.classList.add('device-mobile');
-    } else if (this.isTablet) {
-      body.classList.add('device-tablet');
-    } else {
-      body.classList.add('device-desktop');
-    }
+    const uiScale = DEVICE.UI_SCALE[this.deviceType] || 1;
     
-    if (this.isTouchDevice) {
-      body.classList.add('device-touch');
-    }
+    style.textContent = `
+      :root {
+        --ui-scale: ${uiScale};
+        --device-width: ${this.screenWidth}px;
+        --device-height: ${this.screenHeight}px;
+        --safe-area-top: env(safe-area-inset-top, 0px);
+        --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+      }
+      
+      .device-mobile .section-indicator { right: 12px; }
+      .device-mobile .section-dot { width: 8px; height: 8px; }
+      .device-mobile .shard-info-content { padding: 15px; font-size: 14px; }
+      .device-mobile .facette-nav { gap: 40px; }
+      
+      .device-tablet .section-indicator { right: 18px; }
+      .device-tablet .section-dot { width: 10px; height: 10px; }
+      .device-tablet .shard-info-content { padding: 20px; }
+      
+      .touch-device * { -webkit-tap-highlight-color: transparent; }
+      .touch-device button, .touch-device a { touch-action: manipulation; }
+    `;
     
-    if (this.isLandscape) {
-      body.classList.add('orientation-landscape');
-    } else {
-      body.classList.add('orientation-portrait');
-    }
-    
-    console.log('🎨 Applied responsive styles:', body.className);
+    document.head.appendChild(style);
+  }
+  
+  getIntroConfig() {
+    return INTRO.RESPONSIVE[this.deviceType] || INTRO.RESPONSIVE.DESKTOP;
+  }
+  
+  getScrollConfig() {
+    const baseType = this.isMobile ? 'MOBILE' : (this.isTablet ? 'TABLET' : 'DESKTOP');
+    return SCROLL.RESPONSIVE[baseType] || SCROLL.RESPONSIVE.DESKTOP;
+  }
+  
+  getCameraConfig() {
+    const baseType = this.isMobile ? 'MOBILE' : (this.isTablet ? 'TABLET' : 'DESKTOP');
+    return CAMERA.RESPONSIVE[baseType] || CAMERA.RESPONSIVE.DESKTOP;
+  }
+  
+  getShardConfig() {
+    const baseType = this.isMobile ? 'MOBILE' : (this.isTablet ? 'TABLET' : 'DESKTOP');
+    return SHARD.RESPONSIVE[baseType] || SHARD.RESPONSIVE.DESKTOP;
+  }
+  
+  getFocusConfig() {
+    return DEVICE.FOCUS[this.deviceType] || DEVICE.FOCUS.DESKTOP;
+  }
+  
+  getUIConfig() {
+    const baseType = this.isMobile ? 'MOBILE' : (this.isTablet ? 'TABLET' : 'DESKTOP');
+    return {
+      infoOverlay: UI.INFO_OVERLAY.RESPONSIVE[baseType] || UI.INFO_OVERLAY.RESPONSIVE.DESKTOP,
+      indicators: UI.INDICATORS.RESPONSIVE[baseType] || UI.INDICATORS.RESPONSIVE.DESKTOP,
+      scale: DEVICE.UI_SCALE[this.deviceType] || 1
+    };
+  }
+  
+  getShardTitleConfig() {
+    const baseType = this.isMobile ? 'MOBILE' : (this.isTablet ? 'TABLET' : 'DESKTOP');
+    return DEVICE.SHARD_TITLE[baseType] || DEVICE.SHARD_TITLE.DESKTOP;
+  }
+  
+  getOptimalPixelRatio() {
+    if (this.isMobile) return Math.min(this.pixelRatio, 2);
+    if (this.isTablet) return Math.min(this.pixelRatio, 2);
+    return Math.min(this.pixelRatio, 2.5);
   }
   
   getDeviceInfo() {
     return {
+      type: this.deviceType,
+      width: this.screenWidth,
+      height: this.screenHeight,
+      pixelRatio: this.pixelRatio,
+      isLandscape: this.isLandscape,
       isMobile: this.isMobile,
       isTablet: this.isTablet,
       isDesktop: this.isDesktop,
       isTouchDevice: this.isTouchDevice,
-      isLandscape: this.isLandscape,
-      screenWidth: this.screenWidth,
-      screenHeight: this.screenHeight,
-      pixelRatio: this.pixelRatio
+      aspectRatio: this.aspectRatio
     };
   }
-  
-  getTouchMultiplier() {
-    if (this.isMobile) return 2.5;
-    if (this.isTablet) return 2.0;
-    return 1.0;
-  }
-  
-  getScrollSensitivity() {
-    if (this.isMobile) return 0.8;
-    if (this.isTablet) return 1.0;
-    return 1.2;
-  }
 }
-
-export const deviceManager = new DeviceManager();

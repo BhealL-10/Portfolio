@@ -1,6 +1,6 @@
 /**
- * TimelineManager.js - Gestionnaire animations GSAP
- * Portfolio 3D V4.0
+ * TimelineManager.js - Gestionnaire animations GSAP V5.0
+ * Portfolio 3D - Animations fluides et coordonnées
  */
 
 import { FOCUS, SHARD, ANIMATION, FACETTE } from '../config/constants.js';

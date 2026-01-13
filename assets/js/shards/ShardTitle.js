@@ -1,28 +1,30 @@
 /**
- * ShardTitle.js - Titres flottants légers pour les shards
- * Portfolio 3D V4.0
+ * ShardTitle.js - Titres flottants V5.0
+ * Portfolio 3D - Affichage responsive optimisé
  */
 
 import * as THREE from 'three';
-import { COLORS } from '../config/constants.js';
-
-const CONFIG = {
-  CANVAS_WIDTH: 1024,
-  CANVAS_HEIGHT: 256,
-  FONT_SIZE: 140,
-  BASE_SCALE: 10,
-  OFFSET_Z: 5
-};
+import { COLORS, DEVICE, TYPOGRAPHY, TITLE } from '../config/constants.js';
 
 export class ShardTitle {
-  constructor(scene, camera) {
+  constructor(scene, camera, deviceManager) {
     this.scene = scene;
     this.camera = camera;
+    this.deviceManager = deviceManager;
     this.sprites = new Map();
     this.shardRefs = new Map();
     this.isDarkMode = document.documentElement.dataset.theme === 'dark';
     this.isVisible = true;
     this.isFocusActive = false;
+  }
+  
+  getConfig() {
+    if (this.deviceManager) {
+      const deviceType = this.deviceManager.isMobile ? 'MOBILE' : 
+                        (this.deviceManager.isTablet ? 'TABLET' : 'DESKTOP');
+      return DEVICE.SHARD_TITLE[deviceType] || DEVICE.SHARD_TITLE.DESKTOP;
+    }
+    return DEVICE.SHARD_TITLE.DESKTOP;
   }
   
   setTheme(isDark) {
@@ -50,19 +52,24 @@ export class ShardTitle {
   }
   
   buildSprite(title) {
+    const config = this.getConfig();
+    const canvasWidth = TITLE.CANVAS_WIDTH * 2;
+    const canvasHeight = TITLE.CANVAS_HEIGHT * 2;
+    const fontSize = config.FONT_SIZE || TITLE.FONT_SIZE;
+    
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    canvas.width = CONFIG.CANVAS_WIDTH;
-    canvas.height = CONFIG.CANVAS_HEIGHT;
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
     
-    const textColor = COLORS.TITLE_TEXT || '#2d2d2d';
+    const textColor = COLORS.TITLE_TEXT;
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     
-    const fontSize = Math.min(CONFIG.FONT_SIZE, (CONFIG.CANVAS_WIDTH * 0.8) / (title.length * 0.5));
-    ctx.font = `900 ${fontSize}px Arial, sans-serif`;
+    const adjustedFontSize = Math.min(fontSize, (canvasWidth * 0.8) / (title.length * 0.5));
+    ctx.font = `${TYPOGRAPHY.FONT_WEIGHTS.BOLD} ${adjustedFontSize}px ${TYPOGRAPHY.PRIMARY_FONT}`;
     ctx.fillStyle = textColor;
     ctx.fillText(title.toUpperCase(), canvas.width / 2, canvas.height / 2);
     
@@ -77,8 +84,9 @@ export class ShardTitle {
       opacity: 0
     });
     
+    const baseScale = config.BASE_SCALE || TITLE.BASE_SCALE;
     const sprite = new THREE.Sprite(material);
-    sprite.scale.set(CONFIG.BASE_SCALE, CONFIG.BASE_SCALE * 0.25, 1);
+    sprite.scale.set(baseScale, baseScale * 0.25, 1);
     sprite.renderOrder = 1000;
     
     return sprite;
@@ -103,10 +111,10 @@ export class ShardTitle {
     sprite.position.set(
       shard.position.x,
       shard.position.y,
-      shard.position.z + CONFIG.OFFSET_Z
+      shard.position.z + TITLE.OFFSET_Z
     );
     
-    let targetOpacity = 0.85;
+    let targetOpacity = TITLE.OPACITY_IDLE;
     if (!this.isVisible || this.isFocusActive || isFocused || isCurrentShard) {
       targetOpacity = 0;
     }
@@ -114,17 +122,9 @@ export class ShardTitle {
     sprite.material.opacity += (targetOpacity - sprite.material.opacity) * 0.1;
   }
   
-  hide() {
-    this.isVisible = false;
-  }
-  
-  show() {
-    this.isVisible = true;
-  }
-  
-  setFocusActive(isActive) {
-    this.isFocusActive = isActive;
-  }
+  hide() { this.isVisible = false; }
+  show() { this.isVisible = true; }
+  setFocusActive(isActive) { this.isFocusActive = isActive; }
   
   dispose() {
     this.sprites.forEach((sprite) => {

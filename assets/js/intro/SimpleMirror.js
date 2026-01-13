@@ -1,12 +1,13 @@
 /**
- * SimpleMirror.js - Miroir Canvas 2D avec effet de bris
- * Portfolio 3D V4.0
+ * SimpleMirror.js - Miroir Canvas 2D V5.0
+ * Portfolio 3D - Effet de bris responsive
  */
 
-import { INTRO, THEME, LAYERS, DEVICE } from '../config/constants.js';
+import { INTRO, THEME, LAYERS, DEVICE, TYPOGRAPHY } from '../config/constants.js';
 
 export class SimpleMirror {
-  constructor() {
+  constructor(deviceManager) {
+    this.deviceManager = deviceManager;
     this.canvas = null;
     this.ctx = null;
     this.cells = [];
@@ -24,15 +25,23 @@ export class SimpleMirror {
   }
   
   getDeviceConfig() {
-    const width = window.innerWidth;
+    if (this.deviceManager) return this.deviceManager.getIntroConfig();
     
-    if (width < DEVICE.BREAKPOINTS.MOBILE) {
-      return INTRO.RESPONSIVE.MOBILE;
-    } else if (width < DEVICE.BREAKPOINTS.TABLET) {
-      return INTRO.RESPONSIVE.TABLET;
-    } else {
-      return INTRO.RESPONSIVE.DESKTOP;
-    }
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const isLandscape = width > height;
+    
+    if (width < DEVICE.BREAKPOINTS.MOBILE) return isLandscape ? INTRO.RESPONSIVE.MOBILE_LANDSCAPE : INTRO.RESPONSIVE.MOBILE;
+    else if (width < DEVICE.BREAKPOINTS.TABLET) return isLandscape ? INTRO.RESPONSIVE.TABLET_LANDSCAPE : INTRO.RESPONSIVE.TABLET;
+    else if (width < DEVICE.BREAKPOINTS.DESKTOP_LARGE) return INTRO.RESPONSIVE.DESKTOP;
+    else return INTRO.RESPONSIVE.DESKTOP_LARGE;
+  }
+  
+  getLogoConfig() {
+    const width = window.innerWidth;
+    if (width < DEVICE.BREAKPOINTS.MOBILE) return INTRO.LOGO.RESPONSIVE.MOBILE;
+    else if (width < DEVICE.BREAKPOINTS.TABLET) return INTRO.LOGO.RESPONSIVE.TABLET;
+    else return INTRO.LOGO.RESPONSIVE.DESKTOP;
   }
   
   createCanvas() {
@@ -40,16 +49,7 @@ export class SimpleMirror {
     this.canvas.id = 'mirror-canvas';
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
-    this.canvas.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 9999;
-      pointer-events: auto;
-      cursor: pointer;
-    `;
+    this.canvas.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999;pointer-events:auto;cursor:pointer;`;
     
     this.ctx = this.canvas.getContext('2d');
     document.body.appendChild(this.canvas);
@@ -72,10 +72,7 @@ export class SimpleMirror {
       }
     });
     
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-theme']
-    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   }
   
   loadLogo() {
@@ -89,7 +86,6 @@ export class SimpleMirror {
     };
     
     img.onerror = () => {
-      console.warn('Failed to load logo:', logoPath);
       this.logoLoaded = false;
       this.draw();
     };
@@ -113,30 +109,30 @@ export class SimpleMirror {
     
     if (this.opacity > 0.5) {
       const deviceConfig = this.getDeviceConfig();
+      const logoConfig = this.getLogoConfig();
       const heroFontSize = deviceConfig.HERO_FONT_SIZE || 52;
       const subtitleFontSize = deviceConfig.SUBTITLE_FONT_SIZE || 22;
       
-      const logoHeight = INTRO.LOGO.HEIGHT;
-      const logoMargin = INTRO.LOGO.MARGIN_BOTTOM;
+      const logoHeight = logoConfig.HEIGHT || INTRO.LOGO.HEIGHT;
+      const logoWidth = logoConfig.WIDTH || INTRO.LOGO.WIDTH;
+      const logoMargin = logoConfig.MARGIN_BOTTOM || INTRO.LOGO.MARGIN_BOTTOM;
       const totalLogoSpace = this.logoLoaded ? logoHeight + logoMargin : 0;
       
       if (this.logoLoaded && this.logoImage) {
         ctx.globalAlpha = this.opacity;
-        const logoWidth = INTRO.LOGO.WIDTH;
         const logoX = (w - logoWidth) / 2;
         const logoY = h / 2 - totalLogoSpace - (heroFontSize * 0.7);
-        
         ctx.drawImage(this.logoImage, logoX, logoY, logoWidth, logoHeight);
       }
       
       ctx.globalAlpha = this.opacity;
       ctx.fillStyle = crackColor;
-      ctx.font = `bold ${heroFontSize}px system-ui, -apple-system, sans-serif`;
+      ctx.font = `bold ${heroFontSize}px ${TYPOGRAPHY.PRIMARY_FONT}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(INTRO.HERO_TEXT, w / 2, h / 2 - (heroFontSize * 0.7));
       
-      ctx.font = `${subtitleFontSize}px system-ui, -apple-system, sans-serif`;
+      ctx.font = `${subtitleFontSize}px ${TYPOGRAPHY.PRIMARY_FONT}`;
       ctx.globalAlpha = this.opacity;
       ctx.fillText(INTRO.HERO_SUBTITLE, w / 2, h / 2 + (heroFontSize * 0.5));
     }
@@ -199,13 +195,13 @@ export class SimpleMirror {
           const dotProduct = dx * rayX + dy * rayY;
           if (Math.abs(dotProduct) > 0.01) {
             const t = ((midX - site.x) * dx + (midY - site.y) * dy) / dotProduct;
-            if (t > 0 && t < maxDist) {
-              maxDist = t;
-            }
+            if (t > 0 && t < maxDist) maxDist = t;
           }
         });
         
-        maxDist = Math.min(maxDist, site.size * INTRO.CELL_SPREAD);
+        const deviceConfig = this.getDeviceConfig();
+        const cellSpread = deviceConfig.CELL_SPREAD || INTRO.CELL_SPREAD;
+        maxDist = Math.min(maxDist, site.size * cellSpread);
         
         const x = site.x + Math.cos(angle) * maxDist;
         const y = site.y + Math.sin(angle) * maxDist;
@@ -227,6 +223,7 @@ export class SimpleMirror {
     const deviceConfig = this.getDeviceConfig();
     const detectionRadius = deviceConfig.FRACTURE_DETECTION_RADIUS || INTRO.FRACTURE_DETECTION_RADIUS;
     const cellSpread = deviceConfig.CELL_SPREAD || INTRO.CELL_SPREAD;
+    const cellsPerClick = deviceConfig.CELLS_PER_CLICK || INTRO.CELLS_PER_CLICK;
     
     let targetFracture = null;
     for (const fracture of this.fractures) {
@@ -238,7 +235,7 @@ export class SimpleMirror {
     }
     
     if (targetFracture) {
-      for (let i = 0; i < INTRO.CELLS_PER_CLICK; i++) {
+      for (let i = 0; i < cellsPerClick; i++) {
         const angle = Math.random() * Math.PI * 2;
         const distance = Math.random() * cellSpread * 0.5;
         
@@ -256,7 +253,7 @@ export class SimpleMirror {
       }
       
       targetFracture.lastClick = now;
-      targetFracture.cellCount += INTRO.CELLS_PER_CLICK;
+      targetFracture.cellCount += cellsPerClick;
       
     } else {
       const fractureId = this.nextFractureId++;
@@ -266,13 +263,13 @@ export class SimpleMirror {
         centerX: x,
         centerY: y,
         cellIds: [],
-        cellCount: INTRO.CELLS_PER_CLICK,
+        cellCount: cellsPerClick,
         createdAt: now,
         lastClick: now
       };
       
-      for (let i = 0; i < INTRO.CELLS_PER_CLICK; i++) {
-        const angle = (Math.PI * 2 / INTRO.CELLS_PER_CLICK) * i + Math.random() * 0.3;
+      for (let i = 0; i < cellsPerClick; i++) {
+        const angle = (Math.PI * 2 / cellsPerClick) * i + Math.random() * 0.3;
         const baseDistance = cellSpread * 0.3;
         const distance = Math.random() * baseDistance + (baseDistance * 0.4);
         
@@ -327,9 +324,7 @@ export class SimpleMirror {
     
     this.fractures = this.fractures.filter(f => f.cellCount > 0);
     
-    if (changed) {
-      this.draw();
-    }
+    if (changed) this.draw();
   }
   
   getDestructionPercent() {
@@ -363,8 +358,7 @@ export class SimpleMirror {
       
       return {
         polygon: cell.polygon.map(p => ({x: p.x, y: p.y})),
-        centerX: centerX,
-        centerY: centerY,
+        centerX, centerY,
         vx: normalizedDx * (300 + Math.random() * 400),
         vy: normalizedDy * (300 + Math.random() * 400) - 200,
         rotation: 0,
@@ -402,11 +396,8 @@ export class SimpleMirror {
           const localX = point.x - fragment.polygon[0].x;
           const localY = point.y - fragment.polygon[0].y;
           
-          if (i === 0) {
-            this.ctx.moveTo(localX, localY);
-          } else {
-            this.ctx.lineTo(localX, localY);
-          }
+          if (i === 0) this.ctx.moveTo(localX, localY);
+          else this.ctx.lineTo(localX, localY);
         });
         this.ctx.closePath();
         
@@ -445,19 +436,14 @@ export class SimpleMirror {
       this.opacity = startOpacity * (1 - progress);
       this.draw();
       
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        this.remove();
-      }
+      if (progress < 1) requestAnimationFrame(animate);
+      else this.remove();
     };
     
     animate();
   }
   
   remove() {
-    if (this.canvas?.parentNode) {
-      this.canvas.parentNode.removeChild(this.canvas);
-    }
+    if (this.canvas?.parentNode) this.canvas.parentNode.removeChild(this.canvas);
   }
 }

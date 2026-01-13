@@ -1,22 +1,25 @@
 /**
- * Camera.js - Gestion caméra avec correction automatique de position
- * Portfolio 3D V4.0
+ * Camera.js - Gestion caméra 100% fluide V5.0
+ * Portfolio 3D - Mouvement continu sans saccade
  */
 
 import * as THREE from 'three';
 import { CAMERA, SHARD, FOCUS } from '../config/constants.js';
 
 export class Camera {
-  constructor() {
-    this.instance = new THREE.PerspectiveCamera(
-      CAMERA.FOV,
+  constructor(deviceManager) {
+    this.deviceManager = deviceManager;
+    
+    const config = this.getResponsiveConfig();
+    
+    this.camera = new THREE.PerspectiveCamera(
+      config.FOV || CAMERA.FOV,
       window.innerWidth / window.innerHeight,
       CAMERA.NEAR,
       CAMERA.FAR
     );
     
-    this.instance.position.set(0, 0, CAMERA.INITIAL_Z);
-    this.instance.lookAt(0, 0, 0);
+    this.camera.position.set(0, 0, CAMERA.INITIAL_Z);
     
     this.targetPosition = new THREE.Vector3(0, 0, CAMERA.INITIAL_Z);
     this.currentPosition = new THREE.Vector3(0, 0, CAMERA.INITIAL_Z);
@@ -24,131 +27,94 @@ export class Camera {
     this.lookAtTarget = new THREE.Vector3(0, 0, 0);
     this.currentLookAt = new THREE.Vector3(0, 0, 0);
     
-    this.smoothing = CAMERA.SMOOTHING;
-    this.velocity = new THREE.Vector3(0, 0, 0);
-    
-    this.totalShards = 10;
-    this.isTransitioning = false;
     this.isFocusMode = false;
-    this.focusTargetZ = null;
+    this.focusTargetZ = 0;
     
-    this.setupResize();
+    this.setupResizeListener();
   }
   
-  setupResize() {
-    window.addEventListener('resize', () => {
-      this.updateAspect();
-    });
+  getResponsiveConfig() {
+    if (this.deviceManager) {
+      return this.deviceManager.getCameraConfig();
+    }
+    return CAMERA.RESPONSIVE.DESKTOP;
   }
   
-  updateAspect() {
-    this.instance.aspect = window.innerWidth / window.innerHeight;
-    this.instance.updateProjectionMatrix();
+  setupResizeListener() {
+    window.addEventListener('resize', () => this.onResize());
   }
   
-  setTotalShards(count) {
-    this.totalShards = count;
+  onResize() {
+    const config = this.getResponsiveConfig();
+    this.camera.fov = config.FOV || CAMERA.FOV;
+    this.camera.aspect = window.innerWidth / window.innerHeight;
+    this.camera.updateProjectionMatrix();
   }
   
-  calculateTargetZ(scrollProgress, currentShardIndex) {
-    const firstShardZ = -SHARD.Z_SPACING;
-    const lastShardZ = (this.totalShards - 1) * SHARD.Z_SPACING - SHARD.Z_SPACING;
-    
-    const startCameraZ = firstShardZ - 40;
-    const endCameraZ = lastShardZ + 40;
-    const totalDistance = endCameraZ - startCameraZ;
-    
-    return startCameraZ + (scrollProgress * totalDistance);
-  }
-  
-  updateFromScroll(scrollProgress, totalShards, currentShardIndex = 0) {
-    if (this.isFocusMode) return;
-    
-    this.totalShards = totalShards;
-    
-    const targetZ = this.calculateTargetZ(scrollProgress, currentShardIndex);
-    this.targetPosition.z = targetZ;
-    this.lookAtTarget.z = targetZ + CAMERA.LOOK_AHEAD;
-    
-    const wobble = Math.sin(scrollProgress * Math.PI * 4) * 0.5;
-    this.targetPosition.x = wobble;
-    this.lookAtTarget.x = wobble * 0.5;
-  }
-  
-  update(deltaTime = 0.016) {
+  update(scrollProgress, deltaTime) {
+    const config = this.getResponsiveConfig();
     const easeFactor = this.isFocusMode 
-      ? FOCUS.POSITION_CORRECTION.SMOOTHING 
+      ? 0.08
       : (CAMERA.CONTINUOUS_MOVEMENT.ENABLED 
         ? CAMERA.CONTINUOUS_MOVEMENT.EASE_FACTOR 
-        : this.smoothing);
+        : CAMERA.SMOOTHING);
+    
+    if (!this.isFocusMode) {
+      const shardConfig = this.deviceManager ? this.deviceManager.getShardConfig() : SHARD.RESPONSIVE.DESKTOP;
+      const zSpacing = shardConfig.Z_SPACING || SHARD.Z_SPACING;
+      const distanceFromShard = config.DISTANCE_FROM_SHARD || CAMERA.DISTANCE_FROM_SHARD;
+      const lookAhead = config.LOOK_AHEAD || CAMERA.LOOK_AHEAD;
+      
+      const shardScroll = Math.min(scrollProgress, 1.0);
+      const totalShards = 10;
+      
+      const targetZ = (shardScroll * totalShards * zSpacing) - distanceFromShard - zSpacing;
+      
+      this.targetPosition.z = targetZ;
+      this.targetPosition.x = 0;
+      this.targetPosition.y = 0;
+      
+      this.lookAtTarget.z = targetZ + lookAhead;
+      this.lookAtTarget.x = 0;
+      this.lookAtTarget.y = 0;
+    }
     
     this.currentPosition.lerp(this.targetPosition, easeFactor);
-    this.instance.position.copy(this.currentPosition);
+    this.camera.position.copy(this.currentPosition);
     
     this.currentLookAt.lerp(this.lookAtTarget, easeFactor);
-    this.instance.lookAt(this.currentLookAt);
-    
-    this.velocity.subVectors(this.targetPosition, this.currentPosition);
+    this.camera.lookAt(this.currentLookAt);
   }
   
-  setFocusMode(enabled, shardZ = null) {
+  setFocusMode(enabled, targetZ = null) {
     this.isFocusMode = enabled;
-    if (enabled && shardZ !== null) {
-      this.focusTargetZ = shardZ;
-    } else {
-      this.focusTargetZ = null;
+    
+    if (enabled && targetZ !== null) {
+      this.focusTargetZ = targetZ;
+      const focusConfig = this.deviceManager ? this.deviceManager.getFocusConfig() : FOCUS;
+      const cameraDistance = focusConfig.CAMERA_DISTANCE || FOCUS.CAMERA_DISTANCE;
+      
+      this.targetPosition.z = targetZ - cameraDistance;
+      this.targetPosition.x = 0;
+      this.targetPosition.y = 0;
+      
+      this.lookAtTarget.z = targetZ;
+      this.lookAtTarget.x = 0;
+      this.lookAtTarget.y = 0;
     }
   }
   
-  setFocusPosition(x, y, z, lookAtZ) {
-    this.targetPosition.set(x, y, z);
-    this.lookAtTarget.set(x, y, lookAtZ);
-  }
-  
-  enforceFocusPosition(shardZ) {
-    if (!this.isFocusMode) return;
-    
-    const cameraZ = shardZ - FOCUS.CAMERA_DISTANCE;
-    this.targetPosition.set(0, 0, cameraZ);
-    this.lookAtTarget.set(0, 0, shardZ);
-  }
-  
   teleportTo(z, x = 0, y = 0) {
-    this.instance.position.set(x, y, z);
+    this.camera.position.set(x, y, z);
     this.currentPosition.set(x, y, z);
     this.targetPosition.set(x, y, z);
     
     this.currentLookAt.set(x, y, z + CAMERA.LOOK_AHEAD);
     this.lookAtTarget.set(x, y, z + CAMERA.LOOK_AHEAD);
     
-    this.instance.lookAt(this.currentLookAt);
+    this.camera.lookAt(this.currentLookAt);
   }
   
-  animateTo(targetZ, duration = 1.0, onComplete = null) {
-    if (!window.gsap) {
-      this.teleportTo(targetZ);
-      if (onComplete) onComplete();
-      return;
-    }
-    
-    this.isTransitioning = true;
-    
-    window.gsap.to(this.targetPosition, {
-      z: targetZ,
-      duration: duration,
-      ease: 'power2.inOut',
-      onUpdate: () => {
-        this.lookAtTarget.z = this.targetPosition.z + CAMERA.LOOK_AHEAD;
-      },
-      onComplete: () => {
-        this.isTransitioning = false;
-        if (onComplete) onComplete();
-      }
-    });
-  }
-  
-  getZ() { return this.instance.position.z; }
-  getPosition() { return this.instance.position.clone(); }
-  getVelocity() { return this.velocity.clone(); }
-  isMoving() { return this.velocity.lengthSq() > 0.01; }
+  getCamera() { return this.camera; }
+  get position() { return this.camera.position; }
 }
