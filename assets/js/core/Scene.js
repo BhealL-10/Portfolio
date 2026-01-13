@@ -18,7 +18,6 @@ export class Scene {
     
     this.setupBackground();
     this.setupLights();
-    this.setupFog();
   }
   
   setupBackground() {
@@ -44,11 +43,6 @@ export class Scene {
     this.scene.add(this.hemisphereLight);
   }
   
-  setupFog() {
-    const theme = this.isDarkMode ? THEME.DARK : THEME.LIGHT;
-    this.scene.fog = new THREE.Fog(theme.background, theme.fogNear, theme.fogFar);
-  }
-  
   setTheme(isDarkMode) {
     this.isDarkMode = isDarkMode;
     const theme = isDarkMode ? THEME.DARK : THEME.LIGHT;
@@ -61,12 +55,6 @@ export class Scene {
     
     if (this.directionalLight) {
       this.directionalLight.color.setHex(theme.directional);
-    }
-    
-    if (this.scene.fog) {
-      this.scene.fog.color.setHex(theme.background);
-      this.scene.fog.near = theme.fogNear;
-      this.scene.fog.far = theme.fogFar;
     }
   }
   

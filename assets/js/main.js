@@ -191,6 +191,9 @@ class PortfolioApp {
     
     this.focusController.onLastShardVisited = () => {
       console.log('🎯 Last shard visited - enabling About navigation');
+      if (this.navigationBar) {
+        this.navigationBar.show();
+      }
     };
     
     this.uiManager.setupNavigation(
@@ -284,6 +287,10 @@ class PortfolioApp {
           
           if (shard && shard.userData) {
             shard.userData.isFocused = false;
+          }
+          
+          if (this.navigationBar) {
+            this.navigationBar.show();
           }
         }
       }

@@ -41,6 +41,29 @@ export class RaycastManager {
     this.shards = shards;
   }
   
+  isInteractiveElement(target) {
+    if (!target) return false;
+    
+    const interactiveSelectors = [
+      '.manual-unfocus-btn',
+      '.slideshow-arrow',
+      '.slideshow-arrow-left',
+      '.slideshow-arrow-right',
+      '.facette-prev',
+      '.facette-next',
+      '.shard-image-grid',
+      '.theme-toggle'
+    ];
+    
+    for (const selector of interactiveSelectors) {
+      if (target.classList.contains(selector.substring(1)) || target.closest(selector)) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+  
   setupListeners() {
     window.addEventListener('mousemove', (e) => this.onMouseMove(e));
     window.addEventListener('mousedown', (e) => this.onMouseDown(e));
@@ -135,8 +158,7 @@ export class RaycastManager {
       }
     } else {
       const target = event.target;
-      if (target && (target.classList.contains('theme-toggle') || target.closest('.theme-toggle'))) return;
-      if (target && (target.closest('.shard-images') || target.closest('.slideshow-wrapper') || target.closest('.shard-info-overlay'))) return;
+      if (this.isInteractiveElement(target)) return;
       
       const intersect = this.raycast();
       if (intersect) {
@@ -156,9 +178,7 @@ export class RaycastManager {
     const touch = event.touches[0];
     const target = event.target;
     
-    // Ignorer si clic sur theme toggle ou shard-images
-    if (target && (target.classList.contains('theme-toggle') || target.closest('.theme-toggle'))) return;
-    if (target && (target.closest('.shard-images') || target.closest('.slideshow-wrapper') || target.closest('.shard-info-overlay'))) return;
+    if (this.isInteractiveElement(target)) return;
     
     this.updateMouse(touch.clientX, touch.clientY);
     
@@ -196,9 +216,7 @@ export class RaycastManager {
     const dragDuration = Date.now() - this.dragStartTime;
     const target = event.target;
     
-    // Ignorer si clic sur theme toggle ou shard-images
-    if (target && (target.classList.contains('theme-toggle') || target.closest('.theme-toggle'))) return;
-    if (target && (target.closest('.shard-images') || target.closest('.slideshow-wrapper') || target.closest('.shard-info-overlay'))) return;
+    if (this.isInteractiveElement(target)) return;
     
     if (this.isDragging) {
       if (dragDuration < this.dragThreshold) {
@@ -260,8 +278,12 @@ export class RaycastManager {
     
     if (shard.userData.isFocused && this.onShardClickInFocus) {
       const target = event?.target;
-      if (target && (target.closest('.slideshow-arrow') || target.closest('.shard-image-grid'))) {
-        return;
+      if (this.isInteractiveElement(target)) return;
+      
+      if (target) {
+        if (target.classList.contains('slideshow-image')) return;
+        if (target.classList.contains('slideshow-indicator')) return;
+        if (target.closest('.slideshow-wrapper') && !target.classList.contains('slideshow-wrapper')) return;
       }
       this.onShardClickInFocus(shard, clickSide);
       return;

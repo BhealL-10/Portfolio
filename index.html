@@ -96,6 +96,27 @@
       background: transparent;
     }
     
+    .manual-unfocus-btn {
+      display: block;
+      margin: 0 auto 15px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--accent);
+      color: var(--text-primary);
+      padding: 8px 20px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.3s ease;
+      font-family: inherit;
+    }
+    
+    .manual-unfocus-btn:hover {
+      background: var(--accent);
+      color: var(--bg-primary);
+      transform: scale(1.05);
+    }
+    
     .facette-nav {
       display: flex;
       align-items: center;
@@ -210,9 +231,9 @@
       position: absolute;
       top: 50%;
       transform: translateY(-50%);
-      background: rgba(0,0,0,0.6);
-      color: white;
-      border: none;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      border: 1px solid var(--accent);
       width: 40px;
       height: 40px;
       border-radius: 50%;
@@ -226,8 +247,20 @@
     }
     
     .slideshow-arrow:hover {
-      background: rgba(0,0,0,0.8);
+      background: var(--accent);
+      color: var(--bg-primary);
       transform: translateY(-50%) scale(1.1);
+    }
+    
+    [data-theme="light"] .slideshow-arrow {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      border: 1px solid var(--accent);
+    }
+    
+    [data-theme="light"] .slideshow-arrow:hover {
+      background: var(--bg-primary);
+      color: var(--text-primary);
     }
     
     .slideshow-arrow-left {
@@ -700,7 +733,7 @@
     .contact-link:hover {
       transform: translateY(-2px);
       background: var(--accent);
-      color: white;
+      color: var(--text-primary);
       box-shadow: 0 6px 20px rgba(74, 144, 217, 0.3);
     }
     

@@ -101,9 +101,24 @@ export const SHARD = {
     RADIUS_X: 12,
     RADIUS_Y: 8.5,
     SPEED: 0.15,
-    VARIATION: 0.2,
+    VARIATION: 0.6,
     DISTANCE_MULTIPLIER: 12,
-    SMOOTHING: 0.03
+    SMOOTHING: 0.03,
+    SPIRAL: {
+      ENABLED: true,
+      BASE_MULTIPLIER: 0.3,
+      MAX_MULTIPLIER: 3.5,
+      INDEX_FACTOR: 0.25,
+      CAMERA_DISTANCE_FACTOR: 0.015,
+      Z_CONVERGENCE: 0.85
+    }
+  },
+  DISTANCE_SCALING: {
+    ENABLED: true,
+    MIN_SCALE: 0.85,
+    MAX_SCALE: 1.8,
+    DISTANCE_THRESHOLD: 100,
+    SCALE_FACTOR: 0.008
   },
   ROTATION: {
     SPEED_X: 0.001,
@@ -282,7 +297,7 @@ export const DEVICE = {
 };
 
 // ==========================================
-// TITRES DE SHARD
+// TITRES DE SHARD (DEPRECATED - use SHARD_LOGO)
 // ==========================================
 export const TITLE = {
   CANVAS_WIDTH: 512,
@@ -299,6 +314,24 @@ export const TITLE = {
   OPACITY_IDLE: 0.9,
   OPACITY_CURRENT: 0,
   OPACITY_FOCUS: 0
+};
+
+// ==========================================
+// LOGO SHARD - Remplace ShardTitle
+// ==========================================
+export const SHARD_LOGO = {
+  DARK: "assets/images/Logo/logomodedark.svg",
+  LIGHT: "assets/images/Logo/logomodelight.svg",
+  OFFSET_Z: 8,
+  BASE_SCALE: 2.5,
+  OPACITY_IDLE: 0.85,
+  OPACITY_HIDDEN: 0,
+  FADE_SPEED: 0.12,
+  RESPONSIVE: {
+    MOBILE: { BASE_SCALE: 1.5 },
+    TABLET: { BASE_SCALE: 2.0 },
+    DESKTOP: { BASE_SCALE: 2.5 }
+  }
 };
 
 // ==========================================

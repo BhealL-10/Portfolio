@@ -41,34 +41,30 @@ export class ShardPhysics {
   }
   
   applyOrbitalAttraction(shard, deltaTime) {
-    const orbitalAngle = shard.userData.orbitAngle;
-    const targetX = Math.cos(orbitalAngle) * SHARD.ORBIT.RADIUS_X;
-    const targetY = Math.sin(orbitalAngle) * SHARD.ORBIT.RADIUS_Y;
+    if (!shard.userData.targetOrbitPosition) return;
+    
+    const targetX = shard.userData.targetOrbitPosition.x;
+    const targetY = shard.userData.targetOrbitPosition.y;
     
     const dx = targetX - shard.position.x;
     const dy = targetY - shard.position.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
     
-    if (distance > PHYSICS.ORBITAL.SNAP_DISTANCE) {
-      const attractionForce = PHYSICS.ORBITAL.ATTRACTION_BASE * Math.min(distance / 5, PHYSICS.ORBITAL.ATTRACTION_SCALE);
+    if (distance > 0.1) {
+      const attractionStrength = 0.008;
+      const force = Math.min(distance * attractionStrength, 0.15);
       
       const dirX = dx / distance;
       const dirY = dy / distance;
       
-      shard.userData.velocity.x += dirX * attractionForce;
-      shard.userData.velocity.y += dirY * attractionForce;
+      shard.userData.velocity.x += dirX * force;
+      shard.userData.velocity.y += dirY * force;
       
       const maxVel = PHYSICS.MAX_VELOCITY;
       const currentVel = shard.userData.velocity.length();
       if (currentVel > maxVel) {
         shard.userData.velocity.multiplyScalar(maxVel / currentVel);
       }
-    } else if (distance < PHYSICS.ORBITAL.SNAP_DISTANCE) {
-      const snapFactor = SHARD.ORBIT.SMOOTHING;
-      shard.position.x += (targetX - shard.position.x) * snapFactor;
-      shard.position.y += (targetY - shard.position.y) * snapFactor;
-      
-      shard.userData.velocity.multiplyScalar(PHYSICS.ORBITAL.SNAP_VELOCITY_FACTOR);
     }
   }
   

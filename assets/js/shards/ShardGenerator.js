@@ -87,7 +87,7 @@ export class ShardGenerator {
       focusZOffset: 0,
       
       orbitAngle: initialOrbitAngle,
-      orbitSpeed: SHARD.ORBIT.SPEED * (0.8 + Math.random() * SHARD.ORBIT.VARIATION),
+      orbitSpeed: SHARD.ORBIT.SPEED * (0.5 + Math.random() * 1.0),
       
       rotationSpeed: {
         x: SHARD.ROTATION.SPEED_X * (0.6 + Math.random() * 0.8),

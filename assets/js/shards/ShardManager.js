@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { ShardGenerator } from './ShardGenerator.js';
 import { ShardPhysics } from './ShardPhysics.js';
-import { ShardTitle } from './ShardTitle.js';
+import { ShardLogo } from './ShardLogo.js';
 import { projects } from '../data/projects.js';
 import { SHARD, CAMERA, SCROLL, ANIMATION, DRAG, FACETTE, THEME } from '../config/constants.js';
 
@@ -21,12 +21,12 @@ export class ShardManager {
     
     this.generator = new ShardGenerator(deviceManager);
     this.physics = new ShardPhysics();
-    this.shardTitle = null;
+    this.shardLogo = null;
     
     try {
-      this.shardTitle = new ShardTitle(scene, camera, deviceManager);
+      this.shardLogo = new ShardLogo(scene, camera, deviceManager);
     } catch (e) {
-      console.warn('ShardTitle init failed:', e);
+      console.warn('ShardLogo init failed:', e);
     }
     
     this.scrollManager = null;
@@ -48,7 +48,7 @@ export class ShardManager {
       this.shards.push(shard);
       this.scene.add(shard);
       
-      this.shardTitle?.createTitleSprite(shard);
+      this.shardLogo?.createLogoSprite(shard);
     }
     
     const config = this.deviceManager ? this.deviceManager.getShardConfig() : SHARD.RESPONSIVE.DESKTOP;
@@ -77,13 +77,14 @@ export class ShardManager {
     this.shards.forEach((shard, index) => {
       this.updateShardState(shard, index, cameraZ, scrollProgress);
       this.updateShardVisuals(shard, index);
+      this.updateShardDistanceScaling(shard, index);
       this.updateShardOrbit(shard, index);
       this.updateShardRotation(shard, index);
       this.updateContinuousMorphing(shard);
       
       const isCurrentShard = index === this.currentIndex;
       const isFocused = shard.userData.isFocused || false;
-      this.shardTitle?.updatePosition(shard, isCurrentShard, isFocused);
+      this.shardLogo?.updatePosition(shard, isCurrentShard, isFocused);
     });
     
     this.physics.update(this.shards, deltaTime);
@@ -174,6 +175,35 @@ export class ShardManager {
     }
   }
   
+  updateShardDistanceScaling(shard, index) {
+    if (shard.userData.isFocused || shard.userData.isDragging) return;
+    if (!SHARD.DISTANCE_SCALING.ENABLED) return;
+    
+    const cameraZ = this.camera.position.z;
+    const shardZ = shard.userData.fixedZ;
+    const distance = Math.abs(shardZ - cameraZ);
+    
+    let distanceScale = 1.0;
+    
+    if (distance > SHARD.DISTANCE_SCALING.DISTANCE_THRESHOLD) {
+      const excessDistance = distance - SHARD.DISTANCE_SCALING.DISTANCE_THRESHOLD;
+      distanceScale = 1.0 + (excessDistance * SHARD.DISTANCE_SCALING.SCALE_FACTOR);
+      distanceScale = Math.min(distanceScale, SHARD.DISTANCE_SCALING.MAX_SCALE);
+    } else {
+      distanceScale = Math.max(SHARD.DISTANCE_SCALING.MIN_SCALE, 1.0 - (distance * 0.001));
+    }
+    
+    const state = shard.userData.state;
+    const stateConfig = SHARD.STATES[state.toUpperCase()] || SHARD.STATES.IDLE;
+    const baseScale = shard.userData.baseScale.x;
+    const targetScale = baseScale * stateConfig.scale * distanceScale;
+    
+    const smoothing = 0.08;
+    shard.scale.x += (targetScale - shard.scale.x) * smoothing;
+    shard.scale.y += (targetScale - shard.scale.y) * smoothing;
+    shard.scale.z += (targetScale - shard.scale.z) * smoothing;
+  }
+  
   updateContinuousMorphing(shard) {
     const hoverAmount = shard.userData.hoverMorphAmount || 0;
     const dragAmount = shard.userData.dragMorphAmount || 0;
@@ -249,36 +279,62 @@ export class ShardManager {
     const orbitConfig = config.ORBIT || SHARD.ORBIT;
     const radiusX = orbitConfig.RADIUS_X || SHARD.ORBIT.RADIUS_X;
     const radiusY = orbitConfig.RADIUS_Y || SHARD.ORBIT.RADIUS_Y;
+    const spiralConfig = SHARD.ORBIT.SPIRAL;
     
     shard.userData.orbitAngle += shard.userData.orbitSpeed * 0.016;
-    
     const orbitT = shard.userData.orbitAngle;
     
-    const scrollProgress = this.scrollManager ? this.scrollManager.getShardProgress() : 0;
-    const currentShardIndex = Math.round(scrollProgress * this.shards.length);
-    const indexDistance = Math.abs(currentShardIndex - index);
+    const cameraZ = this.camera.position.z;
+    const shardZ = shard.userData.fixedZ;
+    const distanceFromCamera = Math.abs(shardZ - cameraZ);
     
     let orbitMultiplier;
-    if (indexDistance <= 1) {
-      const shardScrollPosition = index / this.shards.length;
-      const distanceFromScroll = Math.abs(scrollProgress - shardScrollPosition);
-      const baseOrbitMultiplier = 0.3;
-      const maxOrbitMultiplier = 1.2;
-      orbitMultiplier = baseOrbitMultiplier + (distanceFromScroll * (maxOrbitMultiplier - baseOrbitMultiplier) * SHARD.ORBIT.DISTANCE_MULTIPLIER);
+    
+    if (spiralConfig.ENABLED) {
+      const indexFactor = index * spiralConfig.INDEX_FACTOR;
+      const distanceFactor = distanceFromCamera * spiralConfig.CAMERA_DISTANCE_FACTOR;
+      
+      orbitMultiplier = spiralConfig.BASE_MULTIPLIER + indexFactor + distanceFactor;
+      orbitMultiplier = Math.min(orbitMultiplier, spiralConfig.MAX_MULTIPLIER);
+      
+      const zDiff = shardZ - cameraZ;
+      if (zDiff < 0) {
+        orbitMultiplier *= spiralConfig.Z_CONVERGENCE;
+      }
     } else {
-      const normalizedIndex = index / this.shards.length;
-      orbitMultiplier = 0.4 + (normalizedIndex * 1.5);
+      const scrollProgress = this.scrollManager ? this.scrollManager.getShardProgress() : 0;
+      const currentShardIndex = Math.round(scrollProgress * this.shards.length);
+      const indexDistance = Math.abs(currentShardIndex - index);
+      
+      if (indexDistance <= 1) {
+        const shardScrollPosition = index / this.shards.length;
+        const distanceFromScroll = Math.abs(scrollProgress - shardScrollPosition);
+        const baseOrbitMultiplier = 0.3;
+        const maxOrbitMultiplier = 1.2;
+        orbitMultiplier = baseOrbitMultiplier + (distanceFromScroll * (maxOrbitMultiplier - baseOrbitMultiplier) * SHARD.ORBIT.DISTANCE_MULTIPLIER);
+      } else {
+        const normalizedIndex = index / this.shards.length;
+        orbitMultiplier = 0.4 + (normalizedIndex * 1.5);
+      }
     }
     
     const targetX = Math.cos(orbitT) * radiusX * orbitMultiplier;
     const targetY = Math.sin(orbitT) * radiusY * orbitMultiplier;
+    
+    if (!shard.userData.targetOrbitPosition) {
+      shard.userData.targetOrbitPosition = new THREE.Vector2(targetX, targetY);
+    } else {
+      shard.userData.targetOrbitPosition.set(targetX, targetY);
+    }
     
     const smoothing = SHARD.ORBIT.SMOOTHING;
     shard.position.x += (targetX - shard.position.x) * smoothing;
     shard.position.y += (targetY - shard.position.y) * smoothing;
     
     if (!shard.userData.isFocused) {
-      shard.position.z = shard.userData.fixedZ;
+      const targetZ = shard.userData.fixedZ;
+      const zSmoothingFactor = 0.05;
+      shard.position.z += (targetZ - shard.position.z) * zSmoothingFactor;
     }
   }
   
@@ -419,7 +475,7 @@ export class ShardManager {
     this.isDarkMode = isDarkMode;
     this.generator.isDarkMode = isDarkMode;
     
-    this.shardTitle?.setTheme(isDarkMode);
+    this.shardLogo?.setTheme(isDarkMode);
     
     this.shards.forEach(shard => {
       if (shard.userData.isFocused) {

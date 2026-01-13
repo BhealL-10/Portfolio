@@ -92,6 +92,7 @@ export class FocusController {
     this.infoOverlay.className = 'shard-info-overlay';
     this.infoOverlay.innerHTML = `
       <div class="shard-info-content">
+        <button class="manual-unfocus-btn">✕ Fermer</button>
         <div class="facette-nav">
           <button class="facette-prev">◀</button>
           <span class="facette-indicator">1/3</span>
@@ -110,11 +111,23 @@ export class FocusController {
     
     document.body.appendChild(this.infoOverlay);
     this.setupFacetteNavigation();
+    this.setupManualUnfocus();
     this.setupInfoOverlayProtection();
   }
   
   setupInfoOverlayProtection() {
     this.infoOverlay.addEventListener('click', (e) => e.stopPropagation());
+  }
+  
+  setupManualUnfocus() {
+    const unfocusBtn = this.infoOverlay.querySelector('.manual-unfocus-btn');
+    
+    unfocusBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.state === FocusState.FOCUSED || this.state === FocusState.CHANGING_FACETTE) {
+        this.unfocus();
+      }
+    });
   }
   
   setupFacetteNavigation() {
@@ -334,7 +347,7 @@ export class FocusController {
     
     if (this.onNavigationBarToggle) this.onNavigationBarToggle(false);
     
-    if (this.shardManager.shardTitle) this.shardManager.shardTitle.setFocusActive(true);
+    if (this.shardManager.shardLogo) this.shardManager.shardLogo.setFocusActive(true);
     
     this.preFocusPosition = { x: shard.position.x, y: shard.position.y, z: shard.position.z };
     this.preFocusRotation = { x: shard.rotation.x, y: shard.rotation.y, z: shard.rotation.z };
@@ -519,13 +532,10 @@ export class FocusController {
     
     if (this.onNavigationBarToggle) this.onNavigationBarToggle(true);
     
-    if (this.shardManager.shardTitle) this.shardManager.shardTitle.setFocusActive(false);
+    if (this.shardManager.shardLogo) this.shardManager.shardLogo.setFocusActive(false);
     
-    setTimeout(() => {
-      this.state = FocusState.IDLE;
-      
-      if (this.scrollManager) this.scrollManager.setLocked(false);
-    }, 100);
+    this.state = FocusState.IDLE;
+    if (this.scrollManager) this.scrollManager.setLocked(false);
     
     if (this.hasVisitedLastShard && this.onLastShardVisited) this.onLastShardVisited();
     
