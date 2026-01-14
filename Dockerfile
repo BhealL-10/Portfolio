@@ -20,15 +20,12 @@ LABEL version="5.0"
 # Copier la configuration nginx personnalisée
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# Copier tous les fichiers du site
-COPY index.html /usr/share/nginx/html/
-COPY assets /usr/share/nginx/html/assets
-
-# Ajuster les permissions (l'utilisateur nginx existe déjà dans l'image)
-RUN chown -R nginx:nginx /usr/share/nginx/html && \
-    chown -R nginx:nginx /var/cache/nginx && \
+# Ajuster les permissions pour nginx
+RUN chown -R nginx:nginx /var/cache/nginx && \
     chown -R nginx:nginx /var/log/nginx && \
-    chmod -R 755 /usr/share/nginx/html
+    mkdir -p /usr/share/nginx/html && \
+    chown -R nginx:nginx /usr/share/nginx/html && \
+    chmod 755 /usr/share/nginx/html
 
 # Exposer le port 80
 EXPOSE 80
