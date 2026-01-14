@@ -20,6 +20,9 @@ LABEL version="5.0"
 # Copier la configuration nginx personnalisée
 COPY nginx.conf /etc/nginx/nginx.conf
 
+# Installer curl pour le healthcheck
+RUN apk add --no-cache curl
+
 # Ajuster les permissions pour nginx
 RUN chown -R nginx:nginx /var/cache/nginx && \
     chown -R nginx:nginx /var/log/nginx && \
@@ -30,9 +33,9 @@ RUN chown -R nginx:nginx /var/cache/nginx && \
 # Exposer le port 80
 EXPOSE 80
 
-# Health check - vérifier que nginx répond
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+# Health check - vérifier que nginx répond sur /health
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost/health || exit 1
 
 # Démarrer nginx en mode foreground
 CMD ["nginx", "-g", "daemon off;"]
