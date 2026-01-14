@@ -17,11 +17,14 @@ LABEL maintainer="Portfolio-BhealL"
 LABEL description="Portfolio 3D Bilel El Ouaer"
 LABEL version="5.0"
 
-# Copier la configuration nginx personnalisée
-COPY nginx.conf /etc/nginx/nginx.conf
-
 # Installer curl pour le healthcheck
 RUN apk add --no-cache curl
+
+# Supprimer la configuration nginx par défaut
+RUN rm -f /etc/nginx/conf.d/default.conf
+
+# Copier la configuration nginx personnalisée
+COPY nginx.conf /etc/nginx/nginx.conf
 
 # Ajuster les permissions pour nginx
 RUN chown -R nginx:nginx /var/cache/nginx && \
