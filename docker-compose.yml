@@ -16,8 +16,9 @@ services:
     image: portfolio-3d:${TAG:-latest}
     container_name: portfolio-3d
     restart: unless-stopped
-    volumes:
-      - ./:/usr/share/nginx/html:ro
+    networks:
+      global_cloudflared:
+        ipv4_address: 10.25.10.6
     deploy:
       resources:
         limits:
@@ -32,8 +33,12 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 10s
+
+networks:
+  global_cloudflared:
+    external: true
