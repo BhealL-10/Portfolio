@@ -79,9 +79,9 @@
   --bg-secondary: rgba(242, 221, 184, 0.7); /* Fond secondaire = beige 70% opaque */
   --text-primary: var(--color-dark); /* Texte principal = gris foncé */
   --text-secondary: rgba(57, 63, 74, 0.7); /* Texte secondaire = gris 70% opaque */
-  --accent: #4a90d9; /* Bleu vif - CHANGEZ ICI pour modifier la couleur d'accent */
-  --accent-hover: #3a80c9; /* Bleu plus foncé au survol */
-  
+  --accent: #75af80; /* Vert vif - CHANGEZ ICI pour modifier la couleur d'accent */
+  --accent-hover: #7ebd89; /* Vert plus foncé au survol */
+
   /* ==================== MODE FOCUS (quand on clique sur un projet) ==================== */
   /* 
    * POUR DÉBUTANTS : Couleurs utilisées quand un projet est en focus
@@ -291,8 +291,8 @@
   --bg-secondary: rgba(57, 63, 74, 0.7); /* Fond secondaire = gris 70% opaque */
   --text-primary: var(--color-light); /* Texte principal = beige clair */
   --text-secondary: rgba(242, 221, 184, 0.7); /* Texte secondaire = beige 70% opaque */
-  --accent: #4a90d9; /* Même bleu que le mode clair */
-  --accent-hover: #5aa0e9; /* Bleu plus clair au survol (inverse du mode clair) */
+  --accent: #518cca; /* Même bleu que le mode clair */
+  --accent-hover: rgb(76, 143, 216); /* Bleu plus clair au survol (inverse du mode clair) */
   
   /* Mode focus inversé */
   --focus-text: var(--color-dark); /* En mode sombre, le focus utilise du texte sombre */

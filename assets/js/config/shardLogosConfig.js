@@ -19,7 +19,7 @@ export const SHARD_LOGOS_CONFIG = {
     dark: "assets/images/Logo/logomodedark.svg",
     light: "assets/images/Logo/logomodelight.svg",
     scale: 0.7,
-    opacity: 0.9
+    opacity: 1
   },
   
   // Shard 2 - Tono Discord Bot
@@ -27,55 +27,55 @@ export const SHARD_LOGOS_CONFIG = {
     dark: "assets/images/Logo/logomodedark.svg",
     light: "assets/images/Logo/logomodelight.svg",
     scale: 0.7,
-    opacity: 0.9
+    opacity: 1
   },
   
   // Shard 3 - Map Editor 3D
   "3": {
-    dark: "assets/images/Logo/logomodedark.svg",
-    light: "assets/images/Logo/logomodelight.svg",
+    dark: "assets/images/Logo/logodavindark.svg",
+    light: "assets/images/Logo/logodavinlight.svg",
     scale: 0.7,
-    opacity: 0.9
+    opacity: 1
   },
   
   // Shard 4 - Court-métrage
   "4": {
-    dark: "assets/images/Logo/logomodedark.svg",
-    light: "assets/images/Logo/logomodelight.svg",
+    dark: "assets/images/Logo/logofilmdark.svg",
+    light: "assets/images/Logo/logofilmlight.svg",
     scale: 0.7,
-    opacity: 0.9
+    opacity: 1
   },
   
   // Shard 5 - Identité Visuelle
   "5": {
-    dark: "assets/images/Logo/logomodedark.svg",
-    light: "assets/images/Logo/logomodelight.svg",
+    dark: "assets/images/Logo/logoiadark.svg",
+    light: "assets/images/Logo/logoialight.svg",
     scale: 0.7,
-    opacity: 0.9
+    opacity: 1
   },
   
   // Shard 6 - Portfolio 3D
   "6": {
-    dark: "assets/images/Logo/logomodedark.svg",
-    light: "assets/images/Logo/logomodelight.svg",
+    dark: "assets/images/Logo/logodiscorddark.svg",
+    light: "assets/images/Logo/logodiscordlight.svg",
     scale: 0.7,
-    opacity: 0.9
+    opacity: 1
   },
   
   // Shard 7 - E-commerce
   "7": {
-    dark: "assets/images/Logo/logomodedark.svg",
-    light: "assets/images/Logo/logomodelight.svg",
+    dark: "assets/images/Logo/logoaffinitydark.svg",
+    light: "assets/images/Logo/logoaffinitylight.svg",
     scale: 0.7,
-    opacity: 0.9
+    opacity: 1
   },
   
   // Shard 8 - Documentaire
   "8": {
-    dark: "assets/images/Logo/logomodedark.svg",
-    light: "assets/images/Logo/logomodelight.svg",
+    dark: "assets/images/Logo/logospinedark.svg",
+    light: "assets/images/Logo/logospinelight.svg",
     scale: 0.7,
-    opacity: 0.9
+    opacity: 1
   },
   
   // Shard 9 - Motion Design
@@ -83,7 +83,7 @@ export const SHARD_LOGOS_CONFIG = {
     dark: "assets/images/Logo/logomodedark.svg",
     light: "assets/images/Logo/logomodelight.svg",
     scale: 0.7,
-    opacity: 0.9
+    opacity: 1
   },
   
   // Shard 10 - UI Kit
@@ -91,7 +91,7 @@ export const SHARD_LOGOS_CONFIG = {
     dark: "assets/images/Logo/logomodedark.svg",
     light: "assets/images/Logo/logomodelight.svg",
     scale: 0.7,
-    opacity: 0.9
+    opacity: 1
   }
 };
 
