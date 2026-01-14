@@ -32,48 +32,48 @@ export const SHARD_LOGOS_CONFIG = {
   
   // Shard 3 - Map Editor 3D
   "3": {
-    dark: "assets/images/Logo/logodavindark.svg",
-    light: "assets/images/Logo/logodavinlight.svg",
+    dark: "assets/images/Logo/DavinciLogoDark.svg",
+    light: "assets/images/Logo/DavinciLogoLight.svg",
     scale: 0.7,
     opacity: 1
   },
   
   // Shard 4 - Court-métrage
   "4": {
-    dark: "assets/images/Logo/logofilmdark.svg",
-    light: "assets/images/Logo/logofilmlight.svg",
+    dark: "assets/images/Logo/MovieLogoDark.svg",
+    light: "assets/images/Logo/MovieLogoLight.svg",
     scale: 0.7,
     opacity: 1
   },
   
   // Shard 5 - Identité Visuelle
   "5": {
-    dark: "assets/images/Logo/logoiadark.svg",
-    light: "assets/images/Logo/logoialight.svg",
+    dark: "assets/images/Logo/IALogoDark.svg",
+    light: "assets/images/Logo/IALogoLight.svg",
     scale: 0.7,
     opacity: 1
   },
   
   // Shard 6 - Portfolio 3D
   "6": {
-    dark: "assets/images/Logo/logodiscorddark.svg",
-    light: "assets/images/Logo/logodiscordlight.svg",
+    dark: "assets/images/Logo/DiscordLogoDark.svg",
+    light: "assets/images/Logo/DiscordLogoLight.svg",
     scale: 0.7,
     opacity: 1
   },
   
   // Shard 7 - E-commerce
   "7": {
-    dark: "assets/images/Logo/logoaffinitydark.svg",
-    light: "assets/images/Logo/logoaffinitylight.svg",
+    dark: "assets/images/Logo/AffinityLogoDark.svg",
+    light: "assets/images/Logo/AffinityLogoLight.svg",
     scale: 0.7,
     opacity: 1
   },
   
   // Shard 8 - Documentaire
   "8": {
-    dark: "assets/images/Logo/logospinedark.svg",
-    light: "assets/images/Logo/logospinelight.svg",
+    dark: "assets/images/Logo/SpineLogoDark.svg",
+    light: "assets/images/Logo/SpineLogoLight.svg",
     scale: 0.7,
     opacity: 1
   },

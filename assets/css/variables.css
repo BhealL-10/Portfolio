@@ -291,8 +291,8 @@
   --bg-secondary: rgba(57, 63, 74, 0.7); /* Fond secondaire = gris 70% opaque */
   --text-primary: var(--color-light); /* Texte principal = beige clair */
   --text-secondary: rgba(242, 221, 184, 0.7); /* Texte secondaire = beige 70% opaque */
-  --accent: #518cca; /* Même bleu que le mode clair */
-  --accent-hover: rgb(76, 143, 216); /* Bleu plus clair au survol (inverse du mode clair) */
+  --accent: #75af80; /* Même vert que le mode clair */
+  --accent-hover: #7ebd89; /* Vert plus clair au survol (inverse du mode clair) */
   
   /* Mode focus inversé */
   --focus-text: var(--color-dark); /* En mode sombre, le focus utilise du texte sombre */
