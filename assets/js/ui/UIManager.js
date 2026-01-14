@@ -105,6 +105,14 @@ export class UIManager {
     if (this.aboutSection) {
       this.aboutSection.classList.add('visible');
       this.aboutSection.style.overflowY = 'auto';
+      
+      // Permettre le scroll natif dans la section About
+      const container = this.aboutSection.querySelector('.container');
+      if (container) {
+        container.style.overflowY = 'auto';
+        container.style.maxHeight = '100dvh';
+        container.style.webkitOverflowScrolling = 'touch';
+      }
     }
   }
   
@@ -112,7 +120,16 @@ export class UIManager {
     if (!this.isAboutVisible) return;
     this.isAboutVisible = false;
     
-    if (this.aboutSection) this.aboutSection.classList.remove('visible');
+    if (this.aboutSection) {
+      this.aboutSection.classList.remove('visible');
+      
+      // Réinitialiser le scroll
+      const container = this.aboutSection.querySelector('.container');
+      if (container) {
+        container.style.overflowY = '';
+        container.scrollTop = 0;
+      }
+    }
   }
   
   enableAboutContactScroll() {

@@ -49,10 +49,13 @@ export class SimpleMirror {
     this.canvas.id = 'mirror-canvas';
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
-    this.canvas.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100dvh;z-index:9999;pointer-events:auto;cursor:pointer;`;
+    this.canvas.style.cssText = `position:fixed;top:0;left:0;width:100vw;height:100dvh;z-index:9999;pointer-events:auto;cursor:pointer;background:transparent;`;
     
     this.ctx = this.canvas.getContext('2d');
     document.body.appendChild(this.canvas);
+    
+    // Ajouter un fond qui change avec le thème pour couvrir tout l'écran
+    this.updateCanvasBackground();
     
     window.addEventListener('resize', () => {
       this.canvas.width = window.innerWidth;
@@ -60,10 +63,18 @@ export class SimpleMirror {
       
       // Update canvas style to use actual viewport height
       this.canvas.style.height = '100dvh';
+      this.canvas.style.width = '100vw';
+      this.updateCanvasBackground();
       this.draw();
     });
     
     this.draw();
+  }
+  
+  updateCanvasBackground() {
+    // Mettre à jour la couleur de fond du body pour couvrir les espaces landscape
+    const bgColor = this.isDark ? '#F2DDB8' : '#393F4A';
+    document.body.style.backgroundColor = bgColor;
   }
   
   setupThemeListener() {
@@ -71,7 +82,9 @@ export class SimpleMirror {
       const newTheme = document.documentElement.dataset.theme === 'dark';
       if (this.isDark !== newTheme) {
         this.isDark = newTheme;
+        this.updateCanvasBackground();
         this.loadLogo();
+        this.draw();
       }
     });
     
@@ -106,9 +119,13 @@ export class SimpleMirror {
     const mirrorColor = this.isDark ? '#F2DDB8' : '#393F4A';
     const crackColor = this.isDark ? '#393F4A' : '#F2DDB8';
     
+    // Remplir tout le canvas avec la couleur du miroir
     ctx.fillStyle = mirrorColor;
     ctx.globalAlpha = this.opacity;
     ctx.fillRect(0, 0, w, h);
+    
+    // Mettre à jour le fond du body pour les zones hors canvas (landscape)
+    this.updateCanvasBackground();
     
     if (this.opacity > 0.5) {
       const deviceConfig = this.getDeviceConfig();
@@ -445,5 +462,7 @@ export class SimpleMirror {
   
   remove() {
     if (this.canvas?.parentNode) this.canvas.parentNode.removeChild(this.canvas);
+    // Réinitialiser le fond du body
+    document.body.style.backgroundColor = '';
   }
 }

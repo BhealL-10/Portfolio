@@ -1,3 +1,93 @@
+/* ==================== ANIMATION COULEUR ACCENT ==================== */
+/* 
+ * Animation cyclique de la couleur d'accent
+ * Cycle: Rouge (#FF4545) → Vert (#75AF80) → Bleu (#49BCFF) → Rouge
+ * Durée: 3 secondes en boucle infinie
+ */
+@property --accent-hue {
+  syntax: '<number>';
+  initial-value: 0;
+  inherits: true;
+}
+
+@keyframes accentColorCycle {
+  /* Phase 1: Rouge (0-10s) */
+  0% {
+    --accent: #FF4545;
+    --accent-hover: #FF6666;
+  }
+  /* Transition atypique 1: Fragmentation vers vert (10-13s) */
+  30% {
+    --accent: #FF4545;
+    --accent-hover: #FF6666;
+  }
+  31% {
+    --accent: #FF4545;
+    --accent-hover: #FF6666;
+  }
+  32% {
+    --accent: #FF4545;
+    --accent-hover: #FF6666;
+  }
+  33% {
+    --accent: #FF4545;
+    --accent-hover: #FF6666;
+  }
+  /* Phase 2: Vert (13-23s) */
+  33.33% {
+    --accent: #75AF80;
+    --accent-hover: #8FC99A;
+  }
+  /* Transition atypique 2: Propagation vers bleu (23-26s) */
+  63% {
+    --accent: #75AF80;
+    --accent-hover: #8FC99A;
+  }
+  64% {
+    --accent: #75AF80;
+    --accent-hover: #8FC99A;
+  }
+  65% {
+    --accent: #75AF80;
+    --accent-hover: #8FC99A;
+  }
+  66% {
+    --accent: #75AF80;
+    --accent-hover: #8FC99A;
+  }
+  /* Phase 3: Bleu (26-30s) */
+  66.66% {
+    --accent: #49BCFF;
+    --accent-hover: #6DCAFF;
+  }
+  /* Transition atypique 3: Éclatement vers rouge (30-33s) */
+  96% {
+    --accent: #49BCFF;
+    --accent-hover: #6DCAFF;
+  }
+  97% {
+    --accent: #49BCFF;
+    --accent-hover: #6DCAFF;
+  }
+  98% {
+    --accent: #49BCFF;
+    --accent-hover: #6DCAFF;
+  } 
+  99% {
+    --accent: #49BCFF;
+    --accent-hover: #6DCAFF;
+  }
+  100% {
+    --accent: #49BCFF;
+    --accent-hover: #6DCAFF;
+  }
+}
+
+/* Application de l'animation sur html pour hériter partout */
+html {
+  animation: accentColorCycle 30s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+
 /* ==================== DESIGN SYSTEM - VARIABLES CSS ==================== */
 /* 
  * GUIDE POUR DÉBUTANTS : Ce fichier contient toutes les variables CSS du projet
@@ -79,8 +169,8 @@
   --bg-secondary: rgba(242, 221, 184, 0.7); /* Fond secondaire = beige 70% opaque */
   --text-primary: var(--color-dark); /* Texte principal = gris foncé */
   --text-secondary: rgba(57, 63, 74, 0.7); /* Texte secondaire = gris 70% opaque */
-  --accent: #75af80; /* Vert vif - CHANGEZ ICI pour modifier la couleur d'accent */
-  --accent-hover: #7ebd89; /* Vert plus foncé au survol */
+  --accent: #FF4545; /* Couleur d'accent animée - Rouge de départ */
+  --accent-hover: #FF6666; /* Version plus claire au survol */
 
   /* ==================== MODE FOCUS (quand on clique sur un projet) ==================== */
   /* 
@@ -291,8 +381,8 @@
   --bg-secondary: rgba(57, 63, 74, 0.7); /* Fond secondaire = gris 70% opaque */
   --text-primary: var(--color-light); /* Texte principal = beige clair */
   --text-secondary: rgba(242, 221, 184, 0.7); /* Texte secondaire = beige 70% opaque */
-  --accent: #75af80; /* Même vert que le mode clair */
-  --accent-hover: #7ebd89; /* Vert plus clair au survol (inverse du mode clair) */
+  --accent: #FF4545; /* Couleur d'accent animée - Rouge de départ */
+  --accent-hover: #FF6666; /* Version plus claire au survol */
   
   /* Mode focus inversé */
   --focus-text: var(--color-dark); /* En mode sombre, le focus utilise du texte sombre */
