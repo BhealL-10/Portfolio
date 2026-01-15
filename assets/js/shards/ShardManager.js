@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { ShardGenerator } from './ShardGenerator.js';
 import { ShardPhysics } from './ShardPhysics.js';
 import { ShardLogo } from './ShardLogo.js';
-import { projects } from '../data/projects.js';
+import { getTranslatedProjects } from '../data/projectsHelper.js';
 import { SHARD, CAMERA, SCROLL, ANIMATION, DRAG, FACETTE, THEME } from '../config/constants.js';
 
 export class ShardManager {
@@ -42,12 +42,27 @@ export class ShardManager {
     this.totalDistance = 0;
   }
   
-  async generateShards() {
-    this.shards = await this.generator.generateAllShards(projects, this.scene);
+  async generateShards(lang = 'fr') {
+    const translatedProjects = getTranslatedProjects(lang);
+    this.shards = await this.generator.generateAllShards(translatedProjects, this.scene);
     
     const config = this.deviceManager ? this.deviceManager.getShardConfig() : SHARD.RESPONSIVE.DESKTOP;
     const zSpacing = config.Z_SPACING || SHARD.Z_SPACING;
-    this.totalDistance = projects.length * zSpacing;
+    this.totalDistance = translatedProjects.length * zSpacing;
+    
+    return this.shards;
+  }
+  
+  async updateLanguage(lang) {
+    // Supprimer les anciens shards de la scène
+    this.shards.forEach(shard => {
+      if (shard.parent) {
+        shard.parent.remove(shard);
+      }
+    });
+    
+    // Régénérer avec la nouvelle langue
+    await this.generateShards(lang);
     
     return this.shards;
   }

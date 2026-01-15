@@ -4,7 +4,6 @@
  */
 
 import * as THREE from 'three';
-import { getActiveFacette, getProjectByIndex } from '../data/projects.js';
 import { FOCUS, FACETTE, SCROLL, CATEGORIES, SHARD, CAMERA, ANIMATION, DRAG, DEVICE, TYPOGRAPHY, NAVIGATION } from '../config/constants.js';
 
 const FocusState = {
@@ -74,6 +73,9 @@ export class FocusController {
   setScrollManager(scrollManager) { this.scrollManager = scrollManager; }
   setRenderer(renderer) { this.renderer = renderer; }
   setDeviceManager(deviceManager) { this.deviceManager = deviceManager; }
+  updateShards(shards) { 
+    this.shardManager.shards = shards;
+  }
   
   getDeviceFocusConfig() {
     if (!FOCUS.RESPONSIVE || !this.deviceManager) {
@@ -102,12 +104,15 @@ export class FocusController {
         <h2 class="shard-title"></h2>
         <div class="shard-images"></div>
         <p class="shard-description"></p>
+        <div class="shard-long-description-container">
+          <div class="shard-long-description"></div>
+        </div>
         <div class="shard-technologies"></div>
         <div class="shard-links"></div>
       </div>
     `;
     
-    this.infoOverlay.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:150;pointer-events:auto;opacity:0;transition:opacity 0.4s ease;max-width:550px;width:90%;text-align:center;font-family:${TYPOGRAPHY.PRIMARY_FONT};`;
+    this.infoOverlay.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:150;pointer-events:auto;opacity:0;transition:opacity 0.4s ease;max-width:min(90vw,800px);width:90%;text-align:center;font-family:${TYPOGRAPHY.PRIMARY_FONT};max-height:calc(100dvh - 80px);overflow:visible;`;
     
     document.body.appendChild(this.infoOverlay);
     this.setupFacetteNavigation();
@@ -117,6 +122,18 @@ export class FocusController {
   
   setupInfoOverlayProtection() {
     this.infoOverlay.addEventListener('click', (e) => e.stopPropagation());
+    
+    // Gestion du scroll avec la molette dans longDescription
+    const longDescContainer = this.infoOverlay.querySelector('.shard-long-description-container');
+    if (longDescContainer) {
+      longDescContainer.addEventListener('wheel', (e) => {
+        e.stopPropagation();
+        // Laisser le scroll natif fonctionner
+      }, { passive: true });
+      
+      // Pour le touch, RaycastManager gère déjà la détection et laisse passer le scroll
+      // Pas besoin de listeners supplémentaires ici
+    }
   }
   
   setupManualUnfocus() {
@@ -737,7 +754,8 @@ export class FocusController {
   }
   
   updateInfo(shard) {
-    const project = getProjectByIndex(shard.userData.index);
+    // Les données du projet sont déjà dans shard.userData
+    const project = shard.userData.project;
     if (!project) return;
     
     const facette = project.facettes[shard.userData.activeFacette];
@@ -761,6 +779,16 @@ export class FocusController {
     this.infoOverlay.querySelector('.shard-title').textContent = facette.title;
     this.infoOverlay.querySelector('.shard-description').textContent = facette.description;
     
+    const longDescContainer = this.infoOverlay.querySelector('.shard-long-description-container');
+    const longDescEl = this.infoOverlay.querySelector('.shard-long-description');
+    if (facette.longDescription && facette.longDescription.trim()) {
+      const paragraphs = facette.longDescription.split('\n\n').map(p => p.trim()).filter(p => p);
+      longDescEl.innerHTML = paragraphs.map(p => `<p>${p}</p>`).join('');
+      longDescContainer.style.display = 'block';
+    } else {
+      longDescContainer.style.display = 'none';
+    }
+    
     const techContainer = this.infoOverlay.querySelector('.shard-technologies');
     techContainer.innerHTML = facette.technologies.map(tech => '<span class="tech-badge">' + tech + '</span>').join('');
     
@@ -777,7 +805,14 @@ export class FocusController {
     const imagesContainer = this.infoOverlay.querySelector('.shard-images');
     imagesContainer.innerHTML = '';
     
+    // Supprimer toutes les anciennes classes grid-size et grid-view
+    imagesContainer.classList.remove('grid-view', 'grid-size-normal', 'grid-size-medium', 'grid-size-small');
+    
     if (this.currentImages.length === 0) return;
+    
+    // Limiter à 12 images maximum
+    const displayImages = this.currentImages.slice(0, 12);
+    this.currentImages = displayImages;
     
     if (this.currentImages.length === 1) {
       const img = document.createElement('img');
@@ -788,6 +823,17 @@ export class FocusController {
     } else {
       if (this.isGridView) {
         imagesContainer.classList.add('grid-view');
+        
+        // Adapter la grille selon le nombre d'images
+        const imageCount = this.currentImages.length;
+        if (imageCount <= 4) {
+          imagesContainer.classList.add('grid-size-normal');
+        } else if (imageCount <= 8) {
+          imagesContainer.classList.add('grid-size-medium');
+        } else {
+          imagesContainer.classList.add('grid-size-small');
+        }
+        
         this.currentImages.forEach((imgSrc, index) => {
           const img = document.createElement('img');
           img.src = imgSrc;
@@ -806,6 +852,16 @@ export class FocusController {
         imagesContainer.classList.remove('grid-view');
         const slideshowWrapper = document.createElement('div');
         slideshowWrapper.className = 'slideshow-wrapper';
+        
+        // Adapter la taille selon le nombre d'images
+        const imageCount = this.currentImages.length;
+        if (imageCount <= 4) {
+          slideshowWrapper.classList.add('slideshow-size-normal');
+        } else if (imageCount <= 8) {
+          slideshowWrapper.classList.add('slideshow-size-medium');
+        } else {
+          slideshowWrapper.classList.add('slideshow-size-small');
+        }
         
         const img = document.createElement('img');
         img.src = this.currentImages[this.currentSlideIndex];

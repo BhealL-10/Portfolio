@@ -68,6 +68,7 @@ export class ShardGenerator {
       projectTitle: project.title,
       index: index,
       
+      project: project, // Référence complète du projet pour FocusController
       facettes: project.facettes,
       activeFacette: 0,
       

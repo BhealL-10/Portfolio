@@ -55,6 +55,12 @@ export class ScrollManager {
   }
   
   onWheel(event) {
+    // Permettre le scroll natif dans shard-long-description-container
+    const target = event.target;
+    if (target && target.closest('.shard-long-description-container')) {
+      return; // Ne pas bloquer le scroll natif
+    }
+    
     if (this.locked || this.lockedByUnfocus) {
       event.preventDefault();
       return;

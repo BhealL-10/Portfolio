@@ -386,7 +386,7 @@ export class SimpleMirror {
     });
     
     const mirrorColor = this.isDark ? '#F2DDB8' : '#393F4A';
-    const crackColor = this.isDark ? '#F2DDB8' : '#393F4A';
+    const crackColor = this.isDark ? '#393F4A' : '#F2DDB8';
     
     const animate = () => {
       const elapsed = Date.now() - startTime;
@@ -395,7 +395,8 @@ export class SimpleMirror {
       
       this.ctx.clearRect(0, 0, w, h);
       
-      this.opacity = 1 - progress;
+      // Garder l'opacité du canvas à 1 pendant toute l'animation
+      this.canvas.style.opacity = 1 - (progress * 0.3);
       
       fragments.forEach(fragment => {
         fragment.centerX += fragment.vx * deltaTime;
@@ -434,7 +435,30 @@ export class SimpleMirror {
       if (progress < 1) {
         requestAnimationFrame(animate);
       } else {
-        this.remove();
+        // Fade out final du canvas
+        this.fadeOutCanvas(() => {
+          this.remove();
+          if (onComplete) onComplete();
+        });
+      }
+    };
+    
+    animate();
+  }
+  
+  fadeOutCanvas(onComplete) {
+    const duration = 800;
+    const startTime = Date.now();
+    
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      this.canvas.style.opacity = 1 - progress;
+      
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
         if (onComplete) onComplete();
       }
     };

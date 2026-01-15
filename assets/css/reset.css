@@ -16,6 +16,8 @@ body {
   min-height: 100vh;
   line-height: 1.6;
   overflow-x: hidden;
+  background-color: var(--bg-primary);
+  transition: background-color 0.3s ease;
 }
 
 img, picture, video, canvas, svg {

@@ -4,7 +4,7 @@
  */
 
 import { LAYERS, UI, SCROLL, TYPOGRAPHY } from '../config/constants.js';
-import { projects } from '../data/projects.js';
+import { projectsMetadata } from '../data/projects_metadata.js';
 
 export class UIManager {
   constructor(deviceManager) {
@@ -13,6 +13,7 @@ export class UIManager {
     this.scrollIndicator = null;
     this.aboutSection = null;
     this.isAboutVisible = false;
+    this.navigationBar = null;
     
     this.focusController = null;
     
@@ -37,7 +38,7 @@ export class UIManager {
     this.sectionIndicator = document.createElement('div');
     this.sectionIndicator.className = 'section-indicator';
     
-    projects.forEach((project, i) => {
+    projectsMetadata.forEach((project, i) => {
       const dot = document.createElement('div');
       dot.className = 'section-dot';
       dot.dataset.index = i;
@@ -79,6 +80,10 @@ export class UIManager {
     }
   }
   
+  setNavigationBar(navigationBar) {
+    this.navigationBar = navigationBar;
+  }
+  
   setupNavigation(scrollManager, shardManager, focusController) {
     this.focusController = focusController;
     const dots = this.sectionIndicator?.querySelectorAll('.section-dot');
@@ -102,6 +107,11 @@ export class UIManager {
     if (this.isAboutVisible) return;
     this.isAboutVisible = true;
     
+    // Afficher la navigation bar quand About est visible
+    if (this.navigationBar) {
+      this.navigationBar.show();
+    }
+    
     if (this.aboutSection) {
       this.aboutSection.classList.add('visible');
       this.aboutSection.style.overflowY = 'auto';
@@ -119,6 +129,9 @@ export class UIManager {
   hideAboutSection() {
     if (!this.isAboutVisible) return;
     this.isAboutVisible = false;
+    
+    // Ne pas forcer l'affichage de la nav bar, laisser le focus controller gérer
+    // La nav bar sera cachée si on est en focus, affichée sinon
     
     if (this.aboutSection) {
       this.aboutSection.classList.remove('visible');

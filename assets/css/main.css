@@ -646,106 +646,167 @@ body {
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.4s ease;
-  max-width: min(90vw, 500px);
-  max-height: calc(100dvh - var(--safe-area-top, 0px) - var(--safe-area-bottom, 0px) - 40px);
+  max-width: min(90vw, 800px);
+  max-height: calc(100dvh - 80px);
   width: 90%;
   text-align: center;
-  overflow-y: auto;
+  overflow: visible;
 }
 
 .shard-info-content {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(0.75rem, 2vh, 1.5rem);
-  padding: clamp(1rem, 3vh, 2rem);
+  gap: clamp(0.5rem, 1.5vh, 1rem);
+  padding: clamp(1rem, 2.5vh, 1.5rem);
+  background: transparent;
+  max-height: calc(100dvh - 80px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) transparent;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.shard-info-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.shard-info-content::-webkit-scrollbar-track {
   background: transparent;
 }
 
+.shard-info-content::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 3px;
+}
+
 .shard-category {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--accent);
+  font-size: clamp(0.7rem, 1.8vh, 0.8125rem);
+  font-weight: 600;
+  color: var(--bg-primary);
+  background: var(--text-primary);
+  border: 5px solid var(--accent);
   text-transform: uppercase;
-  letter-spacing: 0.15em;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background: transparent;
-  border-radius: var(--radius-sm);
+  letter-spacing: 0.5px;
+  padding: clamp(0.25rem, 0.8vh, 0.375rem) clamp(0.625rem, 2vw, 0.875rem);
+  border-radius: 20px;
+  margin-bottom: clamp(0.5rem, 1vh, 0.75rem);
 }
 
 .shard-title {
   font-family: var(--font-heading);
-  font-size: var(--font-size-2xl);
-  font-weight: var(--font-weight-bold);
-  color: var(--text-primary);
-  margin: 0;
+  font-size: clamp(1.25rem, 4vh, 1.75rem);
+  font-weight: 700;
+  color: var(--focus-text, var(--text-primary));
+  margin: 0 0 clamp(0.5rem, 1vh, 0.75rem) 0;
   line-height: 1.2;
 }
 
 .shard-description {
-  font-size: var(--font-size-base);
+  font-size: clamp(0.85rem, 2.2vh, 1rem);
   background: var(--bg-primary);
-  border-radius: inherit;
-  padding: var(--spacing-sm);
-  color: var(--color-title);
-  line-height: 1.6;
-  margin: 0;
+  border-radius: 8px;
+  padding: clamp(0.5rem, 1.5vh, 0.75rem);
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin: 0 0 clamp(0.5rem, 1vh, 0.75rem) 0;
+  font-weight: 500;
 }
 
-.shard-image-container {
+.shard-long-description-container {
   width: 100%;
-  max-height: 200px;
-  overflow: hidden;
-  border-radius: var(--radius-md);
-  margin: var(--spacing-sm) 0;
+  max-height: 30vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin: clamp(0.5rem, 1vh, 0.75rem) 0;
+  padding: clamp(0.5rem, 1.5vh, 0.75rem);
+  background: rgba(242, 221, 184, 0.05);
+  border-radius: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) transparent;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  pointer-events: auto;
+  cursor: auto;
+}
+
+[data-theme="dark"] .shard-long-description-container {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.shard-long-description-container::-webkit-scrollbar {
+  width: 5px;
+}
+
+.shard-long-description-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.shard-long-description-container::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+.shard-long-description {
+  text-align: left;
+  font-size: clamp(0.8rem, 2vh, 0.95rem);
+  line-height: 1.6;
+  color: var(--focus-text);
+}
+
+.shard-long-description p {
+  margin: 0 0 clamp(0.75rem, 1.5vh, 1rem) 0;
+}
+
+.shard-long-description p:last-child {
+  margin-bottom: 0;
 }
 
 .shard-image {
   width: 100%;
-  height: 100%;
+  height: auto;
+  max-height: clamp(150px, 25vh, 250px);
   object-fit: cover;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
 }
 
 .shard-technologies {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: var(--spacing-xs);
-}
-
-.shard-tech-badge {
-  font-size: var(--font-size-xs);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: var(--radius-full);
-  color: var(--text-secondary);
+  gap: clamp(0.375rem, 1vh, 0.5rem);
+  margin: clamp(0.5rem, 1vh, 0.75rem) 0;
 }
 
 .shard-links {
   display: flex;
-  gap: var(--spacing-md);
-  margin-top: var(--spacing-sm);
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: clamp(0.5rem, 2vw, 0.9375rem);
+  margin-top: clamp(0.5rem, 1vh, 0.75rem);
 }
 
 .shard-link {
   display: inline-flex;
   align-items: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-sm) var(--spacing-md);
+  gap: clamp(0.25rem, 0.5vw, 0.5rem);
+  padding: clamp(0.5rem, 1.5vh, 0.625rem) clamp(0.875rem, 3vw, 1.25rem);
   background: var(--accent);
-  color: var(--bg-primary);
-  border-radius: var(--radius-md);
-  font-weight: var(--font-weight-medium);
-  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: clamp(0.75rem, 2vh, 0.875rem);
   text-decoration: none;
-  transition: all var(--transition-fast);
+  transition: transform 0.2s, box-shadow 0.2s;
   pointer-events: auto;
 }
 
 .shard-link:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 15px var(--accent);
 }
 
 /* ==================== SECTION INDICATOR (Points de navigation latéraux) ==================== */
@@ -940,6 +1001,51 @@ body {
   user-select: none; /* Empêche la sélection du texte */
 }
 
+/* Adaptation mobile : plus fine pour ne pas cacher le bouton unfocus */
+@media (max-width: 768px) {
+  .navigation-bar {
+    top: 12px;
+    padding: 6px 12px;
+    gap: 8px;
+    border-radius: 20px;
+  }
+}
+
+/* Bouton de changement de langue */
+.lang-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid rgba(57, 63, 74, 0.2);
+  background: transparent;
+  cursor: pointer;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  padding: 0;
+  line-height: 1;
+}
+
+.lang-button:hover {
+  transform: scale(1.1);
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.lang-button:active {
+  transform: scale(0.95);
+}
+
+@media (max-width: 768px) {
+  .lang-button {
+    width: 32px;
+    height: 32px;
+    font-size: 18px;
+  }
+}
+
 /* Navigation visible (activée par JavaScript) */
 .navigation-bar.visible {
   opacity: 1; /* Complètement visible */
@@ -959,6 +1065,15 @@ body {
   border-radius: 16px; /* Coins arrondis */
   transition: all 0.2s ease; /* Animation rapide */
   font-family: var(--font-body); /* Police du projet */
+}
+
+/* Adaptation mobile : boutons plus compacts */
+@media (max-width: 768px) {
+  .nav-button {
+    padding: 6px 14px;
+    font-size: 12px;
+    border-radius: 14px;
+  }
 }
 
 /* Effet au survol des boutons */
@@ -999,7 +1114,7 @@ body {
 
 .manual-unfocus-btn {
   display: block;
-  margin: 0 auto clamp(0.625rem, 2vh, 0.9375rem);
+  margin: 0 auto clamp(0.5rem, 1.5vh, 0.75rem);
   background: var(--bg-primary);
   border: 1px solid var(--accent);
   color: var(--text-primary);
@@ -1010,6 +1125,7 @@ body {
   font-weight: 500;
   transition: all 0.3s ease;
   font-family: inherit;
+  pointer-events: auto;
 }
 
 .manual-unfocus-btn:hover {
@@ -1033,74 +1149,40 @@ body {
  */
 .facette-nav {
   display: flex;
-  align-items: center; /* Centre verticalement */
-  justify-content: center; /* Centre horizontalement */
-  gap: clamp(60px, 15vw, 120px); /* Espace entre les boutons responsive */
-  margin-bottom: clamp(0.75rem, 2vh, 1.25rem); /* Espace en dessous adaptatif */
+  align-items: center;
+  justify-content: center;
+  gap: clamp(60px, 15vw, 120px);
+  margin-bottom: clamp(0.5rem, 1.5vh, 0.75rem);
 }
 
-/* Boutons précédent et suivant */
 .facette-prev, .facette-next {
-  width: clamp(36px, 8vw, 44px); /* Largeur du bouton responsive */
-  height: clamp(36px, 8vw, 44px); /* Hauteur du bouton responsive */
-  border-radius: 50%; /* Forme circulaire */
+  width: clamp(36px, 8vw, 44px);
+  height: clamp(36px, 8vw, 44px);
+  border-radius: 50%;
   border: none;
-  background: transparent; /* Bleu semi-transparent */
-  color: var(--focus-text); /* Couleur du texte */
-  cursor: pointer; /* Curseur en forme de main */
+  background: transparent;
+  color: var(--focus-text, var(--text-primary));
+  cursor: pointer;
   display: flex;
-  align-items: center; /* Centre l'icône */
+  align-items: center;
   justify-content: center;
   font-size: clamp(0.875rem, 2.5vh, 1rem);
-  transition: background 0.2s, transform 0.2s; /* Animation rapide */
-  pointer-events: auto; /* Toujours cliquable */
+  transition: background 0.2s, transform 0.2s;
+  pointer-events: auto;
 }
 
-/* Effet au survol des boutons de facette */
 .facette-prev:hover, .facette-next:hover {
-  background: var(--accent); /* Bleu plein */
-  color: var(--text-primary); /* Texte blanc */
-  transform: scale(1.1); /* Agrandit de 10% */
+  background: var(--accent);
+  color: var(--text-primary);
+  transform: scale(1.1);
 }
 
-/* Indicateur de position (ex: "2 / 4") */
 .facette-indicator {
-  font-size: clamp(0.75rem, 2vh, 0.875rem); /* Taille du texte responsive */
-  font-weight: 600; /* Texte semi-gras */
-  color: var(--focus-text-secondary); /* Couleur grise */
+  font-size: clamp(0.75rem, 2vh, 0.875rem);
+  font-weight: 600;
+  color: var(--focus-text-secondary, var(--text-secondary));
 }
 
-/* Badge de catégorie du projet */
-.shard-category {
-  display: inline-block;
-  padding: clamp(0.25rem, 0.8vh, 0.375rem) clamp(0.625rem, 2vw, 0.875rem); /* Espace intérieur responsive */
-  background: var(--text-primary); /* Couleur d'accent (bleu) */
-  color: var(--bg-primary); /* Texte blanc */
-  border-radius: 20px; /* Coins très arrondis */
-  border: 5px solid var(--accent); /* Bordure pointillée */
-  font-size: clamp(0.7rem, 1.8vh, 0.8125rem); /* Taille du texte responsive */
-  font-weight: 600; /* Texte semi-gras */
-  text-transform: uppercase; /* Tout en majuscules */
-  letter-spacing: 0.5px; /* Espacement entre les lettres */
-  margin-bottom: clamp(0.5rem, 1.5vh, 0.75rem); /* Espace en dessous adaptatif */
-}
-
-/* Titre du projet */
-.shard-title {
-  font-size: clamp(1.25rem, 4.5vh, 1.75rem); /* Taille du titre responsive */
-  font-weight: 700; /* Texte gras */
-  margin: 0 0 clamp(0.5rem, 1.5vh, 0.75rem) 0; /* Espace en dessous adaptatif */
-  color: var(--focus-text); /* Couleur du texte en mode focus */
-  line-height: 1.2;
-}
-
-/* Description du projet */
-.shard-description {
-  font-size: clamp(0.8rem, 2.2vh, 1rem); /* Taille du texte responsive */
-  line-height: 1.5; /* Hauteur de ligne optimisée */
-  color: var(--text-primary); /* Couleur grise pour texte secondaire */
-  margin: 0 0 clamp(0.75rem, 2vh, 1.25rem) 0; /* Espace en dessous adaptatif */
-}
 
 /* ==================== SHARD IMAGES & SLIDESHOW ==================== */
 .shard-images {
@@ -1123,16 +1205,40 @@ body {
   cursor: pointer;
   border-radius: 10px;
   overflow: hidden;
+  pointer-events: auto;
+}
+
+/* Tailles adaptatives selon le nombre d'images */
+.slideshow-wrapper.slideshow-size-normal {
+  max-width: 400px;
+}
+
+.slideshow-wrapper.slideshow-size-medium {
+  max-width: 320px;
+}
+
+.slideshow-wrapper.slideshow-size-small {
+  max-width: 260px;
 }
 
 .shard-image {
   width: 100%;
-  height: 180px;
+  height: auto;
+  max-height: clamp(150px, 25vh, 250px);
   border-radius: 10px;
   object-fit: cover;
   box-shadow: 0 4px 16px rgba(0,0,0,0.2);
   transition: transform 0.3s ease, box-shadow 0.3s ease;
   display: block;
+}
+
+/* Ajustement de hauteur pour slideshow selon taille */
+.slideshow-size-medium .shard-image {
+  max-height: clamp(120px, 20vh, 200px);
+}
+
+.slideshow-size-small .shard-image {
+  max-height: clamp(100px, 18vh, 180px);
 }
 
 .slideshow-image {
@@ -1174,6 +1280,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: auto;
 }
 
 .slideshow-arrow:hover {
@@ -1220,6 +1327,37 @@ body {
   margin: 15px auto 20px;
 }
 
+/* Grilles adaptatives selon le nombre d'images */
+/* 1-4 images : taille normale */
+.shard-images.grid-view.grid-size-normal {
+  grid-template-columns: repeat(2, 1fr);
+  max-width: 400px;
+}
+
+.shard-images.grid-view.grid-size-normal .shard-image-grid {
+  height: 120px;
+}
+
+/* 5-8 images : taille moyenne réduite */
+.shard-images.grid-view.grid-size-medium {
+  grid-template-columns: repeat(2, 1fr);
+  max-width: 360px;
+}
+
+.shard-images.grid-view.grid-size-medium .shard-image-grid {
+  height: 90px;
+}
+
+/* 9-12 images : petite taille, grille 3 colonnes */
+.shard-images.grid-view.grid-size-small {
+  grid-template-columns: repeat(3, 1fr);
+  max-width: 400px;
+}
+
+.shard-images.grid-view.grid-size-small .shard-image-grid {
+  height: 70px;
+}
+
 .shard-image-grid {
   width: 100%;
   height: 120px;
@@ -1228,6 +1366,7 @@ body {
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0,0,0,0.2);
   transition: all 0.3s ease;
+  pointer-events: auto;
 }
 
 .shard-image-grid:hover {
@@ -1241,16 +1380,16 @@ body {
   flex-wrap: wrap;
   justify-content: center;
   gap: clamp(0.375rem, 1vh, 0.5rem);
-  margin-bottom: clamp(0.75rem, 2vh, 1.25rem);
+  margin: clamp(0.5rem, 1vh, 0.75rem) 0;
 }
 
-/* Badge de technologie (ex: React, Three.js) */
 .tech-badge, .tech-tag {
-  padding: clamp(0.25rem, 0.8vh, 0.3125rem) clamp(0.625rem, 2vw, 0.75rem); /* Espace intérieur responsive */
-  background:var(--bg-primary); /* Fond gris foncé */
-  color: var(--text-primary); /* Couleur beige clair */
-  border-radius: 15px; /* Coins arrondis */
-  font-size: clamp(0.7rem, 1.8vh, 0.8125rem); /* Taille du texte responsive */
+  padding: clamp(0.25rem, 0.8vh, 0.3125rem) clamp(0.625rem, 2vw, 0.75rem);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-radius: 15px;
+  font-size: clamp(0.7rem, 1.8vh, 0.8125rem);
+  font-weight: 500;
 }
 
 .shard-links {

@@ -31,7 +31,11 @@ export class RaycastManager {
     this.dragStartTime = 0;
     this.dragStartX = 0;
     this.dragStartY = 0;
-    this.dragThreshold = this.getDragThreshold();
+    this.dragThreshold = 200;
+    this.potentialDragShard = null;
+    this.touchMoveDetected = false;
+    this.isVerticalScroll = false;
+    this.getDragThreshold();
     this.dragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
     
     this.lastHoveredShard = null;
@@ -64,6 +68,9 @@ export class RaycastManager {
       '.facette-prev',
       '.facette-next',
       '.shard-image-grid',
+      '.slideshow-wrapper',
+      '.shard-long-description-container',
+      '.shard-info-content',
       '.theme-toggle'
     ];
     
@@ -81,9 +88,10 @@ export class RaycastManager {
     window.addEventListener('mousedown', (e) => this.onMouseDown(e));
     window.addEventListener('mouseup', (e) => this.onMouseUp(e));
     
+    // Ne PAS utiliser passive pour pouvoir appeler preventDefault() quand nécessaire
     window.addEventListener('touchstart', (e) => this.onTouchStart(e), { passive: false });
     window.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
-    window.addEventListener('touchend', (e) => this.onTouchEnd(e));
+    window.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
   }
   
   updateMouse(clientX, clientY) {
@@ -204,17 +212,50 @@ export class RaycastManager {
     const touch = event.touches[0];
     const target = event.target;
     
-    if (this.isInteractiveElement(target)) return;
+    // Permettre le scroll dans les conteneurs scrollables
+    if (target.closest('.shard-long-description-container') || 
+        target.closest('.shard-long-description')) {
+      return; // Laisser le scroll natif fonctionner, pas de preventDefault
+    }
     
+    // Permettre les interactions avec les boutons et éléments interactifs
+    if (target.closest('.manual-unfocus-btn') ||
+        target.closest('.facette-prev') ||
+        target.closest('.facette-next') ||
+        target.closest('.slideshow-arrow') ||
+        target.closest('.shard-image-grid') ||
+        target.closest('.shard-link') ||
+        target.closest('.theme-toggle')) {
+      return; // Laisser les clics natifs fonctionner
+    }
+    
+    // Si on touche le shard-info-content mais pas dans longDescription, permettre le drag
+    const infoContent = target.closest('.shard-info-content');
+    if (infoContent) {
+      // Stocker les coordonnées de départ pour détecter la direction du mouvement
+      this.dragStartTime = Date.now();
+      this.dragStartX = touch.clientX;
+      this.dragStartY = touch.clientY;
+      this.touchMoveDetected = false;
+      this.isVerticalScroll = false;
+      
+      this.updateMouse(touch.clientX, touch.clientY);
+      const intersect = this.raycast();
+      if (intersect && intersect.object.userData.isFocused) {
+        this.potentialDragShard = intersect.object;
+      }
+      return;
+    }
+    
+    // Sinon, comportement normal de raycast
     this.updateMouse(touch.clientX, touch.clientY);
-    
     const intersect = this.raycast();
     if (intersect) {
       this.dragStartTime = Date.now();
       this.dragStartX = touch.clientX;
       this.dragStartY = touch.clientY;
       this.startDrag(intersect.object);
-      event.preventDefault();
+      // Ne pas appeler preventDefault car passive: true
     }
   }
   
@@ -222,9 +263,46 @@ export class RaycastManager {
     const mirrorCanvas = document.getElementById('mirror-canvas');
     if (mirrorCanvas && mirrorCanvas.style.display !== 'none') return;
     
-    if (!this.isDragging || event.touches.length !== 1) return;
+    // Permettre le scroll dans longDescription
+    const target = event.target || event.touches[0]?.target;
+    if (target && (target.closest('.shard-long-description-container') || 
+                   target.closest('.shard-long-description'))) {
+      return; // Laisser le scroll natif fonctionner, pas de preventDefault
+    }
     
     const touch = event.touches[0];
+    
+    // Si on a un potentiel drag dans l'overlay, détecter la direction du mouvement
+    if (this.potentialDragShard && !this.touchMoveDetected && !this.isDragging) {
+      const deltaX = Math.abs(touch.clientX - this.dragStartX);
+      const deltaY = Math.abs(touch.clientY - this.dragStartY);
+      
+      // Seuil de détection de mouvement
+      if (deltaX > 10 || deltaY > 10) {
+        this.touchMoveDetected = true;
+        
+        // Détecter si c'est un mouvement vertical (scroll) ou horizontal (drag)
+        if (deltaY > deltaX * 1.5) {
+          // Mouvement vertical dominant = scroll
+          this.isVerticalScroll = true;
+          this.potentialDragShard = null;
+          return;
+        } else {
+          // Mouvement horizontal dominant = drag de facette
+          this.isVerticalScroll = false;
+          this.startDrag(this.potentialDragShard);
+          this.potentialDragShard = null;
+          event.preventDefault(); // Bloquer le scroll pour le drag horizontal
+        }
+      } else {
+        // Pas assez de mouvement détecté
+        return;
+      }
+    }
+    
+    if (!this.isDragging || event.touches.length !== 1) return;
+    
+    event.preventDefault(); // Bloquer le scroll pendant le drag
     this.updateMouse(touch.clientX, touch.clientY);
     
     const deltaX = touch.clientX - this.dragStartX;
@@ -235,8 +313,6 @@ export class RaycastManager {
       const worldPos = this.getWorldPosition();
       if (this.onShardDrag) this.onShardDrag(this.draggedShard, worldPos);
     }
-    
-    event.preventDefault();
   }
   
   onTouchEnd(event) {

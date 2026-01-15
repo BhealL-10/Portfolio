@@ -27,6 +27,7 @@ import { SimpleIntroManager } from './intro/SimpleIntroManager.js';
 import { UIManager } from './ui/UIManager.js';
 import { ThemeSwitch } from './ui/ThemeSwitch.js';
 import { NavigationBar } from './ui/NavigationBar.js';
+import { LanguageManager } from './ui/LanguageManager.js';
 
 import { CAMERA, SHARD } from './config/constants.js';
 
@@ -49,6 +50,7 @@ class PortfolioApp {
     this.uiManager = null;
     this.themeSwitch = null;
     this.navigationBar = null;
+    this.languageManager = null;
     
     this.isInitialized = false;
     this.isIntroComplete = false;
@@ -93,10 +95,32 @@ class PortfolioApp {
       this.raycastManager = new RaycastManager(this.camera.getCamera(), this.deviceManager);
       this.raycastManager.setShards(this.shardManager.getAllShards());
       
+      this.languageManager = new LanguageManager();
+      
+      // Callback pour mettre à jour les shards quand la langue change
+      this.languageManager.onLanguageChange = async (lang) => {
+        if (this.shardManager && this.focusController) {
+          // Si un shard est en focus, le défocus d'abord
+          if (this.focusController.isFocused()) {
+            this.focusController.unfocus();
+          }
+          
+          // Mettre à jour les shards avec la nouvelle langue
+          await this.shardManager.updateLanguage(lang);
+          
+          // Mettre à jour le raycast avec les nouveaux shards
+          this.raycastManager.setShards(this.shardManager.getAllShards());
+          
+          // Mettre à jour le focus controller avec les nouveaux shards
+          this.focusController.updateShards(this.shardManager.getAllShards());
+        }
+      };
+      
       this.uiManager = new UIManager(this.deviceManager);
       this.themeSwitch = new ThemeSwitch(this.scene, this.shardManager);
-      this.navigationBar = new NavigationBar(this.scrollManager, this.deviceManager);
+      this.navigationBar = new NavigationBar(this.scrollManager, this.deviceManager, this.languageManager);
       
+      this.uiManager.setNavigationBar(this.navigationBar);
       this.themeSwitch.setNavigationBar(this.navigationBar);
       
       this.setupCallbacks();
@@ -179,10 +203,13 @@ class PortfolioApp {
     };
     
     this.focusController.onNavigationBarToggle = (show) => {
-      if (show) {
-        this.navigationBar.show();
+      // NavigationBar visible uniquement si About est visible, sinon suivre l'état du focus
+      if (this.uiManager.isAboutVisible) {
+        this.navigationBar.show();  // Toujours visible quand About est affiché
+      } else if (show) {
+        this.navigationBar.show();  // Afficher hors focus
       } else {
-        this.navigationBar.hide();
+        this.navigationBar.hide();  // Cacher pendant le focus
       }
     };
     
@@ -231,17 +258,36 @@ class PortfolioApp {
   onIntroComplete() {
     this.isIntroComplete = true;
     
-    this.renderer.animateOpacity(1, 1.0);
-    
+    // Démarrer la caméra très loin en arrière
+    const startZ = -400;
     const targetZ = CAMERA.POST_INTRO_START_Z;
-    this.camera.teleportTo(targetZ);
+    this.camera.teleportTo(startZ);
     
-    this.navigationBar.show();
-    
-    this.startAboutSectionCheck();
-    
+    // Démarrer l'animation immédiatement pour voir les shards
     this.lastTime = performance.now();
     this.animate();
+    
+    // Fade in progressif du renderer pendant l'approche
+    this.renderer.setOpacity(0);
+    this.renderer.animateOpacity(1, 2.0);
+    
+    // Animation de la caméra qui s'approche progressivement
+    if (window.gsap) {
+      window.gsap.to(this.camera.getCamera().position, {
+        z: targetZ,
+        duration: 3.5,
+        ease: 'power2.inOut',
+        onComplete: () => {
+          this.navigationBar.show();
+          this.startAboutSectionCheck();
+        }
+      });
+    } else {
+      // Fallback sans GSAP
+      this.camera.teleportTo(targetZ);
+      this.navigationBar.show();
+      this.startAboutSectionCheck();
+    }
   }
   
   startAboutSectionCheck() {
@@ -275,10 +321,6 @@ class PortfolioApp {
           
           if (shard && shard.userData) {
             shard.userData.isFocused = false;
-          }
-          
-          if (this.navigationBar) {
-            this.navigationBar.show();
           }
         }
       }
