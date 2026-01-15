@@ -73,8 +73,20 @@ export class SimpleMirror {
   
   updateCanvasBackground() {
     // Mettre à jour la couleur de fond du body pour couvrir les espaces landscape
-    const bgColor = this.isDark ? '#F2DDB8' : '#393F4A';
+    // En mode sombre: fond sombre (#393F4A), texte clair (#F2DDB8)
+    // En mode clair: fond clair (#F2DDB8), texte sombre (#393F4A)
+    const bgColor = this.isDark ? '#393F4A' : '#F2DDB8';
     document.body.style.backgroundColor = bgColor;
+    document.documentElement.style.backgroundColor = bgColor;
+    
+    // Mettre à jour le meta theme-color pour iOS Safari
+    let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    if (!metaThemeColor) {
+      metaThemeColor = document.createElement('meta');
+      metaThemeColor.name = 'theme-color';
+      document.head.appendChild(metaThemeColor);
+    }
+    metaThemeColor.content = bgColor;
   }
   
   setupThemeListener() {
@@ -116,8 +128,10 @@ export class SimpleMirror {
     
     ctx.clearRect(0, 0, w, h);
     
-    const mirrorColor = this.isDark ? '#F2DDB8' : '#393F4A';
-    const crackColor = this.isDark ? '#393F4A' : '#F2DDB8';
+    // En mode sombre: miroir sombre (#393F4A), fissures claires (#F2DDB8)
+    // En mode clair: miroir clair (#F2DDB8), fissures sombres (#393F4A)
+    const mirrorColor = this.isDark ? '#393F4A' : '#F2DDB8';
+    const crackColor = this.isDark ? '#F2DDB8' : '#393F4A';
     
     // Remplir tout le canvas avec la couleur du miroir
     ctx.fillStyle = mirrorColor;
@@ -385,8 +399,8 @@ export class SimpleMirror {
       };
     });
     
-    const mirrorColor = this.isDark ? '#F2DDB8' : '#393F4A';
-    const crackColor = this.isDark ? '#393F4A' : '#F2DDB8';
+    const mirrorColor = this.isDark ? '#393F4A' : '#F2DDB8';
+    const crackColor = this.isDark ? '#F2DDB8' : '#393F4A';
     
     const animate = () => {
       const elapsed = Date.now() - startTime;
@@ -486,7 +500,8 @@ export class SimpleMirror {
   
   remove() {
     if (this.canvas?.parentNode) this.canvas.parentNode.removeChild(this.canvas);
-    // Réinitialiser le fond du body
+    // Réinitialiser le fond du body et html
     document.body.style.backgroundColor = '';
+    document.documentElement.style.backgroundColor = '';
   }
 }

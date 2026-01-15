@@ -4,7 +4,7 @@
  */
 
 import * as THREE from 'three';
-import { FOCUS, FACETTE, SCROLL, CATEGORIES, SHARD, CAMERA, ANIMATION, DRAG, DEVICE, TYPOGRAPHY, NAVIGATION } from '../config/constants.js';
+import { FOCUS, FACETTE, SCROLL, CATEGORIES, SHARD, CAMERA, ANIMATION, DRAG, DEVICE, TYPOGRAPHY, NAVIGATION, UI } from '../config/constants.js';
 
 const FocusState = {
   IDLE: 'idle',
@@ -112,7 +112,27 @@ export class FocusController {
       </div>
     `;
     
-    this.infoOverlay.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:150;pointer-events:auto;opacity:0;transition:opacity 0.4s ease;max-width:min(90vw,800px);width:90%;text-align:center;font-family:${TYPOGRAPHY.PRIMARY_FONT};max-height:calc(100dvh - 80px);overflow:visible;`;
+    // Style responsive pour l'overlay
+    const isMobile = this.deviceManager?.isMobile || window.innerWidth < 576;
+    const maxWidth = isMobile ? '95vw' : 'min(90vw,800px)';
+    const maxHeight = isMobile ? 'calc(100dvh - 60px)' : 'calc(100dvh - 80px)';
+    
+    this.infoOverlay.style.cssText = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 150;
+      pointer-events: auto;
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      max-width: ${maxWidth};
+      width: 90%;
+      text-align: center;
+      font-family: ${TYPOGRAPHY.PRIMARY_FONT};
+      max-height: ${maxHeight};
+      overflow: visible;
+    `;
     
     document.body.appendChild(this.infoOverlay);
     this.setupFacetteNavigation();
@@ -123,16 +143,72 @@ export class FocusController {
   setupInfoOverlayProtection() {
     this.infoOverlay.addEventListener('click', (e) => e.stopPropagation());
     
-    // Gestion du scroll avec la molette dans longDescription
+    // Gestion du scroll dans longDescription
     const longDescContainer = this.infoOverlay.querySelector('.shard-long-description-container');
     if (longDescContainer) {
+      // Scroll molette
       longDescContainer.addEventListener('wheel', (e) => {
         e.stopPropagation();
-        // Laisser le scroll natif fonctionner
       }, { passive: true });
       
-      // Pour le touch, RaycastManager gère déjà la détection et laisse passer le scroll
-      // Pas besoin de listeners supplémentaires ici
+      // Touch scroll - permettre le scroll natif
+      longDescContainer.addEventListener('touchstart', (e) => {
+        e.stopPropagation();
+      }, { passive: true });
+      
+      longDescContainer.addEventListener('touchmove', (e) => {
+        e.stopPropagation();
+        // Ne pas appeler preventDefault pour permettre le scroll
+      }, { passive: true });
+      
+      longDescContainer.addEventListener('touchend', (e) => {
+        e.stopPropagation();
+      }, { passive: true });
+    }
+    
+    // Même chose pour shard-info-content
+    const infoContent = this.infoOverlay.querySelector('.shard-info-content');
+    if (infoContent) {
+      this.applyInfoContentStyles(infoContent);
+    }
+  }
+  
+  applyInfoContentStyles(infoContent) {
+    const isMobile = this.deviceManager?.isMobile || window.innerWidth < 576;
+    const isLandscape = window.innerWidth > window.innerHeight;
+    
+    let maxHeight = '85dvh';
+    let padding = '25px';
+    
+    if (isMobile) {
+      maxHeight = isLandscape ? '80dvh' : '75dvh';
+      padding = '15px';
+    }
+    
+    infoContent.style.cssText = `
+      padding: ${padding};
+      max-height: ${maxHeight};
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+    `;
+    
+    // Style pour longDescription
+    const longDescContainer = infoContent.querySelector('.shard-long-description-container');
+    if (longDescContainer) {
+      const descMaxHeight = this.deviceManager?.getLongDescriptionMaxHeight?.() || 
+        (isMobile ? (isLandscape ? UI.LONG_DESCRIPTION.MAX_HEIGHT_MOBILE_LANDSCAPE : UI.LONG_DESCRIPTION.MAX_HEIGHT_MOBILE) : UI.LONG_DESCRIPTION.MAX_HEIGHT_DESKTOP);
+      
+      longDescContainer.style.cssText = `
+        max-height: ${descMaxHeight};
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        padding: ${UI.LONG_DESCRIPTION.SCROLL_PADDING}px;
+        margin: 10px 0;
+        border-radius: 8px;
+        background: rgba(128, 128, 128, 0.1);
+      `;
     }
   }
   
@@ -784,7 +860,23 @@ export class FocusController {
     if (facette.longDescription && facette.longDescription.trim()) {
       const paragraphs = facette.longDescription.split('\n\n').map(p => p.trim()).filter(p => p);
       longDescEl.innerHTML = paragraphs.map(p => `<p>${p}</p>`).join('');
+      
+      // Forcer l'affichage et appliquer les styles
       longDescContainer.style.display = 'block';
+      longDescContainer.style.visibility = 'visible';
+      longDescContainer.style.opacity = '1';
+      
+      // Appliquer les styles responsive
+      const descMaxHeight = this.deviceManager?.getLongDescriptionMaxHeight?.() || 
+        (window.innerWidth < 576 ? (window.innerWidth > window.innerHeight ? '100px' : '150px') : '200px');
+      
+      longDescContainer.style.maxHeight = descMaxHeight;
+      longDescContainer.style.overflowY = 'auto';
+      longDescContainer.style.webkitOverflowScrolling = 'touch';
+      longDescContainer.style.overscrollBehavior = 'contain';
+      
+      // Reset scroll position
+      longDescContainer.scrollTop = 0;
     } else {
       longDescContainer.style.display = 'none';
     }

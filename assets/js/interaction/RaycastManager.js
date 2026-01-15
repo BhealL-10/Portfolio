@@ -31,12 +31,18 @@ export class RaycastManager {
     this.dragStartTime = 0;
     this.dragStartX = 0;
     this.dragStartY = 0;
-    this.dragThreshold = 200;
+    this.dragThreshold = this.getDragThreshold();
     this.potentialDragShard = null;
     this.touchMoveDetected = false;
     this.isVerticalScroll = false;
-    this.getDragThreshold();
+    this.touchDirectionLocked = false;
+    this.isTouchClick = false;
     this.dragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    
+    // Seuils spécifiques mobile
+    this.mobileClickThreshold = 25; // Distance max pour un clic sur mobile
+    this.mobileClickDuration = 300; // Durée max pour un clic sur mobile
+    this.touchMoveThreshold = 12; // Seuil de détection de mouvement
     
     this.lastHoveredShard = null;
     
@@ -212,10 +218,18 @@ export class RaycastManager {
     const touch = event.touches[0];
     const target = event.target;
     
+    // Reset des états touch
+    this.touchMoveDetected = false;
+    this.isVerticalScroll = false;
+    this.touchDirectionLocked = false;
+    this.isTouchClick = true; // Présumer un clic jusqu'à preuve du contraire
+    this.potentialDragShard = null;
+    
     // Permettre le scroll dans les conteneurs scrollables
     if (target.closest('.shard-long-description-container') || 
         target.closest('.shard-long-description')) {
-      return; // Laisser le scroll natif fonctionner, pas de preventDefault
+      this.isTouchClick = false;
+      return; // Laisser le scroll natif fonctionner
     }
     
     // Permettre les interactions avec les boutons et éléments interactifs
@@ -225,37 +239,33 @@ export class RaycastManager {
         target.closest('.slideshow-arrow') ||
         target.closest('.shard-image-grid') ||
         target.closest('.shard-link') ||
-        target.closest('.theme-toggle')) {
+        target.closest('.theme-toggle') ||
+        target.closest('.nav-button') ||
+        target.closest('.lang-button')) {
+      this.isTouchClick = false;
       return; // Laisser les clics natifs fonctionner
     }
     
-    // Si on touche le shard-info-content mais pas dans longDescription, permettre le drag
+    this.dragStartTime = Date.now();
+    this.dragStartX = touch.clientX;
+    this.dragStartY = touch.clientY;
+    this.updateMouse(touch.clientX, touch.clientY);
+    
+    // Vérifier si on touche un shard
+    const intersect = this.raycast();
+    
+    // Si on touche le shard-info-content (overlay focusé)
     const infoContent = target.closest('.shard-info-content');
     if (infoContent) {
-      // Stocker les coordonnées de départ pour détecter la direction du mouvement
-      this.dragStartTime = Date.now();
-      this.dragStartX = touch.clientX;
-      this.dragStartY = touch.clientY;
-      this.touchMoveDetected = false;
-      this.isVerticalScroll = false;
-      
-      this.updateMouse(touch.clientX, touch.clientY);
-      const intersect = this.raycast();
       if (intersect && intersect.object.userData.isFocused) {
         this.potentialDragShard = intersect.object;
       }
       return;
     }
     
-    // Sinon, comportement normal de raycast
-    this.updateMouse(touch.clientX, touch.clientY);
-    const intersect = this.raycast();
+    // Touch sur un shard normal (pas en focus)
     if (intersect) {
-      this.dragStartTime = Date.now();
-      this.dragStartX = touch.clientX;
-      this.dragStartY = touch.clientY;
-      this.startDrag(intersect.object);
-      // Ne pas appeler preventDefault car passive: true
+      this.potentialDragShard = intersect.object;
     }
   }
   
@@ -263,53 +273,68 @@ export class RaycastManager {
     const mirrorCanvas = document.getElementById('mirror-canvas');
     if (mirrorCanvas && mirrorCanvas.style.display !== 'none') return;
     
-    // Permettre le scroll dans longDescription
-    const target = event.target || event.touches[0]?.target;
-    if (target && (target.closest('.shard-long-description-container') || 
-                   target.closest('.shard-long-description'))) {
-      return; // Laisser le scroll natif fonctionner, pas de preventDefault
-    }
+    if (event.touches.length !== 1) return;
     
     const touch = event.touches[0];
+    const target = event.target || touch.target;
     
-    // Si on a un potentiel drag dans l'overlay, détecter la direction du mouvement
-    if (this.potentialDragShard && !this.touchMoveDetected && !this.isDragging) {
-      const deltaX = Math.abs(touch.clientX - this.dragStartX);
-      const deltaY = Math.abs(touch.clientY - this.dragStartY);
-      
-      // Seuil de détection de mouvement
-      if (deltaX > 10 || deltaY > 10) {
-        this.touchMoveDetected = true;
+    // Permettre le scroll dans longDescription
+    if (target && (target.closest('.shard-long-description-container') || 
+                   target.closest('.shard-long-description'))) {
+      this.isTouchClick = false;
+      return; // Laisser le scroll natif fonctionner
+    }
+    
+    const deltaX = Math.abs(touch.clientX - this.dragStartX);
+    const deltaY = Math.abs(touch.clientY - this.dragStartY);
+    const totalDelta = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+    // Si on dépasse le seuil de mouvement, ce n'est plus un clic
+    if (totalDelta > this.touchMoveThreshold) {
+      this.isTouchClick = false;
+      this.touchMoveDetected = true;
+    }
+    
+    // Si on a un potentiel drag et pas encore de direction verrouillée
+    if (this.potentialDragShard && !this.touchDirectionLocked && !this.isDragging) {
+      // Seuil de détection de direction
+      if (deltaX > this.touchMoveThreshold || deltaY > this.touchMoveThreshold) {
+        this.touchDirectionLocked = true;
         
         // Détecter si c'est un mouvement vertical (scroll) ou horizontal (drag)
-        if (deltaY > deltaX * 1.5) {
-          // Mouvement vertical dominant = scroll
+        if (deltaY > deltaX * 1.2) {
+          // Mouvement vertical dominant = scroll ou pas d'action
           this.isVerticalScroll = true;
           this.potentialDragShard = null;
           return;
-        } else {
-          // Mouvement horizontal dominant = drag de facette
-          this.isVerticalScroll = false;
-          this.startDrag(this.potentialDragShard);
-          this.potentialDragShard = null;
-          event.preventDefault(); // Bloquer le scroll pour le drag horizontal
+        } else if (deltaX > deltaY * 0.8) {
+          // Mouvement horizontal dominant = drag de facette (seulement si shard focusé)
+          if (this.potentialDragShard.userData.isFocused) {
+            this.isVerticalScroll = false;
+            this.startDrag(this.potentialDragShard);
+            this.potentialDragShard = null;
+            event.preventDefault();
+          } else {
+            // Shard non focusé = drag normal
+            this.startDrag(this.potentialDragShard);
+            this.potentialDragShard = null;
+            event.preventDefault();
+          }
         }
-      } else {
-        // Pas assez de mouvement détecté
-        return;
       }
+      return;
     }
     
-    if (!this.isDragging || event.touches.length !== 1) return;
+    if (!this.isDragging) return;
     
-    event.preventDefault(); // Bloquer le scroll pendant le drag
+    event.preventDefault();
     this.updateMouse(touch.clientX, touch.clientY);
     
-    const deltaX = touch.clientX - this.dragStartX;
+    const dragDeltaX = touch.clientX - this.dragStartX;
     
-    if (this.draggedShard.userData.isFocused && this.onShardDragFocus) {
-      this.onShardDragFocus(this.draggedShard, deltaX);
-    } else {
+    if (this.draggedShard && this.draggedShard.userData.isFocused && this.onShardDragFocus) {
+      this.onShardDragFocus(this.draggedShard, dragDeltaX);
+    } else if (this.draggedShard) {
       const worldPos = this.getWorldPosition();
       if (this.onShardDrag) this.onShardDrag(this.draggedShard, worldPos);
     }
@@ -319,29 +344,47 @@ export class RaycastManager {
     const dragDuration = Date.now() - this.dragStartTime;
     const target = event.target;
     
-    if (this.isInteractiveElement(target)) return;
+    // Reset du potentialDragShard
+    const hadPotentialDrag = this.potentialDragShard !== null;
+    const potentialShard = this.potentialDragShard;
+    this.potentialDragShard = null;
+    this.touchDirectionLocked = false;
     
-    if (this.isDragging && event.changedTouches.length > 0) {
-      const touch = event.changedTouches[0];
-      const dragDistanceX = Math.abs(touch.clientX - this.dragStartX);
-      const dragDistanceY = Math.abs(touch.clientY - this.dragStartY);
-      const dragDistance = Math.sqrt(dragDistanceX * dragDistanceX + dragDistanceY * dragDistanceY);
-      
-      const maxClickDistance = this.deviceManager && this.deviceManager.deviceType.includes('MOBILE') ? 20 : 15;
-      
-      if (dragDuration < this.dragThreshold && dragDistance < maxClickDistance) {
+    if (this.isInteractiveElement(target)) {
+      this.resetTouchState();
+      return;
+    }
+    
+    if (event.changedTouches.length === 0) {
+      this.resetTouchState();
+      return;
+    }
+    
+    const touch = event.changedTouches[0];
+    const deltaX = Math.abs(touch.clientX - this.dragStartX);
+    const deltaY = Math.abs(touch.clientY - this.dragStartY);
+    const dragDistance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+    // Vérifier si c'est un clic simple (peu de mouvement, durée courte)
+    const isClick = dragDuration < this.mobileClickDuration && dragDistance < this.mobileClickThreshold;
+    
+    if (this.isDragging) {
+      if (isClick && this.draggedShard) {
+        // C'était un clic, pas un drag
         const shard = this.draggedShard;
         this.endDrag();
-        if (shard) {
-          this.handleShardClick(shard, touch.clientX, touch.clientY, event);
-        }
+        this.handleShardClick(shard, touch.clientX, touch.clientY, event);
       } else {
+        // C'était un vrai drag
         this.endDrag();
       }
-    } else if (event.changedTouches.length === 1) {
-      const touch = event.changedTouches[0];
+    } else if (hadPotentialDrag && isClick && potentialShard) {
+      // On avait un potential drag mais pas assez de mouvement = clic
       this.updateMouse(touch.clientX, touch.clientY);
-      
+      this.handleShardClick(potentialShard, touch.clientX, touch.clientY, event);
+    } else if (isClick && this.isTouchClick) {
+      // Clic simple sans drag
+      this.updateMouse(touch.clientX, touch.clientY);
       const intersect = this.raycast();
       if (intersect) {
         this.handleShardClick(intersect.object, touch.clientX, touch.clientY, event);
@@ -349,6 +392,16 @@ export class RaycastManager {
         if (this.onBackgroundClick) this.onBackgroundClick();
       }
     }
+    
+    this.resetTouchState();
+  }
+  
+  resetTouchState() {
+    this.touchMoveDetected = false;
+    this.isVerticalScroll = false;
+    this.touchDirectionLocked = false;
+    this.isTouchClick = false;
+    this.potentialDragShard = null;
   }
   
   startDrag(shard) {

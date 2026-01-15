@@ -22,7 +22,7 @@ export const SHARD_LOGOS_CONFIG = {
     opacity: 1
   },
   
-  // Shard 2 - Tono Discord Bot
+  // Shard 2 - Tono Discord Bot (création d'un api (un jeu complet qui peu etre jouer via un discord bot))
   "2": {
     dark: "assets/images/Logo/logomodedark.svg",
     light: "assets/images/Logo/logomodelight.svg",
@@ -30,7 +30,7 @@ export const SHARD_LOGOS_CONFIG = {
     opacity: 1
   },
   
-  // Shard 3 - Map Editor 3D
+  // Shard 3 - parler de ma maitrise sur davinci resolve et particulierment sur fusion 
   "3": {
     dark: "assets/images/Logo/DavinciLogoDark.svg",
     light: "assets/images/Logo/DavinciLogoLight.svg",
@@ -38,7 +38,7 @@ export const SHARD_LOGOS_CONFIG = {
     opacity: 1
   },
   
-  // Shard 4 - Court-métrage
+  // Shard 4 - réalisation de mon premier Court-métrage en ayant organisé tout de A a Z (scénario, découpage technique, casting, lieu de tournage, dérush, montage)
   "4": {
     dark: "assets/images/Logo/MovieLogoDark.svg",
     light: "assets/images/Logo/MovieLogoLight.svg",
@@ -46,7 +46,7 @@ export const SHARD_LOGOS_CONFIG = {
     opacity: 1
   },
   
-  // Shard 5 - Identité Visuelle
+  // Shard 5 - parler de ma capacité a creer tout type de projet via Ia avec une gestion des ia generative avancer (localIa, Claude Soneete)
   "5": {
     dark: "assets/images/Logo/IALogoDark.svg",
     light: "assets/images/Logo/IALogoLight.svg",
@@ -54,7 +54,7 @@ export const SHARD_LOGOS_CONFIG = {
     opacity: 1
   },
   
-  // Shard 6 - Portfolio 3D
+  // Shard 6 - Création complete et personnalisé de bot discord
   "6": {
     dark: "assets/images/Logo/DiscordLogoDark.svg",
     light: "assets/images/Logo/DiscordLogoLight.svg",
@@ -62,7 +62,7 @@ export const SHARD_LOGOS_CONFIG = {
     opacity: 1
   },
   
-  // Shard 7 - E-commerce
+  // Shard 7 - création de logo et d'identité visuel
   "7": {
     dark: "assets/images/Logo/AffinityLogoDark.svg",
     light: "assets/images/Logo/AffinityLogoLight.svg",
@@ -70,7 +70,7 @@ export const SHARD_LOGOS_CONFIG = {
     opacity: 1
   },
   
-  // Shard 8 - Documentaire
+  // Shard 8 - création d'avatar et animations 
   "8": {
     dark: "assets/images/Logo/SpineLogoDark.svg",
     light: "assets/images/Logo/SpineLogoLight.svg",
@@ -78,7 +78,7 @@ export const SHARD_LOGOS_CONFIG = {
     opacity: 1
   },
   
-  // Shard 9 - Motion Design
+  // Shard 9 - Création de gamedesign complet
   "9": {
     dark: "assets/images/Logo/logomodedark.svg",
     light: "assets/images/Logo/logomodelight.svg",
@@ -86,7 +86,7 @@ export const SHARD_LOGOS_CONFIG = {
     opacity: 1
   },
   
-  // Shard 10 - UI Kit
+  // Shard 10 - Approche commercial et innovante garanti
   "10": {
     dark: "assets/images/Logo/logomodedark.svg",
     light: "assets/images/Logo/logomodelight.svg",

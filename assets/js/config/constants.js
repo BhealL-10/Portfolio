@@ -209,12 +209,12 @@ export const CAMERA = {
   NEAR: 0.1,                  // Distance minimale de rendu
   FAR: 3000,                  // Distance maximale de rendu
   SMOOTHING: 0.08,            // Fluidité du mouvement
-  DISTANCE_FROM_SHARD: 25,    // Distance du projet - MODIFIEZ ICI pour zoomer/dézoomer
+  DISTANCE_FROM_SHARD: 20,    // Distance du projet - MODIFIEZ ICI pour zoomer/dézoomer
   LOOK_AHEAD: 20,             // Anticipation
   CONTINUOUS_MOVEMENT: { ENABLED: true, EASE_FACTOR: 0.08, ANTICIPATION: 0.3 },
   RESPONSIVE: {
-    MOBILE: { FOV: 65, DISTANCE_FROM_SHARD: 18, LOOK_AHEAD: 12, SMOOTHING: 0.1 },
-    TABLET: { FOV: 60, DISTANCE_FROM_SHARD: 24, LOOK_AHEAD: 16, SMOOTHING: 0.09 },
+    MOBILE: { FOV: 65, DISTANCE_FROM_SHARD: 13, LOOK_AHEAD: 12, SMOOTHING: 0.1 },
+    TABLET: { FOV: 60, DISTANCE_FROM_SHARD: 18, LOOK_AHEAD: 16, SMOOTHING: 0.09 },
     DESKTOP: { FOV: 55, DISTANCE_FROM_SHARD: 22, LOOK_AHEAD: 18, SMOOTHING: 0.08 }
   }
 };
@@ -489,12 +489,13 @@ export const DEVICE = {
   },
   ASPECT_RATIOS: { PORTRAIT: 0.75, SQUARE: 1.0, LANDSCAPE: 1.33, WIDE: 1.78, ULTRAWIDE: 2.35 },
   FOCUS: {
-    MOBILE: { SCALE: 1.2, CAMERA_DISTANCE: 22, Z_OFFSET: 6 },
-    MOBILE_LANDSCAPE: { SCALE: 1.3, CAMERA_DISTANCE: 25, Z_OFFSET: 7 },
-    TABLET: { SCALE: 1.4, CAMERA_DISTANCE: 28, Z_OFFSET: 9 },
-    TABLET_LANDSCAPE: { SCALE: 1.5, CAMERA_DISTANCE: 30, Z_OFFSET: 10 },
-    DESKTOP: { SCALE: 1.8, CAMERA_DISTANCE: 30, Z_OFFSET: 12 },
-    DESKTOP_LARGE: { SCALE: 2.0, CAMERA_DISTANCE: 28, Z_OFFSET: 14 }
+    // Mobile: shard plus proche de la caméra pour meilleure visibilité
+    MOBILE: { SCALE: 1.4, CAMERA_DISTANCE: 14, Z_OFFSET: 5 },
+    MOBILE_LANDSCAPE: { SCALE: 1.3, CAMERA_DISTANCE: 16, Z_OFFSET: 6 },
+    TABLET: { SCALE: 1.5, CAMERA_DISTANCE: 20, Z_OFFSET: 8 },
+    TABLET_LANDSCAPE: { SCALE: 1.5, CAMERA_DISTANCE: 22, Z_OFFSET: 9 },
+    DESKTOP: { SCALE: 1.8, CAMERA_DISTANCE: 28, Z_OFFSET: 12 },
+    DESKTOP_LARGE: { SCALE: 2.0, CAMERA_DISTANCE: 26, Z_OFFSET: 14 }
   },
   SHARD_TITLE: {
     MOBILE: { BASE_SCALE: 5, FONT_SIZE: 80 },
@@ -620,10 +621,19 @@ export const UI = {
     FADE_DURATION: 0.35,    // Durée d'animation du panneau
     MAX_WIDTH: 550,         // Largeur max du panneau - MODIFIEZ ICI
     RESPONSIVE: {
-      MOBILE: { MAX_WIDTH: '90vw', PADDING: 20 },
-      TABLET: { MAX_WIDTH: 450, PADDING: 25 },
-      DESKTOP: { MAX_WIDTH: 550, PADDING: 30 }
+      MOBILE: { MAX_WIDTH: '95vw', PADDING: 15, MAX_HEIGHT: 'calc(100dvh - 60px)' },
+      MOBILE_LANDSCAPE: { MAX_WIDTH: '90vw', PADDING: 12, MAX_HEIGHT: 'calc(100dvh - 40px)' },
+      TABLET: { MAX_WIDTH: 450, PADDING: 20, MAX_HEIGHT: 'calc(100dvh - 70px)' },
+      DESKTOP: { MAX_WIDTH: 550, PADDING: 25, MAX_HEIGHT: 'calc(100dvh - 80px)' }
     }
+  },
+  LONG_DESCRIPTION: {
+    // Hauteurs max pour le conteneur de longDescription
+    MAX_HEIGHT_MOBILE: '150px',
+    MAX_HEIGHT_MOBILE_LANDSCAPE: '100px',
+    MAX_HEIGHT_TABLET: '180px',
+    MAX_HEIGHT_DESKTOP: '200px',
+    SCROLL_PADDING: 10
   },
   SECTIONS: { FADE_IN_DURATION: 0.7, FADE_OUT_DURATION: 0.35, SCROLL_THRESHOLD: 1.0 },
   INDICATORS: {

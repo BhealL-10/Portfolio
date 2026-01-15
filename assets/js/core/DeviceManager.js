@@ -3,7 +3,7 @@
  * Portfolio 3D - Détection device et configurations adaptatives
  */
 
-import { DEVICE, INTRO, SCROLL, CAMERA, SHARD, UI, FOCUS, ResponsiveUtils } from '../config/constants.js';
+import { DEVICE, INTRO, SCROLL, CAMERA, SHARD, UI, FOCUS, SHARD_LOGO, ResponsiveUtils } from '../config/constants.js';
 
 export class DeviceManager {
   constructor() {
@@ -183,6 +183,20 @@ export class DeviceManager {
   getShardTitleConfig() {
     const baseType = this.isMobile ? 'MOBILE' : (this.isTablet ? 'TABLET' : 'DESKTOP');
     return DEVICE.SHARD_TITLE[baseType] || DEVICE.SHARD_TITLE.DESKTOP;
+  }
+  
+  getLogoConfig() {
+    const baseType = this.isMobile ? 'MOBILE' : (this.isTablet ? 'TABLET' : 'DESKTOP');
+    return SHARD_LOGO.RESPONSIVE[baseType] || SHARD_LOGO.RESPONSIVE.DESKTOP;
+  }
+  
+  getLongDescriptionMaxHeight() {
+    if (this.isMobile) {
+      return this.isLandscape ? UI.LONG_DESCRIPTION.MAX_HEIGHT_MOBILE_LANDSCAPE : UI.LONG_DESCRIPTION.MAX_HEIGHT_MOBILE;
+    } else if (this.isTablet) {
+      return UI.LONG_DESCRIPTION.MAX_HEIGHT_TABLET;
+    }
+    return UI.LONG_DESCRIPTION.MAX_HEIGHT_DESKTOP;
   }
   
   getOptimalPixelRatio() {
