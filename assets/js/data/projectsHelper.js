@@ -26,9 +26,7 @@ export function getTranslatedProjects(lang = 'fr') {
         
         return {
           id: facetteMeta.id,
-          title: fTranslation.title,
           category: fTranslation.category,
-          description: fTranslation.description,
           longDescription: fTranslation.longDescription,
           technologies: fTranslation.technologies,
           images: facetteMeta.images,

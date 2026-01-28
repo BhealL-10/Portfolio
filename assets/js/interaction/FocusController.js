@@ -94,16 +94,13 @@ export class FocusController {
     this.infoOverlay.className = 'shard-info-overlay';
     this.infoOverlay.innerHTML = `
       <div class="shard-info-content">
-        <button class="manual-unfocus-btn">✕ Fermer</button>
         <div class="facette-nav">
           <button class="facette-prev">◀</button>
-          <span class="facette-indicator">1/3</span>
+          <button class="manual-unfocus-btn">✕</button>
           <button class="facette-next">▶</button>
         </div>
         <span class="shard-category"></span>
-        <h2 class="shard-title"></h2>
         <div class="shard-images"></div>
-        <p class="shard-description"></p>
         <div class="shard-long-description-container">
           <div class="shard-long-description"></div>
         </div>
@@ -840,7 +837,7 @@ export class FocusController {
     const total = project.facettes.length;
     const current = shard.userData.activeFacette + 1;
     
-    this.infoOverlay.querySelector('.facette-indicator').textContent = current + '/' + total;
+    // Indicateur de facette retiré - maintenant le bouton fermer est au centre
     
     this.currentImages = facette.images || [];
     this.currentSlideIndex = 0;
@@ -851,9 +848,6 @@ export class FocusController {
     const categoryEl = this.infoOverlay.querySelector('.shard-category');
     const categoryInfo = CATEGORIES[facette.category] || { label: facette.category };
     categoryEl.textContent = categoryInfo.label || facette.category;
-    
-    this.infoOverlay.querySelector('.shard-title').textContent = facette.title;
-    this.infoOverlay.querySelector('.shard-description').textContent = facette.description;
     
     const longDescContainer = this.infoOverlay.querySelector('.shard-long-description-container');
     const longDescEl = this.infoOverlay.querySelector('.shard-long-description');
@@ -882,7 +876,11 @@ export class FocusController {
     }
     
     const techContainer = this.infoOverlay.querySelector('.shard-technologies');
-    techContainer.innerHTML = facette.technologies.map(tech => '<span class="tech-badge">' + tech + '</span>').join('');
+    if (facette.technologies && Array.isArray(facette.technologies)) {
+      techContainer.innerHTML = facette.technologies.map(tech => '<span class="tech-badge">' + tech + '</span>').join('');
+    } else {
+      techContainer.innerHTML = '';
+    }
     
     const linksContainer = this.infoOverlay.querySelector('.shard-links');
     linksContainer.innerHTML = '';
@@ -900,18 +898,65 @@ export class FocusController {
     // Supprimer toutes les anciennes classes grid-size et grid-view
     imagesContainer.classList.remove('grid-view', 'grid-size-normal', 'grid-size-medium', 'grid-size-small');
     
-    if (this.currentImages.length === 0) return;
+    if (this.currentImages.length === 0) {
+      imagesContainer.style.display = 'none';
+      return;
+    }
+    
+    imagesContainer.style.display = 'block';
     
     // Limiter à 12 images maximum
     const displayImages = this.currentImages.slice(0, 12);
     this.currentImages = displayImages;
     
     if (this.currentImages.length === 1) {
+      // Créer un wrapper pour le loader et l'image
+      const imageWrapper = document.createElement('div');
+      imageWrapper.className = 'image-wrapper';
+      imageWrapper.style.position = 'relative';
+      imageWrapper.style.width = '100%';
+      imageWrapper.style.minHeight = '200px';
+      imageWrapper.style.marginBottom = '30px';
+      imageWrapper.style.display = 'flex';
+      imageWrapper.style.alignItems = 'center';
+      imageWrapper.style.justifyContent = 'center';
+      imageWrapper.style.backgroundColor = 'transparent';
+      imageWrapper.style.borderRadius = '8px';
+      
+      // Créer le loader
+      const loader = document.createElement('div');
+      loader.className = 'image-loader';
+      loader.innerHTML = '<div class="loading-spinner"></div>';
+      loader.style.position = 'absolute';
+      loader.style.top = '50%';
+      loader.style.left = '50%';
+      loader.style.transform = 'translate(-50%, -50%)';
+      imageWrapper.appendChild(loader);
+      
       const img = document.createElement('img');
       img.src = this.currentImages[0];
       img.alt = 'Project image';
       img.className = 'shard-image';
-      imagesContainer.appendChild(img);
+      img.style.width = '100%';
+      img.style.height = 'auto';
+      img.style.maxHeight = '400px';
+      img.style.objectFit = 'contain';
+      img.style.borderRadius = '8px';
+      img.style.opacity = '0';
+      img.style.transition = 'opacity 0.3s ease';
+      
+      // Gérer le chargement de l'image
+      img.onload = () => {
+        loader.style.display = 'none';
+        img.style.opacity = '1';
+      };
+      
+      img.onerror = () => {
+        loader.innerHTML = '<p style="color: #999;">Erreur de chargement</p>';
+      };
+      
+      imageWrapper.appendChild(img);
+      imagesContainer.appendChild(imageWrapper);
     } else {
       if (this.isGridView) {
         imagesContainer.classList.add('grid-view');
@@ -927,10 +972,41 @@ export class FocusController {
         }
         
         this.currentImages.forEach((imgSrc, index) => {
+          // Wrapper pour chaque image de la grille
+          const gridItemWrapper = document.createElement('div');
+          gridItemWrapper.className = 'grid-item-wrapper';
+          gridItemWrapper.style.position = 'relative';
+          gridItemWrapper.style.backgroundColor = 'transparent';
+          gridItemWrapper.style.borderRadius = '8px';
+          gridItemWrapper.style.overflow = 'hidden';
+          
+          const loader = document.createElement('div');
+          loader.className = 'image-loader-small';
+          loader.innerHTML = '<div class="loading-spinner-small"></div>';
+          loader.style.position = 'absolute';
+          loader.style.top = '50%';
+          loader.style.left = '50%';
+          loader.style.transform = 'translate(-50%, -50%)';
+          loader.style.zIndex = '1';
+          gridItemWrapper.appendChild(loader);
+          
           const img = document.createElement('img');
           img.src = imgSrc;
           img.alt = `Project image ${index + 1}`;
           img.className = 'shard-image-grid';
+          img.style.objectFit = 'contain';
+          img.style.opacity = '0';
+          img.style.transition = 'opacity 0.3s ease';
+          
+          img.onload = () => {
+            loader.style.display = 'none';
+            img.style.opacity = '1';
+          };
+          
+          img.onerror = () => {
+            loader.innerHTML = '<span style="font-size: 10px; color: #999;">✕</span>';
+          };
+          
           img.addEventListener('click', (e) => {
             e.stopPropagation();
             this.currentSlideIndex = index;
@@ -938,7 +1014,9 @@ export class FocusController {
             this.renderImages();
             this.startSlideshow();
           });
-          imagesContainer.appendChild(img);
+          
+          gridItemWrapper.appendChild(img);
+          imagesContainer.appendChild(gridItemWrapper);
         });
       } else {
         imagesContainer.classList.remove('grid-view');
@@ -955,11 +1033,46 @@ export class FocusController {
           slideshowWrapper.classList.add('slideshow-size-small');
         }
         
+        // Wrapper pour l'image du slideshow
+        const imageWrapper = document.createElement('div');
+        imageWrapper.style.position = 'relative';
+        imageWrapper.style.width = '100%';
+        imageWrapper.style.minHeight = '200px';
+        imageWrapper.style.display = 'flex';
+        imageWrapper.style.alignItems = 'center';
+        imageWrapper.style.justifyContent = 'center';
+        imageWrapper.style.backgroundColor = 'transparent';
+        imageWrapper.style.borderRadius = '10px';
+        
+        const loader = document.createElement('div');
+        loader.className = 'image-loader';
+        loader.innerHTML = '<div class="loading-spinner"></div>';
+        loader.style.position = 'absolute';
+        loader.style.top = '50%';
+        loader.style.left = '50%';
+        loader.style.transform = 'translate(-50%, -50%)';
+        imageWrapper.appendChild(loader);
+        
         const img = document.createElement('img');
         img.src = this.currentImages[this.currentSlideIndex];
         img.alt = 'Project image';
         img.className = 'shard-image slideshow-image';
+        img.style.width = '100%';
+        img.style.height = 'auto';
+        img.style.maxHeight = '400px';
+        img.style.objectFit = 'contain';
+        img.style.opacity = '0';
+        img.style.transition = 'opacity 0.3s ease';
         img.style.animation = 'slideIn 0.5s ease-out';
+        
+        img.onload = () => {
+          loader.style.display = 'none';
+          img.style.opacity = '1';
+        };
+        
+        img.onerror = () => {
+          loader.innerHTML = '<p style="color: #999;">Erreur de chargement</p>';
+        };
         
         const indicator = document.createElement('div');
         indicator.className = 'slideshow-indicator';
@@ -981,7 +1094,8 @@ export class FocusController {
           this.nextSlide();
         });
         
-        slideshowWrapper.appendChild(img);
+        imageWrapper.appendChild(img);
+        slideshowWrapper.appendChild(imageWrapper);
         slideshowWrapper.appendChild(indicator);
         slideshowWrapper.appendChild(prevBtn);
         slideshowWrapper.appendChild(nextBtn);

@@ -96,13 +96,13 @@ export const TYPOGRAPHY = {
  */
 export const INTRO = {
   LOGO: {
-    DARK: "assets/images/Logo/logomodedark.svg",
-    LIGHT: "assets/images/Logo/logomodelight.svg",
-    WIDTH: 180, HEIGHT: 180, MARGIN_BOTTOM: 30,
+    DARK: "assets/images/Logo/LogoApeProdLight.svg",
+    LIGHT: "assets/images/Logo/LogoApeProdDark.svg",
+    WIDTH: 400, HEIGHT: 400, MARGIN_BOTTOM: 30,
     RESPONSIVE: {
-      MOBILE: { WIDTH: 100, HEIGHT: 100, MARGIN_BOTTOM: 20 },
-      TABLET: { WIDTH: 140, HEIGHT: 140, MARGIN_BOTTOM: 25 },
-      DESKTOP: { WIDTH: 180, HEIGHT: 180, MARGIN_BOTTOM: 30 }
+      MOBILE: { WIDTH: 250, HEIGHT: 250, MARGIN_BOTTOM: 20 },
+      TABLET: { WIDTH: 200, HEIGHT: 200, MARGIN_BOTTOM: 25 },
+      DESKTOP: { WIDTH: 400, HEIGHT: 400, MARGIN_BOTTOM: 30 }
     }
   },
   HERO_TEXT: "Portfolio",

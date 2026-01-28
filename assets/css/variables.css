@@ -149,7 +149,7 @@ html {
    * - Utilisez un color picker en ligne pour choisir vos couleurs
    * - Exemple : https://htmlcolorcodes.com/color-picker/
    */
-  --color-light: #F2DDB8; /* Beige clair - utilisé pour le fond en mode clair */
+  --color-light: #b9a47f; /* Beige clair - utilisé pour le fond en mode clair */
   --color-dark: #393F4A; /* Gris foncé - utilisé pour le fond en mode sombre */
   --color-title: #2d2d2d; /* Gris très foncé - pour les titres importants */
   

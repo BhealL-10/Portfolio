@@ -235,7 +235,8 @@
 /* ==================== RESPONSIVE SHARD IMAGES ==================== */
 @media (max-width: 576px) {
   .shard-image {
-    height: 150px;
+    height: auto;
+    max-height: 200px;
   }
   
   .slideshow-wrapper {
@@ -254,7 +255,8 @@
 
 @media (max-width: 375px) {
   .shard-image {
-    height: 120px;
+    height: auto;
+    max-height: 150px;
   }
   
   .slideshow-wrapper {
@@ -273,7 +275,8 @@
 
 @media (max-width: 540px) {
   .shard-image {
-    height: 140px;
+    height: auto;
+    max-height: 180px;
   }
   
   .slideshow-wrapper {

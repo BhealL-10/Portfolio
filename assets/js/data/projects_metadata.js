@@ -12,19 +12,19 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/projects/placeholder.svg", "assets/images/projects/placeholder.svg", "assets/images/projects/placeholder.svg", "assets/images/projects/placeholder.svg", "assets/images/projects/placeholder.svg", "assets/images/projects/placeholder.svg"],
+        images: ["assets/images/projects/intro.png"],
         links: { github: null, demo: null, video: null },
         featured: true
       },
       { 
         id: 2,
-        images: ["assets/images/projects/placeholder.svg"],
-        links: { github: null, demo: null, video: null },
+        images: [],
+        links: { github: "https://github.com/orgs/ApeProd", demo: null, video: null },
         featured: false
       },
       { 
         id: 3,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: ["assets/images/projects/Imageprofile.png"],
         links: { github: null, demo: null, video: null },
         featured: false
       }
@@ -38,19 +38,19 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: ["assets/images/projects/TonoIntro.png"],
         links: { github: "https://github.com/bheall/Tono_Discord_Bot", demo: null, video: null },
         featured: true
       },
       { 
         id: 2,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: false
       },
       { 
         id: 3,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: false
       }
@@ -64,19 +64,19 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: ["assets/images/projects/Davinciintro.png"],
         links: { github: null, demo: null, video: null },
         featured: true
       },
       { 
         id: 2,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: false
       },
       { 
         id: 3,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: false
       }
@@ -90,19 +90,19 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: true
       },
       { 
         id: 2,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: false
       },
       { 
         id: 3,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: false
       }
@@ -116,19 +116,19 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: ["assets/images/projects/Introia.png"],
         links: { github: null, demo: null, video: null },
         featured: true
       },
       { 
         id: 2,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: false
       },
       { 
         id: 3,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: false
       }
@@ -142,19 +142,19 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: ["assets/images/projects/Discordintro.png"],
         links: { github: null, demo: null, video: null },
         featured: true
       },
       { 
         id: 2,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: false
       },
       { 
         id: 3,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: false
       }
@@ -194,19 +194,19 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: ["assets/images/projects/Spine.png"],
         links: { github: null, demo: null, video: null },
         featured: true
       },
       { 
         id: 2,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: false
       },
       { 
         id: 3,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: false
       }
@@ -220,19 +220,19 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: ["assets/images/projects/Conception.png"],
         links: { github: null, demo: null, video: null },
         featured: true
       },
       { 
         id: 2,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: false
       },
       { 
         id: 3,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: false
       }
@@ -246,19 +246,19 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: true
       },
       { 
         id: 2,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: false
       },
       { 
         id: 3,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: false
       }

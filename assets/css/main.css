@@ -669,6 +669,10 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+.shard-info-content > * {
+  width: 100%;
+}
+
 .shard-info-content::-webkit-scrollbar {
   width: 6px;
 }
@@ -769,9 +773,9 @@ body {
   width: 100%;
   height: auto;
   max-height: clamp(150px, 25vh, 250px);
-  object-fit: cover;
+  object-fit: contain;
   border-radius: 10px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  margin-bottom: 20px;
 }
 
 .shard-technologies {
@@ -1114,25 +1118,27 @@ body {
 }
 
 .manual-unfocus-btn {
-  display: block;
-  margin: 0 auto clamp(0.5rem, 1.5vh, 0.75rem);
+  width: 48px;
+  height: 48px;
   background: var(--bg-primary);
-  border: 1px solid var(--accent);
-  color: var(--text-primary);
-  padding: clamp(0.375rem, 1.2vh, 0.5rem) clamp(0.875rem, 3vw, 1.25rem);
-  border-radius: 20px;
+  color: var(--accent);
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  font-size: 20px;
+  font-weight: 700;
   cursor: pointer;
-  font-size: clamp(0.75rem, 2vh, 0.875rem);
-  font-weight: 500;
   transition: all 0.3s ease;
-  font-family: inherit;
   pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .manual-unfocus-btn:hover {
   background: var(--accent);
   color: var(--bg-primary);
-  transform: scale(1.05);
+  transform: scale(1.1);
 }
 
 /* ==================== FACETTE NAVIGATION (Navigation entre facettes d'un projet) ==================== */
@@ -1152,8 +1158,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(60px, 15vw, 120px);
-  margin-bottom: clamp(0.5rem, 1.5vh, 0.75rem);
+  gap: clamp(1rem, 3vh, 1.5rem);
+  margin: clamp(0.5rem, 1.5vh, 0.75rem) 0;
+  pointer-events: auto;
 }
 
 .facette-prev, .facette-next {
@@ -1190,6 +1197,7 @@ body {
   margin: 15px 0 20px;
   width: 100%;
   min-height: 10px;
+  display: block;
 }
 
 .shard-images:empty {
@@ -1227,10 +1235,10 @@ body {
   height: auto;
   max-height: clamp(150px, 25vh, 250px);
   border-radius: 10px;
-  object-fit: cover;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-  display: block;
+  object-fit: contain;
+  transition: transform 0.3s ease;
+  display: grid;
+  margin-bottom: 20px;
 }
 
 /* Ajustement de hauteur pour slideshow selon taille */
@@ -1248,7 +1256,6 @@ body {
 
 .slideshow-wrapper:hover .shard-image {
   transform: scale(1.02);
-  box-shadow: 0 6px 20px rgba(0,0,0,0.3);
 }
 
 .slideshow-indicator {
@@ -1363,16 +1370,14 @@ body {
   width: 100%;
   height: 120px;
   border-radius: 8px;
-  object-fit: cover;
+  object-fit: contain;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
   transition: all 0.3s ease;
   pointer-events: auto;
 }
 
 .shard-image-grid:hover {
   transform: translateY(-4px) scale(1.05);
-  box-shadow: 0 6px 16px rgba(0,0,0,0.3);
 }
 
 /* ==================== SHARD TECHNOLOGIES & LINKS ==================== */

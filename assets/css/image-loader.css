@@ -1,0 +1,90 @@
+/**
+ * image-loader.css - Styles pour les loaders d'images
+ * Portfolio 3D - Ape Prod
+ */
+
+/* Loader principal pour images uniques et slideshow */
+.image-loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--primary-color, #00d4ff);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Loader petit pour grille d'images */
+.image-loader-small {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-spinner-small {
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--primary-color, #00d4ff);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Wrapper d'image pour éviter la superposition avec le texte */
+.image-wrapper {
+  margin-bottom: 30px;
+}
+
+.grid-item-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+}
+
+/* Ajustements pour les images SVG */
+.shard-image[src$=".svg"],
+.shard-image-grid[src$=".svg"] {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+/* Amélioration de l'espacement pour éviter la superposition */
+.shard-images {
+  margin-bottom: 30px;
+  display: block;
+}
+
+.shard-long-description-container {
+  margin-top: 20px;
+}
+
+/* Responsive */
+@media (max-width: 576px) {
+  .loading-spinner {
+    width: 30px;
+    height: 30px;
+    border-width: 3px;
+  }
+  
+  .loading-spinner-small {
+    width: 16px;
+    height: 16px;
+    border-width: 2px;
+  }
+  
+  .image-wrapper,
+  .grid-item-wrapper {
+    min-height: 100px;
+  }
+}

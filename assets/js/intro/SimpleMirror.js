@@ -141,7 +141,7 @@ export class SimpleMirror {
     // Mettre à jour le fond du body pour les zones hors canvas (landscape)
     this.updateCanvasBackground();
     
-    if (this.opacity > 0.5) {
+    if (this.opacity > 0.8) {
       const deviceConfig = this.getDeviceConfig();
       const logoConfig = this.getLogoConfig();
       const heroFontSize = deviceConfig.HERO_FONT_SIZE || 52;
@@ -399,7 +399,7 @@ export class SimpleMirror {
       };
     });
     
-    const mirrorColor = this.isDark ? '#393F4A' : '#F2DDB8';
+    const mirrorColor = this.isDark ? '#F2DDB8' : '#393F4A';
     const crackColor = this.isDark ? '#F2DDB8' : '#393F4A';
     
     const animate = () => {
