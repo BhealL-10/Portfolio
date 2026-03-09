@@ -1,4 +1,5 @@
 import type { Language, LocalizedText, PortfolioProject, ProjectFacet, ProjectLinkSet } from '../types/content';
+import { getShardRole } from '../portfolio/shardLayout';
 
 // Legacy data kept as source-of-truth during migration.
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -119,6 +120,7 @@ const enTranslations = projectTranslations.en as LegacyTranslationProject[];
 export const portfolioProjects: PortfolioProject[] = metadata.map((projectMeta, index) => {
   const frProject = frTranslations[index];
   const enProject = enTranslations[index];
+  const role = getShardRole(index, metadata.length);
 
   const facets = projectMeta.facettes.map((facetMeta, facetIndex) =>
     buildFacet(
@@ -133,13 +135,66 @@ export const portfolioProjects: PortfolioProject[] = metadata.map((projectMeta, 
     id: `shard-${projectMeta.id}`,
     numericId: projectMeta.id,
     order: index,
+    role,
     date: projectMeta.date,
     title: {
-      fr: frProject.title,
-      en: enProject.title
+      fr: role === 'hint' ? 'INDICE' : frProject.title,
+      en: role === 'hint' ? 'HINT' : enProject.title
     },
     logo: resolveLogoConfig(projectMeta.id),
-    facets
+    facets:
+      role === 'hint'
+        ? ([
+            {
+              ...facets[0],
+              categoryKey: 'hint',
+              categoryLabel: { fr: 'Indice', en: 'Hint' },
+              description: {
+                fr: 'Tous les fragments n’attendent pas le focus. Certains veulent retrouver une forme précise. Observe le X, puis ce point sous sa blessure centrale.',
+                en: 'Not every fragment wants focus. Some want to recover a precise form. Watch the X, then the dot below its central wound.'
+              },
+              technologies: [
+                { fr: 'Mystère', en: 'Mystery' },
+                { fr: 'Placement', en: 'Placement' },
+                { fr: 'Transformation', en: 'Transformation' },
+                { fr: 'Jeu caché', en: 'Hidden game' },
+                { fr: 'Clé d’accès', en: 'Access key' }
+              ]
+            },
+            {
+              ...facets[1],
+              categoryKey: 'hint',
+              categoryLabel: { fr: 'Accès', en: 'Access' },
+              description: {
+                fr: 'Quand chaque shard rejoint son empreinte, le monde cesse d’être un portfolio et bascule vers une autre règle.',
+                en: 'When every shard reaches its imprint, the world stops being a portfolio and switches to another rule.'
+              },
+              technologies: [
+                { fr: 'Pivot', en: 'Pivot' },
+                { fr: 'Constellation', en: 'Constellation' },
+                { fr: 'Déblocage', en: 'Unlock' },
+                { fr: 'Momentum', en: 'Momentum' },
+                { fr: 'Transition', en: 'Transition' }
+              ]
+            },
+            {
+              ...facets[2],
+              categoryKey: 'hint',
+              categoryLabel: { fr: 'Conseil', en: 'Clue' },
+              description: {
+                fr: 'Ne cherche pas un bouton. Replace les fragments. Le fil de lumière ne ment jamais.',
+                en: 'Do not search for a button. Put the fragments back into place. The line of light never lies.'
+              },
+              technologies: [
+                { fr: 'Patience', en: 'Patience' },
+                { fr: 'Lecture', en: 'Reading' },
+                { fr: 'Exploration', en: 'Exploration' },
+                { fr: 'Déverrouillage', en: 'Unlocking' },
+                { fr: 'Secret', en: 'Secret' }
+              ]
+            }
+          ] as [ProjectFacet, ProjectFacet, ProjectFacet])
+        : facets
   };
 });
 

@@ -9,20 +9,26 @@ export type AppMode =
   | 'focus_facet_transition'
   | 'focus_exit'
   | 'about_section'
-  | 'constellation_complete';
+  | 'constellation_complete'
+  | 'game_transition'
+  | 'game'
+  | 'game_over';
 
 const allowedTransitions: Record<AppMode, AppMode[]> = {
   intro: ['intro_shattering'],
   intro_shattering: ['intro_transition'],
   intro_transition: ['orbit'],
-  orbit: ['dragging', 'focus_enter', 'about_section', 'constellation_complete'],
-  dragging: ['orbit', 'constellation_complete'],
+  orbit: ['dragging', 'focus_enter', 'about_section', 'constellation_complete', 'game_transition'],
+  dragging: ['orbit', 'constellation_complete', 'game_transition'],
   focus_enter: ['focus', 'focus_exit'],
   focus: ['focus_facet_transition', 'focus_exit'],
   focus_facet_transition: ['focus'],
   focus_exit: ['orbit', 'constellation_complete'],
   about_section: ['orbit', 'constellation_complete'],
-  constellation_complete: ['focus_enter', 'about_section', 'orbit']
+  constellation_complete: ['focus_enter', 'about_section', 'orbit', 'game_transition'],
+  game_transition: ['game', 'orbit', 'constellation_complete'],
+  game: ['game_over', 'orbit'],
+  game_over: ['game', 'orbit']
 };
 
 export class ModeController {

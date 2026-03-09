@@ -27,6 +27,7 @@ export interface PortfolioProject {
   id: string;
   numericId: number;
   order: number;
+  role: 'presentation' | 'project' | 'hint';
   date: string;
   title: LocalizedText;
   logo: {

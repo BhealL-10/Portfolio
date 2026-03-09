@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { damp, wrapIndex } from '../core/math';
 import type { AppMode } from '../core/ModeController';
-import type { PortfolioProject, SecretSlot, ThemeMode } from '../types/content';
+import type { PortfolioProject, ThemeMode } from '../types/content';
 import { SecretSlotSystem } from './SecretSlotSystem';
 import { createDeformMaterial, setDeformMaterialTheme, updateDeformUniforms, type DeformMaterial } from './shardMaterial';
+import { getPortfolioAnchor } from './shardLayout';
 
 type RuntimeState = 'orbiting' | 'hovered' | 'dragging' | 'snapped' | 'focus_enter' | 'focused' | 'focus_exit';
 
@@ -12,6 +13,7 @@ interface ShardEntity {
   group: THREE.Group;
   core: THREE.Mesh<THREE.IcosahedronGeometry, DeformMaterial>;
   logoPlanes: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>[];
+  layoutAnchor: THREE.Vector3;
   orbitRadius: number;
   orbitPhase: number;
   orbitSpeed: number;
@@ -58,7 +60,8 @@ export class OrbitWorldSystem {
   private readonly pointer = new THREE.Vector2();
   private readonly backgroundPoints: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>;
   private readonly focusTargetPosition = new THREE.Vector3(0, 0.1, 7.4);
-  private readonly constellationLines: [THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>, THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>];
+  private readonly pivot = new THREE.Vector3(0, 0, 0);
+  private readonly constellationLines: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>[];
   private globalOrbitTime = 0;
   private hoveredId: string | null = null;
   private focusedId: string | null = null;
@@ -272,8 +275,12 @@ export class OrbitWorldSystem {
     return this.entityList[wrapIndex(index, this.entityList.length)]?.project || null;
   }
 
+  getPivot() {
+    return this.pivot.clone();
+  }
+
   getOrbitCameraPose() {
-    this.activeLookAt.copy(this.entityList[this.activeIndex]?.group.position || new THREE.Vector3());
+    this.activeLookAt.copy(this.entityList[this.activeIndex]?.group.position || this.pivot);
     return {
       position: ORBIT_CAMERA_POSITION,
       lookAt: this.activeLookAt.clone().multiplyScalar(0.25)
@@ -295,6 +302,15 @@ export class OrbitWorldSystem {
   onUnlocked(callback: () => void) {
     this.unlockCallbacks.add(callback);
     return () => this.unlockCallbacks.delete(callback);
+  }
+
+  getCurrentShardPositions() {
+    return this.entityList.map((entity) => entity.group.position.clone());
+  }
+
+  setVisible(visible: boolean) {
+    this.root.visible = visible;
+    this.backgroundPoints.visible = visible;
   }
 
   update(deltaTime: number, elapsedTime: number, mode: AppMode) {
@@ -424,17 +440,42 @@ export class OrbitWorldSystem {
 
   private computeOrbitTarget(entity: ShardEntity, elapsedTime: number, isActive: boolean) {
     const angle = entity.orbitPhase + elapsedTime * entity.orbitSpeed;
-    const radius = entity.orbitRadius;
-    const x = Math.cos(angle) * radius;
-    const y = Math.sin(angle) * radius * 0.58 + Math.sin(angle * 2 + entity.orbitHeight) * 0.28;
-    const z = Math.sin(angle * 0.7 + entity.orbitDepth) * 2.2 + (isActive ? 1.1 : 0);
+    const base = entity.layoutAnchor.clone();
 
-    return new THREE.Vector3(x, y, z);
+    if (entity.project.role === 'presentation') {
+      return new THREE.Vector3(
+        Math.sin(angle) * 1.15,
+        Math.cos(angle) * 2.25,
+        Math.sin(angle * 0.7) * 0.9 + (isActive ? 0.7 : 0)
+      );
+    }
+
+    if (entity.project.role === 'hint') {
+      return new THREE.Vector3(
+        base.x + Math.sin(angle) * 0.8,
+        base.y + Math.cos(angle * 0.9) * 0.65,
+        base.z + Math.sin(angle * 1.3) * 1.25 + (isActive ? 0.45 : 0)
+      );
+    }
+
+    const rotated = base.applyAxisAngle(new THREE.Vector3(1, 0, 0), Math.sin(angle) * 0.22);
+    rotated.y += Math.sin(angle * 0.85 + entity.orbitHeight) * 0.34;
+    rotated.z += Math.cos(angle * 1.1 + entity.orbitDepth) * (0.9 + entity.orbitRadius * 0.035);
+    rotated.x += Math.sin(angle * 0.6 + entity.orbitPhase) * 0.22;
+
+    if (isActive) {
+      rotated.z += 0.8;
+    }
+
+    return rotated;
   }
 
   private createShard(project: PortfolioProject, index: number) {
     const group = new THREE.Group();
-    group.position.set(0, 0, 0);
+    const anchor = getPortfolioAnchor(index);
+    const layoutAnchor = new THREE.Vector3(anchor.x, anchor.y, anchor.z);
+    const total = Math.max(1, this.slotSystem.getSlots().length);
+    group.position.copy(layoutAnchor);
     this.root.add(group);
 
     const geometry = new THREE.IcosahedronGeometry(1.25, 4);
@@ -463,9 +504,10 @@ export class OrbitWorldSystem {
       group,
       core,
       logoPlanes: [],
-      orbitRadius: 7.5 + index * 1.08,
-      orbitPhase: (index / 10) * Math.PI * 2,
-      orbitSpeed: 0.24 + index * 0.005,
+      layoutAnchor,
+      orbitRadius: layoutAnchor.length(),
+      orbitPhase: (index / total) * Math.PI * 2,
+      orbitSpeed: project.role === 'presentation' ? 0.48 : project.role === 'hint' ? 0.32 : 0.24 + index * 0.004,
       orbitHeight: index * 0.9,
       orbitDepth: index * 0.55,
       velocity: new THREE.Vector3(),
@@ -585,16 +627,19 @@ export class OrbitWorldSystem {
       return line;
     };
 
-    return [createLine(), createLine()];
+    return [createLine(), createLine(), createLine()];
   }
 
   private updateConstellationLines() {
     const slots = this.slotSystem.getSlots();
-    const diagonalLength = Math.ceil(slots.length / 2);
-    const groups = [slots.slice(0, diagonalLength), slots.slice(diagonalLength)];
+    const groups = [
+      [slots[1], slots[2], slots[0], slots[6], slots[5]],
+      [slots[3], slots[4], slots[0], slots[8], slots[7]],
+      [slots[0], slots[9]]
+    ];
 
     groups.forEach((group, groupIndex) => {
-      const activePoints = group.filter((slot) => slot.activated).map((slot) => slot.worldPosition);
+      const activePoints = group.filter(Boolean).filter((slot) => slot.activated).map((slot) => slot.worldPosition);
       const line = this.constellationLines[groupIndex];
 
       if (activePoints.length < 2) {

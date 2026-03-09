@@ -59,6 +59,12 @@ body {
   position: absolute;
   inset: 0;
   z-index: 50;
+  transition: opacity 220ms ease;
+}
+
+.navigation-hud.is-hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .navigation-hud__topbar {
@@ -154,6 +160,12 @@ body {
   border-radius: 28px;
   padding: 16px 18px;
   pointer-events: none;
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.guide-bubble.is-hidden {
+  opacity: 0;
+  transform: translateY(8px);
 }
 
 .guide-bubble__title,
@@ -253,6 +265,79 @@ body {
   opacity: 0;
   pointer-events: none;
   transition: opacity 240ms ease;
+}
+
+.game-hud {
+  position: absolute;
+  right: calc(var(--safe-right) + 18px);
+  bottom: calc(var(--safe-bottom) + 18px);
+  z-index: 46;
+  width: min(360px, calc(100vw - 36px));
+  border-radius: 30px;
+  padding: 18px;
+  backdrop-filter: blur(18px);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 24px 60px rgb(var(--color-fg-rgb) / 0.08);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(20px);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.game-hud.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.game-hud__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.game-hud__stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 22px;
+  border: 1px solid rgb(var(--color-fg-rgb) / 0.16);
+  background: rgb(var(--color-fg-rgb) / 0.06);
+}
+
+.game-hud__stats span {
+  color: rgb(var(--color-fg-rgb) / 0.72);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+}
+
+.game-hud__stats strong {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.game-hud__status {
+  margin: 16px 0 0;
+  line-height: 1.6;
+}
+
+.game-hud__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.game-hud__actions button {
+  border-radius: 999px;
+  border: 1px solid rgb(var(--color-fg-rgb) / 0.16);
+  background: rgb(var(--color-fg-rgb) / 0.06);
+  color: inherit;
+  padding: 10px 16px;
+  cursor: pointer;
 }
 
 .focus-layer.is-visible,
@@ -434,6 +519,11 @@ body {
 
   .guide-bubble {
     bottom: calc(var(--safe-bottom) + 80px);
+  }
+
+  .game-hud {
+    left: calc(var(--safe-left) + 18px);
+    width: auto;
   }
 }
 

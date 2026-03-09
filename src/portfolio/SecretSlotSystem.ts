@@ -1,5 +1,6 @@
 import { distance3, type Vec3Like } from '../core/math';
 import type { SecretSlot } from '../types/content';
+import { getSlotAnchor } from './shardLayout';
 
 export class SecretSlotSystem {
   private slots: SecretSlot[];
@@ -14,27 +15,7 @@ export class SecretSlotSystem {
   }
 
   static computePosition(index: number, count: number) {
-    const diagonalCount = Math.ceil(count / 2);
-    const diagonalIndex = index < diagonalCount ? index : index - diagonalCount;
-    const t = diagonalCount === 1 ? 0.5 : diagonalIndex / (diagonalCount - 1);
-    const spreadX = 12.5;
-    const spreadY = 7.6;
-    const xBase = -spreadX + spreadX * 2 * t;
-    const yBase = spreadY - spreadY * 2 * t;
-
-    if (index < diagonalCount) {
-      return {
-        x: xBase,
-        y: yBase,
-        z: -0.8 + diagonalIndex * 0.35
-      };
-    }
-
-    return {
-      x: -xBase,
-      y: yBase,
-      z: 0.8 - diagonalIndex * 0.35
-    };
+    return getSlotAnchor(index < count ? index : 0);
   }
 
   getSlots() {

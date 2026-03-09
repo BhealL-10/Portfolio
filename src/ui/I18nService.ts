@@ -24,7 +24,14 @@ const uiStrings = {
     slotHint: 'La bonne place réagit quand la bonne shard s’en approche.',
     unlockedHint: 'Toutes les shards sont placées. Le mini-jeu est prêt à être branché.',
     aboutTitle: 'About / Outro',
-    home: 'Accueil'
+    home: 'Accueil',
+    gameScore: 'Score',
+    gameBest: 'Meilleur score',
+    gameRestart: 'Recommencer',
+    gamePortfolio: 'Portfolio',
+    gameStatusTransition: 'Le chemin s’aligne.',
+    gameStatusRunning: 'Maintenez bas pour charger. Haut pour sauter.',
+    gameStatusGameOver: 'Capture manquée. Relancez immédiatement ou revenez au portfolio.'
   },
   en: {
     theme: 'Theme',
@@ -49,7 +56,14 @@ const uiStrings = {
     slotHint: 'The correct slot reacts when the correct shard gets close.',
     unlockedHint: 'All shards are placed. The mini-game hook is ready.',
     aboutTitle: 'About / Outro',
-    home: 'Home'
+    home: 'Home',
+    gameScore: 'Score',
+    gameBest: 'Best',
+    gameRestart: 'Restart',
+    gamePortfolio: 'Portfolio',
+    gameStatusTransition: 'Aligning the path.',
+    gameStatusRunning: 'Hold Down to charge. Press Up to jump.',
+    gameStatusGameOver: 'Missed the capture. Restart instantly or return to the portfolio.'
   }
 } as const;
 

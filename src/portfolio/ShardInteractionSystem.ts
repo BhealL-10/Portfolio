@@ -9,6 +9,7 @@ interface InteractionCallbacks {
   onDragStart: (shardId: string, point: THREE.Vector3) => boolean;
   onDragMove: (point: THREE.Vector3) => void;
   onDragEnd: () => void;
+  onSceneOrbitMove: (deltaX: number, deltaY: number) => void;
   onFocusRotation: (deltaX: number) => void;
   onFocusRotationEnd: () => void;
   onFocusSideTap: (side: 'left' | 'right') => void;
@@ -19,6 +20,7 @@ export class ShardInteractionSystem {
   private downX = 0;
   private downY = 0;
   private dragged = false;
+  private sceneOrbiting = false;
   private downShardId: string | null = null;
   private focusGesture = false;
 
@@ -37,10 +39,21 @@ export class ShardInteractionSystem {
 
   private onPointerDown = (event: PointerEvent) => {
     const mode = this.getMode();
-    if (mode === 'intro' || mode === 'intro_shattering' || mode === 'intro_transition' || mode === 'about_section') return;
+    if (
+      mode === 'intro' ||
+      mode === 'intro_shattering' ||
+      mode === 'intro_transition' ||
+      mode === 'about_section' ||
+      mode === 'game_transition' ||
+      mode === 'game' ||
+      mode === 'game_over'
+    ) {
+      return;
+    }
 
     this.pointerDown = true;
     this.dragged = false;
+    this.sceneOrbiting = false;
     this.focusGesture = false;
     this.downX = event.clientX;
     this.downY = event.clientY;
@@ -91,6 +104,12 @@ export class ShardInteractionSystem {
       if (this.dragged) {
         this.callbacks.onDragMove(point);
       }
+      return;
+    }
+
+    if ((mode === 'orbit' || mode === 'constellation_complete') && !this.downShardId && distance > 4) {
+      this.sceneOrbiting = true;
+      this.callbacks.onSceneOrbitMove(moveX, moveY);
     }
   };
 
@@ -124,6 +143,11 @@ export class ShardInteractionSystem {
       return;
     }
 
+    if (this.sceneOrbiting) {
+      this.reset();
+      return;
+    }
+
     if ((mode === 'orbit' || mode === 'constellation_complete') && distance <= 8) {
       const pick = this.world.pick(event.clientX, event.clientY, this.canvas, this.camera);
       if (pick) {
@@ -147,6 +171,7 @@ export class ShardInteractionSystem {
   private reset() {
     this.pointerDown = false;
     this.dragged = false;
+    this.sceneOrbiting = false;
     this.focusGesture = false;
     this.downShardId = null;
   }
