@@ -27,8 +27,8 @@ const allowedTransitions: Record<AppMode, AppMode[]> = {
   about_section: ['orbit', 'constellation_complete'],
   constellation_complete: ['focus_enter', 'about_section', 'orbit', 'game_transition'],
   game_transition: ['game', 'orbit', 'constellation_complete'],
-  game: ['game_over', 'orbit'],
-  game_over: ['game', 'orbit']
+  game: ['game_over', 'orbit', 'game_transition'],
+  game_over: ['game', 'orbit', 'game_transition']
 };
 
 export class ModeController {

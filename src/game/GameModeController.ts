@@ -22,13 +22,15 @@ const PLAYER_RADIUS = 2.15;
 
 export class GameModeController {
   private readonly group = new THREE.Group();
+  private readonly renderPlatforms = false;
   private readonly pool: PlatformMesh[] = [];
   private readonly geometry = new THREE.IcosahedronGeometry(1.25, 4);
   private readonly player = new THREE.Group();
   private readonly playerBody: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>;
   private readonly cameraPosition = new THREE.Vector3();
   private readonly cameraLookAt = new THREE.Vector3();
-  private readonly transitionStartPositions: THREE.Vector3[] = [];
+  private readonly transitionFromPositions: THREE.Vector3[] = [];
+  private readonly transitionToPositions: THREE.Vector3[] = [];
   private anchors: AnchorData[] = [];
   private theme: ThemeMode;
   private state: GameState = 'idle';
@@ -93,8 +95,18 @@ export class GameModeController {
     return () => this.scoreListeners.delete(callback);
   }
 
+  getInitialPlatformPositions(count: number) {
+    this.buildAnchors(Math.max(26, count + 4));
+    return this.anchors.slice(0, count).map((anchor) => new THREE.Vector3(anchor.x, anchor.y, anchor.z));
+  }
+
+  getVisiblePlatformPositions(count: number) {
+    this.ensureAnchors(this.visibleWindowStart + count + 2);
+    return this.anchors.slice(this.visibleWindowStart, this.visibleWindowStart + count).map((anchor) => new THREE.Vector3(anchor.x, anchor.y, anchor.z));
+  }
+
   startTransition(startPositions: THREE.Vector3[]) {
-    this.transitionStartPositions.splice(0, this.transitionStartPositions.length, ...startPositions.map((position) => position.clone()));
+    this.transitionFromPositions.splice(0, this.transitionFromPositions.length, ...startPositions.map((position) => position.clone()));
     this.state = 'transition';
     this.transitionProgress = 0;
     this.group.visible = true;
@@ -104,8 +116,25 @@ export class GameModeController {
     this.score = 0;
     this.buildAnchors(26);
     this.visibleWindowStart = 0;
+    this.transitionToPositions.splice(
+      0,
+      this.transitionToPositions.length,
+      ...this.anchors.slice(0, startPositions.length).map((anchor) => new THREE.Vector3(anchor.x, anchor.y, anchor.z))
+    );
     this.syncTransitionPlatforms();
     this.emitScore();
+  }
+
+  prepareReturnTransition(endPositions: THREE.Vector3[]) {
+    this.transitionFromPositions.splice(0, this.transitionFromPositions.length, ...endPositions.map((position) => position.clone()));
+    this.transitionToPositions.splice(0, this.transitionToPositions.length, ...this.captureVisiblePlatformPositions(endPositions.length));
+    this.state = 'transition';
+    this.transitionProgress = 1;
+    this.group.visible = true;
+    this.player.visible = false;
+    this.player.userData.attached = false;
+    this.accelerating = false;
+    this.syncTransitionPlatforms();
   }
 
   setTransitionProgress(progress: number) {
@@ -119,7 +148,7 @@ export class GameModeController {
     this.visibleWindowStart = 0;
     this.score = 0;
     this.angularSpeed = 1.4;
-    this.attachToAnchor(0);
+    this.attachToAnchor(0, false);
     this.player.visible = true;
     this.emitScore();
   }
@@ -134,11 +163,11 @@ export class GameModeController {
     if (this.player.userData.attached !== true) return;
 
     const tangent = new THREE.Vector3(-Math.sin(this.angle), Math.cos(this.angle), 0).normalize();
-    const launchSpeed = 4.4 + this.angularSpeed * 2.25;
+    const launchSpeed = 4.9 + this.angularSpeed * 2.8;
 
     this.player.userData.attached = false;
     this.playerVelocity.copy(tangent).multiplyScalar(launchSpeed);
-    this.playerVelocity.x += 0.85;
+    this.playerVelocity.x += 1.05;
   }
 
   restart() {
@@ -171,9 +200,8 @@ export class GameModeController {
 
     if (this.state === 'transition') {
       this.syncTransitionPlatforms();
-      const cameraX = THREE.MathUtils.lerp(0, this.anchors[0]?.x ?? 0, this.transitionProgress);
-      this.cameraPosition.set(cameraX + 4.5, 1.6, 24);
-      this.cameraLookAt.set(cameraX + 4.5, 1.6, 0);
+      this.cameraPosition.set(2.8, 1.8, 24);
+      this.cameraLookAt.set(2.8, 1.2, 0);
       return;
     }
 
@@ -200,8 +228,8 @@ export class GameModeController {
   private updateRunning(deltaTime: number) {
     if (this.player.userData.attached === true) {
       const anchor = this.anchors[this.attachedAnchorIndex];
-      const targetSpeed = this.accelerating ? 3.55 : 1.35;
-      this.angularSpeed = damp(this.angularSpeed, targetSpeed, this.accelerating ? 5 : 2.8, deltaTime);
+      const targetSpeed = this.accelerating ? 4.2 : Math.max(1.45, this.angularSpeed * 0.98);
+      this.angularSpeed = damp(this.angularSpeed, targetSpeed, this.accelerating ? 2.4 : 0.9, deltaTime);
       this.angle += this.angularSpeed * deltaTime;
       this.playerPosition.set(
         anchor.x + Math.cos(this.angle) * PLAYER_RADIUS,
@@ -210,7 +238,7 @@ export class GameModeController {
       );
       this.player.rotation.z = this.angle + Math.PI / 2;
     } else {
-      this.playerVelocity.y -= 10.4 * deltaTime;
+      this.playerVelocity.y -= 8.8 * deltaTime;
       this.playerPosition.x += this.playerVelocity.x * deltaTime;
       this.playerPosition.y += this.playerVelocity.y * deltaTime;
       this.player.rotation.z = Math.atan2(this.playerVelocity.y, this.playerVelocity.x);
@@ -219,7 +247,7 @@ export class GameModeController {
         return;
       }
 
-      if (this.playerPosition.y < -14 || this.playerPosition.x < this.anchors[this.attachedAnchorIndex].x - 5) {
+      if (this.playerPosition.y < -16 || this.playerPosition.x < this.anchors[this.attachedAnchorIndex].x - 7) {
         this.state = 'game_over';
         this.accelerating = false;
       }
@@ -235,8 +263,8 @@ export class GameModeController {
     for (let index = searchStart; index <= searchEnd; index += 1) {
       const anchor = this.anchors[index];
       const distance = Math.hypot(this.playerPosition.x - anchor.x, this.playerPosition.y - anchor.y);
-      if (distance <= anchor.radius + 0.95) {
-        this.attachToAnchor(index);
+      if (distance <= anchor.radius + 1.15) {
+        this.attachToAnchor(index, true);
         return true;
       }
     }
@@ -244,19 +272,36 @@ export class GameModeController {
     return false;
   }
 
-  private attachToAnchor(anchorIndex: number) {
+  private attachToAnchor(anchorIndex: number, preserveMotion: boolean) {
     const anchor = this.anchors[anchorIndex];
     this.attachedAnchorIndex = anchorIndex;
     this.visibleWindowStart = Math.max(0, anchorIndex - 2);
     this.player.userData.attached = true;
-    this.angle = -Math.PI * 0.58;
-    this.angularSpeed = clamp(this.angularSpeed, 1.25, 2.1);
-    this.playerPosition.set(
-      anchor.x + Math.cos(this.angle) * PLAYER_RADIUS,
-      anchor.y + Math.sin(this.angle) * PLAYER_RADIUS,
-      0
-    );
+
+    if (preserveMotion) {
+      const relative = this.playerPosition.clone().sub(new THREE.Vector3(anchor.x, anchor.y, anchor.z));
+      if (relative.lengthSq() < 0.0001) {
+        relative.set(1, 0, 0);
+      }
+      relative.setLength(PLAYER_RADIUS);
+      this.angle = Math.atan2(relative.y, relative.x);
+
+      const tangent = new THREE.Vector3(-Math.sin(this.angle), Math.cos(this.angle), 0);
+      const preservedTangentialSpeed = Math.abs(this.playerVelocity.dot(tangent));
+      this.angularSpeed = clamp(preservedTangentialSpeed / PLAYER_RADIUS, 1.15, 4.8);
+      this.playerPosition.set(anchor.x + relative.x, anchor.y + relative.y, 0);
+    } else {
+      this.angle = -Math.PI * 0.58;
+      this.angularSpeed = 1.45;
+      this.playerPosition.set(
+        anchor.x + Math.cos(this.angle) * PLAYER_RADIUS,
+        anchor.y + Math.sin(this.angle) * PLAYER_RADIUS,
+        0
+      );
+    }
+
     this.playerVelocity.set(0, 0, 0);
+    this.player.rotation.z = this.angle + Math.PI / 2;
     this.score = anchorIndex;
     if (this.score > this.highscore) {
       this.highscore = this.score;
@@ -274,27 +319,27 @@ export class GameModeController {
 
     this.anchors = [
       { x: -12, y: 0.8, z: 0, radius: 1.45 },
-      { x: -6.4, y: 1.6, z: 0, radius: 1.5 },
-      { x: -0.8, y: 0.2, z: 0, radius: 1.4 }
+      { x: -4.4, y: 1.7, z: 0, radius: 1.5 },
+      { x: 3.4, y: 0.25, z: 0, radius: 1.45 }
     ];
     this.ensureAnchors(targetCount);
   }
 
   private ensureAnchors(targetIndex: number) {
     const patterns = [
-      [5.2, 1.0],
-      [5.6, -0.9],
-      [6.1, 0.55],
-      [5.4, 1.25],
-      [5.9, -1.35],
-      [6.3, 0.35]
+      [6.9, 1.1],
+      [7.4, -1.0],
+      [7.8, 0.65],
+      [7.2, 1.4],
+      [7.7, -1.45],
+      [8.1, 0.4]
     ] as const;
 
     while (this.anchors.length <= targetIndex) {
       const previous = this.anchors[this.anchors.length - 1];
       const difficulty = Math.min(1, this.anchors.length / 40);
       const pattern = patterns[this.anchors.length % patterns.length];
-      const x = previous.x + pattern[0] + difficulty * 1.8;
+      const x = previous.x + pattern[0] + difficulty * 2.1;
       const y = clamp(previous.y + pattern[1], -3.8, 4.8);
 
       this.anchors.push({
@@ -308,20 +353,29 @@ export class GameModeController {
 
   private syncTransitionPlatforms() {
     this.pool.forEach((platform, index) => {
-      const start = this.transitionStartPositions[index];
-      const target = this.anchors[index];
+      const start = this.transitionFromPositions[index];
+      const target = this.transitionToPositions[index];
       if (!start || !target) {
         platform.group.visible = false;
         return;
       }
 
-      platform.group.visible = true;
+      platform.group.visible = this.renderPlatforms;
       platform.group.position.set(
         THREE.MathUtils.lerp(start.x, target.x, this.transitionProgress),
         THREE.MathUtils.lerp(start.y, target.y, this.transitionProgress),
         THREE.MathUtils.lerp(start.z, target.z, this.transitionProgress)
       );
       platform.group.scale.setScalar(1);
+    });
+  }
+
+  private captureVisiblePlatformPositions(count: number) {
+    return this.pool.slice(0, count).map((platform, index) => {
+      if (!platform.group.visible) {
+        return new THREE.Vector3(this.anchors[index]?.x ?? 0, this.anchors[index]?.y ?? 0, this.anchors[index]?.z ?? 0);
+      }
+      return platform.group.position.clone();
     });
   }
 
@@ -335,7 +389,7 @@ export class GameModeController {
         return;
       }
 
-      platform.group.visible = true;
+      platform.group.visible = this.renderPlatforms;
       platform.group.position.set(anchor.x, anchor.y, anchor.z);
       platform.group.scale.setScalar(anchor.radius / 1.4);
       platform.group.rotation.x = Math.sin(elapsedTime * 0.9 + poolIndex) * 0.12;

@@ -573,7 +573,8 @@ export class AppController {
     this.mode.setMode('game_transition');
     this.gameTransitionProgress = 0;
     this.game.setTransitionProgress(0);
-    this.world.setVisible(true);
+    const projectCount = this.content.getProjectCount();
+    this.world.beginExternalLayoutTransition(this.game.getInitialPlatformPositions(projectCount));
     this.game.startTransition(this.world.getCurrentShardPositions());
     this.refreshUI();
 
@@ -585,14 +586,15 @@ export class AppController {
       onUpdate: (value) => {
         this.gameTransitionProgress = value;
         this.game.setTransitionProgress(value);
+        this.world.setExternalLayoutProgress(value);
       },
       onComplete: () => {
         this.gameTransitionTweenId = null;
         this.gameTransitionProgress = 1;
         this.game.setTransitionProgress(1);
-        this.world.setVisible(false);
         this.mode.setMode('game');
         this.game.beginRun();
+        this.world.setExternalLayoutPositions(this.game.getVisiblePlatformPositions(projectCount));
         this.refreshUI();
       }
     });
@@ -604,9 +606,9 @@ export class AppController {
       this.mode.setMode('game');
     }
     this.game.restart();
-    this.world.setVisible(false);
     this.gameTransitionProgress = 1;
     this.game.setTransitionProgress(1);
+    this.world.setExternalLayoutPositions(this.game.getVisiblePlatformPositions(this.content.getProjectCount()));
     this.refreshUI();
   }
 
@@ -622,16 +624,13 @@ export class AppController {
 
     this.mobileChargePointerId = null;
     this.game.setAccelerating(false);
-    this.game.stop();
-    this.world.setVisible(true);
+    const slotPositions = this.world.getSlotPositions();
+    this.world.beginExternalLayoutTransition(slotPositions);
+    this.game.prepareReturnTransition(slotPositions);
 
-    if (this.mode.is('game_transition')) {
-      this.mode.setMode('orbit');
-    } else {
-      this.mode.setMode('orbit');
+    if (this.mode.is('game') || this.mode.is('game_over')) {
+      this.mode.setMode('game_transition');
     }
-
-    this.resumeOrbitMode();
 
     this.gameTransitionTweenId = this.transitions.animate({
       from: this.gameTransitionProgress,
@@ -640,10 +639,15 @@ export class AppController {
       easing: 'easeInOutCubic',
       onUpdate: (value) => {
         this.gameTransitionProgress = value;
+        this.game.setTransitionProgress(value);
+        this.world.setExternalLayoutProgress(1 - value);
       },
       onComplete: () => {
         this.gameTransitionTweenId = null;
+        this.game.stop();
         this.gameTransitionProgress = 0;
+        this.world.clearExternalLayout();
+        this.resumeOrbitMode();
         this.refreshUI();
         this.updateGuide();
       }
@@ -664,6 +668,10 @@ export class AppController {
     this.transitions.update(deltaTime);
     this.world.update(deltaTime, elapsedTime, this.mode.current);
     this.game.update(deltaTime, elapsedTime);
+
+    if (this.mode.is('game') || this.mode.is('game_over')) {
+      this.world.setExternalLayoutPositions(this.game.getVisiblePlatformPositions(this.content.getProjectCount()));
+    }
 
     if (this.mode.is('focus_enter') && this.world.isFocusSettled()) {
       this.mode.setMode('focus');

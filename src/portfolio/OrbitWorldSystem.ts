@@ -17,6 +17,9 @@ interface ShardEntity {
   orbitRadius: number;
   orbitPhase: number;
   orbitSpeed: number;
+  orbitBoost: number;
+  orbitBoostTarget: number;
+  orbitBoostTimer: number;
   orbitHeight: number;
   orbitDepth: number;
   velocity: THREE.Vector3;
@@ -47,7 +50,6 @@ interface PickResult {
 
 const ORBIT_CAMERA_POSITION = new THREE.Vector3(0, 0.8, 24);
 const FOCUS_CAMERA_POSITION = new THREE.Vector3(0, 0.2, 17.5);
-
 export class OrbitWorldSystem {
   private readonly root = new THREE.Group();
   private readonly loader = new THREE.TextureLoader();
@@ -70,6 +72,11 @@ export class OrbitWorldSystem {
   private theme: ThemeMode;
   private focusSettled = false;
   private activeLookAt = new THREE.Vector3();
+  private externalLayoutActive = false;
+  private externalLayoutPositions: THREE.Vector3[] | null = null;
+  private externalTransitionFrom: THREE.Vector3[] = [];
+  private externalTransitionTo: THREE.Vector3[] = [];
+  private externalTransitionProgress = 0;
   private unlockCallbacks = new Set<() => void>();
 
   constructor(
@@ -308,6 +315,38 @@ export class OrbitWorldSystem {
     return this.entityList.map((entity) => entity.group.position.clone());
   }
 
+  getSlotPositions() {
+    return this.entityList.map((entity) => {
+      const slot = this.slotSystem.getSlotForShard(entity.project.id);
+      return slot ? new THREE.Vector3(slot.worldPosition.x, slot.worldPosition.y, slot.worldPosition.z) : entity.group.position.clone();
+    });
+  }
+
+  beginExternalLayoutTransition(targets: THREE.Vector3[]) {
+    this.externalLayoutActive = true;
+    this.externalLayoutPositions = null;
+    this.externalTransitionFrom = this.getCurrentShardPositions();
+    this.externalTransitionTo = targets.map((target) => target.clone());
+    this.externalTransitionProgress = 0;
+  }
+
+  setExternalLayoutProgress(progress: number) {
+    this.externalTransitionProgress = progress;
+  }
+
+  setExternalLayoutPositions(positions: THREE.Vector3[]) {
+    this.externalLayoutActive = true;
+    this.externalLayoutPositions = positions.map((position) => position.clone());
+  }
+
+  clearExternalLayout() {
+    this.externalLayoutActive = false;
+    this.externalLayoutPositions = null;
+    this.externalTransitionFrom = [];
+    this.externalTransitionTo = [];
+    this.externalTransitionProgress = 0;
+  }
+
   setVisible(visible: boolean) {
     this.root.visible = visible;
     this.backgroundPoints.visible = visible;
@@ -317,12 +356,29 @@ export class OrbitWorldSystem {
     this.globalOrbitTime += deltaTime;
     this.backgroundPoints.rotation.z += deltaTime * 0.012;
     this.backgroundPoints.rotation.y += deltaTime * 0.02;
+    const pivotYTarget = Math.sin(elapsedTime * 0.42) * 0.48;
+    this.pivot.x = 0;
+    this.pivot.y = damp(this.pivot.y, pivotYTarget, 2.6, deltaTime);
+    this.pivot.z = 0;
 
     this.entityList.forEach((entity, index) => {
       const isFocused = entity.project.id === this.focusedId;
       const isDragging = entity.project.id === this.draggingId;
       const isActive = index === this.activeIndex;
       const slot = this.slotSystem.getSlotForShard(entity.project.id);
+
+      entity.orbitBoostTimer -= deltaTime;
+      if (entity.orbitBoostTimer <= 0) {
+        if (entity.orbitBoostTarget > 1.01) {
+          entity.orbitBoostTarget = 1;
+          entity.orbitBoostTimer = 18 + Math.random() * 18;
+        } else {
+          entity.orbitBoostTarget = 1.04 + Math.random() * 0.03;
+          entity.orbitBoostTimer = 0.9 + Math.random() * 1.5;
+        }
+      }
+      entity.orbitBoost = damp(entity.orbitBoost, entity.orbitBoostTarget, 0.85, deltaTime);
+
       const orbitTarget = this.computeOrbitTarget(entity, elapsedTime, isActive);
 
       let targetPosition = orbitTarget;
@@ -334,11 +390,20 @@ export class OrbitWorldSystem {
 
       if (slot) {
         entity.slotIndicator.position.set(slot.worldPosition.x, slot.worldPosition.y, slot.worldPosition.z);
-        entity.slotIndicator.material.opacity = entity.slotPulse * (slot.activated ? 0.82 : 0.52);
+        entity.slotIndicator.material.opacity = this.externalLayoutActive ? 0 : entity.slotPulse * (slot.activated ? 0.82 : 0.52);
         entity.slotIndicator.scale.setScalar(0.8 + entity.slotPulse * 0.35 + Math.sin(elapsedTime * 3 + index) * 0.03);
       }
 
-      if (isDragging) {
+      if (this.externalLayoutActive) {
+        if (this.externalLayoutPositions?.[index]) {
+          targetPosition = this.externalLayoutPositions[index];
+        } else if (this.externalTransitionFrom[index] && this.externalTransitionTo[index]) {
+          targetPosition = this.externalTransitionFrom[index].clone().lerp(this.externalTransitionTo[index], this.externalTransitionProgress);
+        }
+        targetScale = 1.02;
+        targetOpacity = 1;
+        targetState = 'orbiting';
+      } else if (isDragging) {
         targetPosition = entity.dragTarget;
         targetScale = 1.06;
         targetState = 'dragging';
@@ -439,32 +504,30 @@ export class OrbitWorldSystem {
   }
 
   private computeOrbitTarget(entity: ShardEntity, elapsedTime: number, isActive: boolean) {
-    const angle = entity.orbitPhase + elapsedTime * entity.orbitSpeed;
+    const angle = entity.orbitPhase + elapsedTime * entity.orbitSpeed * entity.orbitBoost;
     const base = entity.layoutAnchor.clone();
 
     if (entity.project.role === 'presentation') {
-      return new THREE.Vector3(
-        Math.sin(angle) * 1.15,
-        Math.cos(angle) * 2.25,
-        Math.sin(angle * 0.7) * 0.9 + (isActive ? 0.7 : 0)
-      );
+      return new THREE.Vector3(this.pivot.x, this.pivot.y, this.pivot.z);
     }
 
     if (entity.project.role === 'hint') {
       return new THREE.Vector3(
-        base.x + Math.sin(angle) * 0.8,
-        base.y + Math.cos(angle * 0.9) * 0.65,
-        base.z + Math.sin(angle * 1.3) * 1.25 + (isActive ? 0.45 : 0)
+        this.pivot.x,
+        this.pivot.y + Math.cos(angle) * 1.55,
+        this.pivot.z + Math.sin(angle) * 1.28 + (isActive ? 0.28 : 0)
       );
     }
 
-    const rotated = base.applyAxisAngle(new THREE.Vector3(1, 0, 0), Math.sin(angle) * 0.22);
-    rotated.y += Math.sin(angle * 0.85 + entity.orbitHeight) * 0.34;
-    rotated.z += Math.cos(angle * 1.1 + entity.orbitDepth) * (0.9 + entity.orbitRadius * 0.035);
-    rotated.x += Math.sin(angle * 0.6 + entity.orbitPhase) * 0.22;
+    const radius = 2.85 + Math.abs(base.x) * 0.42 + Math.abs(base.y) * 0.11;
+    const rotated = new THREE.Vector3(
+      this.pivot.x + Math.cos(angle) * radius,
+      this.pivot.y + base.y * 0.68 + Math.sin(angle * 1.15 + entity.orbitHeight) * 0.34 + base.x * 0.035,
+      this.pivot.z + Math.sin(angle) * radius * 0.88 + base.z * 0.4
+    );
 
     if (isActive) {
-      rotated.z += 0.8;
+      rotated.z += 0.45;
     }
 
     return rotated;
@@ -507,7 +570,10 @@ export class OrbitWorldSystem {
       layoutAnchor,
       orbitRadius: layoutAnchor.length(),
       orbitPhase: (index / total) * Math.PI * 2,
-      orbitSpeed: project.role === 'presentation' ? 0.48 : project.role === 'hint' ? 0.32 : 0.24 + index * 0.004,
+      orbitSpeed: project.role === 'presentation' ? 0.24 : project.role === 'hint' ? 0.44 : 0.38 + index * 0.012,
+      orbitBoost: 1,
+      orbitBoostTarget: 1,
+      orbitBoostTimer: 24 + index * 1.6,
       orbitHeight: index * 0.9,
       orbitDepth: index * 0.55,
       velocity: new THREE.Vector3(),
@@ -631,6 +697,13 @@ export class OrbitWorldSystem {
   }
 
   private updateConstellationLines() {
+    if (this.externalLayoutActive) {
+      this.constellationLines.forEach((line) => {
+        line.visible = false;
+      });
+      return;
+    }
+
     const slots = this.slotSystem.getSlots();
     const groups = [
       [slots[1], slots[2], slots[0], slots[6], slots[5]],
