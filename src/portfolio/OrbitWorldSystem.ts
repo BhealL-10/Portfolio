@@ -58,6 +58,7 @@ export class OrbitWorldSystem {
   private readonly pointer = new THREE.Vector2();
   private readonly backgroundPoints: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>;
   private readonly focusTargetPosition = new THREE.Vector3(0, 0.1, 7.4);
+  private readonly constellationLines: [THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>, THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>];
   private globalOrbitTime = 0;
   private hoveredId: string | null = null;
   private focusedId: string | null = null;
@@ -78,6 +79,7 @@ export class OrbitWorldSystem {
     this.scene.add(this.root);
     this.backgroundPoints = this.createBackgroundPoints();
     this.scene.add(this.backgroundPoints);
+    this.constellationLines = this.createConstellationLines();
     this.entityList = projects.map((project, index) => this.createShard(project, index));
   }
 
@@ -89,6 +91,7 @@ export class OrbitWorldSystem {
       entity.slotIndicator.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A');
     });
     this.backgroundPoints.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A');
+    this.constellationLines.forEach((line) => line.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A'));
   }
 
   setActiveIndex(index: number) {
@@ -174,7 +177,12 @@ export class OrbitWorldSystem {
     if (this.focusedId) return false;
 
     const entity = this.entities.get(shardId);
-    if (!entity || entity.snapped) return false;
+    if (!entity) return false;
+
+    if (entity.snapped) {
+      entity.snapped = false;
+      this.slotSystem.deactivate(entity.project.id);
+    }
 
     this.draggingId = shardId;
     entity.runtimeState = 'dragging';
@@ -192,7 +200,16 @@ export class OrbitWorldSystem {
 
     entity.dragTarget.copy(point).add(entity.dragOffset);
     entity.dragTarget.z = entity.group.position.z;
-    return this.slotSystem.getProximity(entity.project.id, entity.dragTarget);
+    const slot = this.slotSystem.getSlotForShard(entity.project.id);
+    const proximity = this.slotSystem.getProximity(entity.project.id, entity.dragTarget);
+
+    if (slot && proximity > 0) {
+      entity.dragTarget.x = THREE.MathUtils.lerp(entity.dragTarget.x, slot.worldPosition.x, proximity * 0.18);
+      entity.dragTarget.y = THREE.MathUtils.lerp(entity.dragTarget.y, slot.worldPosition.y, proximity * 0.18);
+      entity.dragTarget.z = THREE.MathUtils.lerp(entity.dragTarget.z, slot.worldPosition.z, proximity * 0.18);
+    }
+
+    return proximity;
   }
 
   endDrag() {
@@ -379,7 +396,8 @@ export class OrbitWorldSystem {
         time: elapsedTime,
         hover: entity.hoverAmount,
         drag: entity.dragAmount,
-        focus: entity.focusAmount
+        focus: entity.focusAmount,
+        settled: entity.snapped ? 1 : entity.focusAmount * 0.25
       });
 
       entity.logoPlanes.forEach((plane, planeIndex) => {
@@ -387,6 +405,8 @@ export class OrbitWorldSystem {
         plane.material.opacity = visibleOpacity * (0.65 + planeIndex * 0.1);
       });
     });
+
+    this.updateConstellationLines();
 
     if (this.focusedId) {
       const focused = this.entities.get(this.focusedId);
@@ -549,5 +569,50 @@ export class OrbitWorldSystem {
         opacity: 0.35
       })
     );
+  }
+
+  private createConstellationLines() {
+    const createLine = () => {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+      const material = new THREE.LineBasicMaterial({
+        color: this.theme === 'dark' ? '#D4BF9B' : '#393F4A',
+        transparent: true,
+        opacity: 0.9
+      });
+      const line = new THREE.Line(geometry, material);
+      this.root.add(line);
+      return line;
+    };
+
+    return [createLine(), createLine()];
+  }
+
+  private updateConstellationLines() {
+    const slots = this.slotSystem.getSlots();
+    const diagonalLength = Math.ceil(slots.length / 2);
+    const groups = [slots.slice(0, diagonalLength), slots.slice(diagonalLength)];
+
+    groups.forEach((group, groupIndex) => {
+      const activePoints = group.filter((slot) => slot.activated).map((slot) => slot.worldPosition);
+      const line = this.constellationLines[groupIndex];
+
+      if (activePoints.length < 2) {
+        line.visible = false;
+        line.geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+        return;
+      }
+
+      const positions = new Float32Array(activePoints.length * 3);
+      activePoints.forEach((point, index) => {
+        positions[index * 3] = point.x;
+        positions[index * 3 + 1] = point.y;
+        positions[index * 3 + 2] = point.z;
+      });
+
+      line.visible = true;
+      line.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      line.geometry.computeBoundingSphere();
+    });
   }
 }

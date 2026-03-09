@@ -42,6 +42,7 @@ export function createDeformMaterial(theme: ThemeMode, seed: number) {
       uHover: { value: 0 },
       uDrag: { value: 0 },
       uFocus: { value: 0 },
+      uSettled: { value: 0 },
       uSeed: { value: seed }
     };
 
@@ -56,16 +57,19 @@ uniform float uTime;
 uniform float uHover;
 uniform float uDrag;
 uniform float uFocus;
+uniform float uSettled;
 uniform float uSeed;`
       )
       .replace(
         '#include <begin_vertex>',
         `vec3 transformed = vec3(position);
-float ripple = sin(uTime * 1.8 + position.y * 5.0 + uSeed) * 0.08 * uHover;
-float dragWave = sin(uTime * 3.2 + position.x * 7.0 + uSeed) * 0.15 * uDrag;
+float baseWave = sin(uTime * 2.4 + position.y * 5.5 + uSeed) * 0.14;
+float sideWave = cos(uTime * 1.8 + position.x * 7.0 + uSeed) * 0.08;
+float waveAttenuation = (1.0 - uHover * 0.22) * (1.0 - uSettled);
+float dragWave = sin(uTime * 4.0 + position.x * 8.0 + uSeed) * 0.06 * uDrag;
 float focusFlatten = mix(1.0, 0.08, uFocus);
-transformed += normal * (ripple + dragWave);
-transformed.xy *= 1.0 + uHover * 0.05 + uDrag * 0.08;
+transformed += normal * ((baseWave + sideWave) * waveAttenuation + dragWave);
+transformed.xy *= 1.0 + 0.04 * (1.0 - uSettled) + uDrag * 0.08;
 transformed.z *= focusFlatten;`
       );
   };
@@ -82,7 +86,7 @@ export function setDeformMaterialTheme(material: DeformMaterial, theme: ThemeMod
 
 export function updateDeformUniforms(
   material: DeformMaterial,
-  values: { time: number; hover: number; drag: number; focus: number }
+  values: { time: number; hover: number; drag: number; focus: number; settled: number }
 ) {
   const uniforms = material.userData.shaderUniforms;
   if (!uniforms) return;
@@ -90,4 +94,5 @@ export function updateDeformUniforms(
   uniforms.uHover.value = values.hover;
   uniforms.uDrag.value = values.drag;
   uniforms.uFocus.value = values.focus;
+  uniforms.uSettled.value = values.settled;
 }

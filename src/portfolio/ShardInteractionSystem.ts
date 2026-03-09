@@ -44,6 +44,7 @@ export class ShardInteractionSystem {
     this.focusGesture = false;
     this.downX = event.clientX;
     this.downY = event.clientY;
+    this.canvas.setPointerCapture(event.pointerId);
 
     const pick = this.world.pick(event.clientX, event.clientY, this.canvas, this.camera);
     this.downShardId = pick?.shardId || null;
@@ -79,7 +80,7 @@ export class ShardInteractionSystem {
       return;
     }
 
-    if ((mode === 'orbit' || mode === 'constellation_complete') && this.downShardId && distance > 8) {
+    if ((mode === 'orbit' || mode === 'constellation_complete' || mode === 'dragging') && this.downShardId && distance > 8) {
       const point = this.world.projectPointerToDragPlane(event.clientX, event.clientY, this.canvas, this.camera);
       if (!point) return;
 
@@ -96,6 +97,10 @@ export class ShardInteractionSystem {
   private onPointerUp = (event: PointerEvent) => {
     const mode = this.getMode();
     const distance = Math.hypot(event.clientX - this.downX, event.clientY - this.downY);
+
+    if (this.canvas.hasPointerCapture(event.pointerId)) {
+      this.canvas.releasePointerCapture(event.pointerId);
+    }
 
     if (this.dragged) {
       this.callbacks.onDragEnd();

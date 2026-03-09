@@ -14,13 +14,26 @@ export class SecretSlotSystem {
   }
 
   static computePosition(index: number, count: number) {
-    const angle = -Math.PI / 2 + (index / count) * Math.PI * 2;
-    const radius = 16 + (index % 2 === 0 ? 0 : 2.25);
+    const diagonalCount = Math.ceil(count / 2);
+    const diagonalIndex = index < diagonalCount ? index : index - diagonalCount;
+    const t = diagonalCount === 1 ? 0.5 : diagonalIndex / (diagonalCount - 1);
+    const spreadX = 12.5;
+    const spreadY = 7.6;
+    const xBase = -spreadX + spreadX * 2 * t;
+    const yBase = spreadY - spreadY * 2 * t;
+
+    if (index < diagonalCount) {
+      return {
+        x: xBase,
+        y: yBase,
+        z: -0.8 + diagonalIndex * 0.35
+      };
+    }
 
     return {
-      x: Math.cos(angle) * radius,
-      y: Math.sin(angle) * radius * 0.58 - 1.2,
-      z: Math.sin(angle * 2.1) * 1.8
+      x: -xBase,
+      y: yBase,
+      z: 0.8 - diagonalIndex * 0.35
     };
   }
 
@@ -49,6 +62,13 @@ export class SecretSlotSystem {
     const slot = this.getSlotForShard(slotId);
     if (!slot) return null;
     slot.activated = true;
+    return slot;
+  }
+
+  deactivate(slotId: string) {
+    const slot = this.getSlotForShard(slotId);
+    if (!slot) return null;
+    slot.activated = false;
     return slot;
   }
 
