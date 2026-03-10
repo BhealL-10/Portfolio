@@ -202,6 +202,8 @@ export class OrbitWorldSystem {
 
     const entity = this.entities.get(shardId);
     if (!entity) return false;
+    if (entity.project.role === 'presentation') return false;
+    if (!this.slotSystem.getSlotForShard(shardId)) return false;
 
     this.slotPreviewIds.delete(shardId);
 
@@ -331,6 +333,9 @@ export class OrbitWorldSystem {
   activateSlotPreview() {
     this.slotPreviewIds.clear();
     this.entityList.forEach((entity) => {
+      if (!this.slotSystem.getSlotForShard(entity.project.id)) {
+        return;
+      }
       this.slotPreviewIds.add(entity.project.id);
       entity.snapped = false;
       if (!this.focusedId && entity.runtimeState !== 'dragging') {
@@ -340,7 +345,7 @@ export class OrbitWorldSystem {
   }
 
   activateSlotPreviewForShard(shardId: string) {
-    if (!this.entities.has(shardId)) return;
+    if (!this.entities.has(shardId) || !this.slotSystem.getSlotForShard(shardId)) return;
     this.slotPreviewIds.add(shardId);
     const entity = this.entities.get(shardId);
     if (entity && !entity.snapped && !this.focusedId && entity.runtimeState !== 'dragging') {
@@ -442,7 +447,9 @@ export class OrbitWorldSystem {
   releaseSnappedShards() {
     this.entityList.forEach((entity) => {
       entity.snapped = false;
-      this.slotSystem.deactivate(entity.project.id);
+      if (this.slotSystem.getSlotForShard(entity.project.id)) {
+        this.slotSystem.deactivate(entity.project.id);
+      }
       if (!this.focusedId && entity.runtimeState !== 'dragging') {
         entity.runtimeState = 'orbiting';
       }

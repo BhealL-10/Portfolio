@@ -73,7 +73,12 @@ export class AppController {
     host.appendChild(this.root);
 
     this.renderer = new WorldRenderer(this.canvasHost);
-    this.slotSystem = new SecretSlotSystem(this.content.getProjects().map((project) => project.id));
+    this.slotSystem = new SecretSlotSystem(
+      this.content
+        .getProjects()
+        .filter((project) => project.role !== 'presentation')
+        .map((project) => project.id)
+    );
     this.world = new OrbitWorldSystem(this.renderer.scene, this.content.getProjects(), this.slotSystem, this.theme.current);
     this.game = new GameSessionController(this.renderer.scene, this.theme.current);
     this.hud = new NavigationHUD(this.uiHost, this.i18n, this.content, {

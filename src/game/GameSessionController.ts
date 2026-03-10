@@ -182,6 +182,7 @@ export class GameSessionController {
     this.resetRunState();
     this.path.reset();
     this.path.prebuild(180);
+    this.camera.reset(this.getResolvedNode(0));
     this.state = 'transition_in';
     this.root.visible = true;
     this.player.visible = false;
@@ -230,6 +231,7 @@ export class GameSessionController {
     this.boss.reset();
     this.coins.reset();
     this.enemies.reset();
+    this.camera.reset(this.getResolvedNode(0));
   }
 
   resetRunState() {
