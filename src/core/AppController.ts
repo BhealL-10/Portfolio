@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { ContentService } from '../data/ContentService';
 import { GameHUDSystem } from '../game/GameHUDSystem';
-import { GameModeController } from '../game/GameModeController';
+import { GameSessionController } from '../game/GameSessionController';
 import { DragCameraOrbitController } from '../portfolio/DragCameraOrbitController';
 import { IntroVoronoiSystem } from '../portfolio/IntroVoronoiSystem';
 import { OrbitWorldSystem } from '../portfolio/OrbitWorldSystem';
@@ -37,7 +37,7 @@ export class AppController {
   private readonly about: AboutSectionSystem;
   private readonly focus: FocusPresentationSystem;
   private readonly gameHud: GameHUDSystem;
-  private readonly game: GameModeController;
+  private readonly game: GameSessionController;
   private readonly interaction: ShardInteractionSystem;
   private readonly loop: RenderLoop;
   private readonly cameraOrbit = new DragCameraOrbitController();
@@ -51,10 +51,13 @@ export class AppController {
   private hasFocused = false;
   private hasChangedFacet = false;
   private hasDragged = false;
+  private readonly seenFacetsByProject = new Map<string, Set<number>>();
   private pendingPostFocusExit: (() => void) | null = null;
+  private didRunIntroPresentationFocus = false;
   private gameTransitionTweenId: number | null = null;
   private mobileChargePointerId: number | null = null;
   private mobileChargeStartY = 0;
+  private mobileChargeStartedAt = 0;
 
   constructor(host: HTMLElement) {
     this.root = document.createElement('div');
@@ -72,7 +75,7 @@ export class AppController {
     this.renderer = new WorldRenderer(this.canvasHost);
     this.slotSystem = new SecretSlotSystem(this.content.getProjects().map((project) => project.id));
     this.world = new OrbitWorldSystem(this.renderer.scene, this.content.getProjects(), this.slotSystem, this.theme.current);
-    this.game = new GameModeController(this.renderer.scene, this.theme.current);
+    this.game = new GameSessionController(this.renderer.scene, this.theme.current);
     this.hud = new NavigationHUD(this.uiHost, this.i18n, this.content, {
       onThemeToggle: () => this.theme.toggle(),
       onLanguageToggle: () => this.i18n.toggle(),
@@ -90,7 +93,12 @@ export class AppController {
     this.intro = new IntroVoronoiSystem(this.uiHost, this.i18n, this.theme);
     this.gameHud = new GameHUDSystem(this.uiHost, this.i18n, {
       onRestart: () => this.restartGame(),
-      onExit: () => this.exitGame()
+      onExit: () => this.exitGame(),
+      onSelectUpgrade: (index) => {
+        if (this.game.selectUpgradeFallback(index)) {
+          this.refreshUI();
+        }
+      }
     });
 
     this.interaction = new ShardInteractionSystem(
@@ -145,6 +153,7 @@ export class AppController {
         onFocusSideTap: (side) => this.changeFacet(side === 'left' ? -1 : 1)
       }
     );
+    void this.interaction;
 
     this.loop = new RenderLoop((deltaTime, elapsedTime) => this.update(deltaTime, elapsedTime));
 
@@ -169,7 +178,7 @@ export class AppController {
         this.focus.show(focusedProject, this.world.getFocusedFacetIndex());
       }
       if (this.mode.is('game_transition') || this.mode.is('game') || this.mode.is('game_over')) {
-        this.gameHud.update(this.game.currentScore, this.game.bestScore, this.getGameHudState());
+        this.gameHud.update(this.getGameHudPayload());
       }
     });
 
@@ -209,6 +218,20 @@ export class AppController {
           this.resumeOrbitMode();
           this.refreshUI();
           this.updateGuide();
+
+          if (!this.didRunIntroPresentationFocus) {
+            const presentationId = this.world.getPresentationProjectId();
+            if (presentationId) {
+              this.didRunIntroPresentationFocus = true;
+              this.activeIndex = 0;
+              this.world.setActiveIndex(0);
+              window.setTimeout(() => {
+                if (this.mode.is('orbit')) {
+                  this.enterFocus(presentationId);
+                }
+              }, 220);
+            }
+          }
         }
       });
     };
@@ -276,12 +299,22 @@ export class AppController {
       }
 
       if (this.mode.is('game')) {
+        if (this.game.getHudState().state === 'upgrade_choice') {
+          if (event.key === '1' || event.key === '2' || event.key === '3') {
+            event.preventDefault();
+            if (this.game.selectUpgradeFallback(Number(event.key) - 1)) {
+              this.refreshUI();
+            }
+            return;
+          }
+        }
+
         if (event.key === 'ArrowDown') {
           event.preventDefault();
-          this.game.setAccelerating(true);
+          this.game.setChargeActive(true);
         } else if (event.key === 'ArrowUp') {
           event.preventDefault();
-          this.game.jump();
+          this.game.triggerJump();
         }
         return;
       }
@@ -335,7 +368,7 @@ export class AppController {
   private onKeyUp = (event: KeyboardEvent) => {
     if (!this.mode.is('game')) return;
     if (event.key === 'ArrowDown') {
-      this.game.setAccelerating(false);
+      this.game.setChargeActive(false);
     }
   };
 
@@ -350,7 +383,8 @@ export class AppController {
 
     this.mobileChargePointerId = event.pointerId;
     this.mobileChargeStartY = event.clientY;
-    this.game.setAccelerating(true);
+    this.mobileChargeStartedAt = performance.now();
+    this.game.setChargeActive(true);
   };
 
   private onGamePointerUp = (event: PointerEvent) => {
@@ -358,20 +392,23 @@ export class AppController {
     if (this.mobileChargePointerId !== event.pointerId) return;
 
     const deltaY = this.mobileChargeStartY - event.clientY;
-    this.game.setAccelerating(false);
-    this.game.jump();
+    const heldDuration = performance.now() - this.mobileChargeStartedAt;
+    const releasedJump = this.game.setChargeActive(false);
 
-    if (deltaY > 12) {
+    if (!releasedJump && (heldDuration < 180 || deltaY > 12)) {
+      this.game.triggerJump();
       event.preventDefault();
     }
 
     this.mobileChargePointerId = null;
+    this.mobileChargeStartedAt = 0;
   };
 
   private onGamePointerCancel = (event: PointerEvent) => {
     if (this.mobileChargePointerId !== event.pointerId) return;
     this.mobileChargePointerId = null;
-    this.game.setAccelerating(false);
+    this.mobileChargeStartedAt = 0;
+    this.game.setChargeActive(false);
   };
 
   private stepActiveIndex(direction: number) {
@@ -420,6 +457,7 @@ export class AppController {
       return;
     }
 
+    const focusedProject = this.world.getFocusedProject();
     this.pendingPostFocusExit = callback || null;
     this.focus.hide();
     this.mode.setMode('focus_exit');
@@ -433,6 +471,9 @@ export class AppController {
       onUpdate: () => {},
       onComplete: () => {
         this.resumeOrbitMode();
+        if (focusedProject && this.hasSeenAllFacets(focusedProject.id)) {
+          this.world.snapShardToSlot(focusedProject.id);
+        }
         const post = this.pendingPostFocusExit;
         this.pendingPostFocusExit = null;
         post?.();
@@ -462,6 +503,7 @@ export class AppController {
         this.mode.setMode('focus');
         const focusedProject = this.world.getFocusedProject();
         if (focusedProject) {
+          this.markFacetSeen(focusedProject.id, this.world.getFocusedFacetIndex());
           this.focus.updateFacet(this.world.getFocusedFacetIndex());
           this.hasChangedFacet = true;
           this.updateGuide();
@@ -572,10 +614,12 @@ export class AppController {
 
     this.mode.setMode('game_transition');
     this.gameTransitionProgress = 0;
-    this.game.setTransitionProgress(0);
+    this.game.startTransition();
     const projectCount = this.content.getProjectCount();
-    this.world.beginExternalLayoutTransition(this.game.getInitialPlatformPositions(projectCount));
-    this.game.startTransition(this.world.getCurrentShardPositions());
+    this.world.beginExternalLayoutTransition(
+      this.game.getInitialPlatformPositions(projectCount),
+      this.game.getInitialPlatformScales(projectCount)
+    );
     this.refreshUI();
 
     this.gameTransitionTweenId = this.transitions.animate({
@@ -585,16 +629,18 @@ export class AppController {
       easing: 'easeInOutCubic',
       onUpdate: (value) => {
         this.gameTransitionProgress = value;
-        this.game.setTransitionProgress(value);
         this.world.setExternalLayoutProgress(value);
       },
       onComplete: () => {
         this.gameTransitionTweenId = null;
         this.gameTransitionProgress = 1;
-        this.game.setTransitionProgress(1);
         this.mode.setMode('game');
         this.game.beginRun();
-        this.world.setExternalLayoutPositions(this.game.getVisiblePlatformPositions(projectCount));
+        this.world.setExternalLayoutPositions(
+          this.game.getVisiblePlatformPositions(projectCount),
+          this.game.getVisiblePlatformScales(projectCount),
+          this.game.getVisiblePlatformVisuals(projectCount)
+        );
         this.refreshUI();
       }
     });
@@ -606,9 +652,11 @@ export class AppController {
       this.mode.setMode('game');
     }
     this.game.restart();
-    this.gameTransitionProgress = 1;
-    this.game.setTransitionProgress(1);
-    this.world.setExternalLayoutPositions(this.game.getVisiblePlatformPositions(this.content.getProjectCount()));
+    this.world.setExternalLayoutPositions(
+      this.game.getVisiblePlatformPositions(this.content.getProjectCount()),
+      this.game.getVisiblePlatformScales(this.content.getProjectCount()),
+      this.game.getVisiblePlatformVisuals(this.content.getProjectCount())
+    );
     this.refreshUI();
   }
 
@@ -623,10 +671,10 @@ export class AppController {
     }
 
     this.mobileChargePointerId = null;
-    this.game.setAccelerating(false);
+    this.game.setChargeActive(false);
     const orbitPositions = this.world.getOrbitPositions();
     this.world.beginExternalLayoutTransition(orbitPositions);
-    this.game.prepareReturnTransition(orbitPositions);
+    this.game.prepareReturnTransition();
 
     if (this.mode.is('game') || this.mode.is('game_over')) {
       this.mode.setMode('game_transition');
@@ -639,15 +687,17 @@ export class AppController {
       easing: 'easeInOutCubic',
       onUpdate: (value) => {
         this.gameTransitionProgress = value;
-        this.game.setTransitionProgress(value);
         this.world.setExternalLayoutProgress(1 - value);
       },
       onComplete: () => {
         this.gameTransitionTweenId = null;
         this.game.stop();
         this.gameTransitionProgress = 0;
-        this.world.clearExternalLayout();
-        this.world.releaseSnappedShards();
+        this.slotSystem.reset();
+        this.interaction.reset();
+        this.world.resetPortfolioState();
+        this.activeIndex = 0;
+        this.world.setActiveIndex(0);
         this.resumeOrbitMode();
         this.refreshUI();
         this.updateGuide();
@@ -655,14 +705,35 @@ export class AppController {
     });
   }
 
-  private getGameHudState(): 'transition' | 'running' | 'game_over' {
-    if (this.mode.is('game_transition') || this.game.currentState === 'transition') {
-      return 'transition';
-    }
-    if (this.mode.is('game_over') || this.game.currentState === 'game_over') {
-      return 'game_over';
-    }
-    return 'running';
+  private getGameHudPayload() {
+    const hudState = this.game.getHudState();
+    return {
+      score: hudState.score,
+      highscore: hudState.highscore,
+      chargeRatio: hudState.chargeRatio,
+      momentumGauge: hudState.momentumGauge,
+      momentumTier: hudState.momentumTier,
+      state: hudState.state,
+      offers: hudState.offers,
+      branchHints: hudState.branchHints.reduce<Array<{
+        slot: 0 | 1 | 2;
+        offer: typeof hudState.branchHints[number]['offer'];
+        screenX: number;
+        screenY: number;
+      }>>((acc, hint) => {
+        const projected = this.renderer.projectWorldToScreen(hint.worldPosition);
+        if (projected.visible) {
+          acc.push({
+            slot: hint.slot,
+            offer: hint.offer,
+            screenX: projected.x,
+            screenY: projected.y
+          });
+        }
+        return acc;
+      }, []),
+      acquisition: hudState.acquisition
+    } as const;
   }
 
   private update(deltaTime: number, elapsedTime: number) {
@@ -671,13 +742,18 @@ export class AppController {
     this.game.update(deltaTime, elapsedTime);
 
     if (this.mode.is('game') || this.mode.is('game_over')) {
-      this.world.setExternalLayoutPositions(this.game.getVisiblePlatformPositions(this.content.getProjectCount()));
+      this.world.setExternalLayoutPositions(
+        this.game.getVisiblePlatformPositions(this.content.getProjectCount()),
+        this.game.getVisiblePlatformScales(this.content.getProjectCount()),
+        this.game.getVisiblePlatformVisuals(this.content.getProjectCount())
+      );
     }
 
     if (this.mode.is('focus_enter') && this.world.isFocusSettled()) {
       this.mode.setMode('focus');
       const focusedProject = this.world.getFocusedProject();
       if (focusedProject) {
+        this.markFacetSeen(focusedProject.id, this.world.getFocusedFacetIndex());
         this.focus.show(focusedProject, this.world.getFocusedFacetIndex());
         this.hasFocused = true;
         this.updateGuide();
@@ -709,6 +785,9 @@ export class AppController {
 
     this.renderer.setCameraTarget(cameraPosition, cameraLookAt);
     this.renderer.update(deltaTime);
+    if (this.mode.is('game_transition') || this.mode.is('game') || this.mode.is('game_over')) {
+      this.gameHud.update(this.getGameHudPayload());
+    }
     this.renderer.render();
     this.intro.update(deltaTime);
 
@@ -727,7 +806,7 @@ export class AppController {
     this.guide.element.classList.toggle('is-hidden', isGameMode);
     this.gameHud.setVisible(isGameMode);
     if (isGameMode) {
-      this.gameHud.update(this.game.currentScore, this.game.bestScore, this.getGameHudState());
+      this.gameHud.update(this.getGameHudPayload());
     }
     this.world.setActiveIndex(this.activeIndex);
   }
@@ -763,5 +842,15 @@ export class AppController {
     }
 
     this.guide.setStep('slots');
+  }
+
+  private markFacetSeen(projectId: string, facetIndex: number) {
+    const seen = this.seenFacetsByProject.get(projectId) ?? new Set<number>();
+    seen.add(facetIndex);
+    this.seenFacetsByProject.set(projectId, seen);
+  }
+
+  private hasSeenAllFacets(projectId: string) {
+    return (this.seenFacetsByProject.get(projectId)?.size ?? 0) >= 3;
   }
 }

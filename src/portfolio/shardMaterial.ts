@@ -8,8 +8,17 @@ export interface DeformMaterial extends THREE.MeshStandardMaterial {
       uHover: { value: number };
       uDrag: { value: number };
       uFocus: { value: number };
+      uSettled: { value: number };
+      uSnap: { value: number };
       uSeed: { value: number };
     };
+  };
+}
+
+export interface FragmentedGeometry extends THREE.BufferGeometry {
+  attributes: THREE.BufferGeometry['attributes'] & {
+    aFragmentDir?: THREE.BufferAttribute;
+    aFragmentPhase?: THREE.BufferAttribute;
   };
 }
 
@@ -43,6 +52,7 @@ export function createDeformMaterial(theme: ThemeMode, seed: number) {
       uDrag: { value: 0 },
       uFocus: { value: 0 },
       uSettled: { value: 0 },
+      uSnap: { value: 0 },
       uSeed: { value: seed }
     };
 
@@ -53,23 +63,39 @@ export function createDeformMaterial(theme: ThemeMode, seed: number) {
       .replace(
         '#include <common>',
         `#include <common>
+attribute vec3 aFragmentDir;
+attribute float aFragmentPhase;
 uniform float uTime;
 uniform float uHover;
 uniform float uDrag;
 uniform float uFocus;
 uniform float uSettled;
+uniform float uSnap;
 uniform float uSeed;`
       )
       .replace(
         '#include <begin_vertex>',
         `vec3 transformed = vec3(position);
+vec3 fragmentDir = vec3(0.0, 0.0, 1.0);
+float fragmentPhase = 0.0;
+#ifdef USE_UV
+#endif
+#ifdef USE_COLOR
+#endif
+fragmentDir = aFragmentDir;
+fragmentPhase = aFragmentPhase;
 float baseWave = sin(uTime * 2.4 + position.y * 5.5 + uSeed) * 0.14;
 float sideWave = cos(uTime * 1.8 + position.x * 7.0 + uSeed) * 0.08;
-float waveAttenuation = (1.0 - uHover * 0.22) * (1.0 - uSettled);
+float waveAttenuation = (1.0 - uHover * 0.22) * (1.0 - uSettled) * (1.0 - uSnap);
 float dragWave = sin(uTime * 4.0 + position.x * 8.0 + uSeed) * 0.06 * uDrag;
 float focusFlatten = mix(1.0, 0.08, uFocus);
-transformed += normal * ((baseWave + sideWave) * waveAttenuation + dragWave);
-transformed.xy *= 1.0 + 0.04 * (1.0 - uSettled) + uDrag * 0.08;
+float shardNoise = fract(sin(fragmentPhase * 37.31 + uSeed) * 43758.5453);
+float snapPulse = sin(uTime * 5.4 + fragmentPhase * 11.0) * 0.5 + 0.5;
+vec3 swirlAxis = normalize(vec3(-fragmentDir.y, fragmentDir.x, fragmentDir.z + 0.12));
+vec3 shardOffset = fragmentDir * (0.14 + shardNoise * 0.26) * uSnap * snapPulse;
+shardOffset += swirlAxis * (0.08 + shardNoise * 0.12) * uSnap;
+transformed += normal * ((baseWave + sideWave) * waveAttenuation + dragWave) + shardOffset;
+transformed.xy *= 1.0 + 0.04 * (1.0 - uSettled) + uDrag * 0.08 + uSnap * 0.05;
 transformed.z *= focusFlatten;`
       );
   };
@@ -86,7 +112,7 @@ export function setDeformMaterialTheme(material: DeformMaterial, theme: ThemeMod
 
 export function updateDeformUniforms(
   material: DeformMaterial,
-  values: { time: number; hover: number; drag: number; focus: number; settled: number }
+  values: { time: number; hover: number; drag: number; focus: number; settled: number; snap: number }
 ) {
   const uniforms = material.userData.shaderUniforms;
   if (!uniforms) return;
@@ -95,4 +121,48 @@ export function updateDeformUniforms(
   uniforms.uDrag.value = values.drag;
   uniforms.uFocus.value = values.focus;
   uniforms.uSettled.value = values.settled;
+  uniforms.uSnap.value = values.snap;
+}
+
+export function createFragmentedIcosahedronGeometry(radius: number, detail: number) {
+  const geometry = new THREE.IcosahedronGeometry(radius, detail).toNonIndexed() as FragmentedGeometry;
+  return decorateFragmentGeometry(geometry);
+}
+
+export function createFragmentedTetrahedronGeometry(radius: number, detail: number) {
+  const geometry = new THREE.TetrahedronGeometry(radius, detail).toNonIndexed() as FragmentedGeometry;
+  return decorateFragmentGeometry(geometry);
+}
+
+function decorateFragmentGeometry(geometry: FragmentedGeometry) {
+  const position = geometry.getAttribute('position');
+  const fragmentDir = new Float32Array(position.count * 3);
+  const fragmentPhase = new Float32Array(position.count);
+
+  for (let index = 0; index < position.count; index += 3) {
+    const ax = position.getX(index);
+    const ay = position.getY(index);
+    const az = position.getZ(index);
+    const bx = position.getX(index + 1);
+    const by = position.getY(index + 1);
+    const bz = position.getZ(index + 1);
+    const cx = position.getX(index + 2);
+    const cy = position.getY(index + 2);
+    const cz = position.getZ(index + 2);
+
+    const center = new THREE.Vector3((ax + bx + cx) / 3, (ay + by + cy) / 3, (az + bz + cz) / 3).normalize();
+    const phase = (index / 3) * 0.173;
+
+    for (let vertex = 0; vertex < 3; vertex += 1) {
+      const offset = (index + vertex) * 3;
+      fragmentDir[offset] = center.x;
+      fragmentDir[offset + 1] = center.y;
+      fragmentDir[offset + 2] = center.z;
+      fragmentPhase[index + vertex] = phase;
+    }
+  }
+
+  geometry.setAttribute('aFragmentDir', new THREE.BufferAttribute(fragmentDir, 3));
+  geometry.setAttribute('aFragmentPhase', new THREE.BufferAttribute(fragmentPhase, 1));
+  return geometry;
 }

@@ -9,7 +9,7 @@ export class SecretSlotSystem {
     this.slots = shardIds.map((shardId, index, all) => ({
       shardId,
       worldPosition: SecretSlotSystem.computePosition(index, all.length),
-      snapRadius: 2.35,
+      snapRadius: 3.05,
       activated: false
     }));
   }
@@ -30,7 +30,7 @@ export class SecretSlotSystem {
     const slot = this.getSlotForShard(shardId);
     if (!slot || slot.activated) return 0;
     const distance = distance3(slot.worldPosition, position);
-    return Math.max(0, 1 - distance / (slot.snapRadius * 2.2));
+    return Math.max(0, 1 - distance / (slot.snapRadius * 2.75));
   }
 
   canSnap(shardId: string, position: Vec3Like) {
@@ -51,6 +51,12 @@ export class SecretSlotSystem {
     if (!slot) return null;
     slot.activated = false;
     return slot;
+  }
+
+  reset() {
+    this.slots.forEach((slot) => {
+      slot.activated = false;
+    });
   }
 
   isUnlocked() {

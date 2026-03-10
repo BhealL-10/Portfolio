@@ -6,6 +6,7 @@ export class DragCameraOrbitController {
   private radius = 26.5;
   private yawTarget = 0;
   private radiusTarget = 26.5;
+  private yawVelocity = 0;
   private readonly height = 2.6;
   private readonly pose = new THREE.Vector3();
   private readonly lookAt = new THREE.Vector3();
@@ -15,12 +16,14 @@ export class DragCameraOrbitController {
     this.radiusTarget = radius;
   }
 
-  orbit(deltaX: number, deltaY: number) {
-    const limitedDelta = clamp(deltaX, -18, 18);
-    this.yawTarget += limitedDelta * 0.0046;
+  orbit(deltaX: number, _deltaY: number) {
+    const limitedDelta = clamp(deltaX, -10, 10);
+    this.yawVelocity = clamp(this.yawVelocity + limitedDelta * 0.00085, -0.032, 0.032);
   }
 
   update(deltaTime: number, pivot: THREE.Vector3) {
+    this.yawTarget += this.yawVelocity;
+    this.yawVelocity = damp(this.yawVelocity, 0, 11, deltaTime);
     this.yaw = damp(this.yaw, this.yawTarget, 10, deltaTime);
     this.radius = damp(this.radius, this.radiusTarget, 8, deltaTime);
     this.pose.set(

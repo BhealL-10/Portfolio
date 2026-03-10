@@ -1,4 +1,4 @@
-import type { Language, PortfolioProject } from '../types/content';
+import type { PortfolioProject } from '../types/content';
 import { I18nService } from './I18nService';
 
 interface FocusCallbacks {
@@ -97,7 +97,7 @@ export class FocusPresentationSystem {
       <section class="focus-layer__section">
         <h3>${this.i18n.t('links')}</h3>
         <div class="focus-layer__links">
-          ${this.renderLinks(language)}
+          ${this.renderLinks()}
         </div>
       </section>
     `;
@@ -142,7 +142,7 @@ export class FocusPresentationSystem {
     `;
   }
 
-  private renderLinks(language: Language) {
+  private renderLinks() {
     if (!this.project) return '';
     const facet = this.project.facets[this.facetIndex];
     const entries = Object.entries(facet.links).filter(([, href]) => href);

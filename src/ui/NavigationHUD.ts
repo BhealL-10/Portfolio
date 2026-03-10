@@ -55,7 +55,7 @@ export class NavigationHUD {
     const projectRail = document.createElement('div');
     projectRail.className = 'navigation-hud__rail';
 
-    this.content.getProjects().forEach((project, index) => {
+    this.content.getProjects().forEach((_, index) => {
       const dot = document.createElement('button');
       dot.className = 'navigation-hud__dot';
       dot.type = 'button';

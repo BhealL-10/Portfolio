@@ -99,7 +99,9 @@ export class ShardInteractionSystem {
       return;
     }
 
-    if ((mode === 'orbit' || mode === 'constellation_complete' || mode === 'dragging') && this.downShardId && distance > 8) {
+    const dragThreshold = this.downShardId ? this.world.getDragThreshold(this.downShardId) : 8;
+
+    if ((mode === 'orbit' || mode === 'constellation_complete' || mode === 'dragging') && this.downShardId && distance > dragThreshold) {
       const point = this.world.projectPointerToDragPlane(event.clientX, event.clientY, this.canvas, this.camera);
       if (!point) return;
 
@@ -177,7 +179,7 @@ export class ShardInteractionSystem {
     this.reset();
   };
 
-  private reset() {
+  reset() {
     this.pointerDown = false;
     this.dragged = false;
     this.sceneOrbiting = false;

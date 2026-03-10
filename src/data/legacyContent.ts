@@ -1,4 +1,4 @@
-import type { Language, LocalizedText, PortfolioProject, ProjectFacet, ProjectLinkSet } from '../types/content';
+import type { LocalizedText, PortfolioProject, ProjectFacet, ProjectLinkSet } from '../types/content';
 import { getShardRole } from '../portfolio/shardLayout';
 
 // Legacy data kept as source-of-truth during migration.
@@ -65,13 +65,6 @@ function normalizeLinks(links: ProjectLinkSet | undefined): ProjectLinkSet {
   };
 }
 
-function normalizeTechnologies(values: string[], fallbackLang: Language): LocalizedText[] {
-  return values.map((value) => ({
-    fr: fallbackLang === 'fr' ? value : value,
-    en: fallbackLang === 'en' ? value : value
-  }));
-}
-
 function buildFacet(
   index: number,
   frFacet: LegacyTranslationFacet,
@@ -103,7 +96,8 @@ function buildFacet(
 }
 
 function resolveLogoConfig(projectId: number) {
-  const entry = SHARD_LOGOS_CONFIG[String(projectId)] || {};
+  const config = SHARD_LOGOS_CONFIG as Record<string, Partial<typeof defaultLogo>>;
+  const entry = config[String(projectId)] || {};
 
   return {
     dark: entry.dark ? `/${entry.dark}` : defaultLogo.dark,

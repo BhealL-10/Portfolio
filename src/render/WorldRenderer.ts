@@ -78,6 +78,15 @@ export class WorldRenderer {
     this.renderer.render(this.scene, this.camera);
   }
 
+  projectWorldToScreen(position: THREE.Vector3) {
+    const projected = position.clone().project(this.camera);
+    return {
+      x: ((projected.x + 1) * 0.5) * (this.host.clientWidth || window.innerWidth),
+      y: ((1 - projected.y) * 0.5) * (this.host.clientHeight || window.innerHeight),
+      visible: projected.z >= -1 && projected.z <= 1
+    };
+  }
+
   private resize = () => {
     const width = this.host.clientWidth || window.innerWidth;
     const height = this.host.clientHeight || window.innerHeight;
