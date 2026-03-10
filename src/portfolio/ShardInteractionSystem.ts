@@ -19,6 +19,8 @@ export class ShardInteractionSystem {
   private pointerDown = false;
   private downX = 0;
   private downY = 0;
+  private lastX = 0;
+  private lastY = 0;
   private dragged = false;
   private sceneOrbiting = false;
   private downShardId: string | null = null;
@@ -57,6 +59,8 @@ export class ShardInteractionSystem {
     this.focusGesture = false;
     this.downX = event.clientX;
     this.downY = event.clientY;
+    this.lastX = event.clientX;
+    this.lastY = event.clientY;
     this.canvas.setPointerCapture(event.pointerId);
 
     const pick = this.world.pick(event.clientX, event.clientY, this.canvas, this.camera);
@@ -75,6 +79,8 @@ export class ShardInteractionSystem {
     const mode = this.getMode();
     const moveX = event.clientX - this.downX;
     const moveY = event.clientY - this.downY;
+    const deltaX = event.clientX - this.lastX;
+    const deltaY = event.clientY - this.lastY;
     const distance = Math.hypot(moveX, moveY);
 
     if (!this.pointerDown) {
@@ -109,8 +115,11 @@ export class ShardInteractionSystem {
 
     if ((mode === 'orbit' || mode === 'constellation_complete') && !this.downShardId && distance > 4) {
       this.sceneOrbiting = true;
-      this.callbacks.onSceneOrbitMove(moveX, moveY);
+      this.callbacks.onSceneOrbitMove(deltaX, deltaY);
     }
+
+    this.lastX = event.clientX;
+    this.lastY = event.clientY;
   };
 
   private onPointerUp = (event: PointerEvent) => {
@@ -174,5 +183,7 @@ export class ShardInteractionSystem {
     this.sceneOrbiting = false;
     this.focusGesture = false;
     this.downShardId = null;
+    this.lastX = 0;
+    this.lastY = 0;
   }
 }

@@ -19,7 +19,6 @@ interface ShardEntity {
   orbitSpeed: number;
   orbitBoost: number;
   orbitBoostTarget: number;
-  orbitBoostTimer: number;
   orbitHeight: number;
   orbitDepth: number;
   velocity: THREE.Vector3;
@@ -77,6 +76,8 @@ export class OrbitWorldSystem {
   private externalTransitionFrom: THREE.Vector3[] = [];
   private externalTransitionTo: THREE.Vector3[] = [];
   private externalTransitionProgress = 0;
+  private speedAccentTimer = 36;
+  private speedAccentId: string | null = null;
   private unlockCallbacks = new Set<() => void>();
 
   constructor(
@@ -287,10 +288,10 @@ export class OrbitWorldSystem {
   }
 
   getOrbitCameraPose() {
-    this.activeLookAt.copy(this.entityList[this.activeIndex]?.group.position || this.pivot);
+    this.activeLookAt.copy(this.pivot);
     return {
       position: ORBIT_CAMERA_POSITION,
-      lookAt: this.activeLookAt.clone().multiplyScalar(0.25)
+      lookAt: this.activeLookAt.clone()
     };
   }
 
@@ -313,6 +314,10 @@ export class OrbitWorldSystem {
 
   getCurrentShardPositions() {
     return this.entityList.map((entity) => entity.group.position.clone());
+  }
+
+  getOrbitPositions() {
+    return this.entityList.map((entity, index) => this.computeOrbitTarget(entity, this.globalOrbitTime, index === this.activeIndex));
   }
 
   getSlotPositions() {
@@ -347,6 +352,15 @@ export class OrbitWorldSystem {
     this.externalTransitionProgress = 0;
   }
 
+  releaseSnappedShards() {
+    this.entityList.forEach((entity) => {
+      entity.snapped = false;
+      if (!this.focusedId && entity.runtimeState !== 'dragging') {
+        entity.runtimeState = 'orbiting';
+      }
+    });
+  }
+
   setVisible(visible: boolean) {
     this.root.visible = visible;
     this.backgroundPoints.visible = visible;
@@ -356,10 +370,23 @@ export class OrbitWorldSystem {
     this.globalOrbitTime += deltaTime;
     this.backgroundPoints.rotation.z += deltaTime * 0.012;
     this.backgroundPoints.rotation.y += deltaTime * 0.02;
-    const pivotYTarget = Math.sin(elapsedTime * 0.42) * 0.48;
+    const pivotYTarget = Math.sin(elapsedTime * 0.62) * 0.9;
     this.pivot.x = 0;
     this.pivot.y = damp(this.pivot.y, pivotYTarget, 2.6, deltaTime);
     this.pivot.z = 0;
+
+    this.speedAccentTimer -= deltaTime;
+    if (this.speedAccentTimer <= 0) {
+      if (this.speedAccentId) {
+        this.speedAccentId = null;
+        this.speedAccentTimer = 28 + Math.random() * 20;
+      } else {
+        const candidates = this.entityList.filter((entity) => entity.project.role === 'project');
+        const selected = candidates[Math.floor(Math.random() * candidates.length)];
+        this.speedAccentId = selected?.project.id ?? null;
+        this.speedAccentTimer = 8 + Math.random() * 6;
+      }
+    }
 
     this.entityList.forEach((entity, index) => {
       const isFocused = entity.project.id === this.focusedId;
@@ -367,17 +394,8 @@ export class OrbitWorldSystem {
       const isActive = index === this.activeIndex;
       const slot = this.slotSystem.getSlotForShard(entity.project.id);
 
-      entity.orbitBoostTimer -= deltaTime;
-      if (entity.orbitBoostTimer <= 0) {
-        if (entity.orbitBoostTarget > 1.01) {
-          entity.orbitBoostTarget = 1;
-          entity.orbitBoostTimer = 18 + Math.random() * 18;
-        } else {
-          entity.orbitBoostTarget = 1.04 + Math.random() * 0.03;
-          entity.orbitBoostTimer = 0.9 + Math.random() * 1.5;
-        }
-      }
-      entity.orbitBoost = damp(entity.orbitBoost, entity.orbitBoostTarget, 0.85, deltaTime);
+      entity.orbitBoostTarget = this.speedAccentId === entity.project.id ? 1.055 : 1;
+      entity.orbitBoost = damp(entity.orbitBoost, entity.orbitBoostTarget, 0.55, deltaTime);
 
       const orbitTarget = this.computeOrbitTarget(entity, elapsedTime, isActive);
 
@@ -478,11 +496,11 @@ export class OrbitWorldSystem {
         hover: entity.hoverAmount,
         drag: entity.dragAmount,
         focus: entity.focusAmount,
-        settled: entity.snapped ? 1 : entity.focusAmount * 0.25
+        settled: this.externalLayoutActive ? 0 : entity.snapped ? 1 : entity.focusAmount * 0.25
       });
 
       entity.logoPlanes.forEach((plane, planeIndex) => {
-        const visibleOpacity = entity.focusAmount > 0.2 || this.focusedId ? Math.max(0, entity.opacity - 0.18) : entity.opacity;
+        const visibleOpacity = this.externalLayoutActive || this.focusedId ? 0 : entity.opacity;
         plane.material.opacity = visibleOpacity * (0.65 + planeIndex * 0.1);
       });
     });
@@ -508,26 +526,35 @@ export class OrbitWorldSystem {
     const base = entity.layoutAnchor.clone();
 
     if (entity.project.role === 'presentation') {
-      return new THREE.Vector3(this.pivot.x, this.pivot.y, this.pivot.z);
+      return new THREE.Vector3(
+        this.pivot.x,
+        this.pivot.y,
+        this.pivot.z + Math.sin(angle * 0.95) * 1.15 + (isActive ? 0.2 : 0)
+      );
     }
 
     if (entity.project.role === 'hint') {
       return new THREE.Vector3(
-        this.pivot.x,
-        this.pivot.y + Math.cos(angle) * 1.55,
-        this.pivot.z + Math.sin(angle) * 1.28 + (isActive ? 0.28 : 0)
+        this.pivot.x + Math.sin(angle * 0.6) * 0.35,
+        this.pivot.y + Math.cos(angle) * 2.15,
+        this.pivot.z + Math.sin(angle) * 1.75 + (isActive ? 0.28 : 0)
       );
     }
 
-    const radius = 2.85 + Math.abs(base.x) * 0.42 + Math.abs(base.y) * 0.11;
+    const baseAngle = Math.atan2(base.y, base.x || 0.0001);
+    const orbitAngle = baseAngle + angle;
+    const radius = 4.1 + Math.abs(base.x) * 0.6 + Math.abs(base.y) * 0.2;
+    const tilt = THREE.MathUtils.clamp(base.y * 0.05, -0.36, 0.36);
+    const horizontalX = Math.cos(orbitAngle) * radius;
+    const horizontalZ = Math.sin(orbitAngle) * radius;
     const rotated = new THREE.Vector3(
-      this.pivot.x + Math.cos(angle) * radius,
-      this.pivot.y + base.y * 0.68 + Math.sin(angle * 1.15 + entity.orbitHeight) * 0.34 + base.x * 0.035,
-      this.pivot.z + Math.sin(angle) * radius * 0.88 + base.z * 0.4
+      this.pivot.x + horizontalX,
+      this.pivot.y + base.y * 0.78 + Math.sin(orbitAngle * 1.1 + entity.orbitHeight) * 0.55 + horizontalZ * tilt * 0.16,
+      this.pivot.z + horizontalZ + base.z * 0.45
     );
 
     if (isActive) {
-      rotated.z += 0.45;
+      rotated.z += 0.38;
     }
 
     return rotated;
@@ -573,7 +600,6 @@ export class OrbitWorldSystem {
       orbitSpeed: project.role === 'presentation' ? 0.24 : project.role === 'hint' ? 0.44 : 0.38 + index * 0.012,
       orbitBoost: 1,
       orbitBoostTarget: 1,
-      orbitBoostTimer: 24 + index * 1.6,
       orbitHeight: index * 0.9,
       orbitDepth: index * 0.55,
       velocity: new THREE.Vector3(),

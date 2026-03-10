@@ -624,9 +624,9 @@ export class AppController {
 
     this.mobileChargePointerId = null;
     this.game.setAccelerating(false);
-    const slotPositions = this.world.getSlotPositions();
-    this.world.beginExternalLayoutTransition(slotPositions);
-    this.game.prepareReturnTransition(slotPositions);
+    const orbitPositions = this.world.getOrbitPositions();
+    this.world.beginExternalLayoutTransition(orbitPositions);
+    this.game.prepareReturnTransition(orbitPositions);
 
     if (this.mode.is('game') || this.mode.is('game_over')) {
       this.mode.setMode('game_transition');
@@ -647,6 +647,7 @@ export class AppController {
         this.game.stop();
         this.gameTransitionProgress = 0;
         this.world.clearExternalLayout();
+        this.world.releaseSnappedShards();
         this.resumeOrbitMode();
         this.refreshUI();
         this.updateGuide();

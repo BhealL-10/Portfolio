@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { damp } from '../core/math';
+import { clamp, damp } from '../core/math';
 
 export class DragCameraOrbitController {
   private yaw = 0;
@@ -16,7 +16,8 @@ export class DragCameraOrbitController {
   }
 
   orbit(deltaX: number, deltaY: number) {
-    this.yawTarget += deltaX * 0.0065;
+    const limitedDelta = clamp(deltaX, -18, 18);
+    this.yawTarget += limitedDelta * 0.0046;
   }
 
   update(deltaTime: number, pivot: THREE.Vector3) {

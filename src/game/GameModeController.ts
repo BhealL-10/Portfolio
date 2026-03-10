@@ -37,6 +37,8 @@ export class GameModeController {
   private transitionProgress = 0;
   private visibleWindowStart = 0;
   private attachedAnchorIndex = 0;
+  private currentTime = 0;
+  private pressureX = -14;
   private playerPosition = new THREE.Vector3();
   private playerVelocity = new THREE.Vector3();
   private angle = -Math.PI * 0.58;
@@ -114,6 +116,8 @@ export class GameModeController {
     this.player.userData.attached = false;
     this.accelerating = false;
     this.score = 0;
+    this.currentTime = 0;
+    this.pressureX = -14;
     this.buildAnchors(26);
     this.visibleWindowStart = 0;
     this.transitionToPositions.splice(
@@ -147,6 +151,8 @@ export class GameModeController {
     this.attachedAnchorIndex = 0;
     this.visibleWindowStart = 0;
     this.score = 0;
+    this.currentTime = 0;
+    this.pressureX = -14;
     this.angularSpeed = 1.4;
     this.attachToAnchor(0, false);
     this.player.visible = true;
@@ -186,14 +192,15 @@ export class GameModeController {
 
   update(deltaTime: number, elapsedTime: number) {
     if (!this.group.visible) return;
+    this.currentTime = elapsedTime;
 
     this.pool.forEach((platform, index) => {
       updateDeformUniforms(platform.mesh.material, {
         time: elapsedTime,
-        hover: 0.12,
+        hover: 0.18,
         drag: 0,
         focus: 0,
-        settled: 0.18
+        settled: 0
       });
       platform.group.rotation.y += deltaTime * (0.16 + index * 0.01);
     });
@@ -213,7 +220,8 @@ export class GameModeController {
       this.syncVisiblePlatforms(elapsedTime);
     }
 
-    const focusX = this.playerPosition.x + 4.4;
+    this.pressureX += deltaTime * (2.35 + Math.min(2.2, this.score * 0.035));
+    const focusX = Math.max(this.playerPosition.x + 3.6, this.pressureX + 7.8);
     this.cameraPosition.set(focusX, 1.4, 24);
     this.cameraLookAt.set(focusX, 1.4, 0);
   }
@@ -227,7 +235,7 @@ export class GameModeController {
 
   private updateRunning(deltaTime: number) {
     if (this.player.userData.attached === true) {
-      const anchor = this.anchors[this.attachedAnchorIndex];
+      const anchor = this.getResolvedAnchor(this.attachedAnchorIndex);
       const targetSpeed = this.accelerating ? 4.2 : Math.max(1.45, this.angularSpeed * 0.98);
       this.angularSpeed = damp(this.angularSpeed, targetSpeed, this.accelerating ? 2.4 : 0.9, deltaTime);
       this.angle += this.angularSpeed * deltaTime;
@@ -247,7 +255,7 @@ export class GameModeController {
         return;
       }
 
-      if (this.playerPosition.y < -16 || this.playerPosition.x < this.anchors[this.attachedAnchorIndex].x - 7) {
+      if (this.playerPosition.y < -16 || this.playerPosition.x < this.pressureX - 1.8) {
         this.state = 'game_over';
         this.accelerating = false;
       }
@@ -261,7 +269,7 @@ export class GameModeController {
     const searchEnd = Math.min(this.anchors.length - 1, searchStart + 3);
 
     for (let index = searchStart; index <= searchEnd; index += 1) {
-      const anchor = this.anchors[index];
+      const anchor = this.getResolvedAnchor(index);
       const distance = Math.hypot(this.playerPosition.x - anchor.x, this.playerPosition.y - anchor.y);
       if (distance <= anchor.radius + 1.15) {
         this.attachToAnchor(index, true);
@@ -273,9 +281,9 @@ export class GameModeController {
   }
 
   private attachToAnchor(anchorIndex: number, preserveMotion: boolean) {
-    const anchor = this.anchors[anchorIndex];
+    const anchor = this.getResolvedAnchor(anchorIndex);
     this.attachedAnchorIndex = anchorIndex;
-    this.visibleWindowStart = Math.max(0, anchorIndex - 2);
+    this.visibleWindowStart = Math.max(this.visibleWindowStart, Math.max(0, anchorIndex - 3));
     this.player.userData.attached = true;
 
     if (preserveMotion) {
@@ -337,9 +345,9 @@ export class GameModeController {
 
     while (this.anchors.length <= targetIndex) {
       const previous = this.anchors[this.anchors.length - 1];
-      const difficulty = Math.min(1, this.anchors.length / 40);
+      const difficulty = Math.min(1, this.anchors.length / 34);
       const pattern = patterns[this.anchors.length % patterns.length];
-      const x = previous.x + pattern[0] + difficulty * 2.1;
+      const x = previous.x + pattern[0] + difficulty * 2.9;
       const y = clamp(previous.y + pattern[1], -3.8, 4.8);
 
       this.anchors.push({
@@ -373,7 +381,8 @@ export class GameModeController {
   private captureVisiblePlatformPositions(count: number) {
     return this.pool.slice(0, count).map((platform, index) => {
       if (!platform.group.visible) {
-        return new THREE.Vector3(this.anchors[index]?.x ?? 0, this.anchors[index]?.y ?? 0, this.anchors[index]?.z ?? 0);
+        const anchor = this.getResolvedAnchor(index);
+        return new THREE.Vector3(anchor.x, anchor.y, anchor.z);
       }
       return platform.group.position.clone();
     });
@@ -383,7 +392,7 @@ export class GameModeController {
     this.ensureAnchors(this.visibleWindowStart + PLATFORM_POOL_SIZE + 2);
 
     this.pool.forEach((platform, poolIndex) => {
-      const anchor = this.anchors[this.visibleWindowStart + poolIndex];
+      const anchor = this.getResolvedAnchor(this.visibleWindowStart + poolIndex);
       if (!anchor) {
         platform.group.visible = false;
         return;
@@ -394,5 +403,31 @@ export class GameModeController {
       platform.group.scale.setScalar(anchor.radius / 1.4);
       platform.group.rotation.x = Math.sin(elapsedTime * 0.9 + poolIndex) * 0.12;
     });
+  }
+
+  private getResolvedAnchor(index: number): AnchorData {
+    this.ensureAnchors(index + 1);
+    const anchor = this.anchors[index];
+    if (!anchor) {
+      return { x: 0, y: 0, z: 0, radius: 1.4 };
+    }
+
+    if (this.score < 20) {
+      return anchor;
+    }
+
+    const difficulty = Math.min(1, (this.score - 20) / 60);
+    const wave = index * 0.7 + this.currentTime * (0.8 + difficulty * 0.55);
+    const vertical = Math.sin(wave) * (0.35 + difficulty * 0.9);
+    const horizontal = index > this.attachedAnchorIndex
+      ? Math.cos(wave * 0.85 + index * 0.3) * (0.18 + difficulty * 0.55)
+      : 0;
+
+    return {
+      x: anchor.x + horizontal,
+      y: anchor.y + vertical,
+      z: anchor.z,
+      radius: anchor.radius
+    };
   }
 }
