@@ -334,6 +334,13 @@ body {
   line-height: 1.6;
 }
 
+.game-hud__meta {
+  margin: 10px 0 0;
+  line-height: 1.5;
+  color: rgb(var(--color-fg-rgb) / 0.68);
+  font-size: 0.78rem;
+}
+
 .game-hud__charge {
   margin-top: 16px;
 }
@@ -463,6 +470,13 @@ body {
 .game-hud__upgrade-path-desc {
   line-height: 1.5;
   color: rgb(var(--color-fg-rgb) / 0.78);
+}
+
+.game-hud__upgrade-price {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgb(var(--color-fg-rgb) / 0.66);
 }
 
 .game-hud__toast {

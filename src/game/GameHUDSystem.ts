@@ -14,6 +14,10 @@ interface GameHUDCallbacks {
 interface GameHUDPayload {
   score: number;
   highscore: number;
+  distanceMeters: number;
+  bestDistanceMeters: number;
+  coins: number;
+  splitTimes: Partial<Record<10 | 50 | 100, number>>;
   chargeRatio: number;
   momentumGauge: number;
   momentumTier: number;
@@ -24,6 +28,8 @@ interface GameHUDPayload {
     offer: RogueliteItemOffer;
     screenX: number;
     screenY: number;
+    mode?: 'reward_branch' | 'shop_orbit';
+    price?: number;
   }>;
   acquisition: AcquisitionFeedback | null;
 }
@@ -35,11 +41,16 @@ export class GameHUDSystem {
   private highscoreLabel: HTMLSpanElement;
   private chargeLabel: HTMLSpanElement;
   private chainLabel: HTMLSpanElement;
+  private distanceLabel: HTMLSpanElement;
+  private coinsLabel: HTMLSpanElement;
   private scoreValue: HTMLSpanElement;
   private highscoreValue: HTMLSpanElement;
   private chainValue: HTMLSpanElement;
+  private distanceValue: HTMLSpanElement;
+  private coinsValue: HTMLSpanElement;
   private chargeFill: HTMLDivElement;
   private statusValue: HTMLParagraphElement;
+  private metaValue: HTMLParagraphElement;
   private exitButton: HTMLButtonElement;
   private branchLayer: HTMLDivElement;
   private branchTitle: HTMLHeadingElement;
@@ -63,6 +74,8 @@ export class GameHUDSystem {
           <div><span data-score-label></span><strong data-score>0</strong></div>
           <div><span data-highscore-label></span><strong data-highscore>0</strong></div>
           <div><span data-chain-label></span><strong data-chain>0</strong></div>
+          <div><span data-distance-label></span><strong data-distance>0m</strong></div>
+          <div><span data-coins-label></span><strong data-coins>0</strong></div>
         </div>
         <div class="game-hud__charge">
           <div class="game-hud__charge-meta">
@@ -72,6 +85,7 @@ export class GameHUDSystem {
           <div class="game-hud__charge-bar"><div class="game-hud__charge-fill" data-charge-fill></div></div>
         </div>
         <p class="game-hud__status"></p>
+        <p class="game-hud__meta"></p>
         <div class="game-hud__actions">
           <button type="button" data-exit></button>
         </div>
@@ -106,11 +120,16 @@ export class GameHUDSystem {
     this.highscoreLabel = this.element.querySelector<HTMLSpanElement>('[data-highscore-label]')!;
     this.chargeLabel = this.element.querySelector<HTMLSpanElement>('[data-charge-label]')!;
     this.chainLabel = this.element.querySelector<HTMLSpanElement>('[data-chain-label]')!;
+    this.distanceLabel = this.element.querySelector<HTMLSpanElement>('[data-distance-label]')!;
+    this.coinsLabel = this.element.querySelector<HTMLSpanElement>('[data-coins-label]')!;
     this.scoreValue = this.element.querySelector<HTMLSpanElement>('[data-score]')!;
     this.highscoreValue = this.element.querySelector<HTMLSpanElement>('[data-highscore]')!;
     this.chainValue = this.element.querySelector<HTMLSpanElement>('[data-chain]')!;
+    this.distanceValue = this.element.querySelector<HTMLSpanElement>('[data-distance]')!;
+    this.coinsValue = this.element.querySelector<HTMLSpanElement>('[data-coins]')!;
     this.chargeFill = this.element.querySelector<HTMLDivElement>('[data-charge-fill]')!;
     this.statusValue = this.element.querySelector<HTMLParagraphElement>('.game-hud__status')!;
+    this.metaValue = this.element.querySelector<HTMLParagraphElement>('.game-hud__meta')!;
     this.exitButton = this.element.querySelector<HTMLButtonElement>('[data-exit]')!;
     this.branchLayer = this.element.querySelector<HTMLDivElement>('.game-hud__branch-layer')!;
     this.branchTitle = this.element.querySelector<HTMLHeadingElement>('[data-upgrade-title]')!;
@@ -141,6 +160,8 @@ export class GameHUDSystem {
   update(payload: GameHUDPayload) {
     this.scoreValue.textContent = String(payload.score);
     this.highscoreValue.textContent = String(payload.highscore);
+    this.distanceValue.textContent = `${Math.round(payload.distanceMeters)}m`;
+    this.coinsValue.textContent = String(payload.coins);
     this.chainValue.textContent = `${Math.round(payload.momentumGauge * 100)}%`;
     this.chainValue.style.opacity = `${0.58 + payload.momentumGauge * 0.42}`;
     this.chargeFill.style.setProperty('--charge-ratio', payload.chargeRatio.toFixed(3));
@@ -157,6 +178,10 @@ export class GameHUDSystem {
           : payload.state === 'upgrade_choice'
             ? this.i18n.t('gameStatusUpgrade')
             : this.i18n.t('gameStatusGameOver');
+    this.metaValue.textContent = this.renderMeta(payload);
+    const showingShop = payload.branchHints.some((hint) => hint.mode === 'shop_orbit');
+    this.branchTitle.textContent = showingShop ? this.i18n.t('gameShopTitle') : this.i18n.t('gameUpgradeTitle');
+    this.branchHint.textContent = showingShop ? this.i18n.t('gameShopHint') : this.i18n.t('gameUpgradeHint');
 
     this.panel.classList.toggle('is-hidden', payload.state === 'game_over');
     this.branchLayer.classList.toggle('is-visible', payload.state === 'upgrade_choice');
@@ -174,6 +199,8 @@ export class GameHUDSystem {
     this.highscoreLabel.textContent = this.i18n.t('gameBest');
     this.chargeLabel.textContent = this.i18n.t('gameCharge');
     this.chainLabel.textContent = this.i18n.t('gameMomentum');
+    this.distanceLabel.textContent = this.i18n.t('gameDistance');
+    this.coinsLabel.textContent = this.i18n.t('gameCoins');
     this.exitButton.textContent = this.i18n.t('gamePortfolio');
     this.branchTitle.textContent = this.i18n.t('gameUpgradeTitle');
     this.branchHint.textContent = this.i18n.t('gameUpgradeHint');
@@ -190,6 +217,8 @@ export class GameHUDSystem {
       offer: RogueliteItemOffer;
       screenX: number;
       screenY: number;
+      mode?: 'reward_branch' | 'shop_orbit';
+      price?: number;
     }>
   ) {
     this.branchCards.forEach((card, index) => {
@@ -201,11 +230,13 @@ export class GameHUDSystem {
 
       card.hidden = false;
       card.dataset.rarity = offer.offer.item.rarity;
-      const label = index === 0
-        ? this.i18n.t('gamePathUpper')
-        : index === 1
-          ? this.i18n.t('gamePathForward')
-          : this.i18n.t('gamePathLower');
+      const label = offer.mode === 'shop_orbit'
+        ? this.i18n.t('gameShopOffer')
+        : index === 0
+          ? this.i18n.t('gamePathUpper')
+          : index === 1
+            ? this.i18n.t('gamePathForward')
+            : this.i18n.t('gamePathLower');
       card.style.transform = `translate(${offer.screenX}px, ${offer.screenY}px)`;
       card.innerHTML = `
         <span class="game-hud__upgrade-icon">${offer.offer.item.icon}</span>
@@ -213,8 +244,23 @@ export class GameHUDSystem {
         <span class="game-hud__upgrade-path-label">${label}</span>
         <strong class="game-hud__upgrade-path-name">${offer.offer.item.name[this.i18n.current]}</strong>
         <span class="game-hud__upgrade-path-desc">${offer.offer.item.description[this.i18n.current]}</span>
+        ${offer.price !== undefined ? `<span class="game-hud__upgrade-price">${this.i18n.t('gamePrice')}: ${offer.price}</span>` : ''}
       `;
     });
+  }
+
+  private renderMeta(payload: GameHUDPayload) {
+    const splits = [10, 50, 100]
+      .map((milestone) => {
+        const split = payload.splitTimes[milestone as 10 | 50 | 100];
+        return split === undefined ? null : `${milestone}: ${split.toFixed(1)}s`;
+      })
+      .filter(Boolean)
+      .join(' • ');
+    if (!splits) {
+      return `${this.i18n.t('gameBestDistance')}: ${Math.round(payload.bestDistanceMeters)}m`;
+    }
+    return `${this.i18n.t('gameSplits')}: ${splits}`;
   }
 
   private getRarityLabel(rarity: RogueliteRarity) {

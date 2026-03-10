@@ -53,7 +53,8 @@ export class GameCameraSystem {
     const sampled = path.sampleAtDistance(this.currentPathDistance);
     this.tangent.set(sampled.tangent.x, sampled.tangent.y, 0);
 
-    let targetFocusX = sampled.x + sampled.tangent.x * (profile.cameraLookAhead + momentum.chainTier * 1.4);
+    const momentumTier = Math.min(4, Math.floor(momentum.gauge * 5));
+    let targetFocusX = sampled.x + sampled.tangent.x * (profile.cameraLookAhead + momentumTier * 1.4);
     let targetFocusY = sampled.y + sampled.tangent.y * (4.1 + momentum.cameraZoomMultiplier * 1.2);
     this.targetZoom = 24 + momentum.cameraZoomMultiplier * 7.8;
 

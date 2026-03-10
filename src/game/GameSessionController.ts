@@ -1,114 +1,159 @@
 import * as THREE from 'three';
 import { clamp, damp } from '../core/math';
 import type { ThemeMode } from '../types/content';
-import {
-  applyItemToRunState,
-  buildUpgradeOffers,
-  createRunUpgradeState,
-  getNextUpgradeMilestone,
-  type RogueliteItemOffer,
-  type RunUpgradeState
-} from './roguelite';
-import { GameCameraSystem } from './GameCameraSystem';
+import { CameraRailController } from './CameraRailController';
+import { CoinSystem, type CoinMarker } from './CoinSystem';
+import { EnemySystem, type EnemyMarker } from './EnemySystem';
 import { GamePathSystem } from './GamePathSystem';
-import { getDifficultyProfile } from './difficultyScaler';
 import type {
   AcquisitionFeedback,
   BranchChoice,
   BranchLabelHint,
+  GameHudSnapshot,
   GameHudState,
   GameSessionState,
   MomentumState,
-  ResolvedGamePathNode
+  ResolvedGamePathNode,
+  VisiblePlatformVisual
 } from './gameSessionTypes';
+import {
+  applyItemToRunState,
+  buildUpgradeOffers,
+  createRunUpgradeState,
+  type RogueliteItemOffer,
+  type RunUpgradeState
+} from './roguelite';
+import { RunStatsSystem } from './RunStatsSystem';
+import { resolveRuntimeNode } from './ShardRuntimeResolver';
+import { ShopSystem } from './ShopSystem';
+import { BossSystem } from './BossSystem';
 
-type MotionMode = 'attached' | 'charging' | 'airborne';
+type PlayerMotionState = 'attached' | 'charging' | 'airborne';
+type ChoiceMode = 'none' | 'reward_branch' | 'shop_orbit';
 
-const PLAYER_BASE_RADIUS = 2.2;
-const MAX_CHARGE = 1;
+const PLAYER_CAPTURE_PADDING = 1.05;
+const GAME_ACCENT = '#D9624E';
+const DANGER_ACCENT = '#F06A5A';
+const REWARD_ACCENT = '#E8A86E';
+
+function wrapAngle(angle: number) {
+  const tau = Math.PI * 2;
+  return ((angle % tau) + tau) % tau;
+}
+
+function shortestAngleDistance(a: number, b: number) {
+  const tau = Math.PI * 2;
+  const diff = ((a - b + Math.PI) % tau + tau) % tau - Math.PI;
+  return diff;
+}
+
+interface OrbitSample {
+  position: THREE.Vector2;
+  tangent: THREE.Vector2;
+}
 
 export class GameSessionController {
+  private readonly root = new THREE.Group();
   private readonly player = new THREE.Group();
   private readonly playerBody: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>;
-  private readonly playerWing: THREE.Mesh<THREE.BoxGeometry, THREE.MeshBasicMaterial>;
-  private readonly camera = new GameCameraSystem();
+  private readonly playerTrail = new THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
+  private readonly trailPoints = Array.from({ length: 8 }, () => new THREE.Vector3());
+  private readonly trailBuffer = new Float32Array(this.trailPoints.length * 3);
   private readonly path = new GamePathSystem();
+  private readonly camera = new CameraRailController();
+  private readonly stats = new RunStatsSystem();
+  private readonly coins: CoinSystem;
+  private readonly enemies: EnemySystem;
+  private readonly shop: ShopSystem;
+  private readonly boss: BossSystem;
+  private readonly scoreListeners = new Set<() => void>();
   private readonly playerPosition = new THREE.Vector3();
   private readonly playerVelocity = new THREE.Vector3();
+  private readonly playerVelocityTarget = new THREE.Vector3();
   private readonly scratchVector = new THREE.Vector3();
   private readonly scratchVectorB = new THREE.Vector3();
-  private readonly scratchVectorC = new THREE.Vector3();
-  private readonly scoreListeners = new Set<() => void>();
-  private phase: 'idle' | 'transition_in' | 'running' | 'upgrade_branching' | 'upgrade_acquired' | 'game_over' | 'transition_out' = 'idle';
-  private motionMode: MotionMode = 'attached';
-  private currentTime = 0;
-  private attachedAnchorIndex = 0;
-  private visibleWindowStart = 0;
-  private angle = -Math.PI * 0.42;
-  private angularSpeed = -1.55;
-  private orbitRadius = PLAYER_BASE_RADIUS;
-  private orbitRadiusTarget = PLAYER_BASE_RADIUS;
-  private chargeActive = false;
-  private chargeMeter = 0;
-  private score = 0;
-  private highscore = Number(window.localStorage.getItem('portfolio-game-highscore') || 0);
-  private runUpgrades: RunUpgradeState = createRunUpgradeState();
-  private currentOffers: RogueliteItemOffer[] = [];
-  private branchChoices: BranchChoice[] = [];
-  private nextUpgradeMilestone = 10;
-  private previousRotationDirection: -1 | 0 | 1 = -1;
-  private momentumChain = 0;
-  private momentumGauge = 0;
-  private momentumGaugeSmoothed = 0;
-  private readonly momentumState: MomentumState = {
-    chainCount: 0,
-    chainTier: 0,
+  private readonly scratchVector2 = new THREE.Vector2();
+  private readonly hudSnapshot: GameHudSnapshot = {
+    state: 'transition',
+    score: 0,
+    highscore: 0,
+    distanceMeters: 0,
+    bestDistanceMeters: 0,
+    coins: 0,
+    splitTimes: {},
+    chargeRatio: 0,
+    momentumGauge: 0,
+    momentumTier: 0,
+    offers: [],
+    branchHints: [],
+    acquisition: null
+  };
+  private readonly momentum: MomentumState = {
+    gauge: 0,
+    fillRate: 0,
+    decayRate: 0.12,
     speedMultiplier: 1,
     jumpMultiplier: 1,
-    cameraZoomMultiplier: 0,
-    gauge: 0
+    cameraZoomMultiplier: 0
   };
+  private state: GameSessionState = 'idle';
+  private playerState: PlayerMotionState = 'attached';
+  private currentTime = 0;
+  private attachedIndex = 0;
+  private score = 0;
+  private chargeActive = false;
+  private chargeMeter = 0;
+  private orbitAngle = Math.PI * 0.18;
+  private orbitDirection: -1 | 1 = -1;
+  private angularSpeed = 0;
+  private lastLandingDirection: -1 | 1 | 0 = 0;
+  private choiceMode: ChoiceMode = 'none';
+  private activeChoices: BranchChoice[] = [];
+  private activeShopAngles: number[] = [];
+  private acquisition: AcquisitionFeedback | null = null;
+  private acquisitionStartedAt = 0;
+  private acquisitionDuration = 0.9;
+  private runUpgrades: RunUpgradeState = createRunUpgradeState();
   private remainingExtraJumps = 0;
-  private remainingAirDashes = 0;
   private phaseJumpReadyAt = 0;
   private teleportReadyAt = 0;
   private warpReadyAt = 0;
-  private rocketReadyAt = 0;
-  private flapReadyAt = 0;
-  private lastAirDashAt = -100;
-  private acquisition: AcquisitionFeedback | null = null;
-  private acquisitionEndsAt = 0;
+  private shieldCharges = 0;
+  private eventCooldownUntil = 0;
+  private autoFireReadyAt = 0;
 
-  constructor(private readonly scene: THREE.Scene, theme: ThemeMode) {
+  constructor(scene: THREE.Scene, theme: ThemeMode) {
     this.playerBody = new THREE.Mesh(
-      new THREE.ConeGeometry(0.45, 1.32, 7),
+      new THREE.ConeGeometry(0.42, 1.18, 6),
       new THREE.MeshBasicMaterial({ color: theme === 'dark' ? '#D4BF9B' : '#393F4A' })
     );
     this.playerBody.rotation.z = -Math.PI / 2;
-    this.playerWing = new THREE.Mesh(
-      new THREE.BoxGeometry(0.15, 0.88, 0.12),
-      new THREE.MeshBasicMaterial({ color: theme === 'dark' ? '#D4BF9B' : '#393F4A' })
-    );
-    this.playerWing.position.set(-0.18, 0, 0);
-    this.player.add(this.playerBody, this.playerWing);
+    this.player.add(this.playerBody);
     this.player.visible = false;
-    this.scene.add(this.player);
+    this.root.add(this.player);
+
+    const trailGeometry = new THREE.BufferGeometry();
+    trailGeometry.setAttribute('position', new THREE.BufferAttribute(this.trailBuffer, 3));
+    this.playerTrail = new THREE.Line(
+      trailGeometry,
+      new THREE.LineBasicMaterial({
+        color: theme === 'dark' ? '#D4BF9B' : '#393F4A',
+        transparent: true,
+        opacity: 0.42
+      })
+    );
+    this.playerTrail.visible = false;
+    this.root.add(this.playerTrail);
+
+    scene.add(this.root);
+    this.coins = new CoinSystem(scene, theme);
+    this.enemies = new EnemySystem(scene, theme);
+    this.shop = new ShopSystem(scene, theme);
+    this.boss = new BossSystem(scene, theme);
   }
 
-  setTheme(theme: ThemeMode) {
-    const color = theme === 'dark' ? '#D4BF9B' : '#393F4A';
-    this.playerBody.material.color.set(color);
-    this.playerWing.material.color.set(color);
-  }
-
-  get currentState(): GameSessionState {
-    if (this.phase === 'idle' || this.phase === 'transition_in' || this.phase === 'transition_out' || this.phase === 'upgrade_branching' || this.phase === 'upgrade_acquired' || this.phase === 'game_over') {
-      return this.phase;
-    }
-
-    if (this.motionMode === 'charging') return 'running_charging';
-    if (this.motionMode === 'airborne') return 'running_airborne';
-    return 'running_attached';
+  get currentState() {
+    return this.state;
   }
 
   get currentScore() {
@@ -116,7 +161,16 @@ export class GameSessionController {
   }
 
   get bestScore() {
-    return this.highscore;
+    return this.stats.getSnapshot().bestShards;
+  }
+
+  setTheme(theme: ThemeMode) {
+    this.playerBody.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A');
+    this.playerTrail.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A');
+    this.coins.setTheme(theme);
+    this.enemies.setTheme(theme);
+    this.shop.setTheme(theme);
+    this.boss.setTheme(theme);
   }
 
   onScoreChange(callback: () => void) {
@@ -128,191 +182,118 @@ export class GameSessionController {
     this.resetRunState();
     this.path.reset();
     this.path.prebuild(180);
-    const firstNode = this.path.getResolvedNode(0, 0, 0);
-    this.camera.reset(firstNode);
-    this.phase = 'transition_in';
+    this.state = 'transition_in';
+    this.root.visible = true;
     this.player.visible = false;
-    this.emitScore();
+    this.playerTrail.visible = false;
   }
 
   beginRun() {
+    const reusePreparedPath = this.state === 'transition_in';
     this.resetRunState();
-    this.path.prebuild(180);
-    this.phase = 'running';
+    if (!reusePreparedPath) {
+      this.path.reset();
+      this.path.prebuild(180);
+    }
+    this.root.visible = true;
     this.player.visible = true;
-    this.attachToNode(0, false);
-    this.camera.reset(this.path.getResolvedNode(0, 0, 0));
+    this.playerTrail.visible = true;
+    this.attachToNode(0, false, null, null);
+    this.camera.reset(this.getResolvedNode(0));
+    this.state = 'running_attached';
     this.emitScore();
   }
 
   restart() {
-    this.path.reset();
     this.beginRun();
   }
 
   prepareReturnTransition() {
-    this.phase = 'transition_out';
+    this.state = 'transition_out';
     this.chargeActive = false;
+    this.choiceMode = 'none';
+    this.activeChoices = [];
+    this.shop.reset();
+    this.boss.reset();
+    this.coins.reset();
+    this.enemies.reset();
     this.player.visible = false;
+    this.playerTrail.visible = false;
   }
 
   stop() {
-    this.phase = 'idle';
-    this.motionMode = 'attached';
-    this.chargeActive = false;
+    this.state = 'idle';
+    this.root.visible = false;
     this.player.visible = false;
-    this.currentOffers = [];
-    this.branchChoices = [];
-    this.acquisition = null;
+    this.playerTrail.visible = false;
+    this.shop.reset();
+    this.boss.reset();
+    this.coins.reset();
+    this.enemies.reset();
   }
 
   resetRunState() {
-    this.motionMode = 'attached';
-    this.currentTime = 0;
-    this.attachedAnchorIndex = 0;
-    this.visibleWindowStart = 0;
-    this.angle = -Math.PI * 0.42;
-    this.angularSpeed = -1.55;
-    this.orbitRadius = PLAYER_BASE_RADIUS;
-    this.orbitRadiusTarget = PLAYER_BASE_RADIUS;
+    this.stats.reset(performance.now());
+    this.score = 0;
     this.chargeActive = false;
     this.chargeMeter = 0;
-    this.score = 0;
+    this.choiceMode = 'none';
+    this.activeChoices = [];
+    this.activeShopAngles = [];
+    this.acquisition = null;
+    this.acquisitionStartedAt = 0;
+    this.currentTime = 0;
+    this.attachedIndex = 0;
+    this.lastLandingDirection = 0;
+    this.playerState = 'attached';
+    this.orbitAngle = Math.PI * 0.18;
+    this.orbitDirection = -1;
+    this.angularSpeed = 0;
+    this.playerPosition.set(0, 0, 0);
+    this.playerVelocity.set(0, 0, 0);
+    this.playerVelocityTarget.set(0, 0, 0);
     this.runUpgrades = createRunUpgradeState();
-    this.currentOffers = [];
-    this.branchChoices = [];
-    this.nextUpgradeMilestone = 10;
-    this.previousRotationDirection = -1;
-    this.momentumChain = 0;
-    this.momentumGauge = 0;
-    this.momentumGaugeSmoothed = 0;
-    this.momentumState.chainCount = 0;
-    this.momentumState.chainTier = 0;
-    this.momentumState.speedMultiplier = 1;
-    this.momentumState.jumpMultiplier = 1;
-    this.momentumState.cameraZoomMultiplier = 0;
-    this.momentumState.gauge = 0;
     this.remainingExtraJumps = 0;
-    this.remainingAirDashes = 0;
     this.phaseJumpReadyAt = 0;
     this.teleportReadyAt = 0;
     this.warpReadyAt = 0;
-    this.rocketReadyAt = 0;
-    this.flapReadyAt = 0;
-    this.lastAirDashAt = -100;
-    this.acquisition = null;
-    this.acquisitionEndsAt = 0;
-    this.playerPosition.set(0, 0, 0);
-    this.playerVelocity.set(0, 0, 0);
-  }
-
-  update(deltaTime: number, elapsedTime: number) {
-    if (this.phase === 'idle') return;
-    this.currentTime = elapsedTime;
-    const decayRate = this.motionMode === 'airborne' ? 0.05 : this.chargeActive ? 0.035 : 0.11;
-    this.momentumGauge = Math.max(0, this.momentumGauge - deltaTime * decayRate);
-    this.momentumGaugeSmoothed = damp(this.momentumGaugeSmoothed, this.momentumGauge, 2.1, deltaTime);
-    const targetTier = this.momentumGaugeSmoothed < 0.2 ? 0 : this.momentumGaugeSmoothed < 0.45 ? 1 : this.momentumGaugeSmoothed < 0.72 ? 2 : 3;
-    this.momentumState.chainCount = this.momentumChain;
-    this.momentumState.chainTier = targetTier as 0 | 1 | 2 | 3;
-    this.momentumState.gauge = this.momentumGaugeSmoothed;
-    this.momentumState.speedMultiplier = damp(this.momentumState.speedMultiplier, 1 + this.momentumGaugeSmoothed * 0.52, 2.4, deltaTime);
-    this.momentumState.jumpMultiplier = damp(this.momentumState.jumpMultiplier, 1 + this.momentumGaugeSmoothed * 0.36, 2.4, deltaTime);
-    this.momentumState.cameraZoomMultiplier = damp(this.momentumState.cameraZoomMultiplier, this.momentumGaugeSmoothed * 2.4, 2.1, deltaTime);
-
-    if (this.phase === 'transition_in' || this.phase === 'transition_out') {
-      return;
-    }
-
-    this.path.ensureAhead(this.attachedAnchorIndex, 50, 120);
-
-    if (this.motionMode === 'airborne') {
-      this.updateAirborne(deltaTime);
-    } else {
-      this.updateAttached(deltaTime);
-    }
-
-    this.player.position.copy(this.playerPosition);
-    this.updatePlayerVisuals();
-
-    if (this.phase === 'running' || this.phase === 'upgrade_branching' || this.phase === 'upgrade_acquired') {
-      const currentNode = this.getResolvedNode(this.attachedAnchorIndex);
-      this.camera.update(deltaTime, this.currentState, this.score, this.path, currentNode, this.branchChoices, this.momentumState);
-      this.enforceFailState(currentNode);
-    }
-
-    if (this.phase === 'upgrade_acquired' && this.currentTime >= this.acquisitionEndsAt) {
-      this.phase = 'running';
-      this.acquisition = null;
-    }
-  }
-
-  setChargeActive(active: boolean) {
-    if (!(this.phase === 'running' || this.phase === 'upgrade_branching' || this.phase === 'upgrade_acquired')) {
-      return false;
-    }
-
-    if (active) {
-      this.chargeActive = true;
-      if (this.motionMode === 'attached') {
-        this.motionMode = 'charging';
-      }
-      return false;
-    }
-
-    const shouldRelease = this.chargeActive && (this.motionMode === 'attached' || this.motionMode === 'charging');
-    this.chargeActive = false;
-    if (this.motionMode === 'charging') {
-      this.motionMode = 'attached';
-    }
-    if (shouldRelease) {
-      return this.launchFromCharge();
-    }
-    return false;
-  }
-
-  triggerJump() {
-    if (!(this.phase === 'running' || this.phase === 'upgrade_branching' || this.phase === 'upgrade_acquired')) {
-      return false;
-    }
-
-    if (this.motionMode === 'attached' || this.motionMode === 'charging') {
-      this.chargeActive = false;
-      return this.launchFromCharge();
-    }
-
-    return this.performAirAction();
-  }
-
-  selectUpgradeFallback(index: number) {
-    if (this.phase !== 'upgrade_branching') return false;
-    return this.commitBranch(index, true);
-  }
-
-  getCameraPose() {
-    return this.camera.getPose();
+    this.shieldCharges = 0;
+    this.eventCooldownUntil = 0;
+    this.autoFireReadyAt = 0;
+    this.momentum.gauge = 0;
+    this.momentum.fillRate = 0;
+    this.momentum.decayRate = 0.12;
+    this.momentum.speedMultiplier = 1;
+    this.momentum.jumpMultiplier = 1;
+    this.momentum.cameraZoomMultiplier = 0;
+    this.playerTrail.geometry.setDrawRange(0, this.trailPoints.length);
+    this.trailPoints.forEach((point) => point.set(0, 0, 0));
+    this.coins.reset();
+    this.enemies.reset();
+    this.shop.reset();
+    this.boss.reset();
   }
 
   getInitialPlatformPositions(count: number) {
-    this.path.prebuild(Math.max(180, count + 80));
-    return this.path.getInitialPositions(count).map((node) => new THREE.Vector3(node.x, node.y, node.z));
+    this.path.prebuild(Math.max(160, count + 60));
+    return this.path.getInitialNodes(count).map((node) => new THREE.Vector3(node.x, node.y, node.z));
   }
 
   getInitialPlatformScales(count: number) {
-    this.path.prebuild(Math.max(180, count + 80));
-    return Array.from({ length: count }, (_, index) => this.path.getNode(index)?.visualScale ?? 1);
+    this.path.prebuild(Math.max(160, count + 60));
+    return this.path.getInitialNodes(count).map((node) => node.visualScale);
   }
 
   getVisiblePlatformPositions(count: number) {
-    return this.getVisibleNodes(count).map((node) => new THREE.Vector3(node.resolvedX, node.resolvedY, node.resolvedZ));
+    return this.getDisplayNodes(count).map((node) => new THREE.Vector3(node.resolvedX, node.resolvedY, node.resolvedZ));
   }
 
   getVisiblePlatformScales(count: number) {
-    return this.getVisibleNodes(count).map((node) => node.visualScale);
+    return this.getDisplayNodes(count).map((node) => node.visualScale);
   }
 
-  getVisiblePlatformVisuals(count: number) {
-    return this.getVisibleNodes(count).map((node) => ({
+  getVisiblePlatformVisuals(count: number): VisiblePlatformVisual[] {
+    return this.getDisplayNodes(count).map((node) => ({
       scale: new THREE.Vector3(
         node.visualScale * node.visualStretch.x,
         node.visualScale * node.visualStretch.y,
@@ -321,559 +302,860 @@ export class GameSessionController {
       shapeKind: node.shapeKind,
       spinDirection: node.spinDirection,
       spinSpeed: node.spinSpeed,
-      spinPhase: this.getShapeOrientation(node)
+      spinPhase: node.resolvedSpinPhase,
+      tint:
+        node.colorHint === 'danger'
+          ? DANGER_ACCENT
+          : node.colorHint === 'reward'
+            ? REWARD_ACCENT
+            : node.colorHint === 'accent'
+              ? GAME_ACCENT
+              : null,
+      pulse: node.isMilestone || node.eventType !== 'none' ? 0.34 : clamp(this.momentum.gauge * 0.22, 0, 0.22)
     }));
   }
 
-  getHudState() {
-    const branchHints: BranchLabelHint[] = this.branchChoices.map((choice, index) => ({
-      slot: index as 0 | 1 | 2,
-      offer: choice.offer,
-      worldPosition: new THREE.Vector3(choice.entry.x, choice.entry.y, choice.entry.z)
-    }));
-
-    const hudState: GameHudState =
-      this.phase === 'transition_in' || this.phase === 'transition_out'
-        ? 'transition'
-        : this.phase === 'game_over'
-          ? 'game_over'
-          : this.phase === 'upgrade_branching'
-            ? 'upgrade_choice'
-            : 'running';
-
-    return {
-      state: hudState,
-      score: this.score,
-      highscore: this.highscore,
-      chargeRatio: clamp(this.chargeMeter / MAX_CHARGE, 0, 1),
-      momentumGauge: clamp(this.momentumGaugeSmoothed, 0, 1),
-      momentumTier: this.momentumState.chainTier,
-      offers: this.currentOffers,
-      branchHints,
-      acquisition: this.acquisition
-    } as const;
-  }
-
-  private updateAttached(deltaTime: number) {
-    const node = this.getResolvedNode(this.attachedAnchorIndex);
-    const profile = getDifficultyProfile(this.score);
-    const sign = Math.sign(this.angularSpeed) || -1;
-    const idleSpeed = (1.42 + profile.normalized * 1.25) * this.momentumState.speedMultiplier;
-
-    this.orbitRadiusTarget = this.getOrbitRadiusForNode(node);
-    this.orbitRadius = damp(this.orbitRadius, this.orbitRadiusTarget, 4.6, deltaTime);
-
-    if (this.chargeActive) {
-      this.chargeMeter = clamp(this.chargeMeter + deltaTime * 0.62 * this.runUpgrades.modifiers.chargeRate, 0, MAX_CHARGE);
-      this.motionMode = 'charging';
-    } else if (this.motionMode === 'charging') {
-      this.motionMode = 'attached';
-    }
-
-    const targetSpeed = this.chargeActive
-      ? sign * (idleSpeed + 1.2 + this.chargeMeter * 1.8)
-      : sign * Math.max(idleSpeed, Math.abs(this.angularSpeed) * 0.988);
-
-    this.angularSpeed = damp(this.angularSpeed, targetSpeed, this.chargeActive ? 2.4 : 1.9, deltaTime);
-    this.angle += this.angularSpeed * deltaTime;
-    const orbitFrame = this.getOrbitFrame(node, this.angle, this.orbitRadius);
-    this.playerPosition.set(node.resolvedX + orbitFrame.offset.x, node.resolvedY + orbitFrame.offset.y, 0);
-
-    this.player.rotation.z = this.getBoatFacingAngle();
-
-    if (this.phase === 'running') {
-      this.maybeTriggerEmergencyWarp();
-    }
-  }
-
-  private updateAirborne(deltaTime: number) {
-    const glide = this.chargeActive ? this.runUpgrades.modifiers.glideFactor : 0;
-    const gravity = 8.2 * Math.max(0.18, 1 - glide * 0.56);
-
-    this.playerVelocity.y -= gravity * deltaTime;
-    if (this.chargeActive) {
-      this.playerVelocity.x += this.runUpgrades.modifiers.airControl * 1.7 * deltaTime;
-    }
-
-    this.playerPosition.x += this.playerVelocity.x * deltaTime;
-    this.playerPosition.y += this.playerVelocity.y * deltaTime;
-    this.player.rotation.z = Math.atan2(this.playerVelocity.y, this.playerVelocity.x);
-
-    if (this.tryCaptureNode()) {
-      return;
-    }
-
-    if (this.playerPosition.y < -42) {
-      this.failRun();
-    }
-  }
-
-  private launchFromCharge() {
-    if (this.motionMode !== 'attached' && this.motionMode !== 'charging') {
+  setChargeActive(active: boolean) {
+    if (this.state === 'idle' || this.state === 'transition_in' || this.state === 'transition_out' || this.state === 'game_over') {
       return false;
     }
 
-    const chargeRatio = clamp(this.chargeMeter / MAX_CHARGE, 0, 1);
-    const rotationSign = Math.sign(this.angularSpeed) || -1;
-    const node = this.getResolvedNode(this.attachedAnchorIndex);
-    const orbitFrame = this.getOrbitFrame(node, this.angle, this.orbitRadius);
-    const normal = this.scratchVector.copy(orbitFrame.offset).normalize();
-    const tangent = this.scratchVectorB.copy(orbitFrame.tangent).normalize().multiplyScalar(rotationSign);
-    const jumpScale = this.runUpgrades.modifiers.jumpPower + chargeRatio * this.runUpgrades.modifiers.chargedLeapBonus;
-    let launchSpeed = (5.1 + Math.abs(this.angularSpeed) * this.orbitRadius * 1.32 + chargeRatio * 5.8 * jumpScale) * this.momentumState.jumpMultiplier;
-
-    if (this.runUpgrades.modifiers.rocketBurst && chargeRatio >= 0.84 && this.currentTime >= this.rocketReadyAt) {
-      launchSpeed += this.runUpgrades.modifiers.rocketBurstPower;
-      this.rocketReadyAt = this.currentTime + this.runUpgrades.modifiers.rocketBurstCooldown;
+    if (active) {
+      this.chargeActive = true;
+      if (this.playerState === 'attached') {
+        this.playerState = 'charging';
+        if (this.state === 'running_attached') {
+          this.state = 'running_charging';
+        }
+      }
+      return false;
     }
 
-    this.motionMode = 'airborne';
-    this.playerVelocity.copy(tangent).multiplyScalar(launchSpeed).addScaledVector(normal, 0.55 + chargeRatio * 0.45);
-    this.remainingExtraJumps = this.runUpgrades.modifiers.extraJumps;
-    this.remainingAirDashes = this.runUpgrades.modifiers.airDashCharges;
-    this.chargeMeter = 0;
+    const shouldLaunch =
+      this.chargeActive &&
+      (this.playerState === 'charging' || this.playerState === 'attached') &&
+      (this.state === 'running_charging' || this.state === 'running_attached' || this.state === 'upgrade_branching');
+
     this.chargeActive = false;
-    this.player.rotation.z = Math.atan2(this.playerVelocity.y, this.playerVelocity.x);
+    if (shouldLaunch) {
+      return this.launch();
+    }
+    return false;
+  }
+
+  triggerJump() {
+    if (this.state === 'idle' || this.state === 'transition_in' || this.state === 'transition_out' || this.state === 'game_over') {
+      return false;
+    }
+    if (this.playerState === 'attached' || this.playerState === 'charging') {
+      this.chargeActive = false;
+      return this.launch();
+    }
+    return this.performAirAction();
+  }
+
+  selectUpgradeFallback(index: number) {
+    if (this.state !== 'upgrade_branching') return false;
+
+    if (this.choiceMode === 'shop_orbit') {
+      const offer = this.activeChoices[index];
+      if (!offer || offer.price === undefined) return false;
+      if (!this.stats.spendCoins(offer.price)) return false;
+      this.applyOffer(offer.offer, 'Shop item');
+      this.shop.reset();
+      this.choiceMode = 'none';
+      this.activeChoices = [];
+      this.state = 'upgrade_acquired';
+      this.eventCooldownUntil = this.currentTime + 0.6;
+      return true;
+    }
+
+    if (this.choiceMode !== 'reward_branch') return false;
+    return this.commitRewardBranch(index, true);
+  }
+
+  getCameraPose() {
+    return this.camera.getPose();
+  }
+
+  getHudState(): GameHudSnapshot {
+    const normalizedGauge = clamp(this.momentum.gauge / Math.max(1, this.runUpgrades.modifiers.momentumCap), 0, 1);
+    this.stats.fillHud(this.hudSnapshot);
+    this.hudSnapshot.state = this.getHudStateValue();
+    this.hudSnapshot.chargeRatio = clamp(this.chargeMeter, 0, 1);
+    this.hudSnapshot.momentumGauge = normalizedGauge;
+    this.hudSnapshot.momentumTier = Math.min(4, Math.floor(normalizedGauge * 5));
+    this.hudSnapshot.offers = this.activeChoices.map((choice) => choice.offer);
+    this.hudSnapshot.branchHints = this.getBranchHints();
+    this.hudSnapshot.acquisition = this.acquisition;
+    return this.hudSnapshot;
+  }
+
+  update(deltaTime: number, elapsedTime: number) {
+    if (this.state === 'idle') return;
+    this.currentTime = elapsedTime;
+
+    if (this.state === 'transition_in' || this.state === 'transition_out') {
+      this.updateMomentum(deltaTime);
+      return;
+    }
+
+    this.path.ensureAhead(this.attachedIndex);
+    this.updateMomentum(deltaTime);
+
+    const currentNode = this.getResolvedNode(this.attachedIndex);
+    const nextNode = this.getResolvedNode(this.attachedIndex + 1);
+
+    if (this.playerState === 'airborne') {
+      this.updateAirborne(deltaTime, currentNode);
+    } else {
+      this.updateAttached(deltaTime, currentNode);
+    }
+
+    this.updateEvents(deltaTime, elapsedTime, currentNode);
+    this.updateCamera(deltaTime, currentNode, nextNode);
+    this.updateTrail(deltaTime);
+    this.syncPlayerVisual(elapsedTime);
+    this.syncMarkers(elapsedTime);
+
+    if (this.state !== 'game_over') {
+      if (this.camera.isOutsideViewport(this.playerPosition, 0.01) || this.camera.isBehindSafeLine(this.playerPosition)) {
+        this.failRun();
+      } else if (this.playerState !== 'airborne' && this.camera.isBehindSafeLine(new THREE.Vector3(currentNode.resolvedX, currentNode.resolvedY, 0))) {
+        this.failRun();
+      }
+    }
+
+    if (this.acquisition) {
+      const progress = clamp((elapsedTime - this.acquisitionStartedAt) / this.acquisitionDuration, 0, 1);
+      this.acquisition.progress = progress;
+      if (progress >= 1) {
+        this.acquisition = null;
+      }
+    }
+  }
+
+  private getHudStateValue(): GameHudState {
+    if (this.state === 'game_over') return 'game_over';
+    if (this.state === 'transition_in' || this.state === 'transition_out') return 'transition';
+    if (this.state === 'upgrade_branching') return 'upgrade_choice';
+    return 'running';
+  }
+
+  private emitScore() {
+    this.scoreListeners.forEach((listener) => listener());
+  }
+
+  private getResolvedNode(index: number) {
+    return this.path.getResolvedNode(Math.max(0, index), this.currentTime, this.attachedIndex);
+  }
+
+  private getDisplayNodes(count: number) {
+    if (this.choiceMode === 'reward_branch' && this.activeChoices.length > 0) {
+      const nodes: ResolvedGamePathNode[] = [this.getResolvedNode(this.attachedIndex)];
+      this.activeChoices.forEach((choice) => {
+        choice.previewNodes.slice(0, 3).forEach((node) => {
+          nodes.push(resolveRuntimeNode(node, this.currentTime, this.attachedIndex));
+        });
+      });
+      while (nodes.length < count) {
+        const fallbackIndex = this.attachedIndex + Math.max(1, nodes.length - 8);
+        nodes.push(this.getResolvedNode(fallbackIndex));
+      }
+      return nodes.slice(0, count);
+    }
+
+    const start = Math.max(0, this.attachedIndex - 1);
+    return this.path.getWindow(start, count, this.currentTime, this.attachedIndex);
+  }
+
+  private updateMomentum(deltaTime: number) {
+    const decayModifier = 1 - Math.min(0.72, this.runUpgrades.modifiers.momentumRetention);
+    const decay = this.momentum.decayRate * decayModifier;
+    this.momentum.gauge = clamp(this.momentum.gauge - decay * deltaTime, 0, 1);
+
+    const speedTarget = 1 + this.momentum.gauge * 0.6 + this.runUpgrades.modifiers.speedBonus;
+    const jumpTarget = 1 + this.momentum.gauge * 0.48 + this.runUpgrades.modifiers.chargedLeapBonus * 0.12;
+    const cameraZoomTarget = this.momentum.gauge * 1.4;
+
+    this.momentum.speedMultiplier = damp(this.momentum.speedMultiplier, speedTarget, 2.4, deltaTime);
+    this.momentum.jumpMultiplier = damp(this.momentum.jumpMultiplier, jumpTarget, 2.6, deltaTime);
+    this.momentum.cameraZoomMultiplier = damp(this.momentum.cameraZoomMultiplier, cameraZoomTarget, 2.2, deltaTime);
+    this.momentum.fillRate = damp(this.momentum.fillRate, 0, 4.6, deltaTime);
+  }
+
+  private updateAttached(deltaTime: number, currentNode: ResolvedGamePathNode) {
+    const orbit = this.getOrbitSample(currentNode, this.orbitAngle);
+    const orbitRadius = Math.max(1, orbit.position.length());
+    const baselineAngular = (Math.PI * 2) / Math.max(1.6, currentNode.gameplayOrbitPeriod);
+    const chargeBoost = this.chargeActive ? 0.55 + this.chargeMeter * 0.45 : 0;
+    const targetAngular =
+      baselineAngular *
+      (1 + chargeBoost + this.momentum.gauge * 0.42) *
+      this.momentum.speedMultiplier *
+      (1 + this.runUpgrades.modifiers.chargeRate * 0.06 + this.runUpgrades.modifiers.speedBonus * 0.3);
+
+    this.angularSpeed = damp(this.angularSpeed, targetAngular, this.chargeActive ? 2.6 : 1.7, deltaTime);
+    this.orbitAngle = wrapAngle(this.orbitAngle + this.orbitDirection * this.angularSpeed * deltaTime);
+
+    const liveOrbit = this.getOrbitSample(currentNode, this.orbitAngle);
+    this.playerPosition.set(currentNode.resolvedX + liveOrbit.position.x, currentNode.resolvedY + liveOrbit.position.y, currentNode.resolvedZ);
+    this.playerVelocity.set(
+      liveOrbit.tangent.x * orbitRadius * this.angularSpeed * this.orbitDirection,
+      liveOrbit.tangent.y * orbitRadius * this.angularSpeed * this.orbitDirection,
+      0
+    );
+
+    if (this.chargeActive) {
+      const chargeRate = 0.55 + this.runUpgrades.modifiers.chargeRate * 0.24;
+      this.chargeMeter = clamp(this.chargeMeter + deltaTime * chargeRate, 0, 1);
+      if (this.state === 'running_attached') {
+        this.state = 'running_charging';
+      }
+      if (this.playerState === 'attached') {
+        this.playerState = 'charging';
+      }
+    } else {
+      this.chargeMeter = damp(this.chargeMeter, 0, 4.2, deltaTime);
+      if (this.playerState === 'charging') {
+        this.playerState = 'attached';
+      }
+      if (this.state === 'running_charging') {
+        this.state = 'running_attached';
+      }
+    }
+
+    this.collectCoinsOnCurrentNode(currentNode);
+    this.resolveEnemyContact(currentNode);
+
+    if (this.choiceMode === 'shop_orbit' && this.shop.isOpen()) {
+      const purchase = this.shop.tryPurchase(this.orbitAngle, this.stats.getSnapshot().coins);
+      if (purchase && this.stats.spendCoins(purchase.price)) {
+        this.applyOffer(purchase.offer, 'Shop item');
+        this.choiceMode = 'none';
+        this.activeChoices = [];
+        this.state = 'upgrade_acquired';
+        this.eventCooldownUntil = this.currentTime + 0.6;
+      }
+    }
+  }
+
+  private updateAirborne(deltaTime: number, currentNode: ResolvedGamePathNode) {
+    const gravityScale = clamp(1 - this.runUpgrades.modifiers.glideFactor * 0.55, 0.18, 1);
+    this.playerVelocity.y -= 6.8 * gravityScale * deltaTime;
+    this.playerVelocity.x += this.runUpgrades.modifiers.airControl * deltaTime * 0.4;
+    this.playerPosition.addScaledVector(this.playerVelocity, deltaTime);
+
+    if (this.choiceMode === 'reward_branch' && this.activeChoices.length > 0) {
+      for (let index = 0; index < this.activeChoices.length; index += 1) {
+        const choice = this.activeChoices[index];
+        if (!choice) continue;
+        const entry = resolveRuntimeNode(choice.entry, this.currentTime, this.attachedIndex);
+        if (this.canCaptureNode(entry)) {
+          this.commitRewardBranch(index, false);
+          this.attachToNode(this.attachedIndex + 1, true, this.playerPosition, this.playerVelocity);
+          return;
+        }
+      }
+    }
+
+    const searchLimit = Math.min(this.attachedIndex + 8, this.attachedIndex + 1 + 8);
+    for (let index = this.attachedIndex + 1; index <= searchLimit; index += 1) {
+      const node = this.getResolvedNode(index);
+      if (this.canCaptureNode(node)) {
+        this.attachToNode(index, true, this.playerPosition, this.playerVelocity);
+        return;
+      }
+    }
+
+    if (this.runUpgrades.modifiers.phaseJump && this.currentTime >= this.phaseJumpReadyAt) {
+      const rescueIndex = this.attachedIndex + 1;
+      const rescueNode = this.getResolvedNode(rescueIndex);
+      const rescueDistance = this.playerPosition.distanceToSquared(
+        this.scratchVector.set(rescueNode.resolvedX, rescueNode.resolvedY, rescueNode.resolvedZ)
+      );
+      const rescueRadius = (rescueNode.gameplayRadius + this.runUpgrades.modifiers.phaseJumpRescueRadius) ** 2;
+      if (rescueDistance < rescueRadius) {
+        this.phaseJumpReadyAt = this.currentTime + this.runUpgrades.modifiers.phaseJumpCooldown;
+        this.attachToNode(rescueIndex, true, this.playerPosition, this.playerVelocity);
+        return;
+      }
+    }
+
+    if (this.teleportReadyAt <= this.currentTime && this.runUpgrades.modifiers.teleportRange > 0) {
+      const teleportTarget = this.path.getTeleportTarget(this.attachedIndex, this.runUpgrades.modifiers.teleportRange);
+      if (teleportTarget > this.attachedIndex + 1 && this.playerPosition.x < this.camera.getSafeLeft() + 2.4) {
+        this.teleportReadyAt = this.currentTime + this.runUpgrades.modifiers.teleportCooldown;
+        this.attachToNode(teleportTarget, false, null, null);
+      }
+    }
+
+    if (this.warpReadyAt <= this.currentTime && this.runUpgrades.modifiers.warpRange > 0) {
+      const warpTarget = this.path.getTeleportTarget(this.attachedIndex, this.runUpgrades.modifiers.warpRange);
+      if (warpTarget > this.attachedIndex + 3 && this.playerPosition.x < this.camera.getSafeLeft() + 1.6) {
+        this.warpReadyAt = this.currentTime + this.runUpgrades.modifiers.warpCooldown;
+        this.attachToNode(warpTarget, false, null, null);
+      }
+    }
+
+    if (this.camera.isOutsideViewport(this.playerPosition, 0.01) || this.camera.isBehindSafeLine(this.playerPosition)) {
+      this.failRun();
+      return;
+    }
+
+    this.resolveAirborneEnemyContact(currentNode);
+  }
+
+  private launch() {
+    if (this.playerState !== 'attached' && this.playerState !== 'charging') return false;
+
+    const currentNode = this.getResolvedNode(this.attachedIndex);
+    const orbit = this.getOrbitSample(currentNode, this.orbitAngle);
+    const tangent = this.scratchVector
+      .set(orbit.tangent.x * this.orbitDirection, orbit.tangent.y * this.orbitDirection, 0)
+      .normalize();
+    const radial = this.scratchVectorB
+      .set(orbit.position.x, orbit.position.y, 0)
+      .normalize();
+    const orbitSpeed = Math.max(1, orbit.position.length()) * this.angularSpeed;
+    const launchSpeed =
+      (orbitSpeed * 0.92 + 5.2 + this.chargeMeter * 8.5 * (1 + this.runUpgrades.modifiers.chargedLeapBonus)) *
+      this.momentum.jumpMultiplier *
+      this.runUpgrades.modifiers.jumpPower *
+      (1 + this.runUpgrades.modifiers.speedBonus * 0.35);
+
+    this.playerVelocity.copy(tangent.multiplyScalar(launchSpeed)).addScaledVector(radial, launchSpeed * 0.08);
+    this.playerState = 'airborne';
+    this.state = this.choiceMode === 'reward_branch' ? 'upgrade_branching' : 'running_airborne';
+    this.remainingExtraJumps = Math.max(0, this.runUpgrades.modifiers.extraJumps);
+    this.chargeMeter = 0;
     return true;
   }
 
   private performAirAction() {
-    if (this.motionMode !== 'airborne') return false;
-
-    if (this.runUpgrades.modifiers.infiniteFlaps && this.currentTime >= this.flapReadyAt) {
-      this.playerVelocity.y = Math.max(this.playerVelocity.y, 4.2 + this.runUpgrades.modifiers.jumpPower * 1.18);
-      this.playerVelocity.x += 0.9 + this.runUpgrades.modifiers.airControl * 1.45;
-      this.flapReadyAt = this.currentTime + 0.12;
+    if (this.playerState !== 'airborne') return false;
+    if (this.runUpgrades.modifiers.infiniteFlaps || this.remainingExtraJumps > 0) {
+      if (!this.runUpgrades.modifiers.infiniteFlaps) {
+        this.remainingExtraJumps -= 1;
+      }
+      const impulse = 4.2 + this.runUpgrades.modifiers.jumpPower * 1.6;
+      this.playerVelocity.y = Math.max(this.playerVelocity.y, 0) + impulse;
+      this.playerVelocity.x += 0.9 + this.momentum.gauge * 1.6;
       return true;
     }
-
-    if (this.remainingExtraJumps > 0) {
-      this.remainingExtraJumps -= 1;
-      this.playerVelocity.y = Math.max(this.playerVelocity.y, 4.5 + this.runUpgrades.modifiers.jumpPower * 1.22);
-      this.playerVelocity.x += 0.7 + this.runUpgrades.modifiers.airControl * 1.15;
-      return true;
-    }
-
-    if (
-      this.remainingAirDashes > 0 &&
-      this.currentTime - this.lastAirDashAt > 0.18 &&
-      this.runUpgrades.modifiers.airDashPower > 0
-    ) {
-      this.remainingAirDashes -= 1;
-      this.lastAirDashAt = this.currentTime;
-      this.playerVelocity.x += this.runUpgrades.modifiers.airDashPower;
-      this.playerVelocity.y = Math.max(this.playerVelocity.y, 0.8);
-      return true;
-    }
-
     return false;
   }
 
-  private tryCaptureNode() {
-    if (this.phase === 'upgrade_branching' && this.branchChoices.length > 0) {
-      return this.tryCaptureBranch();
-    }
+  private attachToNode(index: number, preserveMomentum: boolean, landingPosition: THREE.Vector3 | null, incomingVelocity: THREE.Vector3 | null) {
+    const node = this.getResolvedNode(index);
+    this.attachedIndex = index;
+    this.score = Math.max(this.score, index);
+    this.stats.recordLanding(index, node.pathDistance, performance.now());
+    this.emitScore();
 
-    const searchStart = Math.max(0, this.attachedAnchorIndex + 1);
-    const searchEnd = searchStart + 6;
-    let nearestIndex = -1;
-    let nearestDistance = Number.POSITIVE_INFINITY;
+    let nextAngle = this.orbitAngle;
+    let nextDirection: -1 | 1 = index === 0 ? -1 : this.orbitDirection;
+    let nextAngularSpeed = (Math.PI * 2) / Math.max(1.4, node.gameplayOrbitPeriod);
 
-    for (let index = searchStart; index <= searchEnd; index += 1) {
-      const node = this.getResolvedNode(index);
-      const distance = Math.hypot(this.playerPosition.x - node.resolvedX, this.playerPosition.y - node.resolvedY);
-      const captureRadius = this.getCaptureRadius(node);
-
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearestIndex = index;
-      }
-
-      if (distance <= captureRadius) {
-        this.attachToNode(index, true);
-        return true;
-      }
-    }
-
-    if (
-      this.runUpgrades.modifiers.phaseJump &&
-      this.currentTime >= this.phaseJumpReadyAt &&
-      nearestIndex >= 0
-    ) {
-      const rescueNode = this.getResolvedNode(nearestIndex);
-      if (nearestDistance <= this.getCaptureRadius(rescueNode) + this.runUpgrades.modifiers.phaseJumpRescueRadius) {
-        this.phaseJumpReadyAt = this.currentTime + this.runUpgrades.modifiers.phaseJumpCooldown;
-        this.attachToNode(nearestIndex, true);
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  private tryCaptureBranch() {
-    for (let index = 0; index < this.branchChoices.length; index += 1) {
-      const branch = this.branchChoices[index];
-      const node = branch.entry;
-      const distance = Math.hypot(this.playerPosition.x - node.x, this.playerPosition.y - node.y);
-      const captureRadius = this.getCaptureRadius({
-        ...node,
-        resolvedX: node.x,
-        resolvedY: node.y,
-        resolvedZ: node.z
-      });
-
-      if (distance <= captureRadius) {
-        return this.commitBranch(index, false);
-      }
-    }
-
-    return false;
-  }
-
-  private attachToNode(nodeIndex: number, preserveMotion: boolean) {
-    const node = this.getResolvedNode(nodeIndex);
-    this.attachedAnchorIndex = nodeIndex;
-    this.visibleWindowStart = Math.max(0, nodeIndex - 2);
-    this.motionMode = 'attached';
-    this.orbitRadiusTarget = this.getOrbitRadiusForNode(node);
-    let landingQuality = 0;
-
-    if (preserveMotion) {
-      const relative = this.playerPosition.clone().sub(this.scratchVector.set(node.resolvedX, node.resolvedY, 0));
-      if (relative.lengthSq() < 0.0001) {
-        relative.set(1, 0, 0);
-      }
-
-      const contactDistance = clamp(relative.length(), this.orbitRadiusTarget, this.orbitRadiusTarget + 1.8);
-      this.angle = this.resolveOrbitAngleFromPosition(node, relative, contactDistance);
-      const orbitFrame = this.getOrbitFrame(node, this.angle, contactDistance);
-
-      const normal = this.scratchVectorB.copy(orbitFrame.offset).normalize();
-      const tangent = this.scratchVectorC.copy(orbitFrame.tangent).normalize();
-      const incomingSpeed = this.playerVelocity.length();
-      const tangentialSpeed = this.playerVelocity.dot(tangent);
-      const radialSpeed = this.playerVelocity.dot(normal);
-      const alignment = clamp(1 - Math.abs(radialSpeed) / Math.max(0.001, incomingSpeed), 0, 1);
-      const carriedSpeed =
-        Math.abs(tangentialSpeed) * (0.9 + this.runUpgrades.modifiers.momentumRetention * 0.32) +
-        Math.abs(radialSpeed) * 0.18 +
-        incomingSpeed * (0.14 + alignment * 0.18);
-      const angularMagnitude = clamp(carriedSpeed / Math.max(1.1, contactDistance), 1.08, 8.8);
-      this.angularSpeed = angularMagnitude * (Math.sign(tangentialSpeed) || Math.sign(this.angularSpeed) || -1);
-      this.orbitRadius = contactDistance;
-      this.playerPosition.set(node.resolvedX + orbitFrame.offset.x, node.resolvedY + orbitFrame.offset.y, 0);
-      landingQuality = clamp(
-        alignment * 0.58 + clamp(incomingSpeed / 10.5, 0, 1) * 0.42,
-        0.08,
-        1
+    if (preserveMomentum && landingPosition && incomingVelocity) {
+      const attachment = this.findBestOrbitAttachment(node, landingPosition);
+      nextAngle = attachment.angle;
+      const directionDot = attachment.tangent.dot(this.scratchVector2.set(incomingVelocity.x, incomingVelocity.y));
+      nextDirection = directionDot >= 0 ? 1 : -1;
+      const tangentialSpeed = Math.abs(directionDot);
+      const radius = Math.max(1.2, attachment.position.length());
+      nextAngularSpeed = clamp(
+        tangentialSpeed / radius,
+        (Math.PI * 2) / Math.max(1.4, node.gameplayOrbitPeriod) * 0.72,
+        (Math.PI * 2) / Math.max(1.1, node.gameplayOrbitPeriod) * 2.2
       );
+      this.rewardMomentum(nextDirection, tangentialSpeed, node);
     } else {
-      this.angle = -Math.PI * 0.42;
-      this.angularSpeed = -1.55;
-      this.orbitRadius = this.orbitRadiusTarget;
-      const orbitFrame = this.getOrbitFrame(node, this.angle, this.orbitRadius);
-      this.playerPosition.set(node.resolvedX + orbitFrame.offset.x, node.resolvedY + orbitFrame.offset.y, 0);
+      nextAngle = index === 0 ? Math.PI * 0.18 : 0;
+      nextDirection = index === 0 ? -1 : this.orbitDirection;
     }
 
-    const currentDirection = (Math.sign(this.angularSpeed) || -1) as -1 | 1;
-    if (preserveMotion) {
-      if (currentDirection !== this.previousRotationDirection) {
-        this.momentumChain += 1;
-        this.momentumGauge = clamp(this.momentumGauge + 0.16 + landingQuality * 0.22, 0, 1);
-      } else {
-        this.momentumChain = 0;
-        this.momentumGauge = Math.max(0, this.momentumGauge - 0.16);
-      }
-    } else {
-      this.momentumChain = 0;
-      this.momentumGauge = 0;
-    }
-    this.previousRotationDirection = currentDirection;
-
-    this.playerVelocity.set(0, 0, 0);
-    this.remainingExtraJumps = this.runUpgrades.modifiers.extraJumps;
-    this.remainingAirDashes = this.runUpgrades.modifiers.airDashCharges;
-    this.player.rotation.z = this.getBoatFacingAngle();
-    this.score = nodeIndex;
-
-    if (this.score > this.highscore) {
-      this.highscore = this.score;
-      window.localStorage.setItem('portfolio-game-highscore', String(this.highscore));
-    }
-
-    if (this.phase !== 'upgrade_branching' && this.phase !== 'upgrade_acquired' && node.kind === 'milestone' && this.score >= this.nextUpgradeMilestone) {
-      this.openUpgradeChoice();
-    } else if (this.phase === 'upgrade_acquired' && this.currentTime >= this.acquisitionEndsAt) {
-      this.phase = 'running';
-    } else if (this.phase !== 'upgrade_branching' && this.phase !== 'game_over') {
-      this.phase = 'running';
-    }
-
-    this.emitScore();
-  }
-
-  private openUpgradeChoice() {
-    this.currentOffers = buildUpgradeOffers(this.score, this.runUpgrades);
-    this.branchChoices = this.path.createUpgradeBranches(this.attachedAnchorIndex, this.currentOffers, this.score);
-    this.phase = this.branchChoices.length > 0 ? 'upgrade_branching' : 'running';
-    if (this.branchChoices.length === 0) {
-      this.nextUpgradeMilestone = getNextUpgradeMilestone(this.score);
-    }
+    this.orbitAngle = nextAngle;
+    this.orbitDirection = nextDirection;
+    this.angularSpeed = nextAngularSpeed;
+    this.playerState = 'attached';
+    this.state = 'running_attached';
     this.chargeActive = false;
-    this.motionMode = 'attached';
+    this.chargeMeter = 0;
+    this.remainingExtraJumps = Math.max(0, this.runUpgrades.modifiers.extraJumps);
+
+    const liveOrbit = this.getOrbitSample(node, this.orbitAngle);
+    this.playerPosition.set(node.resolvedX + liveOrbit.position.x, node.resolvedY + liveOrbit.position.y, node.resolvedZ);
+    this.playerVelocity.set(0, 0, 0);
+
+    this.collectCoinsOnCurrentNode(node);
+    this.resolveEnemyContact(node);
+
+    if (this.currentTime >= this.eventCooldownUntil) {
+      this.resolveNodeEvent(node);
+    }
   }
 
-  private commitBranch(index: number, fallbackSelection: boolean) {
-    const branch = this.branchChoices[index];
-    if (!branch) return false;
+  private rewardMomentum(direction: -1 | 1, tangentialSpeed: number, node: ResolvedGamePathNode) {
+    const baseline = clamp((tangentialSpeed - 4.2) / 7.5, 0, 1);
+    const opposite = this.lastLandingDirection !== 0 && direction !== this.lastLandingDirection;
+    const fill =
+      0.08 +
+      baseline * 0.16 +
+      (opposite ? 0.18 : 0) +
+      (node.shapeKind === 'triangular' ? 0.03 : node.shapeKind === 'oval' ? 0.015 : 0);
 
-    if (fallbackSelection) {
-      const entryNode = {
-        ...branch.entry,
-        resolvedX: branch.entry.x,
-        resolvedY: branch.entry.y,
-        resolvedZ: branch.entry.z
-      };
-      const radius = this.getOrbitRadiusForNode(entryNode);
-      const orbitFrame = this.getOrbitFrame(entryNode, this.angle, radius);
-      this.playerPosition.set(branch.entry.x + orbitFrame.offset.x, branch.entry.y + orbitFrame.offset.y, 0);
-    }
-
-    this.path.replaceFuture(this.attachedAnchorIndex, branch.pathNodes);
-    this.path.ensureAhead(this.attachedAnchorIndex + branch.pathNodes.length, 50, 120);
-    this.runUpgrades = applyItemToRunState(this.runUpgrades, branch.offer.item.id);
-    this.currentOffers = [];
-    this.branchChoices = [];
-    this.remainingExtraJumps = this.runUpgrades.modifiers.extraJumps;
-    this.remainingAirDashes = this.runUpgrades.modifiers.airDashCharges;
-    this.acquisition = {
-      offer: branch.offer,
-      progress: 0
-    };
-    this.acquisitionEndsAt = this.currentTime + 1.15;
-    this.phase = 'upgrade_acquired';
-    this.attachToNode(this.attachedAnchorIndex + 1, true);
-    this.nextUpgradeMilestone = getNextUpgradeMilestone(this.score);
-    this.emitScore();
-    return true;
+    this.momentum.gauge = clamp(
+      this.momentum.gauge + fill * (1 + this.runUpgrades.modifiers.momentumGain),
+      0,
+      Math.max(1, this.runUpgrades.modifiers.momentumCap)
+    );
+    this.momentum.fillRate = fill;
+    this.lastLandingDirection = direction;
   }
 
-  private maybeTriggerEmergencyWarp() {
-    const currentNode = this.getResolvedNode(this.attachedAnchorIndex);
-    this.scratchVector.set(currentNode.resolvedX, currentNode.resolvedY, 0);
-    if (!this.camera.isBehindSafeLine(this.scratchVector)) {
-      return false;
-    }
-
-    if (this.runUpgrades.modifiers.warpRange > 0 && this.currentTime >= this.warpReadyAt) {
-      return this.performWarp(this.runUpgrades.modifiers.warpRange, this.runUpgrades.modifiers.warpCooldown, true);
-    }
-
-    if (this.runUpgrades.modifiers.teleportRange > 0 && this.currentTime >= this.teleportReadyAt) {
-      return this.performWarp(this.runUpgrades.modifiers.teleportRange, this.runUpgrades.modifiers.teleportCooldown, false);
-    }
-
-    return false;
-  }
-
-  private performWarp(range: number, cooldown: number, useWarpCooldown: boolean) {
-    const targetIndex = this.path.getTeleportTarget(this.attachedAnchorIndex, range);
-    if (targetIndex < 0) return false;
-
-    const targetNode = this.getResolvedNode(targetIndex);
-    const orbitDirection = Math.sign(this.angularSpeed) || -1;
-    const orbitFrame = this.getOrbitFrame(targetNode, this.angle, this.orbitRadiusTarget);
-    const tangent = this.scratchVector.copy(orbitFrame.tangent).normalize().multiplyScalar(orbitDirection);
-    const tangentialSpeed = clamp(Math.abs(this.angularSpeed) * PLAYER_BASE_RADIUS, 4, 8.2);
-    this.playerVelocity.copy(tangent).multiplyScalar(tangentialSpeed);
-    this.playerPosition.set(targetNode.resolvedX + orbitFrame.offset.x, targetNode.resolvedY + orbitFrame.offset.y, 0);
-
-    if (useWarpCooldown) {
-      this.warpReadyAt = this.currentTime + cooldown;
-    } else {
-      this.teleportReadyAt = this.currentTime + cooldown;
-    }
-
-    this.attachToNode(targetIndex, true);
-    return true;
-  }
-
-  private enforceFailState(currentNode: ResolvedGamePathNode) {
-    if (this.phase === 'game_over') return;
-
-    if (this.motionMode === 'airborne') {
-      if (this.camera.isBehindSafeLine(this.playerPosition) || this.camera.isOutsideViewport(this.playerPosition)) {
-        this.failRun();
-      }
+  private resolveNodeEvent(node: ResolvedGamePathNode) {
+    if (node.isMilestone) {
+      const offers = buildUpgradeOffers(node.index, this.runUpgrades);
+      this.activeChoices = this.path.createUpgradeBranches(node.index, offers, this.score);
+      this.choiceMode = 'reward_branch';
+      this.state = 'upgrade_branching';
+      this.eventCooldownUntil = this.currentTime + 0.2;
       return;
     }
 
-    this.scratchVector.set(currentNode.resolvedX, currentNode.resolvedY, 0);
-    if (this.camera.isBehindSafeLine(this.scratchVector) || this.camera.isOutsideViewport(this.playerPosition)) {
-      this.failRun();
+    switch (node.eventType) {
+      case 'shop': {
+        this.shop.openForRun(node.index, this.runUpgrades);
+        const shopOffers = this.shop.getActiveOffers().slice(0, 3);
+        this.activeChoices = shopOffers.map((shopOffer) => ({
+          mode: 'shop_orbit',
+          offer: shopOffer.offer,
+          price: shopOffer.price,
+          entry: node,
+          previewNodes: [],
+          pathNodes: []
+        }));
+        this.activeShopAngles = shopOffers.map((shopOffer) => shopOffer.angle);
+        this.choiceMode = 'shop_orbit';
+        this.state = 'upgrade_branching';
+        this.eventCooldownUntil = this.currentTime + 0.2;
+        break;
+      }
+      case 'treasure':
+        this.stats.addCoins(this.applyCoinBonus(5));
+        this.startAcquisition(this.activeChoices[0]?.offer ?? this.buildVirtualOffer('Treasure Chest', 'common', 'TRE', 'Gain 5 coins.'), 'Treasure');
+        break;
+      case 'gift': {
+        const offer = buildUpgradeOffers(node.index, this.runUpgrades)[0];
+        if (offer) {
+          this.applyOffer(offer, 'Gift shard');
+        }
+        break;
+      }
+      case 'rare_item': {
+        const offer = buildUpgradeOffers(Math.max(100, node.index), this.runUpgrades)[0];
+        if (offer) {
+          this.applyOffer(offer, 'Rare item');
+        }
+        break;
+      }
+      case 'mini_boss':
+      case 'boss':
+        this.boss.start(this.currentTime);
+        break;
+      case 'boss_weak':
+        if (this.boss.isWeakPointPhase()) {
+          this.boss.defeat();
+          this.stats.addCoins(this.applyCoinBonus(8));
+          this.fillMomentumBurst(0.24);
+        }
+        break;
+      case 'none':
+      default:
+        break;
     }
   }
 
-  private failRun() {
-    this.phase = 'game_over';
-    this.chargeActive = false;
-    this.chargeMeter = 0;
-    this.currentOffers = [];
-    this.branchChoices = [];
-    this.acquisition = null;
-    this.emitScore();
+  private commitRewardBranch(index: number, viaFallback: boolean) {
+    const choice = this.activeChoices[index];
+    if (!choice) return false;
+
+    this.path.replaceFuture(this.attachedIndex, choice.pathNodes);
+    this.path.ensureAhead(this.attachedIndex + 1, 50, 40);
+    this.path.queuePostMilestoneEvents(this.attachedIndex + choice.pathNodes.length, this.attachedIndex + choice.pathNodes.length);
+    this.applyOffer(choice.offer, viaFallback ? 'Quick choice' : 'Path chosen');
+    this.choiceMode = 'none';
+    this.activeChoices = [];
+    this.state = 'upgrade_acquired';
+    this.eventCooldownUntil = this.currentTime + 0.35;
+    return true;
   }
 
-  private getResolvedNode(index: number) {
-    return this.path.getResolvedNode(index, this.currentTime, this.attachedAnchorIndex);
+  private applyOffer(offer: RogueliteItemOffer, subtitle: string) {
+    this.runUpgrades = applyItemToRunState(this.runUpgrades, offer.item.id);
+    this.remainingExtraJumps = Math.max(0, this.runUpgrades.modifiers.extraJumps);
+    this.shieldCharges = Math.max(this.shieldCharges, this.runUpgrades.modifiers.shieldCharges);
+    this.startAcquisition(offer, subtitle);
   }
 
-  private getVisibleNodes(count: number) {
-    if (this.phase === 'upgrade_branching' && this.branchChoices.length > 0) {
-      const nodes: ResolvedGamePathNode[] = [
-        this.getResolvedNode(this.attachedAnchorIndex)
-      ];
-      this.branchChoices.forEach((branch) => {
-        branch.previewNodes.forEach((node) => {
-          nodes.push({
-            ...node,
-            resolvedX: node.x,
-            resolvedY: node.y,
-            resolvedZ: node.z
-          });
-        });
-      });
-      return nodes.slice(0, count);
-    }
-
-    return this.path.getWindow(this.visibleWindowStart, count, this.currentTime, this.attachedAnchorIndex);
-  }
-
-  private getOrbitRadiusForNode(node: ResolvedGamePathNode) {
-    if (node.shapeKind === 'oval') {
-      return 1.02 + node.radius * 0.68;
-    }
-    if (node.shapeKind === 'triangular') {
-      return 1.18 + node.radius * 0.76;
-    }
-    return 1.08 + node.radius * 0.72;
-  }
-
-  private getCaptureRadius(node: ResolvedGamePathNode) {
-    return node.radius + 1.12 + this.runUpgrades.modifiers.captureRadius + this.runUpgrades.modifiers.landingTolerance;
-  }
-
-  private getBoatFacingAngle() {
-    const node = this.getResolvedNode(this.attachedAnchorIndex);
-    const rotationSign = Math.sign(this.angularSpeed) || -1;
-    const orbitFrame = this.getOrbitFrame(node, this.angle, this.orbitRadius);
-    return Math.atan2(orbitFrame.tangent.y * rotationSign, orbitFrame.tangent.x * rotationSign);
-  }
-
-  private updatePlayerVisuals() {
-    const momentumScale = 1 + this.momentumGaugeSmoothed * 0.08;
-    this.player.scale.setScalar(momentumScale);
-    this.playerWing.rotation.z = Math.sin(this.currentTime * (4.8 + this.momentumGaugeSmoothed * 2.2)) * (0.08 + this.momentumGaugeSmoothed * 0.04);
-    if (this.acquisition) {
-      this.acquisition.progress = clamp(1 - (this.acquisitionEndsAt - this.currentTime) / 1.15, 0, 1);
-    }
-  }
-
-  private emitScore() {
-    this.scoreListeners.forEach((callback) => callback());
-  }
-
-  private getOrbitFrame(node: ResolvedGamePathNode, angle: number, radius: number) {
-    const phase = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-    const t = phase / (Math.PI * 2);
-    const orientation = this.getShapeOrientation(node);
-
-    if (node.shapeKind === 'oval') {
-      const rx = radius * Math.max(1.15, node.visualStretch.x);
-      const ry = radius * Math.max(0.8, node.visualStretch.y);
-      const localOffset = new THREE.Vector3(Math.cos(phase) * rx, Math.sin(phase) * ry, 0);
-      const localTangent = new THREE.Vector3(-Math.sin(phase) * rx, Math.cos(phase) * ry, 0);
-      return {
-        offset: localOffset.applyAxisAngle(new THREE.Vector3(0, 0, 1), orientation),
-        tangent: localTangent.applyAxisAngle(new THREE.Vector3(0, 0, 1), orientation)
-      };
-    }
-
-    if (node.shapeKind === 'triangular') {
-      const triangleRadius = radius * 1.12;
-      const points = [
-        new THREE.Vector3(0, triangleRadius, 0),
-        new THREE.Vector3(-triangleRadius * 0.92, -triangleRadius * 0.56, 0),
-        new THREE.Vector3(triangleRadius * 0.92, -triangleRadius * 0.56, 0)
-      ];
-      const segment = t * 3;
-      const segmentIndex = Math.floor(segment) % 3;
-      const localT = segment - Math.floor(segment);
-      const from = points[segmentIndex];
-      const to = points[(segmentIndex + 1) % 3];
-      const offset = from.clone().lerp(to, localT).applyAxisAngle(new THREE.Vector3(0, 0, 1), orientation);
-      const tangent = to.clone().sub(from).normalize().applyAxisAngle(new THREE.Vector3(0, 0, 1), orientation);
-      return {
-        offset,
-        tangent
-      };
-    }
-
-    return {
-      offset: new THREE.Vector3(Math.cos(phase) * radius, Math.sin(phase) * radius, 0),
-      tangent: new THREE.Vector3(-Math.sin(phase) * radius, Math.cos(phase) * radius, 0)
+  private startAcquisition(offer: RogueliteItemOffer, subtitle: string) {
+    this.acquisitionStartedAt = this.currentTime;
+    this.acquisition = {
+      offer,
+      progress: 0,
+      subtitle
     };
   }
 
-  private resolveOrbitAngleFromPosition(node: ResolvedGamePathNode, relative: THREE.Vector3, radius: number) {
+  private buildVirtualOffer(name: string, rarity: RogueliteItemOffer['item']['rarity'], icon: string, description: string): RogueliteItemOffer {
+    return {
+      item: {
+        id: `virtual-${icon}`,
+        rarity,
+        category: 'economy',
+        icon,
+        unlockScore: 0,
+        stackable: false,
+        maxStacks: 1,
+        effects: ['virtual'],
+        name: { fr: name, en: name },
+        description: { fr: description, en: description }
+      },
+      stackCount: 0
+    };
+  }
+
+  private updateEvents(deltaTime: number, elapsedTime: number, currentNode: ResolvedGamePathNode) {
+    const bossUpdate = this.boss.update(deltaTime, elapsedTime, this.playerPosition);
+    if (bossUpdate.playerHit) {
+      this.failRun();
+    }
+
+    if (this.boss.isWeakPointPhase()) {
+      const weakNode = this.findVisibleWeakPoint();
+      if (weakNode) {
+        this.boss.setWeakPoint(new THREE.Vector3(weakNode.resolvedX, weakNode.resolvedY, weakNode.resolvedZ));
+      }
+    }
+
+    if (this.state === 'upgrade_acquired' && elapsedTime >= this.eventCooldownUntil) {
+      this.state = this.playerState === 'airborne' ? 'running_airborne' : this.chargeActive ? 'running_charging' : 'running_attached';
+    }
+
+    this.updateAutoFire(elapsedTime);
+    this.shop.update(new THREE.Vector3(currentNode.resolvedX, currentNode.resolvedY, currentNode.resolvedZ), currentNode.gameplayRadius + 0.7, elapsedTime);
+  }
+
+  private updateCamera(deltaTime: number, currentNode: ResolvedGamePathNode, nextNode: ResolvedGamePathNode) {
+    const largeShardFactor = clamp((currentNode.visualScale - 2.8) / 28, 0, 1.2);
+    const milestoneZoom = currentNode.isGigantic ? 9.2 : 0;
+    const choiceZoom = this.choiceMode === 'reward_branch' ? 5.8 : this.choiceMode === 'shop_orbit' ? 2.4 : this.state === 'upgrade_acquired' ? 1.8 : 0;
+    const bossZoom = this.boss.getCameraZoomOffset();
+    const speedPressure = (this.boss.isActive() ? this.boss.getSpeedPressure() : 1) * this.momentum.speedMultiplier;
+    this.camera.update({
+      deltaTime,
+      state: this.state,
+      score: this.score,
+      currentNode,
+      nextNode,
+      playerPosition: this.playerPosition,
+      momentumGauge: clamp(this.momentum.gauge, 0, 1),
+      largeShardFactor,
+      milestoneZoom,
+      choiceZoom,
+      bossZoom,
+      speedPressure: speedPressure * (1 - this.runUpgrades.modifiers.timeSlowFactor * 0.55)
+    });
+  }
+
+  private updateTrail(deltaTime: number) {
+    void deltaTime;
+    for (let index = this.trailPoints.length - 1; index > 0; index -= 1) {
+      this.trailPoints[index].copy(this.trailPoints[index - 1]);
+    }
+    this.trailPoints[0].copy(this.playerPosition);
+    this.trailPoints.forEach((point, index) => {
+      this.trailBuffer[index * 3] = point.x;
+      this.trailBuffer[index * 3 + 1] = point.y;
+      this.trailBuffer[index * 3 + 2] = point.z;
+    });
+    const geometry = this.playerTrail.geometry.getAttribute('position');
+    geometry.needsUpdate = true;
+    this.playerTrail.material.opacity = 0.24 + this.momentum.gauge * 0.36;
+  }
+
+  private syncPlayerVisual(elapsedTime: number) {
+    this.player.position.copy(this.playerPosition);
+    const heading = Math.atan2(this.playerVelocity.y || 0.001, this.playerVelocity.x || 0.001);
+    this.player.rotation.z = heading;
+    this.playerBody.scale.setScalar(1 + this.momentum.gauge * 0.12 + Math.sin(elapsedTime * 8) * 0.02);
+  }
+
+  private syncMarkers(elapsedTime: number) {
+    const visibleNodes = this.getDisplayNodes(14);
+    const coinMarkers: CoinMarker[] = [];
+    const enemyMarkers: EnemyMarker[] = [];
+
+    visibleNodes.forEach((node) => {
+      node.coinSlots.forEach((slot) => {
+        if (slot.collected) return;
+        coinMarkers.push({
+          position: this.getCoinWorldPosition(node, slot.angle, slot.orbitScale),
+          scale: 0.74 + slot.value * 0.08,
+          visible: true
+        });
+      });
+      if (node.enemySlot?.alive) {
+        enemyMarkers.push({
+          position: this.getEnemyWorldPosition(node, node.enemySlot.pole),
+          visible: true,
+          tier: node.enemySlot.tier
+        });
+      }
+    });
+
+    this.coins.setVisible(this.state !== 'idle' && this.state !== 'transition_out');
+    this.enemies.setVisible(this.state !== 'idle' && this.state !== 'transition_out');
+    this.coins.update(coinMarkers, elapsedTime);
+    this.enemies.update(enemyMarkers, elapsedTime);
+  }
+
+  private fillMomentumBurst(amount: number) {
+    this.momentum.gauge = clamp(this.momentum.gauge + amount * (1 + this.runUpgrades.modifiers.momentumGain), 0, Math.max(1, this.runUpgrades.modifiers.momentumCap));
+    this.momentum.fillRate = Math.max(this.momentum.fillRate, amount);
+  }
+
+  private collectCoinsOnCurrentNode(node: ResolvedGamePathNode) {
+    node.coinSlots.forEach((slot) => {
+      if (slot.collected) return;
+      if (Math.abs(shortestAngleDistance(this.orbitAngle, slot.angle)) < 0.16 + this.runUpgrades.modifiers.coinMagnet * 0.08) {
+        slot.collected = true;
+        this.stats.addCoins(this.applyCoinBonus(slot.value));
+      }
+    });
+  }
+
+  private resolveEnemyContact(node: ResolvedGamePathNode) {
+    const enemy = node.enemySlot;
+    if (!enemy || !enemy.alive) return;
+    const enemyPosition = this.getEnemyWorldPosition(node, enemy.pole);
+    if (enemyPosition.distanceTo(this.playerPosition) > node.gameplayRadius * 0.36 + 0.82) {
+      return;
+    }
+    const impactSpeed = this.playerVelocity.length();
+    if (impactSpeed >= enemy.speedThreshold || this.runUpgrades.modifiers.spikeOrbit) {
+      enemy.alive = false;
+      this.stats.addCoins(this.applyCoinBonus(enemy.rewardCoins));
+      this.fillMomentumBurst(0.05);
+      return;
+    }
+    this.consumeProtectionOrFail();
+  }
+
+  private resolveAirborneEnemyContact(currentNode: ResolvedGamePathNode) {
+    for (let index = this.attachedIndex + 1; index <= this.attachedIndex + 4; index += 1) {
+      const node = this.getResolvedNode(index);
+      const enemy = node.enemySlot;
+      if (!enemy || !enemy.alive) continue;
+      const enemyPosition = this.getEnemyWorldPosition(node, enemy.pole);
+      if (enemyPosition.distanceTo(this.playerPosition) > 1.2) continue;
+      const speed = this.playerVelocity.length();
+      if (speed >= enemy.speedThreshold * 0.75 || node === currentNode) {
+        enemy.alive = false;
+        this.stats.addCoins(this.applyCoinBonus(enemy.rewardCoins));
+        this.fillMomentumBurst(0.08);
+      } else {
+        this.consumeProtectionOrFail();
+      }
+      return;
+    }
+  }
+
+  private consumeProtectionOrFail() {
+    if (this.shieldCharges > 0) {
+      this.shieldCharges -= 1;
+      this.fillMomentumBurst(0.04);
+      return;
+    }
+    this.failRun();
+  }
+
+  private updateAutoFire(elapsedTime: number) {
+    if (this.runUpgrades.modifiers.autoCannonLevel <= 0) return;
+    if (elapsedTime < this.autoFireReadyAt) return;
+
+    for (let index = this.attachedIndex; index < this.attachedIndex + 8; index += 1) {
+      const node = this.getResolvedNode(index);
+      const enemy = node.enemySlot;
+      if (!enemy || !enemy.alive || enemy.tier === 'invincible') continue;
+      const position = this.getEnemyWorldPosition(node, enemy.pole);
+      if (position.distanceTo(this.playerPosition) > 8.2) continue;
+      enemy.alive = false;
+      this.stats.addCoins(this.applyCoinBonus(enemy.rewardCoins));
+      this.fillMomentumBurst(0.04 + this.runUpgrades.modifiers.autoCannonLevel * 0.01);
+      this.autoFireReadyAt = elapsedTime + Math.max(2.2, 5 - this.runUpgrades.modifiers.autoCannonLevel * 1.1);
+      return;
+    }
+  }
+
+  private applyCoinBonus(baseValue: number) {
+    const doubled = this.runUpgrades.modifiers.doubleCoin ? baseValue * 2 : baseValue;
+    return Math.max(1, Math.round(doubled * (1 + this.runUpgrades.modifiers.coinBonus)));
+  }
+
+  private failRun() {
+    if (this.state === 'game_over') return;
+    this.state = 'game_over';
+    this.chargeActive = false;
+    this.choiceMode = 'none';
+    this.activeChoices = [];
+    this.shop.reset();
+    this.emitScore();
+  }
+
+  private canCaptureNode(node: ResolvedGamePathNode) {
+    const captureRadius = node.gameplayRadius + PLAYER_CAPTURE_PADDING + this.runUpgrades.modifiers.captureRadius;
+    const dx = this.playerPosition.x - node.resolvedX;
+    const dy = this.playerPosition.y - node.resolvedY;
+    return dx * dx + dy * dy <= captureRadius * captureRadius;
+  }
+
+  private findBestOrbitAttachment(node: ResolvedGamePathNode, worldPosition: THREE.Vector3) {
+    let bestAngle = 0;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    let bestPosition = new THREE.Vector2();
+    let bestTangent = new THREE.Vector2(1, 0);
+
+    for (let step = 0; step < 72; step += 1) {
+      const angle = (step / 72) * Math.PI * 2;
+      const sample = this.getOrbitSample(node, angle);
+      const worldX = node.resolvedX + sample.position.x;
+      const worldY = node.resolvedY + sample.position.y;
+      const distance = (worldPosition.x - worldX) ** 2 + (worldPosition.y - worldY) ** 2;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestAngle = angle;
+        bestPosition = sample.position.clone();
+        bestTangent = sample.tangent.clone();
+      }
+    }
+
+    return {
+      angle: bestAngle,
+      position: bestPosition,
+      tangent: bestTangent
+    };
+  }
+
+  private getOrbitSample(node: ResolvedGamePathNode, angle: number): OrbitSample {
+    const parameter = wrapAngle(angle);
+    const rotation = node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase;
+    const baseRadius = node.gameplayRadius + PLAYER_CAPTURE_PADDING;
+
     if (node.shapeKind === 'oval') {
-      const localRelative = relative.clone().applyAxisAngle(new THREE.Vector3(0, 0, 1), -this.getShapeOrientation(node));
-      const rx = radius * Math.max(1.15, node.visualStretch.x);
-      const ry = radius * Math.max(0.8, node.visualStretch.y);
-      return Math.atan2(localRelative.y / Math.max(0.001, ry), localRelative.x / Math.max(0.001, rx));
+      const rx = baseRadius * 1.46;
+      const ry = baseRadius * 0.84;
+      const position = new THREE.Vector2(Math.cos(parameter) * rx, Math.sin(parameter) * ry);
+      const tangent = new THREE.Vector2(-Math.sin(parameter) * rx, Math.cos(parameter) * ry).normalize();
+      return this.rotateOrbitSample(position, tangent, rotation);
     }
 
     if (node.shapeKind === 'triangular') {
-      const localRelative = relative.clone().applyAxisAngle(new THREE.Vector3(0, 0, 1), -this.getShapeOrientation(node));
-      const triangleRadius = radius * 1.12;
-      const points = [
-        new THREE.Vector3(0, triangleRadius, 0),
-        new THREE.Vector3(-triangleRadius * 0.92, -triangleRadius * 0.56, 0),
-        new THREE.Vector3(triangleRadius * 0.92, -triangleRadius * 0.56, 0)
+      const radius = baseRadius * 1.18;
+      const vertices = [
+        new THREE.Vector2(0, radius * 1.2),
+        new THREE.Vector2(-radius * 1.04, -radius * 0.86),
+        new THREE.Vector2(radius * 1.04, -radius * 0.86)
       ];
-
-      let bestPhase = 0;
-      let bestDistance = Number.POSITIVE_INFINITY;
-
-      for (let segmentIndex = 0; segmentIndex < 3; segmentIndex += 1) {
-        const from = points[segmentIndex];
-        const to = points[(segmentIndex + 1) % 3];
-        const edge = this.scratchVector.copy(to).sub(from);
-        const pointVector = this.scratchVectorB.copy(localRelative).sub(from);
-        const edgeLengthSq = Math.max(0.0001, edge.lengthSq());
-        const localT = clamp(pointVector.dot(edge) / edgeLengthSq, 0, 1);
-        const closest = this.scratchVectorC.copy(from).addScaledVector(edge, localT);
-        const distance = closest.distanceToSquared(localRelative);
-
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          bestPhase = ((segmentIndex + localT) / 3) * Math.PI * 2;
-        }
-      }
-
-      return bestPhase;
+      const normalized = parameter / (Math.PI * 2);
+      const segmentFloat = normalized * 3;
+      const segment = Math.floor(segmentFloat) % 3;
+      const localT = segmentFloat - Math.floor(segmentFloat);
+      const start = vertices[segment]!;
+      const end = vertices[(segment + 1) % 3]!;
+      const position = start.clone().lerp(end, localT);
+      const tangent = end.clone().sub(start).normalize();
+      return this.rotateOrbitSample(position, tangent, rotation);
     }
 
-    return Math.atan2(relative.y, relative.x);
+    const position = new THREE.Vector2(Math.cos(parameter) * baseRadius, Math.sin(parameter) * baseRadius);
+    const tangent = new THREE.Vector2(-Math.sin(parameter), Math.cos(parameter));
+    return this.rotateOrbitSample(position, tangent, 0);
   }
 
-  private getShapeOrientation(node: ResolvedGamePathNode) {
-    if (node.shapeKind === 'round') {
-      return 0;
+  private rotateOrbitSample(position: THREE.Vector2, tangent: THREE.Vector2, rotation: number): OrbitSample {
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    return {
+      position: new THREE.Vector2(position.x * cos - position.y * sin, position.x * sin + position.y * cos),
+      tangent: new THREE.Vector2(tangent.x * cos - tangent.y * sin, tangent.x * sin + tangent.y * cos).normalize()
+    };
+  }
+
+  private getCoinWorldPosition(node: ResolvedGamePathNode, angle: number, orbitScale: number) {
+    const orbit = this.getOrbitSample(node, angle);
+    return new THREE.Vector3(
+      node.resolvedX + orbit.position.x * orbitScale,
+      node.resolvedY + orbit.position.y * orbitScale,
+      node.resolvedZ
+    );
+  }
+
+  private getEnemyWorldPosition(node: ResolvedGamePathNode, pole: 'north' | 'south') {
+    const local = new THREE.Vector2(0, (pole === 'north' ? 1 : -1) * (node.gameplayRadius + 0.58));
+    const rotation = node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase;
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    return new THREE.Vector3(
+      node.resolvedX + local.x * cos - local.y * sin,
+      node.resolvedY + local.x * sin + local.y * cos,
+      node.resolvedZ
+    );
+  }
+
+  private getBranchHints(): BranchLabelHint[] {
+    if (this.choiceMode === 'reward_branch') {
+      return this.activeChoices.slice(0, 3).map((choice, index) => {
+        const preview = choice.previewNodes[0] ?? choice.entry;
+        return {
+          slot: index as 0 | 1 | 2,
+          offer: choice.offer,
+          worldPosition: new THREE.Vector3(preview.x, preview.y + (index === 1 ? 2.4 : index === 0 ? 3.2 : -3.2), preview.z),
+          mode: 'reward_branch'
+        };
+      });
     }
 
-    const direction = node.spinDirection === 'cw' ? -1 : 1;
-    return node.motionSeed + this.currentTime * node.spinSpeed * 0.42 * direction;
+    if (this.choiceMode === 'shop_orbit' && this.activeChoices.length > 0) {
+      const node = this.getResolvedNode(this.attachedIndex);
+      return this.activeChoices.slice(0, 3).map((choice, index) => {
+        const angle = this.activeShopAngles[index] ?? 0;
+        const radius = node.gameplayRadius + 2.1;
+        return {
+          slot: index as 0 | 1 | 2,
+          offer: choice.offer,
+          worldPosition: new THREE.Vector3(
+            node.resolvedX + Math.cos(angle) * radius,
+            node.resolvedY + Math.sin(angle) * radius,
+            node.resolvedZ
+          ),
+          mode: 'shop_orbit',
+          price: choice.price
+        };
+      });
+    }
+
+    return [];
+  }
+
+  private findVisibleWeakPoint() {
+    for (let index = this.attachedIndex + 1; index < this.attachedIndex + 18; index += 1) {
+      const node = this.getResolvedNode(index);
+      if (node.eventType === 'boss_weak') {
+        return node;
+      }
+    }
+    return null;
   }
 }

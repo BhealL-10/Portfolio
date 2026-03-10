@@ -33,18 +33,18 @@ describe('buildUpgradeOffers', () => {
 
   it('filters non stackable owned items', () => {
     let state = createRunUpgradeState();
-    state = applyItemToRunState(state, 'double_jump');
+    state = applyItemToRunState(state, 'double_jump_module');
     const offers = buildUpgradeOffers(60, state, () => 0.1);
-    expect(offers.some((offer) => offer.item.id === 'double_jump')).toBe(false);
+    expect(offers.some((offer) => offer.item.id === 'double_jump_module')).toBe(false);
   });
 });
 
 describe('applyItemToRunState', () => {
   it('stacks passive modifiers and clamps them', () => {
     let state = createRunUpgradeState();
-    state = applyItemToRunState(state, 'light_momentum');
-    state = applyItemToRunState(state, 'light_momentum');
-    expect(state.modifiers.chargeRate).toBeGreaterThan(1);
-    expect(state.counts.light_momentum).toBe(2);
+    state = applyItemToRunState(state, 'overdrive_core');
+    state = applyItemToRunState(state, 'overdrive_core');
+    expect(state.modifiers.momentumGain).toBeGreaterThan(0);
+    expect(state.counts.overdrive_core).toBe(2);
   });
 });

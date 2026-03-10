@@ -1,0 +1,176 @@
+import * as THREE from 'three';
+import type { ThemeMode } from '../types/content';
+import { buildUpgradeOffers, type RogueliteItemOffer, type RunUpgradeState } from './roguelite';
+import type { BranchChoice } from './gameSessionTypes';
+
+const ACCENT = '#D9624E';
+
+interface ActiveShopOffer {
+  angle: number;
+  price: number;
+  purchased: boolean;
+  offer: RogueliteItemOffer;
+}
+
+export class ShopSystem {
+  private readonly group = new THREE.Group();
+  private readonly pool: THREE.Mesh<THREE.IcosahedronGeometry, THREE.MeshBasicMaterial>[] = [];
+  private activeOffers: ActiveShopOffer[] = [];
+  private open = false;
+
+  constructor(scene: THREE.Scene, theme: ThemeMode) {
+    const color = new THREE.Color(theme === 'dark' ? ACCENT : '#8E4130');
+    for (let index = 0; index < 3; index += 1) {
+      const mesh = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(0.34, 0),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.94 })
+      );
+      mesh.visible = false;
+      this.pool.push(mesh);
+      this.group.add(mesh);
+    }
+    this.group.visible = false;
+    scene.add(this.group);
+  }
+
+  setTheme(theme: ThemeMode) {
+    const color = new THREE.Color(theme === 'dark' ? ACCENT : '#8E4130');
+    this.pool.forEach((mesh) => mesh.material.color.copy(color));
+  }
+
+  reset() {
+    this.open = false;
+    this.activeOffers = [];
+    this.group.visible = false;
+    this.pool.forEach((mesh) => {
+      mesh.visible = false;
+    });
+  }
+
+  openForRun(score: number, runState: RunUpgradeState) {
+    const discount = Math.max(0, Math.min(0.45, runState.modifiers.shopDiscount));
+    const offers = buildUpgradeOffers(score, runState);
+    this.activeOffers = offers.slice(0, 3).map((offer, index) => ({
+      angle: Math.PI * (0.2 + index * 0.55),
+      price: this.getPriceForOffer(offer, discount),
+      purchased: false,
+      offer
+    }));
+    this.open = this.activeOffers.length > 0;
+    this.group.visible = this.open;
+    return offers;
+  }
+
+  isOpen() {
+    return this.open;
+  }
+
+  getActiveOffers() {
+    return this.activeOffers.map((offer) => ({
+      offer: offer.offer,
+      price: offer.price,
+      angle: offer.angle,
+      purchased: offer.purchased
+    }));
+  }
+
+  getHints(worldPositions: THREE.Vector3[]): BranchChoice[] {
+    return this.activeOffers.map((activeOffer, index) => ({
+      mode: 'shop_orbit',
+      offer: activeOffer.offer,
+      price: activeOffer.price,
+      entry: {
+        index,
+        x: worldPositions[index]?.x ?? 0,
+        y: worldPositions[index]?.y ?? 0,
+        z: worldPositions[index]?.z ?? 0,
+        gameplayRadius: 0.5,
+        visualScale: 0.5,
+        pathDistance: 0,
+        direction: 'right',
+        kind: 'event',
+        sizeTier: 'tiny',
+        shapeKind: 'round',
+        spinDirection: 'cw',
+        spinSpeed: 0,
+        motionPattern: 'none',
+        eventType: 'shop',
+        colorHint: 'accent',
+        gameplayOrbitPeriod: 1,
+        branchSlot: index as 0 | 1 | 2,
+        offerId: activeOffer.offer.item.id,
+        onboarding: false,
+        isMilestone: false,
+        isGigantic: false,
+        coinSlots: [],
+        enemySlot: null,
+        motionSeed: 0,
+        visualStretch: { x: 1, y: 1, z: 1 }
+      },
+      previewNodes: [],
+      pathNodes: []
+    }));
+  }
+
+  tryPurchase(currentAngle: number, coins: number) {
+    if (!this.open) return null;
+
+    for (const offer of this.activeOffers) {
+      if (offer.purchased) continue;
+      const delta = shortestAngleDistance(currentAngle, offer.angle);
+      if (delta < 0.22 && coins >= offer.price) {
+        offer.purchased = true;
+        this.close();
+        return {
+          offer: offer.offer,
+          price: offer.price
+        };
+      }
+    }
+
+    return null;
+  }
+
+  update(center: THREE.Vector3, radius: number, elapsedTime: number) {
+    if (!this.open) {
+      this.group.visible = false;
+      return;
+    }
+
+    this.group.visible = true;
+    this.pool.forEach((mesh, index) => {
+      const offer = this.activeOffers[index];
+      if (!offer || offer.purchased) {
+        mesh.visible = false;
+        return;
+      }
+
+      mesh.visible = true;
+      mesh.position.set(
+        center.x + Math.cos(offer.angle) * (radius + 1.6),
+        center.y + Math.sin(offer.angle) * (radius + 1.6),
+        0
+      );
+      mesh.rotation.y = elapsedTime * 1.4 + index * 0.35;
+      mesh.scale.setScalar(1 + Math.sin(elapsedTime * 3 + index) * 0.06);
+    });
+  }
+
+  private close() {
+    this.open = false;
+    this.group.visible = false;
+    this.pool.forEach((mesh) => {
+      mesh.visible = false;
+    });
+  }
+
+  private getPriceForOffer(offer: RogueliteItemOffer, discount: number) {
+    const rarityPrice = offer.item.rarity === 'legendary' ? 11 : offer.item.rarity === 'epic' ? 8 : offer.item.rarity === 'rare' ? 5 : offer.item.rarity === 'uncommon' ? 3 : 2;
+    return Math.max(1, Math.round((rarityPrice + offer.stackCount) * (1 - discount)));
+  }
+}
+
+function shortestAngleDistance(a: number, b: number) {
+  const diff = Math.abs((((a - b) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI);
+  return diff;
+}

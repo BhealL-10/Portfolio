@@ -423,7 +423,9 @@ export class OrbitWorldSystem {
       shapeKind: visual.shapeKind,
       spinDirection: visual.spinDirection,
       spinSpeed: visual.spinSpeed,
-      spinPhase: visual.spinPhase
+      spinPhase: visual.spinPhase,
+      tint: visual.tint,
+      pulse: visual.pulse
     })) : null;
   }
 
@@ -546,8 +548,15 @@ export class OrbitWorldSystem {
           entity.group.scale.x = damp(entity.group.scale.x, externalVisual.scale.x, 6, deltaTime);
           entity.group.scale.y = damp(entity.group.scale.y, externalVisual.scale.y, 6, deltaTime);
           entity.group.scale.z = damp(entity.group.scale.z, externalVisual.scale.z, 6, deltaTime);
+          if (externalVisual.tint) {
+            entity.core.material.color.set(externalVisual.tint);
+            entity.core.material.emissive.set(externalVisual.tint);
+          } else {
+            setDeformMaterialTheme(entity.core.material, this.theme);
+          }
         } else if (entity.core.geometry !== this.roundGeometry) {
           entity.core.geometry = this.roundGeometry;
+          setDeformMaterialTheme(entity.core.material, this.theme);
         }
       } else if (isDragging) {
         targetPosition = entity.dragTarget;
@@ -629,7 +638,12 @@ export class OrbitWorldSystem {
       }
 
       entity.core.material.opacity = entity.opacity;
-      entity.core.material.emissiveIntensity = 0.08 + entity.hoverAmount * 0.18 + (isActive ? 0.08 : 0) + entity.slotPulse * 0.06;
+      entity.core.material.emissiveIntensity =
+        0.08 +
+        entity.hoverAmount * 0.18 +
+        (isActive ? 0.08 : 0) +
+        entity.slotPulse * 0.06 +
+        (this.externalLayoutVisuals?.[index]?.pulse ?? 0);
       const externalShape = this.externalLayoutVisuals?.[index]?.shapeKind ?? null;
       updateDeformUniforms(entity.core.material, {
         time: elapsedTime,

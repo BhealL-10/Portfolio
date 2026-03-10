@@ -710,6 +710,10 @@ export class AppController {
     return {
       score: hudState.score,
       highscore: hudState.highscore,
+      distanceMeters: hudState.distanceMeters,
+      bestDistanceMeters: hudState.bestDistanceMeters,
+      coins: hudState.coins,
+      splitTimes: hudState.splitTimes,
       chargeRatio: hudState.chargeRatio,
       momentumGauge: hudState.momentumGauge,
       momentumTier: hudState.momentumTier,
@@ -720,14 +724,25 @@ export class AppController {
         offer: typeof hudState.branchHints[number]['offer'];
         screenX: number;
         screenY: number;
-      }>>((acc, hint) => {
+        mode?: typeof hudState.branchHints[number]['mode'];
+        price?: number;
+      }>>((acc: Array<{
+        slot: 0 | 1 | 2;
+        offer: typeof hudState.branchHints[number]['offer'];
+        screenX: number;
+        screenY: number;
+        mode?: typeof hudState.branchHints[number]['mode'];
+        price?: number;
+      }>, hint: typeof hudState.branchHints[number]) => {
         const projected = this.renderer.projectWorldToScreen(hint.worldPosition);
         if (projected.visible) {
           acc.push({
             slot: hint.slot,
             offer: hint.offer,
             screenX: projected.x,
-            screenY: projected.y
+            screenY: projected.y,
+            mode: hint.mode,
+            price: hint.price
           });
         }
         return acc;
