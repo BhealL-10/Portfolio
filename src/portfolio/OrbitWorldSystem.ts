@@ -7,7 +7,8 @@ import { SecretSlotSystem } from './SecretSlotSystem';
 import {
   createDeformMaterial,
   createFragmentedIcosahedronGeometry,
-  createFragmentedTetrahedronGeometry,
+  createFragmentedSphereGeometry,
+  createFragmentedTriangularPrismGeometry,
   setDeformMaterialTheme,
   updateDeformUniforms,
   type DeformMaterial
@@ -83,7 +84,8 @@ export class OrbitWorldSystem {
   private readonly focusTargetPosition = new THREE.Vector3(0, 0.1, 7.4);
   private readonly pivot = new THREE.Vector3(0, 0, 0);
   private readonly roundGeometry = createFragmentedIcosahedronGeometry(1.25, 4);
-  private readonly triangularGeometry = createFragmentedTetrahedronGeometry(1.42, 2);
+  private readonly ovalGeometry = createFragmentedSphereGeometry(1.18, 18, 14);
+  private readonly triangularGeometry = createFragmentedTriangularPrismGeometry(1.24, 1.48);
   private readonly constellationLines: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>[];
   private readonly gameFieldEntities: GameFieldEntity[];
   private globalOrbitTime = 0;
@@ -105,6 +107,12 @@ export class OrbitWorldSystem {
   private speedAccentId: string | null = null;
   private unlockCallbacks = new Set<() => void>();
   private readonly slotPreviewIds = new Set<string>();
+
+  private getGameGeometry(shapeKind: VisiblePlatformVisual['shapeKind'] | 'round') {
+    if (shapeKind === 'oval') return this.ovalGeometry;
+    if (shapeKind === 'triangular') return this.triangularGeometry;
+    return this.roundGeometry;
+  }
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -599,7 +607,7 @@ export class OrbitWorldSystem {
           entity.group.rotation.x = damp(entity.group.rotation.x, 0, 9, deltaTime);
           entity.group.rotation.y = damp(entity.group.rotation.y, 0, 9, deltaTime);
           entity.group.rotation.z = damp(entity.group.rotation.z, externalVisual.shapeKind === 'round' ? 0 : externalVisual.spinPhase, 8, deltaTime);
-          const geometry = externalVisual.shapeKind === 'triangular' ? this.triangularGeometry : this.roundGeometry;
+          const geometry = this.getGameGeometry(externalVisual.shapeKind);
           if (entity.core.geometry !== geometry) {
             entity.core.geometry = geometry;
           }
@@ -710,8 +718,8 @@ export class OrbitWorldSystem {
         hover: entity.hoverAmount,
         drag: entity.dragAmount,
         focus: entity.focusAmount,
-        settled: this.externalLayoutActive ? (externalShape && externalShape !== 'round' ? 1 : 0) : entity.focusAmount * 0.25,
-        snap: this.externalLayoutActive ? 0 : entity.snapped || isSlotPreview ? 0.96 + entity.slotPulse * 0.22 : 0,
+        settled: this.externalLayoutActive ? (externalShape && externalShape !== 'round' ? 0.16 : 0) : entity.focusAmount * 0.25,
+        snap: this.externalLayoutActive ? this.externalLayoutVisuals?.[index]?.fragmentAmount ?? 0 : entity.snapped || isSlotPreview ? 0.96 + entity.slotPulse * 0.22 : 0,
         orbitAngle: this.externalLayoutVisuals?.[index]?.deformAngle ?? 0,
         orbitPulse: this.externalLayoutActive ? this.externalLayoutVisuals?.[index]?.deformStrength ?? 0 : 0,
         waveDensity: this.externalLayoutActive ? this.externalLayoutVisuals?.[index]?.deformDensity ?? 0.72 : entity.snapped || isSlotPreview ? 1.56 : 0.42
@@ -811,7 +819,7 @@ export class OrbitWorldSystem {
       entity.group.scale.x = damp(entity.group.scale.x, targetScale.x, 6, deltaTime);
       entity.group.scale.y = damp(entity.group.scale.y, targetScale.y, 6, deltaTime);
       entity.group.scale.z = damp(entity.group.scale.z, targetScale.z, 6, deltaTime);
-      const geometry = shapeKind === 'triangular' ? this.triangularGeometry : this.roundGeometry;
+      const geometry = this.getGameGeometry(shapeKind);
       if (entity.core.geometry !== geometry) {
         entity.core.geometry = geometry;
       }
@@ -830,8 +838,8 @@ export class OrbitWorldSystem {
         hover: 0,
         drag: 0,
         focus: 0,
-        settled: shapeKind === 'round' ? 0 : 1,
-        snap: 0,
+        settled: shapeKind === 'round' ? 0 : 0.16,
+        snap: visual?.fragmentAmount ?? 0,
         orbitAngle: visual?.deformAngle ?? 0,
         orbitPulse: visual?.deformStrength ?? 0,
         waveDensity: visual?.deformDensity ?? 0.72

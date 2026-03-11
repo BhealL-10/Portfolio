@@ -149,8 +149,30 @@ export function createFragmentedIcosahedronGeometry(radius: number, detail: numb
   return decorateFragmentGeometry(geometry);
 }
 
+export function createFragmentedSphereGeometry(radius: number, widthSegments: number, heightSegments: number) {
+  const geometry = new THREE.SphereGeometry(radius, widthSegments, heightSegments).toNonIndexed() as FragmentedGeometry;
+  return decorateFragmentGeometry(geometry);
+}
+
 export function createFragmentedTetrahedronGeometry(radius: number, detail: number) {
   const geometry = new THREE.TetrahedronGeometry(radius, detail).toNonIndexed() as FragmentedGeometry;
+  return decorateFragmentGeometry(geometry);
+}
+
+export function createFragmentedTriangularPrismGeometry(radius: number, depth: number) {
+  const side = radius * Math.sqrt(3) * 0.5;
+  const shape = new THREE.Shape();
+  shape.moveTo(0, radius);
+  shape.lineTo(-side, -radius * 0.5);
+  shape.lineTo(side, -radius * 0.5);
+  shape.closePath();
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth,
+    steps: 1,
+    bevelEnabled: false
+  })
+    .translate(0, 0, -depth * 0.5)
+    .toNonIndexed() as FragmentedGeometry;
   return decorateFragmentGeometry(geometry);
 }
 

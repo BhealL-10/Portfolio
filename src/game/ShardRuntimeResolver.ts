@@ -1,13 +1,14 @@
 import { getDifficultyProfile } from './difficultyScaler';
 import type { GamePathNode, ResolvedGamePathNode } from './gameSessionTypes';
 
-export function getShapeOrientation(node: GamePathNode, elapsedTime: number) {
-  if (node.shapeKind === 'round') {
+export function getShapeOrientation(_node: GamePathNode, elapsedTime: number) {
+  if (_node.shapeKind === 'round') {
     return 0;
   }
 
-  const direction = node.spinDirection === 'cw' ? -1 : 1;
-  return node.motionSeed + elapsedTime * node.spinSpeed * 0.42 * direction;
+  const direction = _node.spinDirection === 'cw' ? -1 : 1;
+  const speedFactor = _node.shapeKind === 'oval' ? 0.14 : 0.22;
+  return _node.motionSeed + elapsedTime * _node.spinSpeed * speedFactor * direction;
 }
 
 export function resolveRuntimeNode(node: GamePathNode, elapsedTime: number, currentIndex: number): ResolvedGamePathNode {

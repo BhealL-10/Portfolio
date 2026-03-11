@@ -1,5 +1,11 @@
 import { clamp } from '../core/math';
 
+export const DEFAULT_COLUMN_DISTANCE = 8.9;
+
+export function pathDistanceToMeters(pathDistance: number) {
+  return pathDistance / DEFAULT_COLUMN_DISTANCE;
+}
+
 export interface DifficultyProfile {
   normalized: number;
   band: 'easy' | 'medium' | 'hard' | 'expert';
@@ -31,10 +37,10 @@ export function getDifficultyProfile(level: number): DifficultyProfile {
   return {
     normalized,
     band,
-    spacing: 8.9 + normalized * 7.8,
+    spacing: DEFAULT_COLUMN_DISTANCE + normalized * 7.8,
     movementAmplitude: 0.08 + normalized * 1.05,
     movementSpeed: 0.22 + normalized * 0.88,
-    cameraSpeed: 1.45 + normalized * 2.85,
+    cameraSpeed: 1.65 + normalized * 3.55,
     cameraCatchupSpeed: 2.6 + normalized * 2.2,
     maxJumpDistance: 17.8 + normalized * 9.2,
     maxVerticalDelta: 5.2 + normalized * 3.8,

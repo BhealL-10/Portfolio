@@ -28,7 +28,7 @@ import { resolveRuntimeNode } from './ShardRuntimeResolver';
 import { ShopSystem } from './ShopSystem';
 import { BossSystem } from './BossSystem';
 
-type PlayerMotionState = 'attached' | 'charging' | 'airborne';
+type PlayerMotionState = 'attached' | 'charging' | 'airborne' | 'dead';
 type ChoiceMode = 'none' | 'reward_branch' | 'shop_orbit';
 
 const GAME_ACCENT = '#D9624E';
@@ -127,6 +127,7 @@ export class GameSessionController {
   private acquisition: AcquisitionFeedback | null = null;
   private acquisitionStartedAt = 0;
   private acquisitionDuration = 0.9;
+  private gameOverStartedAt = 0;
   private runUpgrades: RunUpgradeState = createRunUpgradeState();
   private currentTheme: ThemeMode;
   private remainingExtraJumps = 0;
@@ -262,6 +263,7 @@ export class GameSessionController {
     this.activeShopAngles = [];
     this.acquisition = null;
     this.acquisitionStartedAt = 0;
+    this.gameOverStartedAt = 0;
     this.currentTime = 0;
     this.attachedIndex = 0;
     this.displayWindowIndices = [];
@@ -295,6 +297,7 @@ export class GameSessionController {
     this.impactWaves.clear();
     this.playerTrail.geometry.setDrawRange(0, this.trailPoints.length);
     this.trailPoints.forEach((point) => point.set(0, 0, 0));
+    this.playerBody.scale.setScalar(1);
     this.coins.reset();
     this.enemies.reset();
     this.shop.reset();
@@ -331,8 +334,14 @@ export class GameSessionController {
       const localAngle = wrapAngle(this.orbitAngle - (node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase));
       const orbitRamp = isCurrent ? (this.orbitGraceActive ? this.orbitGraceProgress : 1) : 1;
       const visualWave = this.getVisualWaveState(node);
-      const targetDensity = 1.04 + this.momentum.gauge * 0.3;
-      const liveDensity = isCurrent ? THREE.MathUtils.lerp(0.66, targetDensity, orbitRamp) : 0.62;
+      const leftEdge = this.camera.getSafeLeft();
+      const rightEdge = node.resolvedX + this.getPhysicalRadius(node);
+      const fragmentAmount = clamp(1 - (rightEdge - leftEdge) / 5.6, 0, 1);
+      const passiveStrength = node.shapeKind === 'round' ? 0.018 : node.shapeKind === 'oval' ? 0.038 : 0.048;
+      const passiveDensity = node.shapeKind === 'round' ? 0.52 : node.shapeKind === 'oval' ? 0.68 : 0.78;
+      const targetDensity = passiveDensity + 0.42 + this.momentum.gauge * 0.34;
+      const liveDensity = isCurrent ? THREE.MathUtils.lerp(passiveDensity, targetDensity, orbitRamp) : Math.max(passiveDensity, visualWave?.density ?? passiveDensity);
+      const activeStrength = passiveStrength + 0.18 + orbitRamp * 0.12 + this.momentum.gauge * 0.46;
       return {
         scale: new THREE.Vector3(
           node.visualScale * node.visualStretch.x,
@@ -355,8 +364,9 @@ export class GameSessionController {
                 : null,
         pulse: node.isMilestone || node.eventType !== 'none' ? 0.34 : clamp(this.momentum.gauge * 0.22, 0, 0.22),
         deformAngle: isCurrent ? localAngle : visualWave?.angle ?? 0,
-        deformStrength: isCurrent ? 0.32 + orbitRamp * 0.22 + this.momentum.gauge * 0.52 : visualWave?.strength ?? 0,
-        deformDensity: isCurrent ? liveDensity : visualWave?.density ?? 0.62
+        deformStrength: isCurrent ? activeStrength : Math.max(passiveStrength, visualWave?.strength ?? 0) + fragmentAmount * 0.16,
+        deformDensity: liveDensity,
+        fragmentAmount
       };
     });
   }
@@ -365,7 +375,10 @@ export class GameSessionController {
     const baseCount = this.state === 'transition_in' ? 72 : 64;
     const momentumBonus = Math.round(this.momentum.cameraZoomMultiplier * 18);
     const choiceBonus = this.choiceMode === 'reward_branch' ? 12 : this.choiceMode === 'shop_orbit' ? 8 : 0;
-    return Math.max(56, Math.min(112, baseCount + momentumBonus + choiceBonus));
+    const current = this.path.getNode(this.attachedIndex);
+    const next = this.path.getNode(this.attachedIndex + 1);
+    const visibilityBonus = current?.isGigantic || next?.isGigantic ? 18 : current?.eventType !== 'none' || next?.eventType !== 'none' ? 10 : 0;
+    return Math.max(56, Math.min(124, baseCount + momentumBonus + choiceBonus + visibilityBonus));
   }
 
   setChargeActive(active: boolean) {
@@ -461,6 +474,15 @@ export class GameSessionController {
 
     let currentNode = this.getResolvedNode(this.attachedIndex);
     let nextNode = this.getResolvedNode(this.attachedIndex + 1);
+
+    if (this.state === 'game_over') {
+      this.updateCamera(deltaTime, currentNode, nextNode);
+      this.updateTrail(deltaTime);
+      this.syncPlayerVisual(elapsedTime);
+      this.syncMarkers(elapsedTime);
+      return;
+    }
+
     const motionStartIndex = this.attachedIndex;
 
     if (this.playerState === 'airborne') {
@@ -482,10 +504,8 @@ export class GameSessionController {
     this.syncPlayerVisual(elapsedTime);
     this.syncMarkers(elapsedTime);
 
-    if (this.state !== 'game_over') {
-      if (this.isOutsidePlayableField(this.playerPosition) || this.camera.isBehindSafeLine(this.playerPosition)) {
-        this.failRun();
-      }
+    if (this.isOutsidePlayableField(this.playerPosition) || this.camera.isBehindSafeLine(this.playerPosition)) {
+      this.failRun();
     }
 
     if (this.acquisition) {
@@ -976,8 +996,12 @@ export class GameSessionController {
   }
 
   private updateCamera(deltaTime: number, currentNode: ResolvedGamePathNode, nextNode: ResolvedGamePathNode) {
-    const largeShardFactor = clamp((currentNode.visualScale - 2.8) / 28, 0, 1.2);
-    const milestoneZoom = currentNode.isGigantic ? 9.2 : 0;
+    const upcomingMilestoneFactor =
+      nextNode.isGigantic
+        ? clamp(1 - Math.max(0, nextNode.resolvedX - this.playerPosition.x) / 24, 0, 1)
+        : 0;
+    const largeShardFactor = clamp((Math.max(currentNode.visualScale, nextNode.visualScale) - 2.8) / 28, 0, 1.24);
+    const milestoneZoom = currentNode.isGigantic ? 11.6 : upcomingMilestoneFactor * 8.4;
     const choiceZoom = this.choiceMode === 'reward_branch' ? 5.8 : this.choiceMode === 'shop_orbit' ? 2.4 : this.state === 'upgrade_acquired' ? 1.8 : 0;
     const bossZoom = this.boss.getCameraZoomOffset();
     const speedPressure = (this.boss.isActive() ? this.boss.getSpeedPressure() : 1) * this.momentum.speedMultiplier;
@@ -1017,11 +1041,16 @@ export class GameSessionController {
     this.player.position.copy(this.playerPosition);
     const heading = Math.atan2(this.playerVelocity.y || 0.001, this.playerVelocity.x || 0.001);
     this.player.rotation.z = heading;
+    if (this.state === 'game_over') {
+      const collapse = clamp((elapsedTime - this.gameOverStartedAt) / 0.26, 0, 1);
+      this.playerBody.scale.setScalar(Math.max(0.02, 1 - collapse * 1.22));
+      return;
+    }
     this.playerBody.scale.setScalar(1 + this.momentum.gauge * 0.12 + Math.sin(elapsedTime * 8) * 0.02);
   }
 
   private syncMarkers(elapsedTime: number) {
-    const visibleNodes = this.getDisplayNodes(14);
+    const visibleNodes = this.getDisplayNodes(Math.min(28, this.getRecommendedVisibleCount()));
     const coinMarkers: CoinMarker[] = [];
     const enemyMarkers: EnemyMarker[] = [];
 
@@ -1135,9 +1164,16 @@ export class GameSessionController {
   private failRun() {
     if (this.state === 'game_over') return;
     this.state = 'game_over';
+    this.playerState = 'dead';
     this.chargeActive = false;
+    this.chargeMeter = 0;
     this.choiceMode = 'none';
     this.activeChoices = [];
+    this.playerVelocity.set(0, 0, 0);
+    this.playerVelocityTarget.set(0, 0, 0);
+    this.angularSpeed = 0;
+    this.gameOverStartedAt = this.currentTime;
+    this.playerTrail.visible = false;
     this.shop.reset();
     this.emitScore();
   }
@@ -1200,32 +1236,30 @@ export class GameSessionController {
   private getOrbitSample(node: ResolvedGamePathNode, angle: number): OrbitSample {
     const parameter = wrapAngle(angle);
     const rotation = node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase;
-    const baseRadius = this.getPhysicalRadius(node) + this.getOrbitClearance(node);
+    const extents = this.getShapeExtents(node);
+    const clearance = this.getOrbitClearance(node);
+    const baseRadius = this.getPhysicalRadius(node) + clearance;
     const localAngle = wrapAngle(parameter - rotation);
 
     if (node.shapeKind === 'oval') {
-      const rx = baseRadius * 1.46;
-      const ry = baseRadius * 0.84;
-      const position = new THREE.Vector2(Math.cos(parameter) * rx, Math.sin(parameter) * ry);
-      const tangent = new THREE.Vector2(-Math.sin(parameter) * rx, Math.cos(parameter) * ry).normalize();
+      const rx = extents.x + clearance;
+      const ry = extents.y + clearance;
+      const position = new THREE.Vector2(Math.cos(localAngle) * rx, Math.sin(localAngle) * ry);
+      const tangent = new THREE.Vector2(-Math.sin(localAngle) * rx, Math.cos(localAngle) * ry).normalize();
       return this.applySurfaceContour(node, localAngle, this.rotateOrbitSample(position, tangent, rotation));
     }
 
     if (node.shapeKind === 'triangular') {
-      const radius = baseRadius * 1.18;
+      const halfHeight = extents.y + clearance;
+      const halfWidth = (extents.x / Math.max(0.0001, extents.y)) * halfHeight;
       const vertices = [
-        new THREE.Vector2(0, radius * 1.2),
-        new THREE.Vector2(-radius * 1.04, -radius * 0.86),
-        new THREE.Vector2(radius * 1.04, -radius * 0.86)
+        new THREE.Vector2(0, halfHeight),
+        new THREE.Vector2(-halfWidth, -halfHeight * 0.5),
+        new THREE.Vector2(halfWidth, -halfHeight * 0.5)
       ];
-      const normalized = parameter / (Math.PI * 2);
-      const segmentFloat = normalized * 3;
-      const segment = Math.floor(segmentFloat) % 3;
-      const localT = segmentFloat - Math.floor(segmentFloat);
-      const start = vertices[segment]!;
-      const end = vertices[(segment + 1) % 3]!;
-      const position = start.clone().lerp(end, localT);
-      const tangent = end.clone().sub(start).normalize();
+      const boundary = this.sampleTriangleBoundary(vertices, localAngle);
+      const position = boundary.position;
+      const tangent = boundary.tangent;
       return this.applySurfaceContour(node, localAngle, this.rotateOrbitSample(position, tangent, rotation));
     }
 
@@ -1234,10 +1268,52 @@ export class GameSessionController {
     return this.applySurfaceContour(node, localAngle, this.rotateOrbitSample(position, tangent, 0));
   }
 
+  private getShapeExtents(node: ResolvedGamePathNode) {
+    const geometryBaseX = node.shapeKind === 'triangular' ? 1.24 * 0.866 : node.shapeKind === 'oval' ? 1.18 : 1.25;
+    const geometryBaseY = node.shapeKind === 'triangular' ? 1.24 : node.shapeKind === 'oval' ? 1.18 : 1.25;
+    return {
+      x: geometryBaseX * node.visualScale * node.visualStretch.x * 0.92,
+      y: geometryBaseY * node.visualScale * node.visualStretch.y * 0.92
+    };
+  }
+
+  private sampleTriangleBoundary(vertices: THREE.Vector2[], angle: number) {
+    const direction = new THREE.Vector2(Math.cos(angle), Math.sin(angle));
+    let bestDistance = Number.POSITIVE_INFINITY;
+    let bestPoint = vertices[0]!.clone();
+    let bestTangent = vertices[1]!.clone().sub(vertices[0]!).normalize();
+
+    for (let index = 0; index < vertices.length; index += 1) {
+      const start = vertices[index]!;
+      const end = vertices[(index + 1) % vertices.length]!;
+      const edge = end.clone().sub(start);
+      const denominator = direction.x * edge.y - direction.y * edge.x;
+      if (Math.abs(denominator) < 0.0001) {
+        continue;
+      }
+
+      const t = (start.x * edge.y - start.y * edge.x) / denominator;
+      const u = (start.x * direction.y - start.y * direction.x) / denominator;
+      if (t <= 0 || u < 0 || u > 1) {
+        continue;
+      }
+
+      if (t < bestDistance) {
+        bestDistance = t;
+        bestPoint = direction.clone().multiplyScalar(t);
+        bestTangent = edge.normalize();
+      }
+    }
+
+    return {
+      position: bestPoint,
+      tangent: bestTangent
+    };
+  }
+
   private getPhysicalRadius(node: ResolvedGamePathNode) {
-    const geometryBase = node.shapeKind === 'triangular' ? 1.42 : 1.25;
-    const stretchExtent = Math.max(node.visualStretch.x, node.visualStretch.y);
-    const renderedRadius = geometryBase * node.visualScale * stretchExtent * 0.92;
+    const extents = this.getShapeExtents(node);
+    const renderedRadius = Math.max(extents.x, extents.y);
     return Math.max(node.gameplayRadius, renderedRadius);
   }
 

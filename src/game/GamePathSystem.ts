@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { clamp } from '../core/math';
-import { getDifficultyProfile } from './difficultyScaler';
+import { getDifficultyProfile, pathDistanceToMeters } from './difficultyScaler';
 import { EventSystem } from './EventSystem';
 import type { GamePathPattern, GamePatternNodeTemplate } from './PatternLibrary';
 import { selectPattern } from './PatternSelector';
@@ -276,7 +276,7 @@ export class GamePathSystem {
       const index = previous.index + offset + 1;
       return this.buildTemplateNode(previous, index, template, pattern, scale, score);
     });
-    const candidates = this.densifyPattern(previous, rawCandidates, score);
+    const candidates = this.isolateMilestones(this.densifyPattern(previous, rawCandidates, score), previous, score);
     let basePattern: GamePathNode[];
 
     if (validatePatternPlacement(candidates, this.nodes)) {
@@ -305,15 +305,15 @@ export class GamePathSystem {
     const rawY = previous.y + template.y * scale * 1.14;
     const y = this.alignToLane(rawY, score, sizeTier, false);
     const segmentDistance = Math.hypot(x - previous.x, y - previous.y);
-    const previousDistanceMeters = previous.pathDistance * 3.2;
-    const currentDistanceMeters = (previous.pathDistance + segmentDistance) * 3.2;
+    const previousDistanceMeters = pathDistanceToMeters(previous.pathDistance);
+    const currentDistanceMeters = pathDistanceToMeters(previous.pathDistance + segmentDistance);
     const isMilestone = getCrossedUpgradeMilestone(previousDistanceMeters, currentDistanceMeters) !== null;
     const isGigantic = isMilestone;
     const resolvedSizeTier = isGigantic ? 'massive' : sizeTier;
     const resolvedSizeConfig = SIZE_TIER_CONFIG[resolvedSizeTier];
-    const gameplayRadius = isGigantic ? 10.4 + this.nextRandom() * 1.2 : resolvedSizeConfig.radius[0] + this.nextRandom() * (resolvedSizeConfig.radius[1] - resolvedSizeConfig.radius[0]);
-    const visualScale = isGigantic ? 28 + this.nextRandom() * 8 : resolvedSizeConfig.visual[0] + this.nextRandom() * (resolvedSizeConfig.visual[1] - resolvedSizeConfig.visual[0]);
-    const gameplayOrbitPeriod = isGigantic ? 10 : resolvedSizeConfig.orbitPeriod[0] + this.nextRandom() * (resolvedSizeConfig.orbitPeriod[1] - resolvedSizeConfig.orbitPeriod[0]);
+    const gameplayRadius = isGigantic ? 11.6 + this.nextRandom() * 1.8 : resolvedSizeConfig.radius[0] + this.nextRandom() * (resolvedSizeConfig.radius[1] - resolvedSizeConfig.radius[0]);
+    const visualScale = isGigantic ? 30 + this.nextRandom() * 10 : resolvedSizeConfig.visual[0] + this.nextRandom() * (resolvedSizeConfig.visual[1] - resolvedSizeConfig.visual[0]);
+    const gameplayOrbitPeriod = isGigantic ? 8.8 : resolvedSizeConfig.orbitPeriod[0] + this.nextRandom() * (resolvedSizeConfig.orbitPeriod[1] - resolvedSizeConfig.orbitPeriod[0]);
     const direction = this.directionFrom(previous.x, previous.y, x, y);
     const eventType = this.resolveEventType(index, previousDistanceMeters, currentDistanceMeters, score, template);
     const motionPattern = isGigantic ? 'none' : this.pickMotionPattern(template.motionPattern, score, shapeKind);
@@ -321,11 +321,20 @@ export class GamePathSystem {
     const spinSpeed = shapeKind === 'round' ? 0.08 + this.nextRandom() * 0.12 : 0.06 + this.nextRandom() * 0.18;
     const visualStretch =
       shapeKind === 'oval'
-        ? { x: 1.42 + this.nextRandom() * 0.42, y: 0.74 + this.nextRandom() * 0.16, z: 1 }
+        ? { x: 1.72 + this.nextRandom() * 0.38, y: 0.68 + this.nextRandom() * 0.12, z: 0.82 + this.nextRandom() * 0.1 }
         : shapeKind === 'triangular'
-          ? { x: 1, y: 1.08 + this.nextRandom() * 0.14, z: 0.84 + this.nextRandom() * 0.1 }
+          ? { x: 1.18 + this.nextRandom() * 0.18, y: 1.24 + this.nextRandom() * 0.16, z: 0.64 + this.nextRandom() * 0.12 }
           : { x: 1, y: 1, z: 1 };
     const kind = isMilestone ? 'milestone' : eventType === 'none' ? 'normal' : eventType === 'boss_weak' ? 'boss_weak' : 'event';
+    const colorHint: GamePathNode['colorHint'] =
+      isMilestone
+        ? 'accent'
+        : eventType === 'boss' || eventType === 'boss_weak'
+          ? 'danger'
+          : eventType === 'none'
+            ? 'none'
+            : 'accent';
+    const visibilityBoost = isMilestone || eventType !== 'none';
 
     return this.buildNode({
       previous,
@@ -339,7 +348,7 @@ export class GamePathSystem {
       spinDirection,
       spinSpeed,
       gameplayRadius,
-      visualScale,
+      visualScale: visibilityBoost ? visualScale * 1.08 : visualScale,
       gameplayOrbitPeriod,
       visualStretch,
       kind,
@@ -347,7 +356,7 @@ export class GamePathSystem {
       offerId: null,
       onboarding: index < 50,
       eventType,
-      colorHint: eventType === 'boss' || eventType === 'boss_weak' ? 'danger' : eventType === 'none' ? 'none' : 'accent',
+      colorHint,
       isMilestone,
       isGigantic,
       coinSlots: this.buildCoinSlots(template, eventType, score),
@@ -380,7 +389,7 @@ export class GamePathSystem {
         y,
         direction,
         sizeTier: offset % 2 === 0 ? 'small' : 'medium_small',
-        shapeKind: score >= 100 ? 'triangular' : score >= 50 ? 'oval' : 'round',
+        shapeKind: this.pickShapeKind(['round', 'oval', 'triangular'] as GameShardShapeKind[], score),
         motionPattern: profile.roundMovementUnlocked ? 'vertical' : 'none',
         spinDirection: 'cw',
         spinSpeed: 0.12,
@@ -458,7 +467,7 @@ export class GamePathSystem {
             y,
             direction: this.directionFrom(bridgePrevious.x, bridgePrevious.y, x, y),
             sizeTier,
-            shapeKind: score >= 100 ? 'triangular' : score >= 50 ? 'oval' : 'round',
+            shapeKind: this.pickShapeKind(['round', 'oval', 'triangular'] as GameShardShapeKind[], score),
             motionPattern: score >= 40 && step === insertions - 1 ? 'vertical' : 'none',
             spinDirection: this.nextRandom() < 0.5 ? 'cw' : 'ccw',
             spinSpeed: 0.1 + this.nextRandom() * 0.08,
@@ -564,7 +573,7 @@ export class GamePathSystem {
           y: companionY,
           direction: this.directionFrom(prevNode.x, prevNode.y, companionX, companionY),
           sizeTier: companionSize,
-          shapeKind: score >= 100 ? 'triangular' : score >= 50 ? 'oval' : 'round',
+          shapeKind: this.pickShapeKind(['round', 'oval', 'triangular'] as GameShardShapeKind[], score),
           motionPattern: earlyDenseWindow ? 'none' : this.nextRandom() < 0.16 ? 'vertical' : 'none',
           spinDirection: this.nextRandom() < 0.5 ? 'cw' : 'ccw',
           spinSpeed: 0.1 + this.nextRandom() * 0.08,
@@ -806,7 +815,7 @@ export class GamePathSystem {
       pole,
       tier,
       alive: true,
-      rewardCoins: tier === 'elite' ? 10 : tier === 'armored' ? 8 : tier === 'light' ? 5 + Math.floor(this.nextRandom() * 2) : 0,
+      rewardCoins: tier === 'elite' ? 10 : tier === 'armored' ? 8 + Math.floor(this.nextRandom() * 2) : tier === 'light' ? 5 + Math.floor(this.nextRandom() * 4) : 0,
       speedThreshold
     } as const;
   }
@@ -820,13 +829,59 @@ export class GamePathSystem {
   }
 
   private pickShapeKind(allowed: GameShardShapeKind[], score: number) {
+    const normalized = clamp(score / 220, 0, 1);
+    const weights: Record<GameShardShapeKind, number> = {
+      round: 0.9 - normalized * 0.22,
+      oval: 0.08 + normalized * 0.16,
+      triangular: 0.02 + normalized * 0.08
+    };
+
+    const available: GameShardShapeKind[] = allowed.length > 0 ? allowed : ['round'];
+    const total = available.reduce((sum, shape) => sum + (weights[shape] ?? 0), 0);
+    let cursor = this.nextRandom() * total;
+    for (const shape of available) {
+      cursor -= weights[shape] ?? 0;
+      if (cursor <= 0) {
+        return shape;
+      }
+    }
+    return available[0] ?? 'round';
+  }
+
+  private isolateMilestones(nodes: GamePathNode[], previous: GamePathNode, score: number) {
+    if (!nodes.some((node) => node.isMilestone)) {
+      return nodes;
+    }
+
     const profile = getDifficultyProfile(score);
-    const unlocked = allowed.filter((shape) => {
-      if (shape === 'oval' && !profile.ovalUnlocked) return false;
-      if (shape === 'triangular' && !profile.triangularUnlocked) return false;
-      return true;
+    const isolated: GamePathNode[] = [];
+
+    nodes.forEach((node, index) => {
+      let nextNode = { ...node };
+      if (nextNode.isMilestone) {
+        nextNode = {
+          ...nextNode,
+          x: Math.max(nextNode.x, (isolated[index - 1] ?? previous).x + profile.spacing * 1.9),
+          y: 0
+        };
+      }
+
+      const prior = isolated[index - 1] ?? previous;
+      if (prior.isMilestone) {
+        nextNode = {
+          ...nextNode,
+          x: Math.max(nextNode.x, prior.x + profile.spacing * 1.7)
+        };
+      }
+
+      isolated.push(nextNode);
     });
-    return unlocked[Math.floor(this.nextRandom() * unlocked.length)] ?? 'round';
+
+    const normalized: GamePathNode[] = [];
+    isolated.forEach((node, index) => {
+      normalized.push(this.reindexNode(node, previous.index + index + 1, index === 0 ? previous : normalized[index - 1]));
+    });
+    return normalized;
   }
 
   private pickMotionPattern(templatePattern: GameShardMotionPattern | undefined, score: number, shape: GameShardShapeKind) {

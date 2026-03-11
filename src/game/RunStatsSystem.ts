@@ -1,4 +1,5 @@
 import type { GameHudSnapshot } from './gameSessionTypes';
+import { pathDistanceToMeters } from './difficultyScaler';
 
 const SHARDS_KEY = 'portfolio-game-highscore';
 const DISTANCE_KEY = 'portfolio-game-best-distance';
@@ -27,7 +28,7 @@ export class RunStatsSystem {
   recordLanding(shardsLanded: number, pathDistance: number, elapsedTime: number) {
     const previousDistanceMeters = this.distanceMeters;
     this.shardsLanded = Math.max(this.shardsLanded, shardsLanded);
-    this.distanceMeters = Math.max(this.distanceMeters, pathDistance * 3.2);
+    this.distanceMeters = Math.max(this.distanceMeters, pathDistanceToMeters(pathDistance));
 
     for (const milestone of [100, 500, 1000] as const) {
       if (previousDistanceMeters >= milestone || this.distanceMeters < milestone || this.splitTimes[milestone] !== undefined) {

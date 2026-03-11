@@ -62,16 +62,19 @@ export class CameraRailController {
     } = config;
     const profile = getDifficultyProfile(score);
     const running = state === 'running_attached' || state === 'running_charging' || state === 'running_airborne';
+    const runPressure = 1 + Math.min(0.65, score / 420);
 
     if (running) {
-      this.railX += profile.cameraSpeed * speedPressure * deltaTime;
+      this.railX += profile.cameraSpeed * speedPressure * runPressure * deltaTime;
     }
 
     this.railX = Math.max(this.railX, playerPosition.x - profile.cameraLookAhead);
     const desiredX = this.railX + profile.cameraLookAhead;
     const routeY = currentNode.resolvedY * 0.64 + nextNode.resolvedY * 0.36;
     const laneFocusBias = Math.pow(momentumGauge, 0.85);
-    const desiredY = THREE.MathUtils.lerp(0, routeY, 0.28 + laneFocusBias * 0.72);
+    const playerYOffset = playerPosition.y - routeY;
+    const playerFollow = THREE.MathUtils.clamp(0.28 + Math.min(0.36, Math.abs(playerYOffset) / 12) + laneFocusBias * 0.18, 0.28, 0.64);
+    const desiredY = THREE.MathUtils.lerp(routeY, playerPosition.y, playerFollow);
 
     this.targetFocus.set(desiredX, desiredY);
     const horizontalCatchup =
@@ -80,7 +83,7 @@ export class CameraRailController {
         : Math.max(4.4, profile.cameraCatchupSpeed * 1.25);
     const nextFocusX = damp(this.currentFocus.x, this.targetFocus.x, horizontalCatchup, deltaTime);
     this.currentFocus.x = Math.max(this.currentFocus.x, playerPosition.x - 0.08, nextFocusX);
-    this.currentFocus.y = damp(this.currentFocus.y, this.targetFocus.y, 1.75 + laneFocusBias * 1.35, deltaTime);
+    this.currentFocus.y = damp(this.currentFocus.y, this.targetFocus.y, 1.95 + laneFocusBias * 1.7, deltaTime);
 
     const momentumZoom = profile.momentumZoomRange * Math.pow(momentumGauge, 0.82);
     this.targetZoom =

@@ -133,6 +133,7 @@ export interface VisiblePlatformVisual {
   deformAngle?: number;
   deformStrength?: number;
   deformDensity?: number;
+  fragmentAmount?: number;
 }
 
 export interface GameHudSnapshot {

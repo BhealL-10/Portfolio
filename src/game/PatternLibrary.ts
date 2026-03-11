@@ -21,8 +21,8 @@ export interface GamePathPattern {
 }
 
 const ALL_EVENTS: GameEventType[] = ['shop', 'treasure', 'gift', 'mini_boss', 'rare_item'];
-const ROUND_ONLY: GameShardShapeKind[] = ['round'];
-const ROUND_OVAL: GameShardShapeKind[] = ['round', 'oval'];
+const ROUND_ONLY: GameShardShapeKind[] = ['round', 'oval', 'triangular'];
+const ROUND_OVAL: GameShardShapeKind[] = ['round', 'oval', 'triangular'];
 const ALL_SHAPES: GameShardShapeKind[] = ['round', 'oval', 'triangular'];
 
 function pattern(
