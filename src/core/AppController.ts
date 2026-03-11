@@ -19,8 +19,6 @@ import { damp, wrapIndex } from './math';
 import { RenderLoop } from './RenderLoop';
 import { TransitionSystem } from './TransitionSystem';
 
-const GAME_VISIBLE_PLATFORM_COUNT = 24;
-
 export class AppController {
   private readonly content = new ContentService();
   private readonly theme = new ThemeService();
@@ -622,7 +620,7 @@ export class AppController {
     this.mode.setMode('game_transition');
     this.gameTransitionProgress = 0;
     this.game.startTransition();
-    const projectCount = this.content.getProjectCount();
+    const projectCount = this.world.getGameFieldCapacity();
     this.world.beginExternalLayoutTransition(
       this.game.getInitialPlatformPositions(projectCount),
       this.game.getInitialPlatformScales(projectCount)
@@ -644,9 +642,9 @@ export class AppController {
         this.mode.setMode('game');
         this.game.beginRun();
         this.world.setExternalLayoutPositions(
-          this.game.getVisiblePlatformPositions(GAME_VISIBLE_PLATFORM_COUNT),
-          this.game.getVisiblePlatformScales(GAME_VISIBLE_PLATFORM_COUNT),
-          this.game.getVisiblePlatformVisuals(GAME_VISIBLE_PLATFORM_COUNT)
+          this.game.getVisiblePlatformPositions(this.world.getGameFieldCapacity()),
+          this.game.getVisiblePlatformScales(this.world.getGameFieldCapacity()),
+          this.game.getVisiblePlatformVisuals(this.world.getGameFieldCapacity())
         );
         this.refreshUI();
       }
@@ -660,9 +658,9 @@ export class AppController {
     }
     this.game.restart();
     this.world.setExternalLayoutPositions(
-      this.game.getVisiblePlatformPositions(GAME_VISIBLE_PLATFORM_COUNT),
-      this.game.getVisiblePlatformScales(GAME_VISIBLE_PLATFORM_COUNT),
-      this.game.getVisiblePlatformVisuals(GAME_VISIBLE_PLATFORM_COUNT)
+      this.game.getVisiblePlatformPositions(this.world.getGameFieldCapacity()),
+      this.game.getVisiblePlatformScales(this.world.getGameFieldCapacity()),
+      this.game.getVisiblePlatformVisuals(this.world.getGameFieldCapacity())
     );
     this.refreshUI();
   }
@@ -767,9 +765,9 @@ export class AppController {
 
     if (this.mode.is('game') || this.mode.is('game_over')) {
       this.world.setExternalLayoutPositions(
-        this.game.getVisiblePlatformPositions(GAME_VISIBLE_PLATFORM_COUNT),
-        this.game.getVisiblePlatformScales(GAME_VISIBLE_PLATFORM_COUNT),
-        this.game.getVisiblePlatformVisuals(GAME_VISIBLE_PLATFORM_COUNT)
+        this.game.getVisiblePlatformPositions(this.world.getGameFieldCapacity()),
+        this.game.getVisiblePlatformScales(this.world.getGameFieldCapacity()),
+        this.game.getVisiblePlatformVisuals(this.world.getGameFieldCapacity())
       );
     }
 

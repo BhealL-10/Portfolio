@@ -58,11 +58,15 @@ interface PickResult {
 interface GameFieldEntity {
   group: THREE.Group;
   core: THREE.Mesh<THREE.BufferGeometry, DeformMaterial>;
+  anchor: THREE.Vector3;
+  orbitPhase: number;
+  orbitSpeed: number;
+  orbitRadius: number;
 }
 
 const ORBIT_CAMERA_POSITION = new THREE.Vector3(0, 0.8, 24);
 const FOCUS_CAMERA_POSITION = new THREE.Vector3(0, 0.2, 17.5);
-const GAME_FIELD_EXTRA_COUNT = 18;
+const GAME_FIELD_EXTRA_COUNT = 33;
 export class OrbitWorldSystem {
   private readonly root = new THREE.Group();
   private readonly loader = new THREE.TextureLoader();
@@ -405,6 +409,10 @@ export class OrbitWorldSystem {
     return this.entityList.map((entity) => entity.group.position.clone());
   }
 
+  getGameFieldCapacity() {
+    return this.entityList.length + this.gameFieldEntities.length;
+  }
+
   getOrbitPositions() {
     return this.entityList.map((entity, index) => this.computeOrbitTarget(entity, this.globalOrbitTime, index === this.activeIndex));
   }
@@ -707,8 +715,33 @@ export class OrbitWorldSystem {
 
   private updateGameFieldEntities(deltaTime: number, elapsedTime: number) {
     if (!this.externalLayoutActive) {
-      this.gameFieldEntities.forEach((entity) => {
-        entity.group.visible = false;
+      this.gameFieldEntities.forEach((entity, index) => {
+        const angle = entity.orbitPhase + elapsedTime * entity.orbitSpeed;
+        const targetX = entity.anchor.x + Math.cos(angle) * entity.orbitRadius;
+        const targetY = entity.anchor.y + Math.sin(angle * 0.82) * entity.orbitRadius * 0.9;
+        const targetZ = entity.anchor.z + Math.sin(angle) * entity.orbitRadius * 0.72;
+        entity.group.visible = true;
+        entity.group.position.x = damp(entity.group.position.x, targetX, 4.6, deltaTime);
+        entity.group.position.y = damp(entity.group.position.y, targetY, 4.6, deltaTime);
+        entity.group.position.z = damp(entity.group.position.z, targetZ, 4.6, deltaTime);
+        entity.group.rotation.x = damp(entity.group.rotation.x, entity.group.rotation.x + deltaTime * 0.18, 2, deltaTime);
+        entity.group.rotation.y = damp(entity.group.rotation.y, entity.group.rotation.y + deltaTime * 0.24, 2, deltaTime);
+        entity.group.rotation.z = damp(entity.group.rotation.z, entity.group.rotation.z + deltaTime * 0.14, 2, deltaTime);
+        entity.group.scale.setScalar(damp(entity.group.scale.x, 0.18 + Math.sin(elapsedTime * 1.8 + index) * 0.012, 6, deltaTime));
+        entity.core.material.opacity = this.focusedId ? 0.1 : 0.22;
+        entity.core.material.emissiveIntensity = this.focusedId ? 0.02 : 0.06;
+        setDeformMaterialTheme(entity.core.material, this.theme);
+        updateDeformUniforms(entity.core.material, {
+          time: elapsedTime,
+          hover: 0,
+          drag: 0,
+          focus: 0,
+          settled: 0,
+          snap: 0,
+          orbitAngle: angle,
+          orbitPulse: 0.08,
+          waveDensity: 0.36
+        });
       });
       return;
     }
@@ -888,11 +921,30 @@ export class OrbitWorldSystem {
     const material = createDeformMaterial(this.theme, 900 + index * 23);
     const core = new THREE.Mesh(this.roundGeometry, material);
     group.add(core);
+    const anchor = this.getGameFieldAnchor(index);
 
     return {
       group,
-      core
+      core,
+      anchor,
+      orbitPhase: index * 0.37,
+      orbitSpeed: 0.32 + (index % 7) * 0.018,
+      orbitRadius: 0.22 + (index % 4) * 0.06
     } satisfies GameFieldEntity;
+  }
+
+  private getGameFieldAnchor(index: number) {
+    const half = Math.ceil(GAME_FIELD_EXTRA_COUNT / 2);
+    const onPrimary = index < half;
+    const localIndex = onPrimary ? index : index - half;
+    const localCount = onPrimary ? half : GAME_FIELD_EXTRA_COUNT - half;
+    const progress = localCount <= 1 ? 0 : localIndex / (localCount - 1);
+    const t = progress * 2 - 1;
+    const spacingScale = 0.38 + Math.abs(t) * 0.78;
+    const x = t * 10.8;
+    const y = (onPrimary ? 1 : -1) * t * 6.6 * spacingScale;
+    const z = (onPrimary ? 1 : -1) * t * 4.2;
+    return new THREE.Vector3(x, y, z);
   }
 
   private createLogoPlanes(entity: ShardEntity) {

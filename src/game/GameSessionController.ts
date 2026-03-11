@@ -31,7 +31,6 @@ import { BossSystem } from './BossSystem';
 type PlayerMotionState = 'attached' | 'charging' | 'airborne';
 type ChoiceMode = 'none' | 'reward_branch' | 'shop_orbit';
 
-const PLAYER_CAPTURE_PADDING = 1.05;
 const GAME_ACCENT = '#D9624E';
 const DANGER_ACCENT = '#F06A5A';
 const REWARD_ACCENT = '#E8A86E';
@@ -516,7 +515,7 @@ export class GameSessionController {
     const maxAnchor = Math.max(0, this.attachedIndex - 2);
     while (this.displayAnchorIndex < maxAnchor) {
       const nextAnchorNode = this.getResolvedNode(this.displayAnchorIndex + 1);
-      const fullyPastLeftEdge = nextAnchorNode.resolvedX + nextAnchorNode.gameplayRadius + 2 < this.camera.getSafeLeft();
+      const fullyPastLeftEdge = nextAnchorNode.resolvedX + this.getPhysicalRadius(nextAnchorNode) + 5.5 < this.camera.getSafeLeft();
       if (!fullyPastLeftEdge) {
         break;
       }
@@ -1085,7 +1084,7 @@ export class GameSessionController {
   }
 
   private canCaptureNode(node: ResolvedGamePathNode) {
-    const captureRadius = node.gameplayRadius + PLAYER_CAPTURE_PADDING + this.runUpgrades.modifiers.captureRadius;
+    const captureRadius = this.getPhysicalRadius(node) + 0.92 + this.runUpgrades.modifiers.captureRadius;
     const dx = this.playerPosition.x - node.resolvedX;
     const dy = this.playerPosition.y - node.resolvedY;
     return dx * dx + dy * dy <= captureRadius * captureRadius;
@@ -1121,7 +1120,7 @@ export class GameSessionController {
   private getOrbitSample(node: ResolvedGamePathNode, angle: number): OrbitSample {
     const parameter = wrapAngle(angle);
     const rotation = node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase;
-    const baseRadius = node.gameplayRadius + PLAYER_CAPTURE_PADDING + 0.28;
+    const baseRadius = this.getPhysicalRadius(node) + this.getOrbitClearance(node);
     const localAngle = wrapAngle(parameter - rotation);
 
     if (node.shapeKind === 'oval') {
@@ -1153,6 +1152,17 @@ export class GameSessionController {
     const position = new THREE.Vector2(Math.cos(parameter) * baseRadius, Math.sin(parameter) * baseRadius);
     const tangent = new THREE.Vector2(-Math.sin(parameter), Math.cos(parameter));
     return this.applySurfaceContour(node, localAngle, this.rotateOrbitSample(position, tangent, 0));
+  }
+
+  private getPhysicalRadius(node: ResolvedGamePathNode) {
+    const geometryBase = node.shapeKind === 'triangular' ? 1.42 : 1.25;
+    const stretchExtent = Math.max(node.visualStretch.x, node.visualStretch.y);
+    const renderedRadius = geometryBase * node.visualScale * stretchExtent * 0.92;
+    return Math.max(node.gameplayRadius, renderedRadius);
+  }
+
+  private getOrbitClearance(node: ResolvedGamePathNode) {
+    return clamp(0.22 + node.visualScale * 0.035, 0.22, 0.72);
   }
 
   private applySurfaceContour(node: ResolvedGamePathNode, localAngle: number, sample: OrbitSample): OrbitSample {
@@ -1286,7 +1296,7 @@ export class GameSessionController {
 
   private getEnemyWorldPosition(node: ResolvedGamePathNode, pole: 'north' | 'south') {
     const orbit = this.getOrbitSample(node, pole === 'north' ? Math.PI * 0.5 : Math.PI * 1.5);
-    const local = orbit.position.clone().normalize().multiplyScalar(node.gameplayRadius + 0.58);
+    const local = orbit.position.clone().normalize().multiplyScalar(this.getPhysicalRadius(node) + 0.58);
     const rotation = node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase;
     const cos = Math.cos(rotation);
     const sin = Math.sin(rotation);
