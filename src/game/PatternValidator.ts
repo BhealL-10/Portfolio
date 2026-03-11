@@ -15,16 +15,17 @@ export function validatePatternPlacement(candidateNodes: GamePathNode[], existin
       const dy = candidate.y - previous.y;
       const distance = Math.hypot(dx, dy);
       const minimumDistance = getPlacementRadius(previous) + getPlacementRadius(candidate);
+      const sharedColumn = canShareVerticalColumn(previous, candidate, dx, dy, minimumDistance, profile.maxVerticalDelta);
 
       if (distance < minimumDistance || distance > profile.maxJumpDistance) {
         return false;
       }
 
-      if (Math.abs(dy) > profile.maxVerticalDelta) {
+      if (!sharedColumn && Math.abs(dy) > profile.maxVerticalDelta) {
         return false;
       }
 
-      if (candidate.x < previous.x + Math.max(2.8, candidate.gameplayRadius * 0.75)) {
+      if (!sharedColumn && candidate.x < previous.x + Math.max(2.8, candidate.gameplayRadius * 0.75)) {
         return false;
       }
     }
@@ -60,6 +61,29 @@ export function validatePatternPlacement(candidateNodes: GamePathNode[], existin
 function getPlacementRadius(node: GamePathNode) {
   const softMargin = node.gameplayRadius < 1.15 ? 0.72 : node.gameplayRadius < 1.9 ? 1.05 : 1.38;
   return node.gameplayRadius + node.visualScale * 0.14 + softMargin;
+}
+
+function canShareVerticalColumn(
+  previous: GamePathNode,
+  candidate: GamePathNode,
+  dx: number,
+  dy: number,
+  minimumDistance: number,
+  maxVerticalDelta: number
+) {
+  if (previous.isGigantic || candidate.isGigantic) return false;
+  if (isLarge(previous) || isLarge(candidate)) return false;
+
+  const sameColumnBand = Math.abs(dx) <= Math.max(2.1, minimumDistance * 0.34);
+  const verticalSpread = Math.abs(dy) >= Math.max(4.8, minimumDistance * 1.02);
+  const verticalCap = Math.abs(dy) <= maxVerticalDelta * 2.35;
+  const forwardEnough = dx >= 0.28;
+
+  return sameColumnBand && verticalSpread && verticalCap && forwardEnough;
+}
+
+function isLarge(node: GamePathNode) {
+  return node.sizeTier === 'large' || node.sizeTier === 'very_large' || node.sizeTier === 'huge' || node.sizeTier === 'massive';
 }
 
 export function validateTeleportTarget(nodes: GamePathNode[], fromIndex: number, targetIndex: number) {

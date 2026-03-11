@@ -413,6 +413,13 @@ export class OrbitWorldSystem {
     return this.entityList.length + this.gameFieldEntities.length;
   }
 
+  ensureGameFieldCapacity(totalCount: number) {
+    const requiredExtraCount = Math.max(0, totalCount - this.entityList.length);
+    while (this.gameFieldEntities.length < requiredExtraCount) {
+      this.gameFieldEntities.push(this.createGameFieldShard(this.gameFieldEntities.length));
+    }
+  }
+
   getOrbitPositions() {
     return this.entityList.map((entity, index) => this.computeOrbitTarget(entity, this.globalOrbitTime, index === this.activeIndex));
   }
@@ -727,6 +734,10 @@ export class OrbitWorldSystem {
   private updateGameFieldEntities(deltaTime: number, elapsedTime: number) {
     if (!this.externalLayoutActive) {
       this.gameFieldEntities.forEach((entity, index) => {
+        if (index >= GAME_FIELD_EXTRA_COUNT) {
+          entity.group.visible = false;
+          return;
+        }
         const angle = entity.orbitPhase + elapsedTime * entity.orbitSpeed;
         const targetX = entity.anchor.x + Math.cos(angle) * entity.orbitRadius;
         const targetY = entity.anchor.y + Math.sin(angle * 0.82) * entity.orbitRadius * 0.9;
@@ -952,6 +963,9 @@ export class OrbitWorldSystem {
   }
 
   private getGameFieldAnchor(index: number) {
+    if (index >= GAME_FIELD_EXTRA_COUNT) {
+      return new THREE.Vector3(0, 0, 0);
+    }
     const half = Math.ceil(GAME_FIELD_EXTRA_COUNT / 2);
     const onPrimary = index < half;
     const localIndex = onPrimary ? index : index - half;

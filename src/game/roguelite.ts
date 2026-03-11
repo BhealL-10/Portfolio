@@ -760,15 +760,25 @@ function allowedRaritiesForScore(score: number): RogueliteRarity[] {
   return ['common', 'uncommon', 'rare', 'epic', 'legendary'];
 }
 
-export function getNextUpgradeMilestone(score: number) {
-  if (score < 10) return 10;
-  if (score < 50) return 50;
-  if (score < 100) return 100;
-  return Math.ceil((score + 1) / 100) * 100;
+export function getNextUpgradeMilestone(distanceMeters: number) {
+  if (distanceMeters < 100) return 100;
+  if (distanceMeters < 500) return 500;
+  if (distanceMeters < 1000) return 1000;
+  return Math.floor(distanceMeters / 1000) * 1000 + 1000;
 }
 
-export function isUpgradeMilestone(score: number) {
-  return score === 10 || score === 50 || score === 100 || (score > 100 && score % 100 === 0);
+export function isUpgradeMilestone(distanceMeters: number) {
+  return (
+    distanceMeters === 100 ||
+    distanceMeters === 500 ||
+    distanceMeters === 1000 ||
+    (distanceMeters > 1000 && distanceMeters % 1000 === 0)
+  );
+}
+
+export function getCrossedUpgradeMilestone(previousDistanceMeters: number, currentDistanceMeters: number) {
+  const milestone = getNextUpgradeMilestone(previousDistanceMeters);
+  return currentDistanceMeters >= milestone ? milestone : null;
 }
 
 export function buildUpgradeOffers(score: number, runState: RunUpgradeState, rng = Math.random): RogueliteItemOffer[] {

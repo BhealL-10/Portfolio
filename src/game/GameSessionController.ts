@@ -33,7 +33,6 @@ type ChoiceMode = 'none' | 'reward_branch' | 'shop_orbit';
 
 const GAME_ACCENT = '#D9624E';
 const DANGER_ACCENT = '#F06A5A';
-const REWARD_ACCENT = '#E8A86E';
 
 function wrapAngle(angle: number) {
   const tau = Math.PI * 2;
@@ -129,6 +128,7 @@ export class GameSessionController {
   private acquisitionStartedAt = 0;
   private acquisitionDuration = 0.9;
   private runUpgrades: RunUpgradeState = createRunUpgradeState();
+  private currentTheme: ThemeMode;
   private remainingExtraJumps = 0;
   private phaseJumpReadyAt = 0;
   private teleportReadyAt = 0;
@@ -138,6 +138,7 @@ export class GameSessionController {
   private autoFireReadyAt = 0;
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
+    this.currentTheme = theme;
     this.playerBody = new THREE.Mesh(
       new THREE.ConeGeometry(0.42, 1.18, 6),
       new THREE.MeshBasicMaterial({ color: theme === 'dark' ? '#D4BF9B' : '#393F4A' })
@@ -180,6 +181,7 @@ export class GameSessionController {
   }
 
   setTheme(theme: ThemeMode) {
+    this.currentTheme = theme;
     this.playerBody.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A');
     this.playerTrail.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A');
     this.coins.setTheme(theme);
@@ -343,7 +345,9 @@ export class GameSessionController {
           node.colorHint === 'danger'
             ? DANGER_ACCENT
             : node.colorHint === 'reward'
-              ? REWARD_ACCENT
+              ? this.currentTheme === 'dark'
+                ? '#393F4A'
+                : '#D4BF9B'
               : node.colorHint === 'accent'
                 ? GAME_ACCENT
                 : null,
@@ -353,6 +357,13 @@ export class GameSessionController {
         deformDensity: isCurrent ? liveDensity : visualWave?.density ?? 0.62
       };
     });
+  }
+
+  getRecommendedVisibleCount() {
+    const baseCount = this.state === 'transition_in' ? 72 : 64;
+    const momentumBonus = Math.round(this.momentum.cameraZoomMultiplier * 18);
+    const choiceBonus = this.choiceMode === 'reward_branch' ? 12 : this.choiceMode === 'shop_orbit' ? 8 : 0;
+    return Math.max(56, Math.min(112, baseCount + momentumBonus + choiceBonus));
   }
 
   setChargeActive(active: boolean) {
@@ -524,10 +535,6 @@ export class GameSessionController {
 
     for (let slot = 0; slot < this.displayWindowIndices.length; slot += 1) {
       const nodeIndex = this.displayWindowIndices[slot]!;
-      if (nodeIndex >= this.attachedIndex - 1) {
-        continue;
-      }
-
       const node = this.getResolvedNode(nodeIndex);
       const fullyPastLeftEdge = node.resolvedX + this.getPhysicalRadius(node) + 5.5 < this.camera.getSafeLeft();
       if (!fullyPastLeftEdge) {
@@ -535,6 +542,11 @@ export class GameSessionController {
       }
 
       this.path.ensureAhead(this.displayNextIndex + 1);
+      const replacement = this.getResolvedNode(this.displayNextIndex);
+      const spawnsOffscreenRight = replacement.resolvedX - this.getPhysicalRadius(replacement) > this.camera.getSafeRight() + 2.8;
+      if (!spawnsOffscreenRight) {
+        continue;
+      }
       this.displayWindowIndices[slot] = this.displayNextIndex;
       this.displayNextIndex += 1;
     }
@@ -639,6 +651,7 @@ export class GameSessionController {
   }
 
   private updateAirborne(deltaTime: number, currentNode: ResolvedGamePathNode) {
+    const previousPosition = this.scratchVector.set(this.playerPosition.x, this.playerPosition.y, this.playerPosition.z);
     const gravityScale = clamp(1 - this.runUpgrades.modifiers.glideFactor * 0.55, 0.18, 1);
     this.playerVelocity.y -= 6.8 * gravityScale * deltaTime;
     this.playerVelocity.x += this.runUpgrades.modifiers.airControl * deltaTime * 0.4;
@@ -649,7 +662,7 @@ export class GameSessionController {
         const choice = this.activeChoices[index];
         if (!choice) continue;
         const entry = resolveRuntimeNode(choice.entry, this.currentTime, this.attachedIndex);
-        if (this.canCaptureNode(entry)) {
+        if (this.canCaptureNode(entry, previousPosition)) {
           this.commitRewardBranch(index, false);
           this.attachToNode(this.attachedIndex + 1, true, this.playerPosition, this.playerVelocity);
           return;
@@ -657,10 +670,13 @@ export class GameSessionController {
       }
     }
 
-    const searchLimit = Math.min(this.attachedIndex + 8, this.attachedIndex + 1 + 8);
+    const searchLimit = this.attachedIndex + Math.max(24, this.displayWindowIndices.length + 8);
     for (let index = this.attachedIndex + 1; index <= searchLimit; index += 1) {
       const node = this.getResolvedNode(index);
-      if (this.canCaptureNode(node)) {
+      if (node.resolvedX - previousPosition.x > 64) {
+        break;
+      }
+      if (this.canCaptureNode(node, previousPosition)) {
         this.attachToNode(index, true, this.playerPosition, this.playerVelocity);
         return;
       }
@@ -1117,11 +1133,27 @@ export class GameSessionController {
     this.emitScore();
   }
 
-  private canCaptureNode(node: ResolvedGamePathNode) {
+  private canCaptureNode(node: ResolvedGamePathNode, previousPosition?: THREE.Vector3) {
     const captureRadius = this.getPhysicalRadius(node) + 0.92 + this.runUpgrades.modifiers.captureRadius;
     const dx = this.playerPosition.x - node.resolvedX;
     const dy = this.playerPosition.y - node.resolvedY;
-    return dx * dx + dy * dy <= captureRadius * captureRadius;
+    const instantHit = dx * dx + dy * dy <= captureRadius * captureRadius;
+    if (instantHit || !previousPosition) {
+      return instantHit;
+    }
+
+    const ax = previousPosition.x - node.resolvedX;
+    const ay = previousPosition.y - node.resolvedY;
+    const bx = this.playerPosition.x - previousPosition.x;
+    const by = this.playerPosition.y - previousPosition.y;
+    const segmentLengthSq = bx * bx + by * by;
+    if (segmentLengthSq <= 0.0001) {
+      return false;
+    }
+    const t = clamp(-(ax * bx + ay * by) / segmentLengthSq, 0, 1);
+    const closestX = ax + bx * t;
+    const closestY = ay + by * t;
+    return closestX * closestX + closestY * closestY <= captureRadius * captureRadius;
   }
 
   private findBestOrbitAttachment(node: ResolvedGamePathNode, worldPosition: THREE.Vector3) {

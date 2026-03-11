@@ -13,6 +13,7 @@ export class CameraRailController {
   private targetZoom = 18.8;
   private railX = -12;
   private safeLeft = -Infinity;
+  private safeRight = Infinity;
   private safeTop = Infinity;
   private safeBottom = -Infinity;
   private readonly fov = 42;
@@ -26,6 +27,7 @@ export class CameraRailController {
     this.position.set(this.currentFocus.x - CameraRailController.CAMERA_CENTER_OFFSET, node.resolvedY + 0.18, this.currentZoom);
     this.lookAt.set(this.currentFocus.x, node.resolvedY, 0);
     this.safeLeft = -Infinity;
+    this.safeRight = Infinity;
     this.safeTop = Infinity;
     this.safeBottom = -Infinity;
   }
@@ -97,6 +99,7 @@ export class CameraRailController {
     const halfHeight = Math.tan(THREE.MathUtils.degToRad(this.fov * 0.5)) * this.currentZoom;
     const halfWidth = halfHeight * aspect;
     this.safeLeft = this.lookAt.x - halfWidth * 0.94;
+    this.safeRight = this.lookAt.x + halfWidth * 0.94;
     this.safeTop = this.lookAt.y + halfHeight * 0.94;
     this.safeBottom = this.lookAt.y - halfHeight * 0.94;
   }
@@ -124,5 +127,9 @@ export class CameraRailController {
 
   getSafeLeft() {
     return this.safeLeft;
+  }
+
+  getSafeRight() {
+    return this.safeRight;
   }
 }

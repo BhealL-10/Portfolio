@@ -17,7 +17,7 @@ interface GameHUDPayload {
   distanceMeters: number;
   bestDistanceMeters: number;
   coins: number;
-  splitTimes: Partial<Record<10 | 50 | 100, number>>;
+  splitTimes: Partial<Record<100 | 500 | 1000, number>>;
   chargeRatio: number;
   momentumGauge: number;
   momentumTier: number;
@@ -257,9 +257,9 @@ export class GameHUDSystem {
   }
 
   private renderMeta(payload: GameHUDPayload) {
-    const splits = [10, 50, 100]
+    const splits = [100, 500, 1000]
       .map((milestone) => {
-        const split = payload.splitTimes[milestone as 10 | 50 | 100];
+        const split = payload.splitTimes[milestone as 100 | 500 | 1000];
         return split === undefined ? null : `${milestone}: ${split.toFixed(1)}s`;
       })
       .filter(Boolean)

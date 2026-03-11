@@ -142,7 +142,7 @@ export interface GameHudSnapshot {
   distanceMeters: number;
   bestDistanceMeters: number;
   coins: number;
-  splitTimes: Partial<Record<10 | 50 | 100, number>>;
+  splitTimes: Partial<Record<100 | 500 | 1000, number>>;
   chargeRatio: number;
   momentumGauge: number;
   momentumTier: number;

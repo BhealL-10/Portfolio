@@ -3,11 +3,11 @@ import { applyItemToRunState, buildUpgradeOffers, createRunUpgradeState, getNext
 
 describe('roguelite milestones', () => {
   it('returns the expected milestone sequence', () => {
-    expect(getNextUpgradeMilestone(0)).toBe(10);
-    expect(getNextUpgradeMilestone(10)).toBe(50);
-    expect(getNextUpgradeMilestone(50)).toBe(100);
-    expect(getNextUpgradeMilestone(199)).toBe(200);
-    expect(getNextUpgradeMilestone(200)).toBe(300);
+    expect(getNextUpgradeMilestone(0)).toBe(100);
+    expect(getNextUpgradeMilestone(100)).toBe(500);
+    expect(getNextUpgradeMilestone(500)).toBe(1000);
+    expect(getNextUpgradeMilestone(1299)).toBe(2000);
+    expect(getNextUpgradeMilestone(2000)).toBe(3000);
   });
 });
 

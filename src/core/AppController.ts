@@ -620,7 +620,7 @@ export class AppController {
     this.mode.setMode('game_transition');
     this.gameTransitionProgress = 0;
     this.game.startTransition();
-    const projectCount = this.world.getGameFieldCapacity();
+    const projectCount = this.getGameFieldCount();
     this.world.beginExternalLayoutTransition(
       this.game.getInitialPlatformPositions(projectCount),
       this.game.getInitialPlatformScales(projectCount),
@@ -642,10 +642,11 @@ export class AppController {
         this.gameTransitionProgress = 1;
         this.mode.setMode('game');
         this.game.beginRun();
+        const gameFieldCount = this.getGameFieldCount();
         this.world.setExternalLayoutPositions(
-          this.game.getVisiblePlatformPositions(this.world.getGameFieldCapacity()),
-          this.game.getVisiblePlatformScales(this.world.getGameFieldCapacity()),
-          this.game.getVisiblePlatformVisuals(this.world.getGameFieldCapacity())
+          this.game.getVisiblePlatformPositions(gameFieldCount),
+          this.game.getVisiblePlatformScales(gameFieldCount),
+          this.game.getVisiblePlatformVisuals(gameFieldCount)
         );
         this.refreshUI();
       }
@@ -658,10 +659,11 @@ export class AppController {
       this.mode.setMode('game');
     }
     this.game.restart();
+    const gameFieldCount = this.getGameFieldCount();
     this.world.setExternalLayoutPositions(
-      this.game.getVisiblePlatformPositions(this.world.getGameFieldCapacity()),
-      this.game.getVisiblePlatformScales(this.world.getGameFieldCapacity()),
-      this.game.getVisiblePlatformVisuals(this.world.getGameFieldCapacity())
+      this.game.getVisiblePlatformPositions(gameFieldCount),
+      this.game.getVisiblePlatformScales(gameFieldCount),
+      this.game.getVisiblePlatformVisuals(gameFieldCount)
     );
     this.refreshUI();
   }
@@ -765,10 +767,11 @@ export class AppController {
     this.game.update(deltaTime, elapsedTime);
 
     if (this.mode.is('game') || this.mode.is('game_over')) {
+      const gameFieldCount = this.getGameFieldCount();
       this.world.setExternalLayoutPositions(
-        this.game.getVisiblePlatformPositions(this.world.getGameFieldCapacity()),
-        this.game.getVisiblePlatformScales(this.world.getGameFieldCapacity()),
-        this.game.getVisiblePlatformVisuals(this.world.getGameFieldCapacity())
+        this.game.getVisiblePlatformPositions(gameFieldCount),
+        this.game.getVisiblePlatformScales(gameFieldCount),
+        this.game.getVisiblePlatformVisuals(gameFieldCount)
       );
     }
 
@@ -836,6 +839,12 @@ export class AppController {
       this.gameHud.update(this.getGameHudPayload());
     }
     this.world.setActiveIndex(this.activeIndex);
+  }
+
+  private getGameFieldCount() {
+    const requestedCount = Math.max(this.world.getGameFieldCapacity(), this.game.getRecommendedVisibleCount());
+    this.world.ensureGameFieldCapacity(requestedCount);
+    return this.world.getGameFieldCapacity();
   }
 
   private updateGuide() {
