@@ -1,7 +1,7 @@
 import type { RogueliteItemOffer, RogueliteRarity } from './roguelite';
 import { rarityLabels } from './roguelite';
 import { I18nService } from '../ui/I18nService';
-import type { AcquisitionFeedback } from './gameSessionTypes';
+import type { AcquisitionFeedback, GameOverCause } from './gameSessionTypes';
 
 type GameHUDState = 'transition' | 'running' | 'upgrade_choice' | 'game_over';
 
@@ -9,6 +9,7 @@ interface GameHUDCallbacks {
   onRestart: () => void;
   onExit: () => void;
   onSelectUpgrade: (index: number) => void;
+  onCloseShop: () => void;
 }
 
 interface GameHUDPayload {
@@ -17,7 +18,7 @@ interface GameHUDPayload {
   distanceMeters: number;
   bestDistanceMeters: number;
   coins: number;
-  splitTimes: Partial<Record<100 | 500 | 1000, number>>;
+  splitTimes: Partial<Record<10 | 100 | 1000, number>>;
   chargeRatio: number;
   momentumGauge: number;
   momentumTier: number;
@@ -33,7 +34,14 @@ interface GameHUDPayload {
     mode?: 'reward_branch' | 'shop_orbit';
     price?: number;
   }>;
+  inventoryItems: Array<{
+    id: string;
+    name: string;
+    count: number;
+    iconSrc: string;
+  }>;
   acquisition: AcquisitionFeedback | null;
+  gameOverCause: GameOverCause;
 }
 
 export class GameHUDSystem {
@@ -56,9 +64,13 @@ export class GameHUDSystem {
   private metaValue: HTMLParagraphElement;
   private exitButton: HTMLButtonElement;
   private branchLayer: HTMLDivElement;
+  private inventoryBar: HTMLDivElement;
   private branchTitle: HTMLHeadingElement;
   private branchHint: HTMLParagraphElement;
   private branchCards: HTMLDivElement[];
+  private shopBar: HTMLDivElement;
+  private shopButtons: HTMLButtonElement[];
+  private shopCloseButton: HTMLButtonElement;
   private toast: HTMLDivElement;
   private toastLabel: HTMLSpanElement;
   private toastName: HTMLElement;
@@ -94,6 +106,9 @@ export class GameHUDSystem {
           <button type="button" data-exit></button>
         </div>
       </div>
+      <div class="game-hud__play-zone game-hud__play-zone--top"></div>
+      <div class="game-hud__play-zone game-hud__play-zone--bottom"></div>
+      <div class="game-hud__inventory"></div>
       <div class="game-hud__branch-layer">
         <div class="game-hud__branch-header">
           <h3 data-upgrade-title></h3>
@@ -102,6 +117,12 @@ export class GameHUDSystem {
         <div class="game-hud__branch-card" data-branch-card="0"></div>
         <div class="game-hud__branch-card" data-branch-card="1"></div>
         <div class="game-hud__branch-card" data-branch-card="2"></div>
+      </div>
+      <div class="game-hud__shop-bar">
+        <button type="button" data-shop-offer="0"></button>
+        <button type="button" data-shop-offer="1"></button>
+        <button type="button" data-shop-offer="2"></button>
+        <button type="button" data-shop-close></button>
       </div>
       <div class="game-hud__toast">
         <span data-toast-label></span>
@@ -137,9 +158,13 @@ export class GameHUDSystem {
     this.metaValue = this.element.querySelector<HTMLParagraphElement>('.game-hud__meta')!;
     this.exitButton = this.element.querySelector<HTMLButtonElement>('[data-exit]')!;
     this.branchLayer = this.element.querySelector<HTMLDivElement>('.game-hud__branch-layer')!;
+    this.inventoryBar = this.element.querySelector<HTMLDivElement>('.game-hud__inventory')!;
     this.branchTitle = this.element.querySelector<HTMLHeadingElement>('[data-upgrade-title]')!;
     this.branchHint = this.element.querySelector<HTMLParagraphElement>('[data-upgrade-hint]')!;
     this.branchCards = Array.from(this.element.querySelectorAll<HTMLDivElement>('[data-branch-card]'));
+    this.shopBar = this.element.querySelector<HTMLDivElement>('.game-hud__shop-bar')!;
+    this.shopButtons = Array.from(this.element.querySelectorAll<HTMLButtonElement>('[data-shop-offer]'));
+    this.shopCloseButton = this.element.querySelector<HTMLButtonElement>('[data-shop-close]')!;
     this.toast = this.element.querySelector<HTMLDivElement>('.game-hud__toast')!;
     this.toastLabel = this.element.querySelector<HTMLSpanElement>('[data-toast-label]')!;
     this.toastName = this.element.querySelector<HTMLElement>('[data-toast-name]')!;
@@ -152,6 +177,10 @@ export class GameHUDSystem {
     this.exitButton.addEventListener('click', callbacks.onExit);
     this.restartButton.addEventListener('click', callbacks.onRestart);
     this.returnButton.addEventListener('click', callbacks.onExit);
+    this.shopButtons.forEach((button, index) => {
+      button.addEventListener('click', () => callbacks.onSelectUpgrade(index));
+    });
+    this.shopCloseButton.addEventListener('click', callbacks.onCloseShop);
     host.appendChild(this.element);
 
     this.i18n.onChange(() => this.renderStatic());
@@ -191,14 +220,20 @@ export class GameHUDSystem {
     this.branchHint.textContent = showingShop ? this.i18n.t('gameShopHint') : this.i18n.t('gameUpgradeHint');
 
     this.panel.classList.toggle('is-hidden', payload.state === 'game_over');
-    this.branchLayer.classList.toggle('is-visible', payload.state === 'upgrade_choice');
+    this.branchLayer.classList.toggle('is-visible', payload.state === 'upgrade_choice' && !showingShop);
+    this.shopBar.classList.toggle('is-visible', payload.state === 'upgrade_choice' && showingShop);
     this.gameOverOverlay.classList.toggle('is-visible', payload.state === 'game_over');
     this.toast.classList.toggle('is-visible', Boolean(payload.acquisition));
     if (payload.acquisition) {
       this.toast.style.setProperty('--toast-progress', payload.acquisition.progress.toFixed(3));
       this.toastName.textContent = payload.acquisition.offer.item.name[this.i18n.current];
     }
+    if (payload.state === 'game_over') {
+      this.gameOverBody.textContent = this.getGameOverBody(payload.gameOverCause);
+    }
+    this.renderInventory(payload.inventoryItems);
     this.renderBranchHints(payload.branchHints);
+    this.renderShopBar(payload.branchHints);
   }
 
   private renderStatic() {
@@ -211,6 +246,7 @@ export class GameHUDSystem {
     this.exitButton.textContent = this.i18n.t('gamePortfolio');
     this.branchTitle.textContent = this.i18n.t('gameUpgradeTitle');
     this.branchHint.textContent = this.i18n.t('gameUpgradeHint');
+    this.shopCloseButton.textContent = this.i18n.t('gameShopClose');
     this.toastLabel.textContent = this.i18n.t('gameAcquired');
     this.gameOverTitle.textContent = this.i18n.t('gameOverTitle');
     this.gameOverBody.textContent = this.i18n.t('gameOverBody');
@@ -256,10 +292,50 @@ export class GameHUDSystem {
     });
   }
 
+  private renderInventory(items: Array<{ id: string; name: string; count: number; iconSrc: string }>) {
+    this.inventoryBar.innerHTML = '';
+    this.inventoryBar.classList.toggle('is-visible', items.length > 0);
+    items.forEach((item) => {
+      const chip = document.createElement('div');
+      chip.className = 'game-hud__inventory-item';
+      chip.innerHTML = `
+        <img src="${item.iconSrc}" alt="" class="game-hud__inventory-icon" />
+        <span class="game-hud__inventory-count">${item.count}</span>
+      `;
+      chip.title = item.name;
+      this.inventoryBar.appendChild(chip);
+    });
+  }
+
+  private renderShopBar(
+    hints: Array<{
+      slot: 0 | 1 | 2;
+      offer: RogueliteItemOffer;
+      screenX: number;
+      screenY: number;
+      mode?: 'reward_branch' | 'shop_orbit';
+      price?: number;
+    }>
+  ) {
+    const shopHints = hints.filter((hint) => hint.mode === 'shop_orbit');
+    this.shopButtons.forEach((button, index) => {
+      const hint = shopHints[index];
+      button.hidden = !hint;
+      button.disabled = !hint;
+      if (!hint) return;
+      button.innerHTML = `
+        <strong>${hint.offer.item.name[this.i18n.current]}</strong>
+        <span>${hint.offer.item.description[this.i18n.current]}</span>
+        <em>${this.i18n.t('gamePrice')}: ${hint.price ?? 0}</em>
+      `;
+    });
+    this.shopCloseButton.textContent = this.i18n.t('gameShopClose');
+  }
+
   private renderMeta(payload: GameHUDPayload) {
-    const splits = [100, 500, 1000]
+    const splits = [10, 100, 1000]
       .map((milestone) => {
-        const split = payload.splitTimes[milestone as 100 | 500 | 1000];
+        const split = payload.splitTimes[milestone as 10 | 100 | 1000];
         return split === undefined ? null : `${milestone}: ${split.toFixed(1)}s`;
       })
       .filter(Boolean)
@@ -272,5 +348,11 @@ export class GameHUDSystem {
 
   private getRarityLabel(rarity: RogueliteRarity) {
     return rarityLabels[rarity][this.i18n.current];
+  }
+
+  private getGameOverBody(cause: GameOverCause) {
+    if (cause === 'enemy') return this.i18n.t('gameOverEnemy');
+    if (cause === 'out_of_bounds') return this.i18n.t('gameOverBounds');
+    return this.i18n.t('gameOverCamera');
   }
 }

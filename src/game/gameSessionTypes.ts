@@ -34,6 +34,7 @@ export type GameSessionState =
   | 'transition_out';
 
 export type GameHudState = 'transition' | 'running' | 'upgrade_choice' | 'game_over';
+export type GameOverCause = 'camera' | 'enemy' | 'out_of_bounds' | null;
 
 export interface GameCoinSlot {
   angle: number;
@@ -129,6 +130,11 @@ export interface VisiblePlatformVisual {
   spinSpeed: number;
   spinPhase: number;
   tint: string | null;
+  ringTint?: string | null;
+  ringScale?: number;
+  stripeTint?: string | null;
+  stripeMix?: number;
+  stripePhase?: number;
   pulse: number;
   deformAngle?: number;
   deformStrength?: number;
@@ -143,7 +149,7 @@ export interface GameHudSnapshot {
   distanceMeters: number;
   bestDistanceMeters: number;
   coins: number;
-  splitTimes: Partial<Record<100 | 500 | 1000, number>>;
+  splitTimes: Partial<Record<10 | 100 | 1000, number>>;
   chargeRatio: number;
   momentumGauge: number;
   momentumTier: number;
@@ -151,5 +157,12 @@ export interface GameHudSnapshot {
   orbitGraceProgress: number;
   offers: RogueliteItemOffer[];
   branchHints: BranchLabelHint[];
+  inventoryItems: Array<{
+    id: string;
+    name: string;
+    count: number;
+    iconSrc: string;
+  }>;
   acquisition: AcquisitionFeedback | null;
+  gameOverCause: GameOverCause;
 }

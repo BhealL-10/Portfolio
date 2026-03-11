@@ -50,6 +50,7 @@ interface ShardEntity {
     swapped: boolean;
   };
   hiddenUntil: number;
+  accentRing: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
 }
 
 interface PickResult {
@@ -60,6 +61,7 @@ interface PickResult {
 interface GameFieldEntity {
   group: THREE.Group;
   core: THREE.Mesh<THREE.BufferGeometry, DeformMaterial>;
+  accentRing: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   anchor: THREE.Vector3;
   orbitPhase: number;
   orbitSpeed: number;
@@ -598,6 +600,9 @@ export class OrbitWorldSystem {
         }
         if (this.externalLayoutPositions && entity.group.position.distanceToSquared(targetPosition) > 14 * 14) {
           entity.group.position.copy(targetPosition);
+          if (externalVisual) {
+            entity.group.rotation.z = externalVisual.shapeKind === 'round' ? 0 : externalVisual.spinPhase;
+          }
           entity.hiddenUntil = elapsedTime + 0.08;
         }
         targetScale = externalVisual?.scale.x ?? this.externalLayoutScales?.[index] ?? 1.02;
@@ -620,9 +625,19 @@ export class OrbitWorldSystem {
           } else {
             setDeformMaterialTheme(entity.core.material, this.theme);
           }
+          if (externalVisual.ringTint) {
+            entity.accentRing.visible = true;
+            entity.accentRing.material.color.set(externalVisual.ringTint);
+            entity.accentRing.material.opacity = 0.58 + (externalVisual.pulse ?? 0) * 0.3;
+            const ringScale = externalVisual.ringScale ?? Math.max(externalVisual.scale.x, externalVisual.scale.y) * 1.4;
+            entity.accentRing.scale.setScalar(ringScale);
+          } else {
+            entity.accentRing.visible = false;
+          }
         } else if (entity.core.geometry !== this.roundGeometry) {
           entity.core.geometry = this.roundGeometry;
           setDeformMaterialTheme(entity.core.material, this.theme);
+          entity.accentRing.visible = false;
         }
       } else if (isDragging) {
         targetPosition = entity.dragTarget;
@@ -697,6 +712,7 @@ export class OrbitWorldSystem {
       const squashZ = isFocused ? 0.06 : entity.snapped ? 0.96 : 1;
       if (!this.externalLayoutActive) {
         entity.hiddenUntil = 0;
+        entity.accentRing.visible = false;
         if (entity.core.geometry !== this.roundGeometry) {
           entity.core.geometry = this.roundGeometry;
         }
@@ -722,7 +738,10 @@ export class OrbitWorldSystem {
         snap: this.externalLayoutActive ? this.externalLayoutVisuals?.[index]?.fragmentAmount ?? 0 : entity.snapped || isSlotPreview ? 0.96 + entity.slotPulse * 0.22 : 0,
         orbitAngle: this.externalLayoutVisuals?.[index]?.deformAngle ?? 0,
         orbitPulse: this.externalLayoutActive ? this.externalLayoutVisuals?.[index]?.deformStrength ?? 0 : 0,
-        waveDensity: this.externalLayoutActive ? this.externalLayoutVisuals?.[index]?.deformDensity ?? 0.72 : entity.snapped || isSlotPreview ? 1.56 : 0.42
+        waveDensity: this.externalLayoutActive ? this.externalLayoutVisuals?.[index]?.deformDensity ?? 0.72 : entity.snapped || isSlotPreview ? 1.56 : 0.42,
+        stripeMix: this.externalLayoutVisuals?.[index]?.stripeMix ?? 0,
+        stripePhase: this.externalLayoutVisuals?.[index]?.stripePhase ?? 0,
+        stripeColor: this.externalLayoutVisuals?.[index]?.stripeTint ?? undefined
       });
 
       entity.logoPlanes.forEach((plane, planeIndex) => {
@@ -769,6 +788,7 @@ export class OrbitWorldSystem {
         entity.group.rotation.y = damp(entity.group.rotation.y, entity.group.rotation.y + deltaTime * 0.24, 2, deltaTime);
         entity.group.rotation.z = damp(entity.group.rotation.z, entity.group.rotation.z + deltaTime * 0.14, 2, deltaTime);
         entity.group.scale.setScalar(damp(entity.group.scale.x, 0.18 + Math.sin(elapsedTime * 1.8 + index) * 0.012, 6, deltaTime));
+        entity.accentRing.visible = false;
         entity.core.material.opacity = this.focusedId ? 0.1 : 0.22;
         entity.core.material.emissiveIntensity = this.focusedId ? 0.02 : 0.06;
         setDeformMaterialTheme(entity.core.material, this.theme);
@@ -781,7 +801,8 @@ export class OrbitWorldSystem {
           snap: 0,
           orbitAngle: angle,
           orbitPulse: 0.08,
-          waveDensity: 0.36
+          waveDensity: 0.36,
+          stripeMix: 0
         });
       });
       return;
@@ -798,12 +819,16 @@ export class OrbitWorldSystem {
       if (!position || !visual) {
         if (!transitionTarget) {
           entity.group.visible = false;
+          entity.accentRing.visible = false;
           return;
         }
       }
       const resolvedPosition = position ?? transitionTarget ?? entity.group.position;
       if (this.externalLayoutPositions && entity.group.position.distanceToSquared(resolvedPosition) > 14 * 14) {
         entity.group.position.copy(resolvedPosition);
+        if (visual) {
+          entity.group.rotation.z = visual.shapeKind === 'round' ? 0 : visual.spinPhase;
+        }
         entity.hiddenUntil = elapsedTime + 0.08;
       }
 
@@ -830,6 +855,14 @@ export class OrbitWorldSystem {
       } else {
         setDeformMaterialTheme(entity.core.material, this.theme);
       }
+      if (visual?.ringTint) {
+        entity.accentRing.visible = true;
+        entity.accentRing.material.color.set(visual.ringTint);
+        entity.accentRing.material.opacity = 0.62 + (visual.pulse ?? 0.06) * 0.32;
+        entity.accentRing.scale.setScalar(visual.ringScale ?? Math.max(targetScale.x, targetScale.y) * 1.42);
+      } else {
+        entity.accentRing.visible = false;
+      }
 
       entity.core.material.opacity = 1;
       entity.core.material.emissiveIntensity = 0.08 + (visual?.pulse ?? 0.06);
@@ -842,7 +875,10 @@ export class OrbitWorldSystem {
         snap: visual?.fragmentAmount ?? 0,
         orbitAngle: visual?.deformAngle ?? 0,
         orbitPulse: visual?.deformStrength ?? 0,
-        waveDensity: visual?.deformDensity ?? 0.72
+        waveDensity: visual?.deformDensity ?? 0.72,
+        stripeMix: visual?.stripeMix ?? 0,
+        stripePhase: visual?.stripePhase ?? 0,
+        stripeColor: visual?.stripeTint ?? undefined
       });
     });
   }
@@ -925,6 +961,9 @@ export class OrbitWorldSystem {
     );
     slotIndicator.visible = true;
     this.root.add(slotIndicator);
+    const accentRing = this.createAccentRing();
+    accentRing.visible = false;
+    group.add(accentRing);
 
     const entity: ShardEntity = {
       project,
@@ -958,7 +997,8 @@ export class OrbitWorldSystem {
         progress: 0,
         swapped: false
       },
-      hiddenUntil: 0
+      hiddenUntil: 0,
+      accentRing
     };
 
     this.entities.set(project.id, entity);
@@ -974,17 +1014,34 @@ export class OrbitWorldSystem {
     const material = createDeformMaterial(this.theme, 900 + index * 23);
     const core = new THREE.Mesh(this.roundGeometry, material);
     group.add(core);
+    const accentRing = this.createAccentRing();
+    accentRing.visible = false;
+    group.add(accentRing);
     const anchor = this.getGameFieldAnchor(index);
 
     return {
       group,
       core,
+      accentRing,
       anchor,
       orbitPhase: index * 0.37,
       orbitSpeed: 0.32 + (index % 7) * 0.018,
       orbitRadius: 0.22 + (index % 4) * 0.06,
       hiddenUntil: 0
     } satisfies GameFieldEntity;
+  }
+
+  private createAccentRing() {
+    return new THREE.Mesh(
+      new THREE.RingGeometry(1.08, 1.26, 48),
+      new THREE.MeshBasicMaterial({
+        color: '#4B74FF',
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      })
+    );
   }
 
   private getGameFieldAnchor(index: number) {

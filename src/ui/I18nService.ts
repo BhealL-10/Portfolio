@@ -44,6 +44,7 @@ const uiStrings = {
     gameUpgradeHint: 'Sautez vers une branche. 1, 2, 3 restent disponibles en secours.',
     gameShopTitle: 'Marché orbital',
     gameShopHint: 'Tournez autour de la shard pour acheter une offre.',
+    gameShopClose: 'Retour',
     gamePathLeft: 'Voie gauche',
     gamePathCenter: 'Voie centrale',
     gamePathRight: 'Voie droite',
@@ -54,6 +55,9 @@ const uiStrings = {
     gamePrice: 'Prix',
     gameOverTitle: 'Game Over',
     gameOverBody: 'La caméra vous a dépassé ou la trajectoire a été manquée.',
+    gameOverCamera: 'La caméra vous a laissé derrière.',
+    gameOverEnemy: 'Un ennemi vous a touché de face.',
+    gameOverBounds: 'Vous êtes sorti de la zone jouable.',
     gameAcquired: 'Objet acquis'
   },
   en: {
@@ -99,6 +103,7 @@ const uiStrings = {
     gameUpgradeHint: 'Jump into a branch. 1, 2, 3 remain available as fallback.',
     gameShopTitle: 'Orbital market',
     gameShopHint: 'Rotate around the shard to buy one offer.',
+    gameShopClose: 'Return',
     gamePathLeft: 'Left path',
     gamePathCenter: 'Center path',
     gamePathRight: 'Right path',
@@ -109,6 +114,9 @@ const uiStrings = {
     gamePrice: 'Price',
     gameOverTitle: 'Game Over',
     gameOverBody: 'The camera overtook you or the jump line was lost.',
+    gameOverCamera: 'The camera left you behind.',
+    gameOverEnemy: 'An enemy hit you from the front.',
+    gameOverBounds: 'You left the playable zone.',
     gameAcquired: 'Item acquired'
   }
 } as const;

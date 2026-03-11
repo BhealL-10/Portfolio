@@ -5,7 +5,7 @@ const SHARDS_KEY = 'portfolio-game-highscore';
 const DISTANCE_KEY = 'portfolio-game-best-distance';
 const SPLITS_KEY = 'portfolio-game-best-splits';
 
-type SplitMap = Partial<Record<100 | 500 | 1000, number>>;
+type SplitMap = Partial<Record<10 | 100 | 1000, number>>;
 
 export class RunStatsSystem {
   private shardsLanded = 0;
@@ -30,7 +30,7 @@ export class RunStatsSystem {
     this.shardsLanded = Math.max(this.shardsLanded, shardsLanded);
     this.distanceMeters = Math.max(this.distanceMeters, pathDistanceToMeters(pathDistance));
 
-    for (const milestone of [100, 500, 1000] as const) {
+    for (const milestone of [10, 100, 1000] as const) {
       if (previousDistanceMeters >= milestone || this.distanceMeters < milestone || this.splitTimes[milestone] !== undefined) {
         continue;
       }

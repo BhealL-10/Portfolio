@@ -99,6 +99,11 @@ export class AppController {
     this.gameHud = new GameHUDSystem(this.uiHost, this.i18n, {
       onRestart: () => this.restartGame(),
       onExit: () => this.exitGame(),
+      onCloseShop: () => {
+        if (this.game.closeShopChoice()) {
+          this.refreshUI();
+        }
+      },
       onSelectUpgrade: (index) => {
         if (this.game.selectUpgradeFallback(index)) {
           this.refreshUI();
@@ -757,7 +762,9 @@ export class AppController {
         }
         return acc;
       }, []),
-      acquisition: hudState.acquisition
+      inventoryItems: hudState.inventoryItems,
+      acquisition: hudState.acquisition,
+      gameOverCause: hudState.gameOverCause
     } as const;
   }
 

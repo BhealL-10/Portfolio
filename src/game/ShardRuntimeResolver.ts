@@ -7,7 +7,7 @@ export function getShapeOrientation(_node: GamePathNode, elapsedTime: number) {
   }
 
   const direction = _node.spinDirection === 'cw' ? -1 : 1;
-  const speedFactor = _node.shapeKind === 'oval' ? 0.14 : 0.22;
+  const speedFactor = _node.shapeKind === 'oval' ? 0.38 : 0.92;
   return _node.motionSeed + elapsedTime * _node.spinSpeed * speedFactor * direction;
 }
 

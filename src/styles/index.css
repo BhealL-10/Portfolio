@@ -414,7 +414,8 @@ body {
 }
 
 .game-hud__branch-layer,
-.game-hud__game-over {
+.game-hud__game-over,
+.game-hud__shop-bar {
   position: fixed;
   inset: 0;
   opacity: 0;
@@ -422,9 +423,105 @@ body {
   transition: opacity 180ms ease, transform 220ms ease;
 }
 
-.game-hud__branch-layer.is-visible,
-.game-hud__game-over.is-visible {
+.game-hud__inventory {
+  position: absolute;
+  top: calc(var(--safe-top) + 18px);
+  left: calc(var(--safe-left) + 18px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-width: min(420px, calc(100vw - 36px));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+
+.game-hud__inventory.is-visible {
   opacity: 1;
+}
+
+.game-hud__inventory-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  backdrop-filter: blur(18px);
+  background: rgb(var(--color-bg-rgb) / 0.92);
+  border: 1px solid rgb(var(--color-fg-rgb) / 0.16);
+  box-shadow: 0 18px 44px rgb(var(--color-fg-rgb) / 0.08);
+}
+
+.game-hud__inventory-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 6px rgb(var(--color-fg-rgb) / 0.14));
+}
+
+.game-hud__inventory-count {
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.game-hud__play-zone {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 14vh;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.game-hud__play-zone--top {
+  top: 0;
+  background: linear-gradient(to bottom, rgb(0 0 0 / 0.34), rgb(0 0 0 / 0));
+}
+
+.game-hud__play-zone--bottom {
+  bottom: 0;
+  background: linear-gradient(to top, rgb(0 0 0 / 0.34), rgb(0 0 0 / 0));
+}
+
+.game-hud__branch-layer.is-visible,
+.game-hud__game-over.is-visible,
+.game-hud__shop-bar.is-visible {
+  opacity: 1;
+}
+
+.game-hud__shop-bar {
+  inset: auto 20px calc(var(--safe-bottom) + 18px) 20px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  pointer-events: none;
+}
+
+.game-hud__shop-bar.is-visible {
+  pointer-events: auto;
+}
+
+.game-hud__shop-bar button {
+  min-height: 86px;
+  border-radius: 20px;
+  border: 1px solid rgb(var(--color-fg-rgb) / 0.16);
+  background: rgb(var(--color-bg-rgb) / 0.94);
+  color: inherit;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  text-align: left;
+  padding: 14px 16px;
+  cursor: pointer;
+  box-shadow: 0 18px 44px rgb(var(--color-fg-rgb) / 0.08);
+}
+
+.game-hud__shop-bar button span,
+.game-hud__shop-bar button em {
+  font-style: normal;
+  font-size: 0.78rem;
+  color: rgb(var(--color-fg-rgb) / 0.72);
 }
 
 .game-hud__branch-header {

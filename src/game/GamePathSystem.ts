@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { clamp } from '../core/math';
-import { getDifficultyProfile, pathDistanceToMeters } from './difficultyScaler';
+import { DEFAULT_COLUMN_DISTANCE, getDifficultyProfile, pathDistanceToMeters } from './difficultyScaler';
 import { EventSystem } from './EventSystem';
 import type { GamePathPattern, GamePatternNodeTemplate } from './PatternLibrary';
 import { selectPattern } from './PatternSelector';
@@ -44,6 +44,18 @@ const SIZE_TIER_ORDER: GameShardSizeTier[] = [
   'huge',
   'massive'
 ];
+
+const MILESTONE_HALF_WIDTH = DEFAULT_COLUMN_DISTANCE * 2.3;
+const MILESTONE_RESERVED_BEFORE = DEFAULT_COLUMN_DISTANCE;
+const MILESTONE_REWARD_OFFSET = DEFAULT_COLUMN_DISTANCE * 3;
+const MILESTONE_RESERVED_AFTER = DEFAULT_COLUMN_DISTANCE;
+
+function getMilestoneReservedRangeX(centerX: number) {
+  return {
+    start: centerX - MILESTONE_REWARD_OFFSET,
+    end: centerX + MILESTONE_REWARD_OFFSET + MILESTONE_RESERVED_AFTER
+  };
+}
 
 export class GamePathSystem {
   private nodes: GamePathNode[] = [];
@@ -144,67 +156,54 @@ export class GamePathSystem {
     const milestone = this.getNode(milestoneIndex);
     if (!milestone) return [];
 
-    const profile = getDifficultyProfile(score);
-    const baseSpacing = profile.spacing * 1.18;
-    const branchEntryX = milestone.x + baseSpacing * 0.96;
+    const laneSpacing = score < 50 ? 8.4 : 7.2;
+    const branchEntryX = milestone.x + MILESTONE_REWARD_OFFSET;
     const definitions = [
-      { slot: 0 as const, yBias: 10.5, direction: 'up_right' as const },
+      { slot: 0 as const, yBias: laneSpacing * 2, direction: 'up_right' as const },
       { slot: 1 as const, yBias: 0, direction: 'right' as const },
-      { slot: 2 as const, yBias: -10.5, direction: 'down_right' as const }
+      { slot: 2 as const, yBias: -laneSpacing * 2, direction: 'down_right' as const }
     ];
 
     return offers.slice(0, 3).map((offer, index) => {
       const branch = definitions[index] ?? definitions[1];
-      const pathNodes: GamePathNode[] = [];
-
-      for (let step = 0; step < 5; step += 1) {
-        const branchRatio = step / 4;
-        const previous = step === 0 ? milestone : pathNodes[step - 1];
-        const sizeTier = step < 2 ? 'large' : 'medium_large';
-        const sizeConfig = SIZE_TIER_CONFIG[sizeTier];
-        const gameplayRadius = sizeConfig.radius[0] + this.nextRandom() * (sizeConfig.radius[1] - sizeConfig.radius[0]);
-        const visualScale = sizeConfig.visual[0] + this.nextRandom() * (sizeConfig.visual[1] - sizeConfig.visual[0]);
-        const orbitPeriod = sizeConfig.orbitPeriod[0] + this.nextRandom() * (sizeConfig.orbitPeriod[1] - sizeConfig.orbitPeriod[0]);
-        const x = step === 0 ? branchEntryX : branchEntryX + step * baseSpacing * 0.98;
-        const y =
-          step === 0
-            ? milestone.y + branch.yBias * 0.96
-            : milestone.y + branch.yBias * (0.42 + branchRatio * 0.9) + Math.sin(branchRatio * Math.PI) * branch.yBias * 0.1;
-
-        pathNodes.push(this.buildNode({
-          previous,
-          index: milestoneIndex + step + 1,
-          x,
-          y,
-          direction: branch.direction,
-          sizeTier,
-          shapeKind: score >= 100 ? (index === 1 ? 'triangular' : 'oval') : score >= 50 ? 'oval' : 'round',
-          motionPattern: step === 0 ? 'none' : step % 2 === 0 ? 'vertical' : 'horizontal',
-          spinDirection: index === 1 ? 'cw' : 'ccw',
-          spinSpeed: 0.12 + this.nextRandom() * 0.16,
-          gameplayRadius,
-          visualScale,
-          gameplayOrbitPeriod: orbitPeriod,
-          visualStretch: index === 1 ? { x: 1, y: 1.08, z: 0.84 } : { x: 1.32, y: 0.84, z: 1 },
-          kind: 'branch',
-          branchSlot: branch.slot,
-          offerId: offer.item.id,
-          onboarding: false,
-          eventType: 'none',
-          colorHint: 'reward',
-          isMilestone: false,
-          isGigantic: false,
-          coinSlots: step === 0 ? [{ angle: Math.PI * 0.5, value: 1, collected: false, orbitScale: 1 }] : [],
-          enemySlot: null
-        }));
-      }
+      const sizeTier: GameShardSizeTier = 'medium';
+      const sizeConfig = SIZE_TIER_CONFIG[sizeTier];
+      const gameplayRadius = sizeConfig.radius[0] + this.nextRandom() * (sizeConfig.radius[1] - sizeConfig.radius[0]);
+      const visualScale = sizeConfig.visual[0] + this.nextRandom() * (sizeConfig.visual[1] - sizeConfig.visual[0]);
+      const orbitPeriod = sizeConfig.orbitPeriod[0] + this.nextRandom() * (sizeConfig.orbitPeriod[1] - sizeConfig.orbitPeriod[0]);
+      const entry = this.buildNode({
+        previous: milestone,
+        index: milestoneIndex + 1,
+        x: branchEntryX,
+        y: milestone.y + branch.yBias,
+        direction: branch.direction,
+        sizeTier,
+        shapeKind: 'round',
+        motionPattern: 'none',
+        spinDirection: index === 1 ? 'cw' : 'ccw',
+        spinSpeed: 0.14 + index * 0.03 + this.nextRandom() * 0.04,
+        gameplayRadius,
+        visualScale,
+        gameplayOrbitPeriod: orbitPeriod,
+        visualStretch: { x: 1, y: 1, z: 1 },
+        kind: 'branch',
+        branchSlot: branch.slot,
+        offerId: offer.item.id,
+        onboarding: false,
+        eventType: 'none',
+        colorHint: 'reward',
+        isMilestone: false,
+        isGigantic: false,
+        coinSlots: [{ angle: Math.PI * 0.5, value: 1, collected: false, orbitScale: 1 }],
+        enemySlot: null
+      });
 
       return {
         mode: 'reward_branch',
         offer,
-        entry: pathNodes[0],
-        previewNodes: pathNodes.slice(0, 3),
-        pathNodes
+        entry,
+        previewNodes: [entry],
+        pathNodes: [entry]
       };
     });
   }
@@ -287,7 +286,59 @@ export class GamePathSystem {
       basePattern = this.buildFallbackPattern(previous);
     }
 
-    return this.expandLanePresence(previous, basePattern, score);
+    return this.reserveMilestones(previous, this.expandLanePresence(previous, basePattern, score), score);
+  }
+
+  private reserveMilestones(previous: GamePathNode, nodes: GamePathNode[], score: number) {
+    if (nodes.length === 0) return nodes;
+
+    const reserved: GamePathNode[] = [];
+    let cursor = previous;
+    nodes.forEach((node) => {
+      const segmentDistance = Math.hypot(node.x - cursor.x, node.y - cursor.y);
+      const previousDistanceMeters = pathDistanceToMeters(cursor.pathDistance);
+      const currentDistanceMeters = pathDistanceToMeters(cursor.pathDistance + segmentDistance);
+      const crossedMilestone = getCrossedUpgradeMilestone(previousDistanceMeters, currentDistanceMeters);
+
+      let nextNode = { ...node };
+      if (crossedMilestone !== null) {
+        const milestoneVisualScale = MILESTONE_HALF_WIDTH / (1.25 * 0.92);
+        const milestoneGap = MILESTONE_HALF_WIDTH + MILESTONE_RESERVED_BEFORE;
+        const x = Math.max(node.x, cursor.x + milestoneGap);
+        nextNode = this.buildNode({
+          previous: cursor,
+          index: cursor.index + 1,
+          x,
+          y: 0,
+          direction: 'right',
+          sizeTier: 'massive',
+          shapeKind: 'round',
+          motionPattern: 'none',
+          spinDirection: 'cw',
+          spinSpeed: 0.04,
+          gameplayRadius: MILESTONE_HALF_WIDTH,
+          visualScale: milestoneVisualScale,
+          gameplayOrbitPeriod: 5.4,
+          visualStretch: { x: 1, y: 1, z: 1 },
+          kind: 'milestone',
+          branchSlot: null,
+          offerId: null,
+          onboarding: false,
+          eventType: 'none',
+          colorHint: 'none',
+          isMilestone: true,
+          isGigantic: true,
+          coinSlots: [],
+          enemySlot: null
+        });
+      }
+
+      const normalized = this.reindexNode(nextNode, cursor.index + 1, cursor);
+      reserved.push(normalized);
+      cursor = normalized;
+    });
+
+    return this.isolateMilestones(reserved, previous, score);
   }
 
   private buildTemplateNode(
@@ -311,14 +362,19 @@ export class GamePathSystem {
     const isGigantic = isMilestone;
     const resolvedSizeTier = isGigantic ? 'massive' : sizeTier;
     const resolvedSizeConfig = SIZE_TIER_CONFIG[resolvedSizeTier];
-    const gameplayRadius = isGigantic ? 11.6 + this.nextRandom() * 1.8 : resolvedSizeConfig.radius[0] + this.nextRandom() * (resolvedSizeConfig.radius[1] - resolvedSizeConfig.radius[0]);
-    const visualScale = isGigantic ? 30 + this.nextRandom() * 10 : resolvedSizeConfig.visual[0] + this.nextRandom() * (resolvedSizeConfig.visual[1] - resolvedSizeConfig.visual[0]);
-    const gameplayOrbitPeriod = isGigantic ? 8.8 : resolvedSizeConfig.orbitPeriod[0] + this.nextRandom() * (resolvedSizeConfig.orbitPeriod[1] - resolvedSizeConfig.orbitPeriod[0]);
+    const gameplayRadius = isGigantic ? 14.4 + this.nextRandom() * 2.6 : resolvedSizeConfig.radius[0] + this.nextRandom() * (resolvedSizeConfig.radius[1] - resolvedSizeConfig.radius[0]);
+    const visualScale = isGigantic ? 38 + this.nextRandom() * 14 : resolvedSizeConfig.visual[0] + this.nextRandom() * (resolvedSizeConfig.visual[1] - resolvedSizeConfig.visual[0]);
+    const gameplayOrbitPeriod = isGigantic ? 5.4 + this.nextRandom() * 0.8 : resolvedSizeConfig.orbitPeriod[0] + this.nextRandom() * (resolvedSizeConfig.orbitPeriod[1] - resolvedSizeConfig.orbitPeriod[0]);
     const direction = this.directionFrom(previous.x, previous.y, x, y);
     const eventType = this.resolveEventType(index, previousDistanceMeters, currentDistanceMeters, score, template);
-    const motionPattern = isGigantic ? 'none' : this.pickMotionPattern(template.motionPattern, score, shapeKind);
+    const motionPattern = isGigantic ? 'none' : this.pickMotionPattern(template.motionPattern, score, shapeKind, resolvedSizeTier);
     const spinDirection: GameShardSpinDirection = this.nextRandom() < 0.5 ? 'cw' : 'ccw';
-    const spinSpeed = shapeKind === 'round' ? 0.08 + this.nextRandom() * 0.12 : 0.06 + this.nextRandom() * 0.18;
+    const spinSpeed =
+      shapeKind === 'triangular'
+        ? 0.42 + this.nextRandom() * 0.22
+        : shapeKind === 'oval'
+          ? 0.18 + this.nextRandom() * 0.1
+          : 0.08 + this.nextRandom() * 0.12;
     const visualStretch =
       shapeKind === 'oval'
         ? { x: 1.72 + this.nextRandom() * 0.38, y: 0.68 + this.nextRandom() * 0.12, z: 0.82 + this.nextRandom() * 0.1 }
@@ -360,7 +416,7 @@ export class GamePathSystem {
       isMilestone,
       isGigantic,
       coinSlots: this.buildCoinSlots(template, eventType, score),
-      enemySlot: this.buildEnemySlot(template, score, eventType)
+      enemySlot: this.buildEnemySlot(template, score, eventType, shapeKind)
     });
   }
 
@@ -392,7 +448,7 @@ export class GamePathSystem {
         shapeKind: this.pickShapeKind(['round', 'oval', 'triangular'] as GameShardShapeKind[], score),
         motionPattern: profile.roundMovementUnlocked ? 'vertical' : 'none',
         spinDirection: 'cw',
-        spinSpeed: 0.12,
+          spinSpeed: 0.14,
         gameplayRadius: offset % 2 === 0 ? 1.12 : 1.46,
         visualScale: offset % 2 === 0 ? 1.2 : 1.58,
         gameplayOrbitPeriod: offset % 2 === 0 ? 2.8 : 3.2,
@@ -574,9 +630,9 @@ export class GamePathSystem {
           direction: this.directionFrom(prevNode.x, prevNode.y, companionX, companionY),
           sizeTier: companionSize,
           shapeKind: this.pickShapeKind(['round', 'oval', 'triangular'] as GameShardShapeKind[], score),
-          motionPattern: earlyDenseWindow ? 'none' : this.nextRandom() < 0.16 ? 'vertical' : 'none',
-          spinDirection: this.nextRandom() < 0.5 ? 'cw' : 'ccw',
-          spinSpeed: 0.1 + this.nextRandom() * 0.08,
+            motionPattern: earlyDenseWindow ? 'none' : this.nextRandom() < 0.16 ? 'vertical' : 'none',
+            spinDirection: this.nextRandom() < 0.5 ? 'cw' : 'ccw',
+            spinSpeed: 0.08 + this.nextRandom() * 0.08,
           gameplayRadius: companionSize === 'tiny' ? 0.78 : companionSize === 'very_small' ? 0.9 : 1.06,
           visualScale: companionSize === 'tiny' ? 0.88 : companionSize === 'very_small' ? 1.02 : 1.16,
           gameplayOrbitPeriod: companionSize === 'tiny' ? 2.36 : companionSize === 'very_small' ? 2.58 : 2.9,
@@ -790,9 +846,9 @@ export class GamePathSystem {
     return slots;
   }
 
-  private buildEnemySlot(template: GamePatternNodeTemplate, score: number, eventType: GameEventType) {
+  private buildEnemySlot(template: GamePatternNodeTemplate, score: number, eventType: GameEventType, shapeKind: GameShardShapeKind) {
     const profile = getDifficultyProfile(score);
-    if (!profile.enemyUnlocked || eventType === 'shop' || eventType === 'gift') {
+    if (!profile.enemyUnlocked || eventType === 'shop' || eventType === 'gift' || shapeKind !== 'round') {
       return null;
     }
 
@@ -853,25 +909,47 @@ export class GamePathSystem {
       return nodes;
     }
 
-    const profile = getDifficultyProfile(score);
+    const laneSpacing = score < 50 ? 8.4 : 7.2;
     const isolated: GamePathNode[] = [];
 
     nodes.forEach((node, index) => {
       let nextNode = { ...node };
       if (nextNode.isMilestone) {
+        const milestoneGap = MILESTONE_HALF_WIDTH + MILESTONE_RESERVED_BEFORE;
         nextNode = {
           ...nextNode,
-          x: Math.max(nextNode.x, (isolated[index - 1] ?? previous).x + profile.spacing * 1.9),
+          x: Math.max(nextNode.x, (isolated[index - 1] ?? previous).x + milestoneGap),
           y: 0
         };
       }
 
       const prior = isolated[index - 1] ?? previous;
       if (prior.isMilestone) {
+        const priorGap = MILESTONE_REWARD_OFFSET + MILESTONE_RESERVED_AFTER;
         nextNode = {
           ...nextNode,
-          x: Math.max(nextNode.x, prior.x + profile.spacing * 1.7)
+          x: Math.max(nextNode.x, prior.x + priorGap),
+          y: Math.abs(nextNode.y) < laneSpacing * 1.7 ? (nextNode.y >= 0 ? laneSpacing * 2.2 : -laneSpacing * 2.2) : nextNode.y
         };
+      }
+
+      const nearestMilestone = [...isolated, previous]
+        .filter((candidate) => candidate.isMilestone)
+        .reduce<GamePathNode | null>((closest, milestone) => {
+          if (!closest) return milestone;
+          return Math.abs(milestone.x - nextNode.x) < Math.abs(closest.x - nextNode.x) ? milestone : closest;
+        }, null);
+
+      if (nearestMilestone && !nextNode.isMilestone) {
+        const reservedRange = getMilestoneReservedRangeX(nearestMilestone.x);
+        const insideReservedZone = nextNode.x >= reservedRange.start && nextNode.x <= reservedRange.end;
+        if (insideReservedZone) {
+          nextNode = {
+            ...nextNode,
+            x: reservedRange.end + DEFAULT_COLUMN_DISTANCE,
+            y: Math.abs(nextNode.y) < laneSpacing * 1.9 ? (nextNode.y >= 0 ? laneSpacing * 2.5 : -laneSpacing * 2.5) : nextNode.y
+          };
+        }
       }
 
       isolated.push(nextNode);
@@ -884,16 +962,23 @@ export class GamePathSystem {
     return normalized;
   }
 
-  private pickMotionPattern(templatePattern: GameShardMotionPattern | undefined, score: number, shape: GameShardShapeKind) {
+  private pickMotionPattern(
+    templatePattern: GameShardMotionPattern | undefined,
+    score: number,
+    shape: GameShardShapeKind,
+    sizeTier: GameShardSizeTier
+  ) {
     const profile = getDifficultyProfile(score);
-    if (shape === 'round' && !profile.roundMovementUnlocked) return 'none';
-    if (templatePattern && templatePattern !== 'none' && this.nextRandom() < profile.movingShardChance + 0.25) {
+    if (shape !== 'round' || !profile.roundMovementUnlocked) return 'none';
+    if (['large', 'very_large', 'huge', 'massive'].includes(sizeTier)) return 'none';
+    const contextualChance = profile.movingShardChance * (score < 50 ? 0.55 : 1);
+    if (templatePattern && templatePattern !== 'none' && this.nextRandom() < contextualChance + 0.18) {
       return templatePattern;
     }
-    if (this.nextRandom() > profile.movingShardChance) {
+    if (this.nextRandom() > contextualChance) {
       return 'none';
     }
-    const patterns: GameShardMotionPattern[] = ['vertical', 'horizontal', 'micro_orbit', 'drift'];
+    const patterns: GameShardMotionPattern[] = ['vertical', 'horizontal'];
     return patterns[Math.floor(this.nextRandom() * patterns.length)] ?? 'none';
   }
 

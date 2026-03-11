@@ -4,6 +4,7 @@ import type { ThemeMode } from '../types/content';
 import { CameraRailController } from './CameraRailController';
 import { CoinSystem, type CoinMarker } from './CoinSystem';
 import { EnemySystem, type EnemyMarker } from './EnemySystem';
+import { DEFAULT_COLUMN_DISTANCE } from './difficultyScaler';
 import { GamePathSystem } from './GamePathSystem';
 import type {
   AcquisitionFeedback,
@@ -11,6 +12,7 @@ import type {
   BranchLabelHint,
   GameHudSnapshot,
   GameHudState,
+  GameOverCause,
   GameSessionState,
   MomentumState,
   ResolvedGamePathNode,
@@ -20,6 +22,7 @@ import {
   applyItemToRunState,
   buildUpgradeOffers,
   createRunUpgradeState,
+  rogueliteItems,
   type RogueliteItemOffer,
   type RunUpgradeState
 } from './roguelite';
@@ -33,6 +36,9 @@ type ChoiceMode = 'none' | 'reward_branch' | 'shop_orbit';
 
 const GAME_ACCENT = '#D9624E';
 const DANGER_ACCENT = '#F06A5A';
+const SPECIAL_ACCENT_SEQUENCE = ['#FF4B4B', '#47D76B', '#4B74FF'] as const;
+const REWARD_RING_SEQUENCE = ['#4B74FF', '#FF4B4B', '#47D76B'] as const;
+const ITEM_PLACEHOLDER_ICON = '/assets/images/Logo/logomodedark.svg';
 
 function wrapAngle(angle: number) {
   const tau = Math.PI * 2;
@@ -95,7 +101,9 @@ export class GameSessionController {
     orbitGraceProgress: 1,
     offers: [],
     branchHints: [],
-    acquisition: null
+    inventoryItems: [],
+    acquisition: null,
+    gameOverCause: null
   };
   private readonly momentum: MomentumState = {
     gauge: 0,
@@ -128,8 +136,8 @@ export class GameSessionController {
   private acquisitionStartedAt = 0;
   private acquisitionDuration = 0.9;
   private gameOverStartedAt = 0;
+  private gameOverCause: GameOverCause = null;
   private runUpgrades: RunUpgradeState = createRunUpgradeState();
-  private currentTheme: ThemeMode;
   private remainingExtraJumps = 0;
   private phaseJumpReadyAt = 0;
   private teleportReadyAt = 0;
@@ -140,7 +148,6 @@ export class GameSessionController {
   private milestoneChoiceCache = new Map<number, BranchChoice[]>();
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
-    this.currentTheme = theme;
     this.playerBody = new THREE.Mesh(
       new THREE.ConeGeometry(0.42, 1.18, 6),
       new THREE.MeshBasicMaterial({ color: theme === 'dark' ? '#D4BF9B' : '#393F4A' })
@@ -183,7 +190,6 @@ export class GameSessionController {
   }
 
   setTheme(theme: ThemeMode) {
-    this.currentTheme = theme;
     this.playerBody.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A');
     this.playerTrail.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A');
     this.coins.setTheme(theme);
@@ -264,6 +270,7 @@ export class GameSessionController {
     this.acquisition = null;
     this.acquisitionStartedAt = 0;
     this.gameOverStartedAt = 0;
+    this.gameOverCause = null;
     this.currentTime = 0;
     this.attachedIndex = 0;
     this.displayWindowIndices = [];
@@ -329,7 +336,8 @@ export class GameSessionController {
   }
 
   getVisiblePlatformVisuals(count: number): VisiblePlatformVisual[] {
-    return this.getDisplayNodes(count).map((node) => {
+    const displayNodes = this.getDisplayNodes(count);
+    return displayNodes.map((node) => {
       const isCurrent = node.index === this.attachedIndex && this.playerState !== 'airborne';
       const localAngle = wrapAngle(this.orbitAngle - (node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase));
       const orbitRamp = isCurrent ? (this.orbitGraceActive ? this.orbitGraceProgress : 1) : 1;
@@ -337,16 +345,18 @@ export class GameSessionController {
       const leftEdge = this.camera.getSafeLeft();
       const rightEdge = node.resolvedX + this.getPhysicalRadius(node);
       const fragmentAmount = clamp(1 - (rightEdge - leftEdge) / 5.6, 0, 1);
-      const passiveStrength = node.shapeKind === 'round' ? 0.018 : node.shapeKind === 'oval' ? 0.038 : 0.048;
-      const passiveDensity = node.shapeKind === 'round' ? 0.52 : node.shapeKind === 'oval' ? 0.68 : 0.78;
+      const passiveStrength = node.isMilestone ? 0.003 : node.shapeKind === 'round' ? 0.018 : node.shapeKind === 'oval' ? 0.038 : 0.048;
+      const passiveDensity = node.isMilestone ? 0.18 : node.shapeKind === 'round' ? 0.52 : node.shapeKind === 'oval' ? 0.68 : 0.78;
       const targetDensity = passiveDensity + 0.42 + this.momentum.gauge * 0.34;
       const liveDensity = isCurrent ? THREE.MathUtils.lerp(passiveDensity, targetDensity, orbitRamp) : Math.max(passiveDensity, visualWave?.density ?? passiveDensity);
-      const activeStrength = passiveStrength + 0.18 + orbitRamp * 0.12 + this.momentum.gauge * 0.46;
+      const activeStrength = node.isMilestone ? 0.012 + orbitRamp * 0.02 : passiveStrength + 0.18 + orbitRamp * 0.12 + this.momentum.gauge * 0.46;
+      const specialAccent = this.getSpecialAccent(node);
+      const maskedByMilestone = false;
       return {
         scale: new THREE.Vector3(
-          node.visualScale * node.visualStretch.x,
-          node.visualScale * node.visualStretch.y,
-          node.visualScale * node.visualStretch.z
+          maskedByMilestone ? 0.0001 : node.visualScale * node.visualStretch.x,
+          maskedByMilestone ? 0.0001 : node.visualScale * node.visualStretch.y,
+          maskedByMilestone ? 0.0001 : node.visualScale * node.visualStretch.z
         ),
         shapeKind: node.shapeKind,
         spinDirection: node.spinDirection,
@@ -355,16 +365,30 @@ export class GameSessionController {
         tint:
           node.colorHint === 'danger'
             ? DANGER_ACCENT
+            : node.eventType === 'shop'
+              ? specialAccent
             : node.colorHint === 'reward'
-              ? this.currentTheme === 'dark'
-                ? '#393F4A'
-                : '#D4BF9B'
-              : node.colorHint === 'accent'
-                ? GAME_ACCENT
+              ? null
+              : node.colorHint === 'accent' && !node.isMilestone
+                ? specialAccent ?? GAME_ACCENT
                 : null,
-        pulse: node.isMilestone || node.eventType !== 'none' ? 0.34 : clamp(this.momentum.gauge * 0.22, 0, 0.22),
+        ringTint: node.colorHint === 'reward' ? this.getRewardRingColor(node) : null,
+        ringScale: node.colorHint === 'reward' ? Math.max(node.visualStretch.x, node.visualStretch.y) * node.visualScale * 1.48 : 0,
+        stripeTint: null,
+        stripeMix: 0,
+        stripePhase: 0,
+        pulse:
+          node.isMilestone
+            ? 0.18
+            : node.eventType === 'shop'
+              ? 0.48
+            : node.colorHint === 'reward'
+                ? 0.68
+                : node.eventType !== 'none'
+                  ? 0.34
+                  : clamp(this.momentum.gauge * 0.22, 0, 0.22),
         deformAngle: isCurrent ? localAngle : visualWave?.angle ?? 0,
-        deformStrength: isCurrent ? activeStrength : Math.max(passiveStrength, visualWave?.strength ?? 0) + fragmentAmount * 0.16,
+        deformStrength: isCurrent ? activeStrength : Math.max(passiveStrength, visualWave?.strength ?? 0) + (node.isMilestone ? 0 : fragmentAmount * 0.16),
         deformDensity: liveDensity,
         fragmentAmount
       };
@@ -431,6 +455,7 @@ export class GameSessionController {
       this.shop.reset();
       this.choiceMode = 'none';
       this.activeChoices = [];
+      this.activeShopAngles = [];
       this.state = 'upgrade_acquired';
       this.eventCooldownUntil = this.currentTime + 0.6;
       return true;
@@ -438,6 +463,17 @@ export class GameSessionController {
 
     if (this.choiceMode !== 'reward_branch') return false;
     return this.commitRewardBranch(index, true);
+  }
+
+  closeShopChoice() {
+    if (this.choiceMode !== 'shop_orbit' || this.state !== 'upgrade_branching') return false;
+    this.shop.reset();
+    this.choiceMode = 'none';
+    this.activeChoices = [];
+    this.activeShopAngles = [];
+    this.state = this.playerState === 'airborne' ? 'running_airborne' : this.chargeActive ? 'running_charging' : 'running_attached';
+    this.eventCooldownUntil = this.currentTime + 0.18;
+    return true;
   }
 
   getCameraPose() {
@@ -455,7 +491,17 @@ export class GameSessionController {
     this.hudSnapshot.orbitGraceProgress = this.orbitGraceProgress;
     this.hudSnapshot.offers = this.activeChoices.map((choice) => choice.offer);
     this.hudSnapshot.branchHints = this.getBranchHints();
+    this.hudSnapshot.inventoryItems = this.runUpgrades.ownedOrder.map((itemId) => {
+      const item = rogueliteItems.find((entry) => entry.id === itemId);
+      return {
+        id: itemId,
+        name: item?.name.en ?? itemId,
+        count: this.runUpgrades.counts[itemId] ?? 1,
+        iconSrc: ITEM_PLACEHOLDER_ICON
+      };
+    });
     this.hudSnapshot.acquisition = this.acquisition;
+    this.hudSnapshot.gameOverCause = this.gameOverCause;
     return this.hudSnapshot;
   }
 
@@ -504,8 +550,14 @@ export class GameSessionController {
     this.syncPlayerVisual(elapsedTime);
     this.syncMarkers(elapsedTime);
 
-    if (this.isOutsidePlayableField(this.playerPosition) || this.camera.isBehindSafeLine(this.playerPosition)) {
-      this.failRun();
+    if (currentNode.isMilestone && this.playerState !== 'airborne') {
+      return;
+    }
+
+    if (this.isOutsidePlayableField(this.playerPosition)) {
+      this.failRun('out_of_bounds');
+    } else if (this.camera.isBehindSafeLine(this.playerPosition)) {
+      this.failRun('camera');
     }
 
     if (this.acquisition) {
@@ -534,17 +586,46 @@ export class GameSessionController {
 
   private getDisplayNodes(count: number) {
     if (this.choiceMode === 'reward_branch' && this.activeChoices.length > 0) {
-      const nodes: ResolvedGamePathNode[] = [this.getResolvedNode(this.attachedIndex)];
-      this.activeChoices.forEach((choice) => {
-        choice.previewNodes.slice(0, 3).forEach((node) => {
-          nodes.push(resolveRuntimeNode(node, this.currentTime, this.attachedIndex));
-        });
+      this.initializeDisplayWindow(count);
+      const milestoneNode = this.getResolvedNode(this.attachedIndex);
+      const rewardNodes = this.activeChoices.map((choice) => resolveRuntimeNode(choice.entry, this.currentTime, this.attachedIndex));
+      const reservedStart = milestoneNode.resolvedX - DEFAULT_COLUMN_DISTANCE * 3;
+      const reservedEnd = Math.max(...rewardNodes.map((node) => node.resolvedX), milestoneNode.resolvedX) + DEFAULT_COLUMN_DISTANCE;
+      const nodes = this.displayWindowIndices
+        .map((index) => this.getResolvedNode(index))
+        .filter((node) => node.index === milestoneNode.index || node.resolvedX < reservedStart || node.resolvedX > reservedEnd);
+      nodes.push(milestoneNode, ...rewardNodes);
+      nodes.sort((a, b) => a.resolvedX - b.resolvedX);
+      const deduped: ResolvedGamePathNode[] = [];
+      const seen = new Set<string>();
+      nodes.forEach((node) => {
+        const key = `${node.index}:${Math.round(node.resolvedX * 100)}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        deduped.push(node);
       });
-      while (nodes.length < count) {
-        const fallbackIndex = this.attachedIndex + Math.max(1, nodes.length - 8);
-        nodes.push(this.getResolvedNode(fallbackIndex));
+      const fillerBase = deduped[deduped.length - 1] ?? milestoneNode;
+      while (deduped.length < count) {
+        deduped.push({
+          ...fillerBase,
+          resolvedX: fillerBase.resolvedX + 320 + deduped.length * 6,
+          resolvedY: fillerBase.resolvedY + 180,
+          resolvedZ: fillerBase.resolvedZ,
+          visualScale: 0.0001,
+          gameplayRadius: 0.0001,
+          shapeKind: 'round',
+          colorHint: 'none',
+          eventType: 'none',
+          isMilestone: false,
+          isGigantic: false,
+          coinSlots: [],
+          enemySlot: null,
+          resolvedSpinPhase: 0,
+          spinSpeed: 0,
+          visualStretch: { x: 1, y: 1, z: 1 }
+        });
       }
-      return nodes.slice(0, count);
+      return deduped.slice(0, count);
     }
 
     this.initializeDisplayWindow(count);
@@ -618,7 +699,9 @@ export class GameSessionController {
       this.momentum.speedMultiplier *
       (1 + this.runUpgrades.modifiers.chargeRate * 0.06 + this.runUpgrades.modifiers.speedBonus * 0.3);
 
-    this.angularSpeed = damp(this.angularSpeed, targetAngular, this.chargeActive ? 2.6 : 1.7, deltaTime);
+    const milestoneSlowdown = currentNode.isGigantic ? 0.58 : 1;
+
+    this.angularSpeed = damp(this.angularSpeed, targetAngular * milestoneSlowdown, this.chargeActive ? 2.6 : 1.7, deltaTime);
     this.orbitAngle = wrapAngle(this.orbitAngle + this.orbitDirection * this.angularSpeed * deltaTime);
 
     const liveOrbit = this.getOrbitSample(currentNode, this.orbitAngle);
@@ -663,8 +746,10 @@ export class GameSessionController {
       const purchase = this.shop.tryPurchase(this.orbitAngle, this.stats.getSnapshot().coins);
       if (purchase && this.stats.spendCoins(purchase.price)) {
         this.applyOffer(purchase.offer, 'Shop item');
+        this.shop.reset();
         this.choiceMode = 'none';
         this.activeChoices = [];
+        this.activeShopAngles = [];
         this.state = 'upgrade_acquired';
         this.eventCooldownUntil = this.currentTime + 0.6;
       }
@@ -692,6 +777,19 @@ export class GameSessionController {
     }
 
     const searchLimit = this.attachedIndex + Math.max(24, this.displayWindowIndices.length + 8);
+    for (let index = this.attachedIndex + 1; index <= searchLimit; index += 1) {
+      const node = this.getResolvedNode(index);
+      if (node.resolvedX - previousPosition.x > 64) {
+        break;
+      }
+      if (!node.isGigantic) {
+        continue;
+      }
+      if (this.canCaptureNode(node, previousPosition)) {
+        this.attachToNode(index, true, this.playerPosition, this.playerVelocity);
+        return;
+      }
+    }
     for (let index = this.attachedIndex + 1; index <= searchLimit; index += 1) {
       const node = this.getResolvedNode(index);
       if (node.resolvedX - previousPosition.x > 64) {
@@ -733,8 +831,18 @@ export class GameSessionController {
       }
     }
 
-    if (this.isOutsidePlayableField(this.playerPosition) || this.camera.isBehindSafeLine(this.playerPosition)) {
-      this.failRun();
+    const currentNode = this.getResolvedNode(this.attachedIndex);
+    if (currentNode.isMilestone) {
+      return;
+    }
+
+    if (this.isOutsidePlayableField(this.playerPosition)) {
+      this.failRun('out_of_bounds');
+      return;
+    }
+
+    if (this.camera.isBehindSafeLine(this.playerPosition)) {
+      this.failRun('camera');
       return;
     }
 
@@ -930,11 +1038,12 @@ export class GameSessionController {
 
     this.path.replaceFuture(this.attachedIndex, choice.pathNodes);
     this.path.ensureAhead(this.attachedIndex + 1, 50, 40);
-    this.path.queuePostMilestoneEvents(this.attachedIndex + choice.pathNodes.length, this.attachedIndex + choice.pathNodes.length);
+    this.path.queuePostMilestoneEvents(this.attachedIndex + 1, this.attachedIndex + 1);
     this.milestoneChoiceCache.delete(this.attachedIndex);
     this.applyOffer(choice.offer, viaFallback ? 'Quick choice' : 'Path chosen');
     this.choiceMode = 'none';
     this.activeChoices = [];
+    this.activeShopAngles = [];
     this.state = 'upgrade_acquired';
     this.eventCooldownUntil = this.currentTime + 0.35;
     return true;
@@ -977,7 +1086,7 @@ export class GameSessionController {
   private updateEvents(deltaTime: number, elapsedTime: number, currentNode: ResolvedGamePathNode) {
     const bossUpdate = this.boss.update(deltaTime, elapsedTime, this.playerPosition);
     if (bossUpdate.playerHit) {
-      this.failRun();
+      this.failRun('enemy');
     }
 
     if (this.boss.isWeakPointPhase()) {
@@ -998,11 +1107,11 @@ export class GameSessionController {
   private updateCamera(deltaTime: number, currentNode: ResolvedGamePathNode, nextNode: ResolvedGamePathNode) {
     const upcomingMilestoneFactor =
       nextNode.isGigantic
-        ? clamp(1 - Math.max(0, nextNode.resolvedX - this.playerPosition.x) / 24, 0, 1)
+        ? clamp(1 - Math.max(0, nextNode.resolvedX - this.playerPosition.x) / 34, 0, 1)
         : 0;
     const largeShardFactor = clamp((Math.max(currentNode.visualScale, nextNode.visualScale) - 2.8) / 28, 0, 1.24);
-    const milestoneZoom = currentNode.isGigantic ? 11.6 : upcomingMilestoneFactor * 8.4;
-    const choiceZoom = this.choiceMode === 'reward_branch' ? 5.8 : this.choiceMode === 'shop_orbit' ? 2.4 : this.state === 'upgrade_acquired' ? 1.8 : 0;
+    const milestoneZoom = currentNode.isGigantic ? 68 : upcomingMilestoneFactor * 34;
+    const choiceZoom = this.choiceMode === 'reward_branch' ? 9.6 : this.choiceMode === 'shop_orbit' ? 3.2 : this.state === 'upgrade_acquired' ? 2.4 : 0;
     const bossZoom = this.boss.getCameraZoomOffset();
     const speedPressure = (this.boss.isActive() ? this.boss.getSpeedPressure() : 1) * this.momentum.speedMultiplier;
     this.camera.update({
@@ -1067,7 +1176,8 @@ export class GameSessionController {
         enemyMarkers.push({
           position: this.getEnemyWorldPosition(node, node.enemySlot.pole),
           visible: true,
-          tier: node.enemySlot.tier
+          tier: node.enemySlot.tier,
+          pole: node.enemySlot.pole
         });
       }
     });
@@ -1135,7 +1245,7 @@ export class GameSessionController {
       this.fillMomentumBurst(0.04);
       return;
     }
-    this.failRun();
+    this.failRun('enemy');
   }
 
   private updateAutoFire(elapsedTime: number) {
@@ -1161,10 +1271,11 @@ export class GameSessionController {
     return Math.max(1, Math.round(doubled * (1 + this.runUpgrades.modifiers.coinBonus)));
   }
 
-  private failRun() {
+  private failRun(cause: GameOverCause = 'camera') {
     if (this.state === 'game_over') return;
     this.state = 'game_over';
     this.playerState = 'dead';
+    this.gameOverCause = cause;
     this.chargeActive = false;
     this.chargeMeter = 0;
     this.choiceMode = 'none';
@@ -1184,7 +1295,10 @@ export class GameSessionController {
   }
 
   private canCaptureNode(node: ResolvedGamePathNode, previousPosition?: THREE.Vector3) {
-    const captureRadius = this.getPhysicalRadius(node) + 0.92 + this.runUpgrades.modifiers.captureRadius;
+    const captureRadius =
+      this.getPhysicalRadius(node) +
+      (node.isGigantic ? this.getOrbitClearance(node) + 1.15 : 0.92) +
+      this.runUpgrades.modifiers.captureRadius;
     const dx = this.playerPosition.x - node.resolvedX;
     const dy = this.playerPosition.y - node.resolvedY;
     const instantHit = dx * dx + dy * dy <= captureRadius * captureRadius;
@@ -1314,6 +1428,9 @@ export class GameSessionController {
   private getPhysicalRadius(node: ResolvedGamePathNode) {
     const extents = this.getShapeExtents(node);
     const renderedRadius = Math.max(extents.x, extents.y);
+    if (node.isGigantic) {
+      return Math.max(node.gameplayRadius, renderedRadius * 1.02);
+    }
     return Math.max(node.gameplayRadius, renderedRadius);
   }
 
@@ -1323,6 +1440,9 @@ export class GameSessionController {
         ? clamp(this.playerVelocity.length() / 16, 0, 0.46)
         : 0;
     const largeShardBoost = clamp((node.visualScale - 3.2) * 0.085, 0, 0.82);
+    if (node.isGigantic) {
+      return clamp(0.52 + node.visualScale * 0.01, 0.52, 0.96);
+    }
     return clamp(0.28 + node.visualScale * 0.048 + largeShardBoost + speedBoost, 0.28, 1.48);
   }
 
@@ -1473,7 +1593,7 @@ export class GameSessionController {
   }
 
   private prewarmUpcomingMilestones() {
-    for (let index = this.attachedIndex + 1; index < this.attachedIndex + 18; index += 1) {
+    for (let index = this.attachedIndex + 1; index < this.attachedIndex + 48; index += 1) {
       const node = this.path.getNode(index);
       if (!node?.isMilestone || this.milestoneChoiceCache.has(node.index)) {
         continue;
@@ -1491,7 +1611,7 @@ export class GameSessionController {
         return {
           slot: index as 0 | 1 | 2,
           offer: choice.offer,
-          worldPosition: new THREE.Vector3(preview.x, preview.y + (index === 1 ? 2.4 : index === 0 ? 3.2 : -3.2), preview.z),
+          worldPosition: new THREE.Vector3(preview.x + 3.4, preview.y, preview.z),
           mode: 'reward_branch'
         };
       });
@@ -1527,5 +1647,18 @@ export class GameSessionController {
       }
     }
     return null;
+  }
+
+  private getSpecialAccent(node: ResolvedGamePathNode) {
+    if (!(node.eventType === 'shop' || (node.colorHint === 'accent' && !node.isMilestone))) {
+      return null;
+    }
+    const colorIndex = Math.floor(this.currentTime / 3) % SPECIAL_ACCENT_SEQUENCE.length;
+    return SPECIAL_ACCENT_SEQUENCE[colorIndex]!;
+  }
+
+  private getRewardRingColor(node: ResolvedGamePathNode) {
+    const slot = node.branchSlot ?? 0;
+    return REWARD_RING_SEQUENCE[slot] ?? REWARD_RING_SEQUENCE[0];
   }
 }

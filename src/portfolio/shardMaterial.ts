@@ -14,6 +14,9 @@ export interface DeformMaterial extends THREE.MeshStandardMaterial {
       uOrbitAngle: { value: number };
       uOrbitPulse: { value: number };
       uWaveDensity: { value: number };
+      uStripeMix?: { value: number };
+      uStripePhase?: { value: number };
+      uStripeColor?: { value: THREE.Color };
     };
   };
 }
@@ -59,7 +62,10 @@ export function createDeformMaterial(theme: ThemeMode, seed: number) {
       uSeed: { value: seed },
       uOrbitAngle: { value: 0 },
       uOrbitPulse: { value: 0 },
-      uWaveDensity: { value: 0.72 }
+      uWaveDensity: { value: 0.72 },
+      uStripeMix: { value: 0 },
+      uStripePhase: { value: 0 },
+      uStripeColor: { value: themePalette[theme].color.clone() }
     };
 
     material.userData.shaderUniforms = uniforms;
@@ -71,6 +77,7 @@ export function createDeformMaterial(theme: ThemeMode, seed: number) {
         `#include <common>
 attribute vec3 aFragmentDir;
 attribute float aFragmentPhase;
+varying vec3 vShardLocalPos;
 uniform float uTime;
 uniform float uHover;
 uniform float uDrag;
@@ -85,6 +92,7 @@ uniform float uWaveDensity;`
       .replace(
         '#include <begin_vertex>',
         `vec3 transformed = vec3(position);
+vShardLocalPos = position;
 vec3 fragmentDir = vec3(0.0, 0.0, 1.0);
 float fragmentPhase = 0.0;
 #ifdef USE_UV
@@ -115,6 +123,23 @@ transformed += normal * (((baseWave + sideWave) * waveAttenuation) + dragWave + 
 transformed.xy *= 1.0 + 0.025 * (1.0 - uSettled) + uDrag * 0.08 + uSnap * 0.028;
 transformed.z *= focusFlatten;`
       );
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+varying vec3 vShardLocalPos;
+uniform float uStripeMix;
+uniform float uStripePhase;
+uniform vec3 uStripeColor;`
+      )
+      .replace(
+        'vec4 diffuseColor = vec4( diffuse, opacity );',
+        `vec4 diffuseColor = vec4( diffuse, opacity );
+float stripeWave = 0.5 + 0.5 * sin(vShardLocalPos.y * 7.0 + vShardLocalPos.x * 2.6 + uStripePhase);
+float stripeBand = smoothstep(0.32, 0.68, stripeWave);
+diffuseColor.rgb = mix(diffuseColor.rgb, uStripeColor, stripeBand * uStripeMix);`
+      );
   };
 
   material.customProgramCacheKey = () => `shard-${seed}`;
@@ -129,7 +154,20 @@ export function setDeformMaterialTheme(material: DeformMaterial, theme: ThemeMod
 
 export function updateDeformUniforms(
   material: DeformMaterial,
-  values: { time: number; hover: number; drag: number; focus: number; settled: number; snap: number; orbitAngle?: number; orbitPulse?: number; waveDensity?: number }
+  values: {
+    time: number;
+    hover: number;
+    drag: number;
+    focus: number;
+    settled: number;
+    snap: number;
+    orbitAngle?: number;
+    orbitPulse?: number;
+    waveDensity?: number;
+    stripeMix?: number;
+    stripePhase?: number;
+    stripeColor?: string;
+  }
 ) {
   const uniforms = material.userData.shaderUniforms;
   if (!uniforms) return;
@@ -142,6 +180,9 @@ export function updateDeformUniforms(
   uniforms.uOrbitAngle.value = values.orbitAngle ?? 0;
   uniforms.uOrbitPulse.value = values.orbitPulse ?? 0;
   uniforms.uWaveDensity.value = values.waveDensity ?? 0.72;
+  if (uniforms.uStripeMix) uniforms.uStripeMix.value = values.stripeMix ?? 0;
+  if (uniforms.uStripePhase) uniforms.uStripePhase.value = values.stripePhase ?? 0;
+  if (uniforms.uStripeColor && values.stripeColor) uniforms.uStripeColor.value.set(values.stripeColor);
 }
 
 export function createFragmentedIcosahedronGeometry(radius: number, detail: number) {

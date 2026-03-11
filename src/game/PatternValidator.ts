@@ -1,4 +1,4 @@
-import { getDifficultyProfile } from './difficultyScaler';
+import { DEFAULT_COLUMN_DISTANCE, getDifficultyProfile } from './difficultyScaler';
 import type { GamePathNode } from './gameSessionTypes';
 
 export function validatePatternPlacement(candidateNodes: GamePathNode[], existingNodes: GamePathNode[]) {
@@ -31,6 +31,10 @@ export function validatePatternPlacement(candidateNodes: GamePathNode[], existin
     }
 
     for (const node of recentNodes) {
+      if (node.isMilestone && isInsideMilestoneReservedRange(candidate, node)) {
+        return false;
+      }
+
       const distance = Math.hypot(candidate.x - node.x, candidate.y - node.y);
       if (distance < getPlacementRadius(candidate) + getPlacementRadius(node)) {
         return false;
@@ -56,6 +60,12 @@ export function validatePatternPlacement(candidateNodes: GamePathNode[], existin
   }
 
   return true;
+}
+
+function isInsideMilestoneReservedRange(candidate: GamePathNode, milestone: GamePathNode) {
+  const start = milestone.x - DEFAULT_COLUMN_DISTANCE * 3;
+  const end = milestone.x + DEFAULT_COLUMN_DISTANCE * 4;
+  return candidate.x >= start && candidate.x <= end;
 }
 
 function getPlacementRadius(node: GamePathNode) {
