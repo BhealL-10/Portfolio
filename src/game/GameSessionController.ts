@@ -52,6 +52,14 @@ interface OrbitSample {
   tangent: THREE.Vector2;
 }
 
+interface ImpactWave {
+  originAngle: number;
+  strength: number;
+  radius: number;
+  decay: number;
+  createdAt: number;
+}
+
 export class GameSessionController {
   private readonly root = new THREE.Group();
   private readonly player = new THREE.Group();
@@ -73,6 +81,7 @@ export class GameSessionController {
   private readonly scratchVector = new THREE.Vector3();
   private readonly scratchVectorB = new THREE.Vector3();
   private readonly scratchVector2 = new THREE.Vector2();
+  private readonly impactWaves = new Map<number, ImpactWave[]>();
   private readonly hudSnapshot: GameHudSnapshot = {
     state: 'transition',
     score: 0,
@@ -100,6 +109,7 @@ export class GameSessionController {
   private playerState: PlayerMotionState = 'attached';
   private currentTime = 0;
   private attachedIndex = 0;
+  private displayAnchorIndex = 0;
   private score = 0;
   private chargeActive = false;
   private chargeMeter = 0;
@@ -246,6 +256,7 @@ export class GameSessionController {
     this.acquisitionStartedAt = 0;
     this.currentTime = 0;
     this.attachedIndex = 0;
+    this.displayAnchorIndex = 0;
     this.lastLandingDirection = 0;
     this.playerState = 'attached';
     this.orbitAngle = Math.PI * 0.18;
@@ -268,6 +279,7 @@ export class GameSessionController {
     this.momentum.speedMultiplier = 1;
     this.momentum.jumpMultiplier = 1;
     this.momentum.cameraZoomMultiplier = 0;
+    this.impactWaves.clear();
     this.playerTrail.geometry.setDrawRange(0, this.trailPoints.length);
     this.trailPoints.forEach((point) => point.set(0, 0, 0));
     this.coins.reset();
@@ -405,14 +417,22 @@ export class GameSessionController {
     this.path.ensureAhead(this.attachedIndex);
     this.updateMomentum(deltaTime);
 
-    const currentNode = this.getResolvedNode(this.attachedIndex);
-    const nextNode = this.getResolvedNode(this.attachedIndex + 1);
+    let currentNode = this.getResolvedNode(this.attachedIndex);
+    let nextNode = this.getResolvedNode(this.attachedIndex + 1);
+    const motionStartIndex = this.attachedIndex;
 
     if (this.playerState === 'airborne') {
       this.updateAirborne(deltaTime, currentNode);
     } else {
       this.updateAttached(deltaTime, currentNode);
     }
+
+    if (this.attachedIndex !== motionStartIndex || this.playerState !== 'airborne') {
+      currentNode = this.getResolvedNode(this.attachedIndex);
+      nextNode = this.getResolvedNode(this.attachedIndex + 1);
+    }
+
+    this.advanceDisplayAnchor();
 
     this.updateEvents(deltaTime, elapsedTime, currentNode);
     this.updateCamera(deltaTime, currentNode, nextNode);
@@ -421,7 +441,7 @@ export class GameSessionController {
     this.syncMarkers(elapsedTime);
 
     if (this.state !== 'game_over') {
-      if (this.camera.isOutsideViewport(this.playerPosition, 0.01) || this.camera.isBehindSafeLine(this.playerPosition)) {
+      if (this.camera.isOutsideVerticalBounds(this.playerPosition, 0.02) || this.camera.isBehindSafeLine(this.playerPosition)) {
         this.failRun();
       } else if (this.playerState !== 'airborne' && this.camera.isBehindSafeLine(new THREE.Vector3(currentNode.resolvedX, currentNode.resolvedY, 0))) {
         this.failRun();
@@ -467,8 +487,18 @@ export class GameSessionController {
       return nodes.slice(0, count);
     }
 
-    const start = Math.max(0, this.attachedIndex - 1);
-    return this.path.getWindow(start, count, this.currentTime, this.attachedIndex);
+    const start = Math.max(0, this.displayAnchorIndex);
+    return this.path.getWindow(start, count, this.currentTime, this.displayAnchorIndex);
+  }
+
+  private advanceDisplayAnchor() {
+    const desired = Math.max(0, this.attachedIndex - 2);
+    if (desired <= this.displayAnchorIndex) return;
+    const gap = desired - this.displayAnchorIndex;
+    this.displayAnchorIndex += gap >= 4 ? 2 : 1;
+    if (this.displayAnchorIndex > desired) {
+      this.displayAnchorIndex = desired;
+    }
   }
 
   private updateMomentum(deltaTime: number) {
@@ -600,7 +630,7 @@ export class GameSessionController {
       }
     }
 
-    if (this.camera.isOutsideViewport(this.playerPosition, 0.01) || this.camera.isBehindSafeLine(this.playerPosition)) {
+    if (this.camera.isOutsideVerticalBounds(this.playerPosition, 0.02) || this.camera.isBehindSafeLine(this.playerPosition)) {
       this.failRun();
       return;
     }
@@ -672,6 +702,7 @@ export class GameSessionController {
         (Math.PI * 2) / Math.max(1.1, node.gameplayOrbitPeriod) * 2.2
       );
       this.rewardMomentum(nextDirection, tangentialSpeed, node);
+      this.registerImpactWave(node, attachment.angle, incomingVelocity.length());
     } else {
       nextAngle = index === 0 ? Math.PI * 0.18 : 0;
       nextDirection = index === 0 ? -1 : this.orbitDirection;
@@ -1053,14 +1084,15 @@ export class GameSessionController {
   private getOrbitSample(node: ResolvedGamePathNode, angle: number): OrbitSample {
     const parameter = wrapAngle(angle);
     const rotation = node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase;
-    const baseRadius = node.gameplayRadius + PLAYER_CAPTURE_PADDING;
+    const baseRadius = node.gameplayRadius + PLAYER_CAPTURE_PADDING + 0.28;
+    const localAngle = wrapAngle(parameter - rotation);
 
     if (node.shapeKind === 'oval') {
       const rx = baseRadius * 1.46;
       const ry = baseRadius * 0.84;
       const position = new THREE.Vector2(Math.cos(parameter) * rx, Math.sin(parameter) * ry);
       const tangent = new THREE.Vector2(-Math.sin(parameter) * rx, Math.cos(parameter) * ry).normalize();
-      return this.rotateOrbitSample(position, tangent, rotation);
+      return this.applySurfaceContour(node, localAngle, this.rotateOrbitSample(position, tangent, rotation));
     }
 
     if (node.shapeKind === 'triangular') {
@@ -1078,12 +1110,81 @@ export class GameSessionController {
       const end = vertices[(segment + 1) % 3]!;
       const position = start.clone().lerp(end, localT);
       const tangent = end.clone().sub(start).normalize();
-      return this.rotateOrbitSample(position, tangent, rotation);
+      return this.applySurfaceContour(node, localAngle, this.rotateOrbitSample(position, tangent, rotation));
     }
 
     const position = new THREE.Vector2(Math.cos(parameter) * baseRadius, Math.sin(parameter) * baseRadius);
     const tangent = new THREE.Vector2(-Math.sin(parameter), Math.cos(parameter));
-    return this.rotateOrbitSample(position, tangent, 0);
+    return this.applySurfaceContour(node, localAngle, this.rotateOrbitSample(position, tangent, 0));
+  }
+
+  private applySurfaceContour(node: ResolvedGamePathNode, localAngle: number, sample: OrbitSample): OrbitSample {
+    const contourScale = 1 + this.sampleSurfaceDeformation(node, localAngle);
+    const radial = sample.position.clone().normalize();
+    return {
+      position: sample.position.multiplyScalar(contourScale),
+      tangent: sample.tangent.addScaledVector(radial, 0.12 * this.sampleSurfaceSlope(node, localAngle)).normalize()
+    };
+  }
+
+  private sampleSurfaceDeformation(node: ResolvedGamePathNode, localAngle: number) {
+    const levelFactor = clamp(node.index / 280, 0, 1);
+    const sizeDamping = clamp(1.08 - node.visualScale * 0.035, 0.32, 1);
+    const amplitude = (0.028 + levelFactor * 0.085) * sizeDamping;
+    const primaryFrequency = node.shapeKind === 'triangular' ? 3 : node.shapeKind === 'oval' ? 2 : 4;
+    const base =
+      Math.sin(localAngle * primaryFrequency + node.motionSeed * 6.2) * amplitude +
+      Math.sin(localAngle * (primaryFrequency + 3) - node.motionSeed * 4.1) * amplitude * 0.42;
+    return base + this.sampleImpactWaveOffset(node, localAngle);
+  }
+
+  private sampleSurfaceSlope(node: ResolvedGamePathNode, localAngle: number) {
+    const epsilon = 0.06;
+    return (
+      this.sampleSurfaceDeformation(node, wrapAngle(localAngle + epsilon)) -
+      this.sampleSurfaceDeformation(node, wrapAngle(localAngle - epsilon))
+    ) / (epsilon * 2);
+  }
+
+  private sampleImpactWaveOffset(node: ResolvedGamePathNode, localAngle: number) {
+    const waves = this.impactWaves.get(node.index);
+    if (!waves || waves.length === 0) return 0;
+
+    let total = 0;
+    const remaining: ImpactWave[] = [];
+    waves.forEach((wave) => {
+      const age = this.currentTime - wave.createdAt;
+      if (age >= wave.decay) return;
+      const life = 1 - age / wave.decay;
+      const angleDelta = shortestAngleDistance(localAngle, wave.originAngle);
+      const influence = Math.exp(-(angleDelta * angleDelta) / Math.max(0.08, wave.radius * wave.radius));
+      total += wave.strength * influence * life;
+      remaining.push(wave);
+    });
+
+    if (remaining.length > 0) {
+      this.impactWaves.set(node.index, remaining);
+    } else {
+      this.impactWaves.delete(node.index);
+    }
+
+    return total;
+  }
+
+  private registerImpactWave(node: ResolvedGamePathNode, angle: number, impactSpeed: number) {
+    const levelFactor = clamp(node.index / 240, 0, 1);
+    const sizeDamping = clamp(1.04 - node.visualScale * 0.03, 0.34, 1);
+    const strength = clamp((impactSpeed - 4.6) / 18, 0.02, 0.18) * (0.6 + levelFactor * 0.4) * sizeDamping;
+    const wave: ImpactWave = {
+      originAngle: wrapAngle(angle),
+      strength,
+      radius: 0.32 + clamp(impactSpeed / 18, 0, 0.72),
+      decay: 1.4 + clamp(impactSpeed / 16, 0, 0.9),
+      createdAt: this.currentTime
+    };
+    const current = this.impactWaves.get(node.index) ?? [];
+    current.push(wave);
+    this.impactWaves.set(node.index, current.slice(-4));
   }
 
   private rotateOrbitSample(position: THREE.Vector2, tangent: THREE.Vector2, rotation: number): OrbitSample {
@@ -1105,7 +1206,8 @@ export class GameSessionController {
   }
 
   private getEnemyWorldPosition(node: ResolvedGamePathNode, pole: 'north' | 'south') {
-    const local = new THREE.Vector2(0, (pole === 'north' ? 1 : -1) * (node.gameplayRadius + 0.58));
+    const orbit = this.getOrbitSample(node, pole === 'north' ? Math.PI * 0.5 : Math.PI * 1.5);
+    const local = orbit.position.clone().normalize().multiplyScalar(node.gameplayRadius + 0.58);
     const rotation = node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase;
     const cos = Math.cos(rotation);
     const sin = Math.sin(rotation);

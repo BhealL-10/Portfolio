@@ -267,14 +267,19 @@ export class GamePathSystem {
     const score = previous.index;
     const profile = getDifficultyProfile(score);
     const scale = profile.spacing / 11.5;
-    const candidates = pattern.nodes.map((template, offset) => {
+    const rawCandidates = pattern.nodes.map((template, offset) => {
       const index = previous.index + offset + 1;
       const eventType = this.resolveEventType(index, score, template);
       return this.buildTemplateNode(previous, index, template, pattern, scale, score, eventType);
     });
+    const candidates = this.densifyPattern(previous, rawCandidates, score);
 
     if (validatePatternPlacement(candidates, this.nodes)) {
       return candidates;
+    }
+
+    if (validatePatternPlacement(rawCandidates, this.nodes)) {
+      return rawCandidates;
     }
 
     return this.buildFallbackPattern(previous);
@@ -354,7 +359,7 @@ export class GamePathSystem {
         : direction === 'down_right'
           ? { x: 1, y: -0.66 }
           : { x: 1, y: 0 };
-      const spacing = profile.spacing * (0.88 + this.nextRandom() * 0.24);
+      const spacing = profile.spacing * (0.68 + this.nextRandom() * 0.16);
       const x = nextPrevious.x + vector.x * spacing;
       const y = nextPrevious.y + vector.y * spacing;
       nodes.push(this.buildNode({
@@ -363,14 +368,14 @@ export class GamePathSystem {
         x,
         y,
         direction,
-        sizeTier: 'medium',
+        sizeTier: offset % 2 === 0 ? 'small' : 'medium_small',
         shapeKind: score >= 100 ? 'triangular' : score >= 50 ? 'oval' : 'round',
         motionPattern: profile.roundMovementUnlocked ? 'vertical' : 'none',
         spinDirection: 'cw',
         spinSpeed: 0.12,
-        gameplayRadius: 1.74,
-        visualScale: 1.92,
-        gameplayOrbitPeriod: 3.6,
+        gameplayRadius: offset % 2 === 0 ? 1.12 : 1.46,
+        visualScale: offset % 2 === 0 ? 1.2 : 1.58,
+        gameplayOrbitPeriod: offset % 2 === 0 ? 2.8 : 3.2,
         visualStretch: { x: 1, y: 1, z: 1 },
         kind: 'normal',
         branchSlot: null,
@@ -386,6 +391,79 @@ export class GamePathSystem {
     }
 
     return nodes;
+  }
+
+  private densifyPattern(previous: GamePathNode, candidates: GamePathNode[], score: number) {
+    if (candidates.length === 0) return candidates;
+
+    const profile = getDifficultyProfile(score);
+    const densified: GamePathNode[] = [];
+    let cursor = previous;
+    let flatRun = 0;
+
+    candidates.forEach((candidate) => {
+      const dx = candidate.x - cursor.x;
+      const dy = candidate.y - cursor.y;
+      const distance = Math.hypot(dx, dy);
+      const nearlyFlat = Math.abs(dy) < profile.maxVerticalDelta * 0.2;
+      flatRun = nearlyFlat ? flatRun + 1 : 0;
+
+      const needsExtra =
+        score < 160 &&
+        (distance > profile.spacing * 1.02 || Math.abs(dy) > profile.maxVerticalDelta * 0.62 || flatRun >= 2);
+
+      if (needsExtra) {
+        const insertions = distance > profile.spacing * 1.38 || Math.abs(dy) > profile.maxVerticalDelta * 0.92 ? 2 : 1;
+        for (let step = 0; step < insertions; step += 1) {
+          const ratio = (step + 1) / (insertions + 1);
+          const offsetSign = (cursor.index + candidate.index + step) % 2 === 0 ? 1 : -1;
+          const verticalBias =
+            nearlyFlat
+              ? (1.2 + step * 0.6) * offsetSign
+              : Math.sign(dy || offsetSign) * Math.min(2.2, Math.abs(dy) * 0.28) + offsetSign * 0.45;
+
+          const bridgePrevious = densified[densified.length - 1] ?? cursor;
+          const x = cursor.x + dx * ratio;
+          const y = cursor.y + dy * ratio + verticalBias;
+          const sizeTier: GameShardSizeTier = step === 0 ? 'tiny' : 'very_small';
+          densified.push(this.buildNode({
+            previous: bridgePrevious,
+            index: bridgePrevious.index + 1,
+            x,
+            y,
+            direction: this.directionFrom(bridgePrevious.x, bridgePrevious.y, x, y),
+            sizeTier,
+            shapeKind: score >= 100 ? 'triangular' : score >= 50 ? 'oval' : 'round',
+            motionPattern: score >= 40 && step === insertions - 1 ? 'vertical' : 'none',
+            spinDirection: this.nextRandom() < 0.5 ? 'cw' : 'ccw',
+            spinSpeed: 0.1 + this.nextRandom() * 0.08,
+            gameplayRadius: sizeTier === 'tiny' ? 0.78 : 0.96,
+            visualScale: sizeTier === 'tiny' ? 0.86 : 1.08,
+            gameplayOrbitPeriod: sizeTier === 'tiny' ? 2.4 : 2.75,
+            visualStretch: { x: 1, y: 1, z: 1 },
+            kind: 'normal',
+            branchSlot: null,
+            offerId: null,
+            onboarding: candidate.index < 50,
+            eventType: 'none',
+            colorHint: 'none',
+            isMilestone: false,
+            isGigantic: false,
+            coinSlots: [],
+            enemySlot: null
+          }));
+        }
+      }
+
+      densified.push(this.reindexNode(candidate, (densified[densified.length - 1] ?? cursor).index + 1, densified[densified.length - 1] ?? cursor));
+      cursor = densified[densified.length - 1] ?? cursor;
+    });
+
+    const normalized: GamePathNode[] = [];
+    densified.forEach((node, offset) => {
+      normalized.push(this.reindexNode(node, previous.index + offset + 1, offset === 0 ? previous : normalized[offset - 1]));
+    });
+    return normalized;
   }
 
   private buildNode(config: {

@@ -29,6 +29,8 @@ export class WorldRenderer {
   private readonly ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
   private readonly keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
   private readonly rimLight = new THREE.PointLight(0xffffff, 25, 80, 2);
+  private cameraPositionResponse = 8;
+  private lookResponse = 8;
 
   constructor(private readonly host: HTMLElement) {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -60,14 +62,19 @@ export class WorldRenderer {
     this.lookTarget.copy(lookAt);
   }
 
-  update(deltaTime: number) {
-    this.cameraCurrent.x = damp(this.cameraCurrent.x, this.cameraTarget.x, 8, deltaTime);
-    this.cameraCurrent.y = damp(this.cameraCurrent.y, this.cameraTarget.y, 8, deltaTime);
-    this.cameraCurrent.z = damp(this.cameraCurrent.z, this.cameraTarget.z, 8, deltaTime);
+  setCameraResponse(positionResponse: number, lookResponse = positionResponse) {
+    this.cameraPositionResponse = Math.max(1, positionResponse);
+    this.lookResponse = Math.max(1, lookResponse);
+  }
 
-    this.lookCurrent.x = damp(this.lookCurrent.x, this.lookTarget.x, 8, deltaTime);
-    this.lookCurrent.y = damp(this.lookCurrent.y, this.lookTarget.y, 8, deltaTime);
-    this.lookCurrent.z = damp(this.lookCurrent.z, this.lookTarget.z, 8, deltaTime);
+  update(deltaTime: number) {
+    this.cameraCurrent.x = damp(this.cameraCurrent.x, this.cameraTarget.x, this.cameraPositionResponse, deltaTime);
+    this.cameraCurrent.y = damp(this.cameraCurrent.y, this.cameraTarget.y, this.cameraPositionResponse, deltaTime);
+    this.cameraCurrent.z = damp(this.cameraCurrent.z, this.cameraTarget.z, this.cameraPositionResponse, deltaTime);
+
+    this.lookCurrent.x = damp(this.lookCurrent.x, this.lookTarget.x, this.lookResponse, deltaTime);
+    this.lookCurrent.y = damp(this.lookCurrent.y, this.lookTarget.y, this.lookResponse, deltaTime);
+    this.lookCurrent.z = damp(this.lookCurrent.z, this.lookTarget.z, this.lookResponse, deltaTime);
 
     this.rimLight.position.z = this.cameraCurrent.z - 2;
     this.camera.position.copy(this.cameraCurrent);

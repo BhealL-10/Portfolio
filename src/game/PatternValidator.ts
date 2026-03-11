@@ -14,7 +14,7 @@ export function validatePatternPlacement(candidateNodes: GamePathNode[], existin
       const dx = candidate.x - previous.x;
       const dy = candidate.y - previous.y;
       const distance = Math.hypot(dx, dy);
-      const minimumDistance = previous.gameplayRadius + candidate.gameplayRadius + 2.8;
+      const minimumDistance = getPlacementRadius(previous) + getPlacementRadius(candidate);
 
       if (distance < minimumDistance || distance > profile.maxJumpDistance) {
         return false;
@@ -31,7 +31,14 @@ export function validatePatternPlacement(candidateNodes: GamePathNode[], existin
 
     for (const node of recentNodes) {
       const distance = Math.hypot(candidate.x - node.x, candidate.y - node.y);
-      if (distance < candidate.gameplayRadius + node.gameplayRadius + 2.4) {
+      if (distance < getPlacementRadius(candidate) + getPlacementRadius(node)) {
+        return false;
+      }
+
+      if (
+        Math.abs(candidate.x - node.x) < Math.max(3.2, (candidate.gameplayRadius + node.gameplayRadius) * 0.9) &&
+        Math.abs(candidate.y - node.y) < Math.max(3, (candidate.gameplayRadius + node.gameplayRadius) * 0.8)
+      ) {
         return false;
       }
     }
@@ -48,6 +55,10 @@ export function validatePatternPlacement(candidateNodes: GamePathNode[], existin
   }
 
   return true;
+}
+
+function getPlacementRadius(node: GamePathNode) {
+  return node.gameplayRadius + node.visualScale * 0.26 + 1.7;
 }
 
 export function validateTeleportTarget(nodes: GamePathNode[], fromIndex: number, targetIndex: number) {

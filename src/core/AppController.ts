@@ -803,6 +803,10 @@ export class AppController {
     const cameraPosition = this.introStartCameraPosition.clone().lerp(blendedPosition, this.introTransitionProgress);
     const cameraLookAt = this.introStartLookAt.clone().lerp(blendedLookAt, this.introTransitionProgress);
 
+    this.renderer.setCameraResponse(
+      this.mode.is('game_transition') || this.mode.is('game') || this.mode.is('game_over') ? 18 : 8,
+      this.mode.is('game_transition') || this.mode.is('game') || this.mode.is('game_over') ? 20 : 8
+    );
     this.renderer.setCameraTarget(cameraPosition, cameraLookAt);
     this.renderer.update(deltaTime);
     if (this.mode.is('game_transition') || this.mode.is('game') || this.mode.is('game_over')) {
