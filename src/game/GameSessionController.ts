@@ -136,6 +136,7 @@ export class GameSessionController {
   private shieldCharges = 0;
   private eventCooldownUntil = 0;
   private autoFireReadyAt = 0;
+  private milestoneChoiceCache = new Map<number, BranchChoice[]>();
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
     this.currentTheme = theme;
@@ -284,6 +285,7 @@ export class GameSessionController {
     this.shieldCharges = 0;
     this.eventCooldownUntil = 0;
     this.autoFireReadyAt = 0;
+    this.milestoneChoiceCache.clear();
     this.momentum.gauge = 0;
     this.momentum.fillRate = 0;
     this.momentum.decayRate = 0.12;
@@ -455,13 +457,14 @@ export class GameSessionController {
 
     this.path.ensureAhead(this.attachedIndex);
     this.updateMomentum(deltaTime);
+    this.prewarmUpcomingMilestones();
 
     let currentNode = this.getResolvedNode(this.attachedIndex);
     let nextNode = this.getResolvedNode(this.attachedIndex + 1);
     const motionStartIndex = this.attachedIndex;
 
     if (this.playerState === 'airborne') {
-      this.updateAirborne(deltaTime, currentNode);
+      this.updateAirborne(deltaTime);
     } else {
       this.updateAttached(deltaTime, currentNode);
     }
@@ -480,9 +483,7 @@ export class GameSessionController {
     this.syncMarkers(elapsedTime);
 
     if (this.state !== 'game_over') {
-      if (this.camera.isOutsideVerticalBounds(this.playerPosition, 0.02) || this.camera.isBehindSafeLine(this.playerPosition)) {
-        this.failRun();
-      } else if (this.playerState !== 'airborne' && this.camera.isBehindSafeLine(new THREE.Vector3(currentNode.resolvedX, currentNode.resolvedY, 0))) {
+      if (this.isOutsidePlayableField(this.playerPosition) || this.camera.isBehindSafeLine(this.playerPosition)) {
         this.failRun();
       }
     }
@@ -650,7 +651,7 @@ export class GameSessionController {
     }
   }
 
-  private updateAirborne(deltaTime: number, currentNode: ResolvedGamePathNode) {
+  private updateAirborne(deltaTime: number) {
     const previousPosition = this.scratchVector.set(this.playerPosition.x, this.playerPosition.y, this.playerPosition.z);
     const gravityScale = clamp(1 - this.runUpgrades.modifiers.glideFactor * 0.55, 0.18, 1);
     this.playerVelocity.y -= 6.8 * gravityScale * deltaTime;
@@ -712,12 +713,12 @@ export class GameSessionController {
       }
     }
 
-    if (this.camera.isOutsideVerticalBounds(this.playerPosition, 0.02) || this.camera.isBehindSafeLine(this.playerPosition)) {
+    if (this.isOutsidePlayableField(this.playerPosition) || this.camera.isBehindSafeLine(this.playerPosition)) {
       this.failRun();
       return;
     }
 
-    this.resolveAirborneEnemyContact(currentNode);
+    this.resolveAirborneEnemyContact();
   }
 
   private launch() {
@@ -835,8 +836,15 @@ export class GameSessionController {
 
   private resolveNodeEvent(node: ResolvedGamePathNode) {
     if (node.isMilestone) {
-      const offers = buildUpgradeOffers(node.index, this.runUpgrades);
-      this.activeChoices = this.path.createUpgradeBranches(node.index, offers, this.score);
+      if (!this.milestoneChoiceCache.has(node.index)) {
+        const offers = buildUpgradeOffers(node.index, this.runUpgrades);
+        this.milestoneChoiceCache.set(node.index, this.path.createUpgradeBranches(node.index, offers, this.score));
+      }
+      this.activeChoices = (this.milestoneChoiceCache.get(node.index) ?? []).map((choice) => ({
+        ...choice,
+        previewNodes: choice.previewNodes.map((previewNode) => ({ ...previewNode, coinSlots: previewNode.coinSlots.map((slot) => ({ ...slot })) })),
+        pathNodes: choice.pathNodes.map((pathNode) => ({ ...pathNode, coinSlots: pathNode.coinSlots.map((slot) => ({ ...slot })) }))
+      }));
       this.choiceMode = 'reward_branch';
       this.state = 'upgrade_branching';
       this.eventCooldownUntil = this.currentTime + 0.2;
@@ -903,6 +911,7 @@ export class GameSessionController {
     this.path.replaceFuture(this.attachedIndex, choice.pathNodes);
     this.path.ensureAhead(this.attachedIndex + 1, 50, 40);
     this.path.queuePostMilestoneEvents(this.attachedIndex + choice.pathNodes.length, this.attachedIndex + choice.pathNodes.length);
+    this.milestoneChoiceCache.delete(this.attachedIndex);
     this.applyOffer(choice.offer, viaFallback ? 'Quick choice' : 'Path chosen');
     this.choiceMode = 'none';
     this.activeChoices = [];
@@ -1063,7 +1072,7 @@ export class GameSessionController {
       return;
     }
     const impactSpeed = this.playerVelocity.length();
-    if (impactSpeed >= enemy.speedThreshold || this.runUpgrades.modifiers.spikeOrbit) {
+    if ((this.isEnemyHitFromBehind(enemy.pole) && impactSpeed >= enemy.speedThreshold) || this.runUpgrades.modifiers.spikeOrbit) {
       enemy.alive = false;
       this.stats.addCoins(this.applyCoinBonus(enemy.rewardCoins));
       this.fillMomentumBurst(0.05);
@@ -1072,7 +1081,7 @@ export class GameSessionController {
     this.consumeProtectionOrFail();
   }
 
-  private resolveAirborneEnemyContact(currentNode: ResolvedGamePathNode) {
+  private resolveAirborneEnemyContact() {
     for (let index = this.attachedIndex + 1; index <= this.attachedIndex + 4; index += 1) {
       const node = this.getResolvedNode(index);
       const enemy = node.enemySlot;
@@ -1080,7 +1089,7 @@ export class GameSessionController {
       const enemyPosition = this.getEnemyWorldPosition(node, enemy.pole);
       if (enemyPosition.distanceTo(this.playerPosition) > 1.2) continue;
       const speed = this.playerVelocity.length();
-      if (speed >= enemy.speedThreshold * 0.75 || node === currentNode) {
+      if (speed >= enemy.speedThreshold * 0.75 || this.runUpgrades.modifiers.spikeOrbit) {
         enemy.alive = false;
         this.stats.addCoins(this.applyCoinBonus(enemy.rewardCoins));
         this.fillMomentumBurst(0.08);
@@ -1131,6 +1140,11 @@ export class GameSessionController {
     this.activeChoices = [];
     this.shop.reset();
     this.emitScore();
+  }
+
+  private isOutsidePlayableField(position: THREE.Vector3) {
+    const verticalLimit = 32;
+    return position.y <= -verticalLimit || position.y >= verticalLimit;
   }
 
   private canCaptureNode(node: ResolvedGamePathNode, previousPosition?: THREE.Vector3) {
@@ -1376,6 +1390,22 @@ export class GameSessionController {
       node.resolvedY + local.x * sin + local.y * cos,
       node.resolvedZ
     );
+  }
+
+  private isEnemyHitFromBehind(pole: 'north' | 'south') {
+    return pole === 'north' ? this.orbitDirection === 1 : this.orbitDirection === -1;
+  }
+
+  private prewarmUpcomingMilestones() {
+    for (let index = this.attachedIndex + 1; index < this.attachedIndex + 18; index += 1) {
+      const node = this.path.getNode(index);
+      if (!node?.isMilestone || this.milestoneChoiceCache.has(node.index)) {
+        continue;
+      }
+      const offers = buildUpgradeOffers(node.index, this.runUpgrades);
+      this.milestoneChoiceCache.set(node.index, this.path.createUpgradeBranches(node.index, offers, this.score));
+      return;
+    }
   }
 
   private getBranchHints(): BranchLabelHint[] {

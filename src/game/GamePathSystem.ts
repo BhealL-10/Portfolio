@@ -806,7 +806,7 @@ export class GamePathSystem {
       pole,
       tier,
       alive: true,
-      rewardCoins: tier === 'elite' ? 2 : 1,
+      rewardCoins: tier === 'elite' ? 10 : tier === 'armored' ? 8 : tier === 'light' ? 5 + Math.floor(this.nextRandom() * 2) : 0,
       speedThreshold
     } as const;
   }

@@ -48,6 +48,7 @@ interface ShardEntity {
     progress: number;
     swapped: boolean;
   };
+  hiddenUntil: number;
 }
 
 interface PickResult {
@@ -62,6 +63,7 @@ interface GameFieldEntity {
   orbitPhase: number;
   orbitSpeed: number;
   orbitRadius: number;
+  hiddenUntil: number;
 }
 
 const ORBIT_CAMERA_POSITION = new THREE.Vector3(0, 0.8, 24);
@@ -484,6 +486,7 @@ export class OrbitWorldSystem {
     this.externalTransitionProgress = 0;
     this.gameFieldEntities.forEach((entity) => {
       entity.group.visible = false;
+      entity.hiddenUntil = 0;
     });
   }
 
@@ -521,6 +524,7 @@ export class OrbitWorldSystem {
         progress: 0,
         swapped: false
       };
+      entity.hiddenUntil = 0;
       entity.dragTarget.copy(entity.group.position);
       entity.dragOffset.set(0, 0, 0);
       entity.velocity.set(0, 0, 0);
@@ -583,6 +587,10 @@ export class OrbitWorldSystem {
           targetPosition = this.externalLayoutPositions[index];
         } else if (this.externalTransitionFrom[index] && this.externalTransitionTo[index]) {
           targetPosition = this.externalTransitionFrom[index].clone().lerp(this.externalTransitionTo[index], this.externalTransitionProgress);
+        }
+        if (this.externalLayoutPositions && entity.group.position.distanceToSquared(targetPosition) > 14 * 14) {
+          entity.group.position.copy(targetPosition);
+          entity.hiddenUntil = elapsedTime + 0.08;
         }
         targetScale = externalVisual?.scale.x ?? this.externalLayoutScales?.[index] ?? 1.02;
         targetOpacity = 1;
@@ -648,6 +656,7 @@ export class OrbitWorldSystem {
       entity.dragAmount = damp(entity.dragAmount, dragTargetAmount, 12, deltaTime);
       entity.focusAmount = damp(entity.focusAmount, focusTargetAmount, 10, deltaTime);
       entity.opacity = damp(entity.opacity, targetOpacity, 9, deltaTime);
+      entity.group.visible = elapsedTime >= entity.hiddenUntil;
 
       if (entity.facetAnimation.active) {
         entity.facetAnimation.progress = Math.min(1, entity.facetAnimation.progress + deltaTime * 1.8);
@@ -679,6 +688,7 @@ export class OrbitWorldSystem {
 
       const squashZ = isFocused ? 0.06 : entity.snapped ? 0.96 : 1;
       if (!this.externalLayoutActive) {
+        entity.hiddenUntil = 0;
         if (entity.core.geometry !== this.roundGeometry) {
           entity.core.geometry = this.roundGeometry;
         }
@@ -736,6 +746,7 @@ export class OrbitWorldSystem {
       this.gameFieldEntities.forEach((entity, index) => {
         if (index >= GAME_FIELD_EXTRA_COUNT) {
           entity.group.visible = false;
+          entity.hiddenUntil = 0;
           return;
         }
         const angle = entity.orbitPhase + elapsedTime * entity.orbitSpeed;
@@ -783,8 +794,12 @@ export class OrbitWorldSystem {
         }
       }
       const resolvedPosition = position ?? transitionTarget ?? entity.group.position;
+      if (this.externalLayoutPositions && entity.group.position.distanceToSquared(resolvedPosition) > 14 * 14) {
+        entity.group.position.copy(resolvedPosition);
+        entity.hiddenUntil = elapsedTime + 0.08;
+      }
 
-      entity.group.visible = true;
+      entity.group.visible = elapsedTime >= entity.hiddenUntil;
       entity.group.position.x = damp(entity.group.position.x, resolvedPosition.x, 7.2, deltaTime);
       entity.group.position.y = damp(entity.group.position.y, resolvedPosition.y, 7.2, deltaTime);
       entity.group.position.z = damp(entity.group.position.z, resolvedPosition.z, 7.2, deltaTime);
@@ -934,7 +949,8 @@ export class OrbitWorldSystem {
         direction: 1,
         progress: 0,
         swapped: false
-      }
+      },
+      hiddenUntil: 0
     };
 
     this.entities.set(project.id, entity);
@@ -958,7 +974,8 @@ export class OrbitWorldSystem {
       anchor,
       orbitPhase: index * 0.37,
       orbitSpeed: 0.32 + (index % 7) * 0.018,
-      orbitRadius: 0.22 + (index % 4) * 0.06
+      orbitRadius: 0.22 + (index % 4) * 0.06,
+      hiddenUntil: 0
     } satisfies GameFieldEntity;
   }
 
