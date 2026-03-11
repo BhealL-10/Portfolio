@@ -345,6 +345,29 @@ body {
   margin-top: 16px;
 }
 
+.game-hud__orbit-grace {
+  --orbit-grace-progress: 0;
+  width: 44px;
+  height: 44px;
+  margin-top: 14px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--color-fg-rgb) / 0.18);
+  background:
+    radial-gradient(circle at center, rgb(var(--color-bg-rgb) / 0.92) 42%, transparent 44%),
+    conic-gradient(
+      rgb(var(--color-fg-rgb) / 0.94) calc(var(--orbit-grace-progress) * 1turn),
+      rgb(var(--color-fg-rgb) / 0.1) 0
+    );
+  opacity: 0;
+  transform: scale(0.88);
+  transition: opacity 180ms ease, transform 220ms ease;
+}
+
+.game-hud__orbit-grace.is-visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
 .game-hud__charge-meta {
   display: flex;
   align-items: center;

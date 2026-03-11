@@ -65,7 +65,8 @@ export class CameraRailController {
       this.railX += profile.cameraSpeed * speedPressure * deltaTime;
     }
 
-    const desiredX = Math.max(this.railX + profile.cameraLookAhead, playerPosition.x);
+    this.railX = Math.max(this.railX, playerPosition.x - profile.cameraLookAhead);
+    const desiredX = this.railX + profile.cameraLookAhead;
     const desiredY = currentNode.resolvedY * 0.64 + nextNode.resolvedY * 0.36;
 
     this.targetFocus.set(desiredX, desiredY);
@@ -74,12 +75,13 @@ export class CameraRailController {
         ? Math.max(12, profile.cameraCatchupSpeed * 4.2)
         : Math.max(4.4, profile.cameraCatchupSpeed * 1.25);
     const nextFocusX = damp(this.currentFocus.x, this.targetFocus.x, horizontalCatchup, deltaTime);
-    this.currentFocus.x = Math.max(this.currentFocus.x, playerPosition.x, nextFocusX);
+    this.currentFocus.x = Math.max(this.currentFocus.x, playerPosition.x - 0.08, nextFocusX);
     this.currentFocus.y = damp(this.currentFocus.y, this.targetFocus.y, 2.1, deltaTime);
 
+    const momentumZoom = profile.momentumZoomRange * Math.pow(momentumGauge, 0.82);
     this.targetZoom =
       profile.baseZoom +
-      profile.momentumZoomRange * momentumGauge +
+      momentumZoom +
       profile.largeShardZoom * largeShardFactor +
       milestoneZoom +
       choiceZoom +

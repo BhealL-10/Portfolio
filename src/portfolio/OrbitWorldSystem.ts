@@ -430,7 +430,10 @@ export class OrbitWorldSystem {
       spinSpeed: visual.spinSpeed,
       spinPhase: visual.spinPhase,
       tint: visual.tint,
-      pulse: visual.pulse
+      pulse: visual.pulse,
+      deformAngle: visual.deformAngle,
+      deformStrength: visual.deformStrength,
+      deformDensity: visual.deformDensity
     })) : null;
   }
 
@@ -658,7 +661,10 @@ export class OrbitWorldSystem {
         drag: entity.dragAmount,
         focus: entity.focusAmount,
         settled: this.externalLayoutActive ? (externalShape && externalShape !== 'round' ? 1 : 0) : entity.focusAmount * 0.25,
-        snap: this.externalLayoutActive ? 0 : entity.snapped || isSlotPreview ? 0.72 + entity.slotPulse * 0.16 : 0
+        snap: this.externalLayoutActive ? 0 : entity.snapped || isSlotPreview ? 0.72 + entity.slotPulse * 0.16 : 0,
+        orbitAngle: this.externalLayoutVisuals?.[index]?.deformAngle ?? 0,
+        orbitPulse: this.externalLayoutActive ? this.externalLayoutVisuals?.[index]?.deformStrength ?? 0 : 0,
+        waveDensity: this.externalLayoutActive ? this.externalLayoutVisuals?.[index]?.deformDensity ?? 0.72 : entity.snapped || isSlotPreview ? 1.18 : 0.6
       });
 
       entity.logoPlanes.forEach((plane, planeIndex) => {

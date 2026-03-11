@@ -130,6 +130,9 @@ export interface VisiblePlatformVisual {
   spinPhase: number;
   tint: string | null;
   pulse: number;
+  deformAngle?: number;
+  deformStrength?: number;
+  deformDensity?: number;
 }
 
 export interface GameHudSnapshot {
@@ -143,6 +146,8 @@ export interface GameHudSnapshot {
   chargeRatio: number;
   momentumGauge: number;
   momentumTier: number;
+  orbitGraceActive: boolean;
+  orbitGraceProgress: number;
   offers: RogueliteItemOffer[];
   branchHints: BranchLabelHint[];
   acquisition: AcquisitionFeedback | null;

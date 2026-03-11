@@ -93,6 +93,8 @@ export class GameSessionController {
     chargeRatio: 0,
     momentumGauge: 0,
     momentumTier: 0,
+    orbitGraceActive: false,
+    orbitGraceProgress: 1,
     offers: [],
     branchHints: [],
     acquisition: null
@@ -111,6 +113,9 @@ export class GameSessionController {
   private attachedIndex = 0;
   private displayAnchorIndex = 0;
   private score = 0;
+  private orbitGraceActive = false;
+  private orbitGraceProgress = 1;
+  private orbitGraceTravel = 0;
   private chargeActive = false;
   private chargeMeter = 0;
   private orbitAngle = Math.PI * 0.18;
@@ -257,6 +262,9 @@ export class GameSessionController {
     this.currentTime = 0;
     this.attachedIndex = 0;
     this.displayAnchorIndex = 0;
+    this.orbitGraceActive = false;
+    this.orbitGraceProgress = 1;
+    this.orbitGraceTravel = 0;
     this.lastLandingDirection = 0;
     this.playerState = 'attached';
     this.orbitAngle = Math.PI * 0.18;
@@ -307,26 +315,33 @@ export class GameSessionController {
   }
 
   getVisiblePlatformVisuals(count: number): VisiblePlatformVisual[] {
-    return this.getDisplayNodes(count).map((node) => ({
-      scale: new THREE.Vector3(
-        node.visualScale * node.visualStretch.x,
-        node.visualScale * node.visualStretch.y,
-        node.visualScale * node.visualStretch.z
-      ),
-      shapeKind: node.shapeKind,
-      spinDirection: node.spinDirection,
-      spinSpeed: node.spinSpeed,
-      spinPhase: node.resolvedSpinPhase,
-      tint:
-        node.colorHint === 'danger'
-          ? DANGER_ACCENT
-          : node.colorHint === 'reward'
-            ? REWARD_ACCENT
-            : node.colorHint === 'accent'
-              ? GAME_ACCENT
-              : null,
-      pulse: node.isMilestone || node.eventType !== 'none' ? 0.34 : clamp(this.momentum.gauge * 0.22, 0, 0.22)
-    }));
+    return this.getDisplayNodes(count).map((node) => {
+      const isCurrent = node.index === this.attachedIndex && this.playerState !== 'airborne';
+      const localAngle = wrapAngle(this.orbitAngle - (node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase));
+      return {
+        scale: new THREE.Vector3(
+          node.visualScale * node.visualStretch.x,
+          node.visualScale * node.visualStretch.y,
+          node.visualScale * node.visualStretch.z
+        ),
+        shapeKind: node.shapeKind,
+        spinDirection: node.spinDirection,
+        spinSpeed: node.spinSpeed,
+        spinPhase: node.resolvedSpinPhase,
+        tint:
+          node.colorHint === 'danger'
+            ? DANGER_ACCENT
+            : node.colorHint === 'reward'
+              ? REWARD_ACCENT
+              : node.colorHint === 'accent'
+                ? GAME_ACCENT
+                : null,
+        pulse: node.isMilestone || node.eventType !== 'none' ? 0.34 : clamp(this.momentum.gauge * 0.22, 0, 0.22),
+        deformAngle: isCurrent ? localAngle : 0,
+        deformStrength: isCurrent ? 0.48 + this.momentum.gauge * 0.58 : 0,
+        deformDensity: isCurrent ? 1.18 : 0.72
+      };
+    });
   }
 
   setChargeActive(active: boolean) {
@@ -399,6 +414,8 @@ export class GameSessionController {
     this.hudSnapshot.chargeRatio = clamp(this.chargeMeter, 0, 1);
     this.hudSnapshot.momentumGauge = normalizedGauge;
     this.hudSnapshot.momentumTier = Math.min(4, Math.floor(normalizedGauge * 5));
+    this.hudSnapshot.orbitGraceActive = this.orbitGraceActive;
+    this.hudSnapshot.orbitGraceProgress = this.orbitGraceProgress;
     this.hudSnapshot.offers = this.activeChoices.map((choice) => choice.offer);
     this.hudSnapshot.branchHints = this.getBranchHints();
     this.hudSnapshot.acquisition = this.acquisition;
@@ -492,19 +509,23 @@ export class GameSessionController {
   }
 
   private advanceDisplayAnchor() {
-    const desired = Math.max(0, this.attachedIndex - 2);
-    if (desired <= this.displayAnchorIndex) return;
-    const gap = desired - this.displayAnchorIndex;
-    this.displayAnchorIndex += gap >= 4 ? 2 : 1;
-    if (this.displayAnchorIndex > desired) {
-      this.displayAnchorIndex = desired;
+    const maxAnchor = Math.max(0, this.attachedIndex - 2);
+    while (this.displayAnchorIndex < maxAnchor) {
+      const nextAnchorNode = this.getResolvedNode(this.displayAnchorIndex + 1);
+      const fullyPastLeftEdge = nextAnchorNode.resolvedX + nextAnchorNode.gameplayRadius + 2 < this.camera.getSafeLeft();
+      if (!fullyPastLeftEdge) {
+        break;
+      }
+      this.displayAnchorIndex += 1;
     }
   }
 
   private updateMomentum(deltaTime: number) {
     const decayModifier = 1 - Math.min(0.72, this.runUpgrades.modifiers.momentumRetention);
     const decay = this.momentum.decayRate * decayModifier;
-    this.momentum.gauge = clamp(this.momentum.gauge - decay * deltaTime, 0, 1);
+    if (!(this.orbitGraceActive && this.playerState !== 'airborne')) {
+      this.momentum.gauge = clamp(this.momentum.gauge - decay * deltaTime, 0, 1);
+    }
 
     const speedTarget = 1 + this.momentum.gauge * 0.6 + this.runUpgrades.modifiers.speedBonus;
     const jumpTarget = 1 + this.momentum.gauge * 0.48 + this.runUpgrades.modifiers.chargedLeapBonus * 0.12;
@@ -537,6 +558,14 @@ export class GameSessionController {
       liveOrbit.tangent.y * orbitRadius * this.angularSpeed * this.orbitDirection,
       0
     );
+
+    if (this.orbitGraceActive) {
+      this.orbitGraceTravel += Math.abs(this.angularSpeed * deltaTime);
+      this.orbitGraceProgress = clamp(this.orbitGraceTravel / (Math.PI * 2), 0, 1);
+      if (this.orbitGraceProgress >= 1) {
+        this.orbitGraceActive = false;
+      }
+    }
 
     if (this.chargeActive) {
       const chargeRate = 0.55 + this.runUpgrades.modifiers.chargeRate * 0.24;
@@ -711,6 +740,9 @@ export class GameSessionController {
     this.orbitAngle = nextAngle;
     this.orbitDirection = nextDirection;
     this.angularSpeed = nextAngularSpeed;
+    this.orbitGraceActive = true;
+    this.orbitGraceProgress = 0;
+    this.orbitGraceTravel = 0;
     this.playerState = 'attached';
     this.state = 'running_attached';
     this.chargeActive = false;
@@ -1130,12 +1162,12 @@ export class GameSessionController {
   private sampleSurfaceDeformation(node: ResolvedGamePathNode, localAngle: number) {
     const levelFactor = clamp(node.index / 280, 0, 1);
     const sizeDamping = clamp(1.08 - node.visualScale * 0.035, 0.32, 1);
-    const amplitude = (0.028 + levelFactor * 0.085) * sizeDamping;
+    const amplitude = (0.012 + levelFactor * 0.045) * sizeDamping;
     const primaryFrequency = node.shapeKind === 'triangular' ? 3 : node.shapeKind === 'oval' ? 2 : 4;
     const base =
       Math.sin(localAngle * primaryFrequency + node.motionSeed * 6.2) * amplitude +
       Math.sin(localAngle * (primaryFrequency + 3) - node.motionSeed * 4.1) * amplitude * 0.42;
-    return base + this.sampleImpactWaveOffset(node, localAngle);
+    return base + this.sampleImpactWaveOffset(node, localAngle) + this.sampleBoatWaveOffset(node, localAngle) * sizeDamping;
   }
 
   private sampleSurfaceSlope(node: ResolvedGamePathNode, localAngle: number) {
@@ -1169,6 +1201,21 @@ export class GameSessionController {
     }
 
     return total;
+  }
+
+  private sampleBoatWaveOffset(node: ResolvedGamePathNode, localAngle: number) {
+    if (node.index !== this.attachedIndex || this.playerState === 'airborne') {
+      return 0;
+    }
+
+    const rotation = node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase;
+    const boatAngle = wrapAngle(this.orbitAngle - rotation);
+    const forwardTrailAngle = wrapAngle(boatAngle - this.orbitDirection * 0.28);
+    const localDelta = shortestAngleDistance(localAngle, boatAngle);
+    const trailDelta = shortestAngleDistance(localAngle, forwardTrailAngle);
+    const core = Math.exp(-(localDelta * localDelta) / 0.2) * (0.045 + this.momentum.gauge * 0.055);
+    const trail = Math.exp(-(trailDelta * trailDelta) / 0.48) * 0.024;
+    return core + trail;
   }
 
   private registerImpactWave(node: ResolvedGamePathNode, angle: number, impactSpeed: number) {

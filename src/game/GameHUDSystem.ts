@@ -21,6 +21,8 @@ interface GameHUDPayload {
   chargeRatio: number;
   momentumGauge: number;
   momentumTier: number;
+  orbitGraceActive: boolean;
+  orbitGraceProgress: number;
   state: GameHUDState;
   offers: RogueliteItemOffer[];
   branchHints: Array<{
@@ -49,6 +51,7 @@ export class GameHUDSystem {
   private distanceValue: HTMLSpanElement;
   private coinsValue: HTMLSpanElement;
   private chargeFill: HTMLDivElement;
+  private orbitGraceIndicator: HTMLDivElement;
   private statusValue: HTMLParagraphElement;
   private metaValue: HTMLParagraphElement;
   private exitButton: HTMLButtonElement;
@@ -84,6 +87,7 @@ export class GameHUDSystem {
           </div>
           <div class="game-hud__charge-bar"><div class="game-hud__charge-fill" data-charge-fill></div></div>
         </div>
+        <div class="game-hud__orbit-grace" data-orbit-grace></div>
         <p class="game-hud__status"></p>
         <p class="game-hud__meta"></p>
         <div class="game-hud__actions">
@@ -128,6 +132,7 @@ export class GameHUDSystem {
     this.distanceValue = this.element.querySelector<HTMLSpanElement>('[data-distance]')!;
     this.coinsValue = this.element.querySelector<HTMLSpanElement>('[data-coins]')!;
     this.chargeFill = this.element.querySelector<HTMLDivElement>('[data-charge-fill]')!;
+    this.orbitGraceIndicator = this.element.querySelector<HTMLDivElement>('[data-orbit-grace]')!;
     this.statusValue = this.element.querySelector<HTMLParagraphElement>('.game-hud__status')!;
     this.metaValue = this.element.querySelector<HTMLParagraphElement>('.game-hud__meta')!;
     this.exitButton = this.element.querySelector<HTMLButtonElement>('[data-exit]')!;
@@ -165,6 +170,8 @@ export class GameHUDSystem {
     this.chainValue.textContent = `${Math.round(payload.momentumGauge * 100)}%`;
     this.chainValue.style.opacity = `${0.58 + payload.momentumGauge * 0.42}`;
     this.chargeFill.style.setProperty('--charge-ratio', payload.chargeRatio.toFixed(3));
+    this.orbitGraceIndicator.classList.toggle('is-visible', payload.orbitGraceActive);
+    this.orbitGraceIndicator.style.setProperty('--orbit-grace-progress', payload.orbitGraceProgress.toFixed(3));
     const chargeValue = this.element.querySelector<HTMLElement>('[data-charge-value]');
     if (chargeValue) {
       chargeValue.textContent = `${Math.round(payload.chargeRatio * 100)}%`;

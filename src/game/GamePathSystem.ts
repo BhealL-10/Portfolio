@@ -400,6 +400,7 @@ export class GamePathSystem {
     const densified: GamePathNode[] = [];
     let cursor = previous;
     let flatRun = 0;
+    const periodicVerticalWindow = score >= 50 && score % 36 < 12;
 
     candidates.forEach((candidate) => {
       const dx = candidate.x - cursor.x;
@@ -407,20 +408,34 @@ export class GamePathSystem {
       const distance = Math.hypot(dx, dy);
       const nearlyFlat = Math.abs(dy) < profile.maxVerticalDelta * 0.2;
       flatRun = nearlyFlat ? flatRun + 1 : 0;
+      const earlyVerticalBias = score < 50;
+      const clusterPotential =
+        candidate.gameplayRadius < 1.1 && cursor.gameplayRadius < 1.1
+          ? 4
+          : candidate.gameplayRadius < 1.8 && cursor.gameplayRadius < 1.8
+            ? 3
+            : 2;
 
       const needsExtra =
         score < 160 &&
-        (distance > profile.spacing * 1.02 || Math.abs(dy) > profile.maxVerticalDelta * 0.62 || flatRun >= 2);
+        (
+          distance > profile.spacing * (earlyVerticalBias ? 0.82 : 1.02) ||
+          Math.abs(dy) > profile.maxVerticalDelta * 0.62 ||
+          flatRun >= (earlyVerticalBias ? 1 : 2) ||
+          periodicVerticalWindow
+        );
 
       if (needsExtra) {
-        const insertions = distance > profile.spacing * 1.38 || Math.abs(dy) > profile.maxVerticalDelta * 0.92 ? 2 : 1;
+        const baseInsertions =
+          earlyVerticalBias || periodicVerticalWindow || distance > profile.spacing * 1.38 || Math.abs(dy) > profile.maxVerticalDelta * 0.92 ? 2 : 1;
+        const insertions = Math.min(clusterPotential, baseInsertions + (earlyVerticalBias ? 1 : 0));
         for (let step = 0; step < insertions; step += 1) {
           const ratio = (step + 1) / (insertions + 1);
           const offsetSign = (cursor.index + candidate.index + step) % 2 === 0 ? 1 : -1;
           const verticalBias =
             nearlyFlat
-              ? (1.2 + step * 0.6) * offsetSign
-              : Math.sign(dy || offsetSign) * Math.min(2.2, Math.abs(dy) * 0.28) + offsetSign * 0.45;
+              ? ((earlyVerticalBias ? 1.85 : 1.2) + step * (earlyVerticalBias ? 0.85 : 0.6)) * offsetSign
+              : Math.sign(dy || offsetSign) * Math.min(earlyVerticalBias ? 2.8 : 2.2, Math.abs(dy) * 0.34) + offsetSign * 0.65;
 
           const bridgePrevious = densified[densified.length - 1] ?? cursor;
           const x = cursor.x + dx * ratio;

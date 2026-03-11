@@ -11,6 +11,9 @@ export interface DeformMaterial extends THREE.MeshStandardMaterial {
       uSettled: { value: number };
       uSnap: { value: number };
       uSeed: { value: number };
+      uOrbitAngle: { value: number };
+      uOrbitPulse: { value: number };
+      uWaveDensity: { value: number };
     };
   };
 }
@@ -53,7 +56,10 @@ export function createDeformMaterial(theme: ThemeMode, seed: number) {
       uFocus: { value: 0 },
       uSettled: { value: 0 },
       uSnap: { value: 0 },
-      uSeed: { value: seed }
+      uSeed: { value: seed },
+      uOrbitAngle: { value: 0 },
+      uOrbitPulse: { value: 0 },
+      uWaveDensity: { value: 0.72 }
     };
 
     material.userData.shaderUniforms = uniforms;
@@ -71,7 +77,10 @@ uniform float uDrag;
 uniform float uFocus;
 uniform float uSettled;
 uniform float uSnap;
-uniform float uSeed;`
+uniform float uSeed;
+uniform float uOrbitAngle;
+uniform float uOrbitPulse;
+uniform float uWaveDensity;`
       )
       .replace(
         '#include <begin_vertex>',
@@ -84,17 +93,23 @@ float fragmentPhase = 0.0;
 #endif
 fragmentDir = aFragmentDir;
 fragmentPhase = aFragmentPhase;
-float baseWave = sin(uTime * 2.4 + position.y * 5.5 + uSeed) * 0.14;
-float sideWave = cos(uTime * 1.8 + position.x * 7.0 + uSeed) * 0.08;
+float baseWave = sin(uTime * 2.4 + position.y * 5.5 + uSeed) * 0.06 * uWaveDensity;
+float sideWave = cos(uTime * 1.8 + position.x * 7.0 + uSeed) * 0.035 * uWaveDensity;
 float waveAttenuation = (1.0 - uHover * 0.22) * (1.0 - uSettled) * (1.0 - uSnap);
 float dragWave = sin(uTime * 4.0 + position.x * 8.0 + uSeed) * 0.06 * uDrag;
+float localAngle = atan(position.y, position.x);
+float angleDelta = atan(sin(localAngle - uOrbitAngle), cos(localAngle - uOrbitAngle));
+float orbitWave = exp(-(angleDelta * angleDelta) / 0.22) * uOrbitPulse * 0.18;
+float trailDelta = atan(sin(localAngle - (uOrbitAngle - 0.28)), cos(localAngle - (uOrbitAngle - 0.28)));
+orbitWave += exp(-(trailDelta * trailDelta) / 0.55) * uOrbitPulse * 0.08;
 float focusFlatten = mix(1.0, 0.08, uFocus);
 float shardNoise = fract(sin(fragmentPhase * 37.31 + uSeed) * 43758.5453);
 float snapPulse = sin(uTime * 5.4 + fragmentPhase * 11.0) * 0.5 + 0.5;
+float snapWave = (sin(uTime * 5.2 + position.x * 11.0 + uSeed) + cos(uTime * 4.4 + position.y * 10.5 - uSeed)) * 0.08 * uSnap;
 vec3 swirlAxis = normalize(vec3(-fragmentDir.y, fragmentDir.x, fragmentDir.z + 0.12));
-vec3 shardOffset = fragmentDir * (0.14 + shardNoise * 0.26) * uSnap * snapPulse;
-shardOffset += swirlAxis * (0.08 + shardNoise * 0.12) * uSnap;
-transformed += normal * ((baseWave + sideWave) * waveAttenuation + dragWave) + shardOffset;
+vec3 shardOffset = fragmentDir * (0.08 + shardNoise * 0.16) * uSnap * snapPulse;
+shardOffset += swirlAxis * (0.04 + shardNoise * 0.08) * uSnap;
+transformed += normal * (((baseWave + sideWave) * waveAttenuation) + dragWave + orbitWave + snapWave) + shardOffset;
 transformed.xy *= 1.0 + 0.04 * (1.0 - uSettled) + uDrag * 0.08 + uSnap * 0.05;
 transformed.z *= focusFlatten;`
       );
@@ -112,7 +127,7 @@ export function setDeformMaterialTheme(material: DeformMaterial, theme: ThemeMod
 
 export function updateDeformUniforms(
   material: DeformMaterial,
-  values: { time: number; hover: number; drag: number; focus: number; settled: number; snap: number }
+  values: { time: number; hover: number; drag: number; focus: number; settled: number; snap: number; orbitAngle?: number; orbitPulse?: number; waveDensity?: number }
 ) {
   const uniforms = material.userData.shaderUniforms;
   if (!uniforms) return;
@@ -122,6 +137,9 @@ export function updateDeformUniforms(
   uniforms.uFocus.value = values.focus;
   uniforms.uSettled.value = values.settled;
   uniforms.uSnap.value = values.snap;
+  uniforms.uOrbitAngle.value = values.orbitAngle ?? 0;
+  uniforms.uOrbitPulse.value = values.orbitPulse ?? 0;
+  uniforms.uWaveDensity.value = values.waveDensity ?? 0.72;
 }
 
 export function createFragmentedIcosahedronGeometry(radius: number, detail: number) {

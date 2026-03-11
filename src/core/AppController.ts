@@ -722,6 +722,8 @@ export class AppController {
       chargeRatio: hudState.chargeRatio,
       momentumGauge: hudState.momentumGauge,
       momentumTier: hudState.momentumTier,
+      orbitGraceActive: hudState.orbitGraceActive,
+      orbitGraceProgress: hudState.orbitGraceProgress,
       state: hudState.state,
       offers: hudState.offers,
       branchHints: hudState.branchHints.reduce<Array<{
