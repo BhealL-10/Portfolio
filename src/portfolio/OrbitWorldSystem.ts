@@ -55,8 +55,14 @@ interface PickResult {
   point: THREE.Vector3;
 }
 
+interface GameFieldEntity {
+  group: THREE.Group;
+  core: THREE.Mesh<THREE.BufferGeometry, DeformMaterial>;
+}
+
 const ORBIT_CAMERA_POSITION = new THREE.Vector3(0, 0.8, 24);
 const FOCUS_CAMERA_POSITION = new THREE.Vector3(0, 0.2, 17.5);
+const GAME_FIELD_EXTRA_COUNT = 18;
 export class OrbitWorldSystem {
   private readonly root = new THREE.Group();
   private readonly loader = new THREE.TextureLoader();
@@ -73,6 +79,7 @@ export class OrbitWorldSystem {
   private readonly roundGeometry = createFragmentedIcosahedronGeometry(1.25, 4);
   private readonly triangularGeometry = createFragmentedTetrahedronGeometry(1.42, 2);
   private readonly constellationLines: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>[];
+  private readonly gameFieldEntities: GameFieldEntity[];
   private globalOrbitTime = 0;
   private hoveredId: string | null = null;
   private focusedId: string | null = null;
@@ -105,6 +112,7 @@ export class OrbitWorldSystem {
     this.scene.add(this.backgroundPoints);
     this.constellationLines = this.createConstellationLines();
     this.entityList = projects.map((project, index) => this.createShard(project, index));
+    this.gameFieldEntities = Array.from({ length: GAME_FIELD_EXTRA_COUNT }, (_, index) => this.createGameFieldShard(index));
   }
 
   setTheme(theme: ThemeMode) {
@@ -113,6 +121,9 @@ export class OrbitWorldSystem {
       setDeformMaterialTheme(entity.core.material, theme);
       this.updateLogoTexture(entity);
       entity.slotIndicator.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A');
+    });
+    this.gameFieldEntities.forEach((entity) => {
+      setDeformMaterialTheme(entity.core.material, theme);
     });
     this.backgroundPoints.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A');
     this.constellationLines.forEach((line) => line.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A'));
@@ -445,6 +456,9 @@ export class OrbitWorldSystem {
     this.externalTransitionFrom = [];
     this.externalTransitionTo = [];
     this.externalTransitionProgress = 0;
+    this.gameFieldEntities.forEach((entity) => {
+      entity.group.visible = false;
+    });
   }
 
   releaseSnappedShards() {
@@ -661,10 +675,10 @@ export class OrbitWorldSystem {
         drag: entity.dragAmount,
         focus: entity.focusAmount,
         settled: this.externalLayoutActive ? (externalShape && externalShape !== 'round' ? 1 : 0) : entity.focusAmount * 0.25,
-        snap: this.externalLayoutActive ? 0 : entity.snapped || isSlotPreview ? 0.72 + entity.slotPulse * 0.16 : 0,
+        snap: this.externalLayoutActive ? 0 : entity.snapped || isSlotPreview ? 0.96 + entity.slotPulse * 0.22 : 0,
         orbitAngle: this.externalLayoutVisuals?.[index]?.deformAngle ?? 0,
         orbitPulse: this.externalLayoutActive ? this.externalLayoutVisuals?.[index]?.deformStrength ?? 0 : 0,
-        waveDensity: this.externalLayoutActive ? this.externalLayoutVisuals?.[index]?.deformDensity ?? 0.72 : entity.snapped || isSlotPreview ? 1.18 : 0.6
+        waveDensity: this.externalLayoutActive ? this.externalLayoutVisuals?.[index]?.deformDensity ?? 0.72 : entity.snapped || isSlotPreview ? 1.56 : 0.42
       });
 
       entity.logoPlanes.forEach((plane, planeIndex) => {
@@ -672,6 +686,8 @@ export class OrbitWorldSystem {
         plane.material.opacity = visibleOpacity * (0.65 + planeIndex * 0.1);
       });
     });
+
+    this.updateGameFieldEntities(deltaTime, elapsedTime);
 
     this.updateConstellationLines();
 
@@ -687,6 +703,63 @@ export class OrbitWorldSystem {
     } else {
       this.focusSettled = false;
     }
+  }
+
+  private updateGameFieldEntities(deltaTime: number, elapsedTime: number) {
+    if (!this.externalLayoutActive) {
+      this.gameFieldEntities.forEach((entity) => {
+        entity.group.visible = false;
+      });
+      return;
+    }
+
+    this.gameFieldEntities.forEach((entity, extraIndex) => {
+      const visualIndex = this.entityList.length + extraIndex;
+      const position = this.externalLayoutPositions?.[visualIndex];
+      const visual = this.externalLayoutVisuals?.[visualIndex] ?? null;
+
+      if (!position || !visual) {
+        entity.group.visible = false;
+        return;
+      }
+
+      entity.group.visible = true;
+      entity.group.position.x = damp(entity.group.position.x, position.x, 7.2, deltaTime);
+      entity.group.position.y = damp(entity.group.position.y, position.y, 7.2, deltaTime);
+      entity.group.position.z = damp(entity.group.position.z, position.z, 7.2, deltaTime);
+      entity.group.rotation.x = damp(entity.group.rotation.x, 0, 8, deltaTime);
+      entity.group.rotation.y = damp(entity.group.rotation.y, 0, 8, deltaTime);
+      entity.group.rotation.z = damp(entity.group.rotation.z, visual.shapeKind === 'round' ? 0 : visual.spinPhase, 8, deltaTime);
+      entity.group.scale.x = damp(entity.group.scale.x, visual.scale.x, 6, deltaTime);
+      entity.group.scale.y = damp(entity.group.scale.y, visual.scale.y, 6, deltaTime);
+      entity.group.scale.z = damp(entity.group.scale.z, visual.scale.z, 6, deltaTime);
+
+      const geometry = visual.shapeKind === 'triangular' ? this.triangularGeometry : this.roundGeometry;
+      if (entity.core.geometry !== geometry) {
+        entity.core.geometry = geometry;
+      }
+
+      if (visual.tint) {
+        entity.core.material.color.set(visual.tint);
+        entity.core.material.emissive.set(visual.tint);
+      } else {
+        setDeformMaterialTheme(entity.core.material, this.theme);
+      }
+
+      entity.core.material.opacity = 1;
+      entity.core.material.emissiveIntensity = 0.08 + (visual.pulse ?? 0);
+      updateDeformUniforms(entity.core.material, {
+        time: elapsedTime,
+        hover: 0,
+        drag: 0,
+        focus: 0,
+        settled: visual.shapeKind === 'round' ? 0 : 1,
+        snap: 0,
+        orbitAngle: visual.deformAngle ?? 0,
+        orbitPulse: visual.deformStrength ?? 0,
+        waveDensity: visual.deformDensity ?? 0.72
+      });
+    });
   }
 
   private syncLivePivot(elapsedTime: number) {
@@ -805,6 +878,21 @@ export class OrbitWorldSystem {
     this.entities.set(project.id, entity);
     this.createLogoPlanes(entity);
     return entity;
+  }
+
+  private createGameFieldShard(index: number) {
+    const group = new THREE.Group();
+    group.visible = false;
+    this.root.add(group);
+
+    const material = createDeformMaterial(this.theme, 900 + index * 23);
+    const core = new THREE.Mesh(this.roundGeometry, material);
+    group.add(core);
+
+    return {
+      group,
+      core
+    } satisfies GameFieldEntity;
   }
 
   private createLogoPlanes(entity: ShardEntity) {

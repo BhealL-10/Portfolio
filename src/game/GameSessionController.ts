@@ -318,6 +318,10 @@ export class GameSessionController {
     return this.getDisplayNodes(count).map((node) => {
       const isCurrent = node.index === this.attachedIndex && this.playerState !== 'airborne';
       const localAngle = wrapAngle(this.orbitAngle - (node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase));
+      const orbitRamp = isCurrent ? (this.orbitGraceActive ? this.orbitGraceProgress : 1) : 1;
+      const visualWave = this.getVisualWaveState(node);
+      const targetDensity = 1.04 + this.momentum.gauge * 0.3;
+      const liveDensity = isCurrent ? THREE.MathUtils.lerp(0.66, targetDensity, orbitRamp) : 0.62;
       return {
         scale: new THREE.Vector3(
           node.visualScale * node.visualStretch.x,
@@ -337,9 +341,9 @@ export class GameSessionController {
                 ? GAME_ACCENT
                 : null,
         pulse: node.isMilestone || node.eventType !== 'none' ? 0.34 : clamp(this.momentum.gauge * 0.22, 0, 0.22),
-        deformAngle: isCurrent ? localAngle : 0,
-        deformStrength: isCurrent ? 0.48 + this.momentum.gauge * 0.58 : 0,
-        deformDensity: isCurrent ? 1.18 : 0.72
+        deformAngle: isCurrent ? localAngle : visualWave?.angle ?? 0,
+        deformStrength: isCurrent ? 0.32 + orbitRamp * 0.22 + this.momentum.gauge * 0.52 : visualWave?.strength ?? 0,
+        deformDensity: isCurrent ? liveDensity : visualWave?.density ?? 0.62
       };
     });
   }
@@ -685,6 +689,7 @@ export class GameSessionController {
       this.runUpgrades.modifiers.jumpPower *
       (1 + this.runUpgrades.modifiers.speedBonus * 0.35);
 
+    this.registerImpactWave(currentNode, this.orbitAngle, launchSpeed * 0.92);
     this.playerVelocity.copy(tangent.multiplyScalar(launchSpeed)).addScaledVector(radial, launchSpeed * 0.08);
     this.playerState = 'airborne';
     this.state = this.choiceMode === 'reward_branch' ? 'upgrade_branching' : 'running_airborne';
@@ -1162,7 +1167,7 @@ export class GameSessionController {
   private sampleSurfaceDeformation(node: ResolvedGamePathNode, localAngle: number) {
     const levelFactor = clamp(node.index / 280, 0, 1);
     const sizeDamping = clamp(1.08 - node.visualScale * 0.035, 0.32, 1);
-    const amplitude = (0.012 + levelFactor * 0.045) * sizeDamping;
+    const amplitude = (0.008 + levelFactor * 0.03) * sizeDamping;
     const primaryFrequency = node.shapeKind === 'triangular' ? 3 : node.shapeKind === 'oval' ? 2 : 4;
     const base =
       Math.sin(localAngle * primaryFrequency + node.motionSeed * 6.2) * amplitude +
@@ -1213,8 +1218,9 @@ export class GameSessionController {
     const forwardTrailAngle = wrapAngle(boatAngle - this.orbitDirection * 0.28);
     const localDelta = shortestAngleDistance(localAngle, boatAngle);
     const trailDelta = shortestAngleDistance(localAngle, forwardTrailAngle);
-    const core = Math.exp(-(localDelta * localDelta) / 0.2) * (0.045 + this.momentum.gauge * 0.055);
-    const trail = Math.exp(-(trailDelta * trailDelta) / 0.48) * 0.024;
+    const ramp = this.orbitGraceActive ? clamp(this.orbitGraceProgress, 0.15, 1) : 1;
+    const core = Math.exp(-(localDelta * localDelta) / 0.2) * (0.05 + this.momentum.gauge * 0.075) * ramp;
+    const trail = Math.exp(-(trailDelta * trailDelta) / 0.48) * 0.03 * ramp;
     return core + trail;
   }
 
@@ -1232,6 +1238,32 @@ export class GameSessionController {
     const current = this.impactWaves.get(node.index) ?? [];
     current.push(wave);
     this.impactWaves.set(node.index, current.slice(-4));
+  }
+
+  private getVisualWaveState(node: ResolvedGamePathNode) {
+    const waves = this.impactWaves.get(node.index);
+    if (!waves || waves.length === 0) return null;
+
+    let bestWave: ImpactWave | null = null;
+    let bestLife = 0;
+    for (const wave of waves) {
+      const age = this.currentTime - wave.createdAt;
+      if (age >= wave.decay) continue;
+      const life = 1 - age / wave.decay;
+      if (!bestWave || life * wave.strength > bestLife) {
+        bestWave = wave;
+        bestLife = life * wave.strength;
+      }
+    }
+
+    if (!bestWave) return null;
+    const age = this.currentTime - bestWave.createdAt;
+    const life = clamp(1 - age / bestWave.decay, 0, 1);
+    return {
+      angle: bestWave.originAngle,
+      strength: bestWave.strength * (0.9 + life * 0.9),
+      density: 0.72 + life * 0.58
+    };
   }
 
   private rotateOrbitSample(position: THREE.Vector2, tangent: THREE.Vector2, rotation: number): OrbitSample {

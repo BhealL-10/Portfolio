@@ -409,12 +409,8 @@ export class GamePathSystem {
       const nearlyFlat = Math.abs(dy) < profile.maxVerticalDelta * 0.2;
       flatRun = nearlyFlat ? flatRun + 1 : 0;
       const earlyVerticalBias = score < 50;
-      const clusterPotential =
-        candidate.gameplayRadius < 1.1 && cursor.gameplayRadius < 1.1
-          ? 4
-          : candidate.gameplayRadius < 1.8 && cursor.gameplayRadius < 1.8
-            ? 3
-            : 2;
+      const largestRadius = Math.max(candidate.gameplayRadius, cursor.gameplayRadius);
+      const clusterPotential = largestRadius < 1.05 ? 4 : largestRadius < 1.9 ? 2 : 1;
 
       const needsExtra =
         score < 160 &&
@@ -427,20 +423,22 @@ export class GamePathSystem {
 
       if (needsExtra) {
         const baseInsertions =
-          earlyVerticalBias || periodicVerticalWindow || distance > profile.spacing * 1.38 || Math.abs(dy) > profile.maxVerticalDelta * 0.92 ? 2 : 1;
-        const insertions = Math.min(clusterPotential, baseInsertions + (earlyVerticalBias ? 1 : 0));
+          earlyVerticalBias || periodicVerticalWindow || distance > profile.spacing * 1.28 || Math.abs(dy) > profile.maxVerticalDelta * 0.92 ? 2 : 1;
+        const insertions = Math.min(clusterPotential, baseInsertions + (earlyVerticalBias && clusterPotential > 1 ? 1 : 0));
         for (let step = 0; step < insertions; step += 1) {
           const ratio = (step + 1) / (insertions + 1);
           const offsetSign = (cursor.index + candidate.index + step) % 2 === 0 ? 1 : -1;
+          const stackCenter = (insertions - 1) * 0.5;
+          const stackOffset = (step - stackCenter) * (earlyVerticalBias ? 2.45 : 1.85);
           const verticalBias =
             nearlyFlat
-              ? ((earlyVerticalBias ? 1.85 : 1.2) + step * (earlyVerticalBias ? 0.85 : 0.6)) * offsetSign
-              : Math.sign(dy || offsetSign) * Math.min(earlyVerticalBias ? 2.8 : 2.2, Math.abs(dy) * 0.34) + offsetSign * 0.65;
+              ? stackOffset + offsetSign * (earlyVerticalBias ? 0.85 : 0.55)
+              : Math.sign(dy || offsetSign) * Math.min(earlyVerticalBias ? 2.8 : 2.2, Math.abs(dy) * 0.34) + stackOffset * 0.4;
 
           const bridgePrevious = densified[densified.length - 1] ?? cursor;
           const x = cursor.x + dx * ratio;
           const y = cursor.y + dy * ratio + verticalBias;
-          const sizeTier: GameShardSizeTier = step === 0 ? 'tiny' : 'very_small';
+          const sizeTier: GameShardSizeTier = insertions >= 3 ? 'tiny' : step === 0 ? 'tiny' : 'very_small';
           densified.push(this.buildNode({
             previous: bridgePrevious,
             index: bridgePrevious.index + 1,

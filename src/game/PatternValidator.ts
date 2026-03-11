@@ -36,8 +36,8 @@ export function validatePatternPlacement(candidateNodes: GamePathNode[], existin
       }
 
       if (
-        Math.abs(candidate.x - node.x) < Math.max(3.2, (candidate.gameplayRadius + node.gameplayRadius) * 0.9) &&
-        Math.abs(candidate.y - node.y) < Math.max(3, (candidate.gameplayRadius + node.gameplayRadius) * 0.8)
+        Math.abs(candidate.x - node.x) < Math.max(1.25, (candidate.gameplayRadius + node.gameplayRadius) * 0.42) &&
+        Math.abs(candidate.y - node.y) < Math.max(1.7, (candidate.gameplayRadius + node.gameplayRadius) * 0.54)
       ) {
         return false;
       }
@@ -58,7 +58,8 @@ export function validatePatternPlacement(candidateNodes: GamePathNode[], existin
 }
 
 function getPlacementRadius(node: GamePathNode) {
-  return node.gameplayRadius + node.visualScale * 0.26 + 1.7;
+  const softMargin = node.gameplayRadius < 1.15 ? 0.72 : node.gameplayRadius < 1.9 ? 1.05 : 1.38;
+  return node.gameplayRadius + node.visualScale * 0.14 + softMargin;
 }
 
 export function validateTeleportTarget(nodes: GamePathNode[], fromIndex: number, targetIndex: number) {

@@ -19,6 +19,8 @@ import { damp, wrapIndex } from './math';
 import { RenderLoop } from './RenderLoop';
 import { TransitionSystem } from './TransitionSystem';
 
+const GAME_VISIBLE_PLATFORM_COUNT = 24;
+
 export class AppController {
   private readonly content = new ContentService();
   private readonly theme = new ThemeService();
@@ -642,9 +644,9 @@ export class AppController {
         this.mode.setMode('game');
         this.game.beginRun();
         this.world.setExternalLayoutPositions(
-          this.game.getVisiblePlatformPositions(projectCount),
-          this.game.getVisiblePlatformScales(projectCount),
-          this.game.getVisiblePlatformVisuals(projectCount)
+          this.game.getVisiblePlatformPositions(GAME_VISIBLE_PLATFORM_COUNT),
+          this.game.getVisiblePlatformScales(GAME_VISIBLE_PLATFORM_COUNT),
+          this.game.getVisiblePlatformVisuals(GAME_VISIBLE_PLATFORM_COUNT)
         );
         this.refreshUI();
       }
@@ -658,9 +660,9 @@ export class AppController {
     }
     this.game.restart();
     this.world.setExternalLayoutPositions(
-      this.game.getVisiblePlatformPositions(this.content.getProjectCount()),
-      this.game.getVisiblePlatformScales(this.content.getProjectCount()),
-      this.game.getVisiblePlatformVisuals(this.content.getProjectCount())
+      this.game.getVisiblePlatformPositions(GAME_VISIBLE_PLATFORM_COUNT),
+      this.game.getVisiblePlatformScales(GAME_VISIBLE_PLATFORM_COUNT),
+      this.game.getVisiblePlatformVisuals(GAME_VISIBLE_PLATFORM_COUNT)
     );
     this.refreshUI();
   }
@@ -765,9 +767,9 @@ export class AppController {
 
     if (this.mode.is('game') || this.mode.is('game_over')) {
       this.world.setExternalLayoutPositions(
-        this.game.getVisiblePlatformPositions(this.content.getProjectCount()),
-        this.game.getVisiblePlatformScales(this.content.getProjectCount()),
-        this.game.getVisiblePlatformVisuals(this.content.getProjectCount())
+        this.game.getVisiblePlatformPositions(GAME_VISIBLE_PLATFORM_COUNT),
+        this.game.getVisiblePlatformScales(GAME_VISIBLE_PLATFORM_COUNT),
+        this.game.getVisiblePlatformVisuals(GAME_VISIBLE_PLATFORM_COUNT)
       );
     }
 
