@@ -424,11 +424,22 @@ export class OrbitWorldSystem {
     });
   }
 
-  beginExternalLayoutTransition(targets: THREE.Vector3[], scales?: number[]) {
+  beginExternalLayoutTransition(targets: THREE.Vector3[], scales?: number[], visuals?: VisiblePlatformVisual[]) {
     this.externalLayoutActive = true;
     this.externalLayoutPositions = null;
     this.externalLayoutScales = scales ? [...scales] : null;
-    this.externalLayoutVisuals = null;
+    this.externalLayoutVisuals = visuals ? visuals.map((visual) => ({
+      scale: visual.scale.clone(),
+      shapeKind: visual.shapeKind,
+      spinDirection: visual.spinDirection,
+      spinSpeed: visual.spinSpeed,
+      spinPhase: visual.spinPhase,
+      tint: visual.tint,
+      pulse: visual.pulse,
+      deformAngle: visual.deformAngle,
+      deformStrength: visual.deformStrength,
+      deformDensity: visual.deformDensity
+    })) : null;
     this.externalTransitionFrom = this.getCurrentShardPositions();
     this.externalTransitionTo = targets.map((target) => target.clone());
     this.externalTransitionProgress = 0;
@@ -748,31 +759,38 @@ export class OrbitWorldSystem {
 
     this.gameFieldEntities.forEach((entity, extraIndex) => {
       const visualIndex = this.entityList.length + extraIndex;
-      const position = this.externalLayoutPositions?.[visualIndex];
+      const transitionTarget = this.externalTransitionTo[visualIndex] ?? null;
+      const position = this.externalLayoutPositions?.[visualIndex] ?? (transitionTarget
+        ? entity.group.position.clone().lerp(transitionTarget, this.externalTransitionProgress)
+        : null);
       const visual = this.externalLayoutVisuals?.[visualIndex] ?? null;
 
       if (!position || !visual) {
-        entity.group.visible = false;
-        return;
+        if (!transitionTarget) {
+          entity.group.visible = false;
+          return;
+        }
       }
+      const resolvedPosition = position ?? transitionTarget ?? entity.group.position;
 
       entity.group.visible = true;
-      entity.group.position.x = damp(entity.group.position.x, position.x, 7.2, deltaTime);
-      entity.group.position.y = damp(entity.group.position.y, position.y, 7.2, deltaTime);
-      entity.group.position.z = damp(entity.group.position.z, position.z, 7.2, deltaTime);
+      entity.group.position.x = damp(entity.group.position.x, resolvedPosition.x, 7.2, deltaTime);
+      entity.group.position.y = damp(entity.group.position.y, resolvedPosition.y, 7.2, deltaTime);
+      entity.group.position.z = damp(entity.group.position.z, resolvedPosition.z, 7.2, deltaTime);
       entity.group.rotation.x = damp(entity.group.rotation.x, 0, 8, deltaTime);
       entity.group.rotation.y = damp(entity.group.rotation.y, 0, 8, deltaTime);
-      entity.group.rotation.z = damp(entity.group.rotation.z, visual.shapeKind === 'round' ? 0 : visual.spinPhase, 8, deltaTime);
-      entity.group.scale.x = damp(entity.group.scale.x, visual.scale.x, 6, deltaTime);
-      entity.group.scale.y = damp(entity.group.scale.y, visual.scale.y, 6, deltaTime);
-      entity.group.scale.z = damp(entity.group.scale.z, visual.scale.z, 6, deltaTime);
-
-      const geometry = visual.shapeKind === 'triangular' ? this.triangularGeometry : this.roundGeometry;
+      const shapeKind = visual?.shapeKind ?? 'round';
+      const targetScale = visual?.scale ?? new THREE.Vector3(0.22, 0.22, 0.22);
+      entity.group.rotation.z = damp(entity.group.rotation.z, shapeKind === 'round' ? 0 : visual?.spinPhase ?? 0, 8, deltaTime);
+      entity.group.scale.x = damp(entity.group.scale.x, targetScale.x, 6, deltaTime);
+      entity.group.scale.y = damp(entity.group.scale.y, targetScale.y, 6, deltaTime);
+      entity.group.scale.z = damp(entity.group.scale.z, targetScale.z, 6, deltaTime);
+      const geometry = shapeKind === 'triangular' ? this.triangularGeometry : this.roundGeometry;
       if (entity.core.geometry !== geometry) {
         entity.core.geometry = geometry;
       }
 
-      if (visual.tint) {
+      if (visual?.tint) {
         entity.core.material.color.set(visual.tint);
         entity.core.material.emissive.set(visual.tint);
       } else {
@@ -780,17 +798,17 @@ export class OrbitWorldSystem {
       }
 
       entity.core.material.opacity = 1;
-      entity.core.material.emissiveIntensity = 0.08 + (visual.pulse ?? 0);
+      entity.core.material.emissiveIntensity = 0.08 + (visual?.pulse ?? 0.06);
       updateDeformUniforms(entity.core.material, {
         time: elapsedTime,
         hover: 0,
         drag: 0,
         focus: 0,
-        settled: visual.shapeKind === 'round' ? 0 : 1,
+        settled: shapeKind === 'round' ? 0 : 1,
         snap: 0,
-        orbitAngle: visual.deformAngle ?? 0,
-        orbitPulse: visual.deformStrength ?? 0,
-        waveDensity: visual.deformDensity ?? 0.72
+        orbitAngle: visual?.deformAngle ?? 0,
+        orbitPulse: visual?.deformStrength ?? 0,
+        waveDensity: visual?.deformDensity ?? 0.72
       });
     });
   }

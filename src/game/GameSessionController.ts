@@ -110,7 +110,8 @@ export class GameSessionController {
   private playerState: PlayerMotionState = 'attached';
   private currentTime = 0;
   private attachedIndex = 0;
-  private displayAnchorIndex = 0;
+  private displayWindowIndices: number[] = [];
+  private displayNextIndex = 0;
   private score = 0;
   private orbitGraceActive = false;
   private orbitGraceProgress = 1;
@@ -260,7 +261,8 @@ export class GameSessionController {
     this.acquisitionStartedAt = 0;
     this.currentTime = 0;
     this.attachedIndex = 0;
-    this.displayAnchorIndex = 0;
+    this.displayWindowIndices = [];
+    this.displayNextIndex = 0;
     this.orbitGraceActive = false;
     this.orbitGraceProgress = 1;
     this.orbitGraceTravel = 0;
@@ -303,6 +305,12 @@ export class GameSessionController {
   getInitialPlatformScales(count: number) {
     this.path.prebuild(Math.max(160, count + 60));
     return this.path.getInitialNodes(count).map((node) => node.visualScale);
+  }
+
+  getInitialPlatformVisuals(count: number): VisiblePlatformVisual[] {
+    this.path.prebuild(Math.max(160, count + 60));
+    this.initializeDisplayWindow(count);
+    return this.getVisiblePlatformVisuals(count);
   }
 
   getVisiblePlatformPositions(count: number) {
@@ -507,19 +515,45 @@ export class GameSessionController {
       return nodes.slice(0, count);
     }
 
-    const start = Math.max(0, this.displayAnchorIndex);
-    return this.path.getWindow(start, count, this.currentTime, this.displayAnchorIndex);
+    this.initializeDisplayWindow(count);
+    return this.displayWindowIndices.slice(0, count).map((index) => this.getResolvedNode(index));
   }
 
   private advanceDisplayAnchor() {
-    const maxAnchor = Math.max(0, this.attachedIndex - 2);
-    while (this.displayAnchorIndex < maxAnchor) {
-      const nextAnchorNode = this.getResolvedNode(this.displayAnchorIndex + 1);
-      const fullyPastLeftEdge = nextAnchorNode.resolvedX + this.getPhysicalRadius(nextAnchorNode) + 5.5 < this.camera.getSafeLeft();
-      if (!fullyPastLeftEdge) {
-        break;
+    if (this.displayWindowIndices.length === 0) return;
+
+    for (let slot = 0; slot < this.displayWindowIndices.length; slot += 1) {
+      const nodeIndex = this.displayWindowIndices[slot]!;
+      if (nodeIndex >= this.attachedIndex - 1) {
+        continue;
       }
-      this.displayAnchorIndex += 1;
+
+      const node = this.getResolvedNode(nodeIndex);
+      const fullyPastLeftEdge = node.resolvedX + this.getPhysicalRadius(node) + 5.5 < this.camera.getSafeLeft();
+      if (!fullyPastLeftEdge) {
+        continue;
+      }
+
+      this.path.ensureAhead(this.displayNextIndex + 1);
+      this.displayWindowIndices[slot] = this.displayNextIndex;
+      this.displayNextIndex += 1;
+    }
+  }
+
+  private initializeDisplayWindow(count: number) {
+    if (this.displayWindowIndices.length === 0) {
+      this.path.ensureAhead(count + 1);
+      this.displayWindowIndices = Array.from({ length: count }, (_, index) => index);
+      this.displayNextIndex = count;
+      return;
+    }
+
+    if (this.displayWindowIndices.length < count) {
+      this.path.ensureAhead(count + 1);
+      while (this.displayWindowIndices.length < count) {
+        this.displayWindowIndices.push(this.displayNextIndex);
+        this.displayNextIndex += 1;
+      }
     }
   }
 
@@ -1162,7 +1196,11 @@ export class GameSessionController {
   }
 
   private getOrbitClearance(node: ResolvedGamePathNode) {
-    return clamp(0.22 + node.visualScale * 0.035, 0.22, 0.72);
+    const speedBoost =
+      node.index === this.attachedIndex && this.playerState !== 'airborne'
+        ? clamp(this.playerVelocity.length() / 18, 0, 0.34)
+        : 0;
+    return clamp(0.26 + node.visualScale * 0.04 + speedBoost, 0.26, 1.02);
   }
 
   private applySurfaceContour(node: ResolvedGamePathNode, localAngle: number, sample: OrbitSample): OrbitSample {

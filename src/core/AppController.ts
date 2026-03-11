@@ -623,7 +623,8 @@ export class AppController {
     const projectCount = this.world.getGameFieldCapacity();
     this.world.beginExternalLayoutTransition(
       this.game.getInitialPlatformPositions(projectCount),
-      this.game.getInitialPlatformScales(projectCount)
+      this.game.getInitialPlatformScales(projectCount),
+      this.game.getInitialPlatformVisuals(projectCount)
     );
     this.refreshUI();
 

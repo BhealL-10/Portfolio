@@ -303,7 +303,7 @@ export class GamePathSystem {
     const visualScale = isGigantic ? 28 + this.nextRandom() * 8 : sizeConfig.visual[0] + this.nextRandom() * (sizeConfig.visual[1] - sizeConfig.visual[0]);
     const gameplayOrbitPeriod = isGigantic ? 10 : sizeConfig.orbitPeriod[0] + this.nextRandom() * (sizeConfig.orbitPeriod[1] - sizeConfig.orbitPeriod[0]);
     const x = previous.x + template.x * scale;
-    const y = previous.y + template.y * scale * 0.82;
+    const y = previous.y + template.y * scale * 1.06;
     const direction = this.directionFrom(previous.x, previous.y, x, y);
     const motionPattern = isGigantic ? 'none' : this.pickMotionPattern(template.motionPattern, score, shapeKind);
     const spinDirection: GameShardSpinDirection = this.nextRandom() < 0.5 ? 'cw' : 'ccw';
@@ -436,7 +436,7 @@ export class GamePathSystem {
               : Math.sign(dy || offsetSign) * Math.min(earlyVerticalBias ? 2.8 : 2.2, Math.abs(dy) * 0.34) + stackOffset * 0.4;
 
           const bridgePrevious = densified[densified.length - 1] ?? cursor;
-          const x = cursor.x + dx * ratio;
+          const x = cursor.x + dx * ratio + (insertions >= 3 ? (step - stackCenter) * 0.18 : 0);
           const y = cursor.y + dy * ratio + verticalBias;
           const sizeTier: GameShardSizeTier = insertions >= 3 ? 'tiny' : step === 0 ? 'tiny' : 'very_small';
           densified.push(this.buildNode({
