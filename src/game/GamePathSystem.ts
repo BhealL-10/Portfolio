@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { clamp } from '../core/math';
 import { getDifficultyProfile } from './difficultyScaler';
 import { EventSystem } from './EventSystem';
@@ -303,7 +304,8 @@ export class GamePathSystem {
     const visualScale = isGigantic ? 28 + this.nextRandom() * 8 : sizeConfig.visual[0] + this.nextRandom() * (sizeConfig.visual[1] - sizeConfig.visual[0]);
     const gameplayOrbitPeriod = isGigantic ? 10 : sizeConfig.orbitPeriod[0] + this.nextRandom() * (sizeConfig.orbitPeriod[1] - sizeConfig.orbitPeriod[0]);
     const x = previous.x + template.x * scale;
-    const y = previous.y + template.y * scale * 1.06;
+    const rawY = previous.y + template.y * scale * 1.14;
+    const y = this.alignToLane(rawY, score, sizeTier, false);
     const direction = this.directionFrom(previous.x, previous.y, x, y);
     const motionPattern = isGigantic ? 'none' : this.pickMotionPattern(template.motionPattern, score, shapeKind);
     const spinDirection: GameShardSpinDirection = this.nextRandom() < 0.5 ? 'cw' : 'ccw';
@@ -361,7 +363,7 @@ export class GamePathSystem {
           : { x: 1, y: 0 };
       const spacing = profile.spacing * (0.68 + this.nextRandom() * 0.16);
       const x = nextPrevious.x + vector.x * spacing;
-      const y = nextPrevious.y + vector.y * spacing;
+      const y = this.alignToLane(nextPrevious.y + vector.y * spacing * 1.08, score, offset % 2 === 0 ? 'small' : 'medium_small', true);
       nodes.push(this.buildNode({
         previous: nextPrevious,
         index,
@@ -437,8 +439,9 @@ export class GamePathSystem {
 
           const bridgePrevious = densified[densified.length - 1] ?? cursor;
           const x = cursor.x + dx * ratio + (insertions >= 3 ? (step - stackCenter) * 0.18 : 0);
-          const y = cursor.y + dy * ratio + verticalBias;
+          const rawY = cursor.y + dy * ratio + verticalBias;
           const sizeTier: GameShardSizeTier = insertions >= 3 ? 'tiny' : step === 0 ? 'tiny' : 'very_small';
+          const y = this.alignToLane(rawY, score, sizeTier, true);
           densified.push(this.buildNode({
             previous: bridgePrevious,
             index: bridgePrevious.index + 1,
@@ -536,6 +539,32 @@ export class GamePathSystem {
       motionSeed: this.nextRandom() * Math.PI * 2,
       visualStretch: config.visualStretch
     };
+  }
+
+  private alignToLane(rawY: number, score: number, sizeTier: GameShardSizeTier, encourageSpread: boolean) {
+    const laneSpacing = score < 50 ? 8.4 : 7.2;
+    const laneTargets = [-laneSpacing, 0, laneSpacing];
+    const largest = sizeTier === 'massive' || sizeTier === 'huge' || sizeTier === 'very_large';
+    const medium = sizeTier === 'medium' || sizeTier === 'medium_large' || sizeTier === 'large';
+
+    if (largest) {
+      return THREE.MathUtils.clamp(rawY * 0.35, -laneSpacing, laneSpacing);
+    }
+
+    const preferredIndex =
+      rawY > laneSpacing * 0.35 ? 2 :
+      rawY < -laneSpacing * 0.35 ? 0 :
+      1;
+
+    let laneIndex = preferredIndex;
+    if (encourageSpread && !medium && this.nextRandom() < 0.42) {
+      laneIndex = [0, 1, 2][Math.floor(this.nextRandom() * 3)] ?? preferredIndex;
+    } else if (encourageSpread && medium && this.nextRandom() < 0.2) {
+      laneIndex = preferredIndex === 1 ? (this.nextRandom() < 0.5 ? 0 : 2) : preferredIndex;
+    }
+
+    const jitter = largest ? 0.32 : medium ? 0.44 : 0.58;
+    return laneTargets[laneIndex]! + (this.nextRandom() - 0.5) * jitter;
   }
 
   private reindexNode(node: GamePathNode, index: number, previous: GamePathNode | null) {

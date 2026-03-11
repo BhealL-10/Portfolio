@@ -1198,9 +1198,10 @@ export class GameSessionController {
   private getOrbitClearance(node: ResolvedGamePathNode) {
     const speedBoost =
       node.index === this.attachedIndex && this.playerState !== 'airborne'
-        ? clamp(this.playerVelocity.length() / 18, 0, 0.34)
+        ? clamp(this.playerVelocity.length() / 16, 0, 0.46)
         : 0;
-    return clamp(0.26 + node.visualScale * 0.04 + speedBoost, 0.26, 1.02);
+    const largeShardBoost = clamp((node.visualScale - 3.2) * 0.085, 0, 0.82);
+    return clamp(0.28 + node.visualScale * 0.048 + largeShardBoost + speedBoost, 0.28, 1.48);
   }
 
   private applySurfaceContour(node: ResolvedGamePathNode, localAngle: number, sample: OrbitSample): OrbitSample {

@@ -67,7 +67,9 @@ export class CameraRailController {
 
     this.railX = Math.max(this.railX, playerPosition.x - profile.cameraLookAhead);
     const desiredX = this.railX + profile.cameraLookAhead;
-    const desiredY = currentNode.resolvedY * 0.64 + nextNode.resolvedY * 0.36;
+    const routeY = currentNode.resolvedY * 0.64 + nextNode.resolvedY * 0.36;
+    const laneFocusBias = Math.pow(momentumGauge, 0.85);
+    const desiredY = THREE.MathUtils.lerp(0, routeY, 0.28 + laneFocusBias * 0.72);
 
     this.targetFocus.set(desiredX, desiredY);
     const horizontalCatchup =
@@ -76,7 +78,7 @@ export class CameraRailController {
         : Math.max(4.4, profile.cameraCatchupSpeed * 1.25);
     const nextFocusX = damp(this.currentFocus.x, this.targetFocus.x, horizontalCatchup, deltaTime);
     this.currentFocus.x = Math.max(this.currentFocus.x, playerPosition.x - 0.08, nextFocusX);
-    this.currentFocus.y = damp(this.currentFocus.y, this.targetFocus.y, 2.1, deltaTime);
+    this.currentFocus.y = damp(this.currentFocus.y, this.targetFocus.y, 1.75 + laneFocusBias * 1.35, deltaTime);
 
     const momentumZoom = profile.momentumZoomRange * Math.pow(momentumGauge, 0.82);
     this.targetZoom =
