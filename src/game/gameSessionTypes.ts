@@ -160,6 +160,7 @@ export interface GameHudSnapshot {
   inventoryItems: Array<{
     id: string;
     name: string;
+    description: string;
     count: number;
     iconSrc: string;
   }>;

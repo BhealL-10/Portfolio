@@ -30,15 +30,19 @@ import { RunStatsSystem } from './RunStatsSystem';
 import { resolveRuntimeNode } from './ShardRuntimeResolver';
 import { ShopSystem } from './ShopSystem';
 import { BossSystem } from './BossSystem';
+import { SpriteSheetPlane } from './SpriteSheetPlane';
 
 type PlayerMotionState = 'attached' | 'charging' | 'airborne' | 'dead';
 type ChoiceMode = 'none' | 'reward_branch' | 'shop_orbit';
+type PlayerVisualState = 'attached_idle_orbit' | 'attached_fast_orbit' | 'jump_start' | 'airborne' | 'landing' | 'death';
 
 const GAME_ACCENT = '#D9624E';
 const DANGER_ACCENT = '#F06A5A';
 const SPECIAL_ACCENT_SEQUENCE = ['#FF4B4B', '#47D76B', '#4B74FF'] as const;
 const REWARD_RING_SEQUENCE = ['#4B74FF', '#FF4B4B', '#47D76B'] as const;
 const ITEM_PLACEHOLDER_ICON = '/assets/images/Logo/logomodedark.svg';
+const PLAYER_MAIN_SPRITE_URL = new URL('../../assets/images/spritesheet/Spritsheetboat.png', import.meta.url).href;
+const PLAYER_BOOST_SPRITE_URL = new URL('../../assets/images/spritesheet/Spritsheetboost.png', import.meta.url).href;
 
 function wrapAngle(angle: number) {
   const tau = Math.PI * 2;
@@ -67,7 +71,8 @@ interface ImpactWave {
 export class GameSessionController {
   private readonly root = new THREE.Group();
   private readonly player = new THREE.Group();
-  private readonly playerBody: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>;
+  private readonly playerMainSprite: SpriteSheetPlane;
+  private readonly playerBoostSprite: SpriteSheetPlane;
   private readonly playerTrail = new THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
   private readonly trailPoints = Array.from({ length: 8 }, () => new THREE.Vector3());
   private readonly trailBuffer = new Float32Array(this.trailPoints.length * 3);
@@ -86,6 +91,7 @@ export class GameSessionController {
   private readonly scratchVectorB = new THREE.Vector3();
   private readonly scratchVector2 = new THREE.Vector2();
   private readonly impactWaves = new Map<number, ImpactWave[]>();
+  private theme: ThemeMode;
   private readonly hudSnapshot: GameHudSnapshot = {
     state: 'transition',
     score: 0,
@@ -137,6 +143,8 @@ export class GameSessionController {
   private acquisitionDuration = 0.9;
   private gameOverStartedAt = 0;
   private gameOverCause: GameOverCause = null;
+  private jumpVisualUntil = 0;
+  private landingVisualUntil = 0;
   private runUpgrades: RunUpgradeState = createRunUpgradeState();
   private remainingExtraJumps = 0;
   private phaseJumpReadyAt = 0;
@@ -148,12 +156,26 @@ export class GameSessionController {
   private milestoneChoiceCache = new Map<number, BranchChoice[]>();
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
-    this.playerBody = new THREE.Mesh(
-      new THREE.ConeGeometry(0.42, 1.18, 6),
-      new THREE.MeshBasicMaterial({ color: theme === 'dark' ? '#D4BF9B' : '#393F4A' })
-    );
-    this.playerBody.rotation.z = -Math.PI / 2;
-    this.player.add(this.playerBody);
+    this.theme = theme;
+    this.playerMainSprite = new SpriteSheetPlane({
+      textureUrl: PLAYER_MAIN_SPRITE_URL,
+      layout: { columns: 2, rows: 2 },
+      width: 2.3,
+      height: 1.16,
+      alphaTest: 0.08,
+      offsetY: 0.18,
+      renderOrder: 15
+    });
+    this.playerBoostSprite = new SpriteSheetPlane({
+      textureUrl: PLAYER_BOOST_SPRITE_URL,
+      layout: { columns: 2, rows: 2 },
+      width: 2.4,
+      height: 1.2,
+      alphaTest: 0.08,
+      offsetY: 0.18,
+      renderOrder: 15
+    });
+    this.player.add(this.playerMainSprite.group, this.playerBoostSprite.group);
     this.player.visible = false;
     this.root.add(this.player);
 
@@ -190,7 +212,7 @@ export class GameSessionController {
   }
 
   setTheme(theme: ThemeMode) {
-    this.playerBody.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A');
+    this.theme = theme;
     this.playerTrail.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A');
     this.coins.setTheme(theme);
     this.enemies.setTheme(theme);
@@ -271,6 +293,8 @@ export class GameSessionController {
     this.acquisitionStartedAt = 0;
     this.gameOverStartedAt = 0;
     this.gameOverCause = null;
+    this.jumpVisualUntil = 0;
+    this.landingVisualUntil = 0;
     this.currentTime = 0;
     this.attachedIndex = 0;
     this.displayWindowIndices = [];
@@ -304,7 +328,8 @@ export class GameSessionController {
     this.impactWaves.clear();
     this.playerTrail.geometry.setDrawRange(0, this.trailPoints.length);
     this.trailPoints.forEach((point) => point.set(0, 0, 0));
-    this.playerBody.scale.setScalar(1);
+    this.playerMainSprite.setScale(1);
+    this.playerBoostSprite.setScale(1);
     this.coins.reset();
     this.enemies.reset();
     this.shop.reset();
@@ -365,15 +390,16 @@ export class GameSessionController {
         tint:
           node.colorHint === 'danger'
             ? DANGER_ACCENT
-            : node.eventType === 'shop'
-              ? specialAccent
-            : node.colorHint === 'reward'
-              ? null
-              : node.colorHint === 'accent' && !node.isMilestone
+            : node.eventType === 'shop' || node.colorHint === 'reward'
+              ? this.getThemeShardColor()
+            : node.colorHint === 'accent' && !node.isMilestone
                 ? specialAccent ?? GAME_ACCENT
                 : null,
-        ringTint: node.colorHint === 'reward' ? this.getRewardRingColor(node) : null,
-        ringScale: node.colorHint === 'reward' ? Math.max(node.visualStretch.x, node.visualStretch.y) * node.visualScale * 1.48 : 0,
+        ringTint: node.colorHint === 'reward' ? this.getRewardRingColor(node) : node.eventType === 'shop' ? (specialAccent ?? GAME_ACCENT) : null,
+        ringScale:
+          node.colorHint === 'reward' || node.eventType === 'shop'
+            ? Math.max(node.visualStretch.x, node.visualStretch.y) * node.visualScale * 1.48
+            : 0,
         stripeTint: null,
         stripeMix: 0,
         stripePhase: 0,
@@ -496,6 +522,7 @@ export class GameSessionController {
       return {
         id: itemId,
         name: item?.name.en ?? itemId,
+        description: item?.description.en ?? itemId,
         count: this.runUpgrades.counts[itemId] ?? 1,
         iconSrc: ITEM_PLACEHOLDER_ICON
       };
@@ -599,7 +626,7 @@ export class GameSessionController {
       const deduped: ResolvedGamePathNode[] = [];
       const seen = new Set<string>();
       nodes.forEach((node) => {
-        const key = `${node.index}:${Math.round(node.resolvedX * 100)}`;
+        const key = `${node.index}:${Math.round(node.resolvedX * 100)}:${Math.round(node.resolvedY * 100)}`;
         if (seen.has(key)) return;
         seen.add(key);
         deduped.push(node);
@@ -871,6 +898,7 @@ export class GameSessionController {
     this.playerVelocity.copy(tangent.multiplyScalar(launchSpeed)).addScaledVector(radial, launchSpeed * 0.08);
     this.playerState = 'airborne';
     this.state = this.choiceMode === 'reward_branch' ? 'upgrade_branching' : 'running_airborne';
+    this.jumpVisualUntil = this.currentTime + 0.14;
     this.remainingExtraJumps = Math.max(0, this.runUpgrades.modifiers.extraJumps);
     this.chargeMeter = 0;
     return true;
@@ -928,6 +956,7 @@ export class GameSessionController {
     this.orbitGraceTravel = 0;
     this.playerState = 'attached';
     this.state = 'running_attached';
+    this.landingVisualUntil = this.currentTime + 0.12;
     this.chargeActive = false;
     this.chargeMeter = 0;
     this.remainingExtraJumps = Math.max(0, this.runUpgrades.modifiers.extraJumps);
@@ -938,6 +967,12 @@ export class GameSessionController {
 
     this.collectCoinsOnCurrentNode(node);
     this.resolveEnemyContact(node);
+    if (this.choiceMode === 'reward_branch' && !node.isMilestone && node.colorHint !== 'reward') {
+      this.choiceMode = 'none';
+      this.activeChoices = [];
+      this.activeShopAngles = [];
+      this.state = 'running_attached';
+    }
 
     if (this.currentTime >= this.eventCooldownUntil) {
       this.resolveNodeEvent(node);
@@ -1148,14 +1183,69 @@ export class GameSessionController {
 
   private syncPlayerVisual(elapsedTime: number) {
     this.player.position.copy(this.playerPosition);
-    const heading = Math.atan2(this.playerVelocity.y || 0.001, this.playerVelocity.x || 0.001);
+    const currentNode = this.getResolvedNode(this.attachedIndex);
+    const orbit = this.getOrbitSample(currentNode, this.orbitAngle);
+    const travel = this.playerState === 'airborne'
+      ? this.scratchVector2.set(this.playerVelocity.x || 0.001, this.playerVelocity.y || 0.001).normalize()
+      : orbit.tangent.clone().multiplyScalar(this.orbitDirection).normalize();
+    const heading = Math.atan2(travel.y, travel.x);
     this.player.rotation.z = heading;
+    this.player.scale.set(1, this.playerState === 'airborne' ? 1 : this.orbitDirection > 0 ? -1 : 1, 1);
+    this.playerMainSprite.group.rotation.z = 0;
+    this.playerBoostSprite.group.rotation.z = 0;
+    this.playerMainSprite.group.position.set(0, 0, 0);
+    this.playerBoostSprite.group.position.set(0, 0, 0);
+
+    const visualState = this.resolvePlayerVisualState();
+    const orbitSpeed = Math.max(this.playerVelocity.length(), Math.abs(this.angularSpeed) * Math.max(1, orbit.position.length()));
+    const idleScale = 1 + this.momentum.gauge * 0.12 + Math.sin(elapsedTime * 8) * 0.02;
+
     if (this.state === 'game_over') {
       const collapse = clamp((elapsedTime - this.gameOverStartedAt) / 0.26, 0, 1);
-      this.playerBody.scale.setScalar(Math.max(0.02, 1 - collapse * 1.22));
+      const scale = Math.max(0.02, 1 - collapse * 1.22);
+      this.playerMainSprite.setVisible(true);
+      this.playerBoostSprite.setVisible(false);
+      this.playerMainSprite.setScale(scale);
+      this.playerMainSprite.setFrame(3);
       return;
     }
-    this.playerBody.scale.setScalar(1 + this.momentum.gauge * 0.12 + Math.sin(elapsedTime * 8) * 0.02);
+
+    if (visualState === 'attached_idle_orbit' || visualState === 'attached_fast_orbit') {
+      this.playerMainSprite.setVisible(false);
+      this.playerBoostSprite.setVisible(true);
+      this.playerBoostSprite.setScale(idleScale);
+      const speedTier = orbitSpeed < 5.4 ? [0, 1] : orbitSpeed < 8.4 ? [0, 1, 2] : [0, 1, 2, 3];
+      const fps = orbitSpeed < 5.4 ? 4.4 : orbitSpeed < 8.4 ? 7.2 : orbitSpeed < 11.5 ? 9.6 : 12.8;
+      this.playerBoostSprite.playLoop(speedTier, fps, elapsedTime);
+      return;
+    }
+
+    this.playerBoostSprite.setVisible(false);
+    this.playerMainSprite.setVisible(true);
+    this.playerMainSprite.setScale(idleScale);
+    if (visualState === 'jump_start') {
+      this.playerMainSprite.setFrame(1);
+    } else if (visualState === 'landing') {
+      this.playerMainSprite.setFrame(2);
+    } else {
+      this.playerMainSprite.setFrame(0);
+    }
+  }
+
+  private resolvePlayerVisualState(): PlayerVisualState {
+    if (this.playerState === 'dead' || this.state === 'game_over') {
+      return 'death';
+    }
+    if (this.currentTime < this.jumpVisualUntil) {
+      return 'jump_start';
+    }
+    if (this.currentTime < this.landingVisualUntil) {
+      return 'landing';
+    }
+    if (this.playerState === 'airborne') {
+      return 'airborne';
+    }
+    return this.playerVelocity.length() > 6.6 || this.angularSpeed > 2.9 ? 'attached_fast_orbit' : 'attached_idle_orbit';
   }
 
   private syncMarkers(elapsedTime: number) {
@@ -1660,5 +1750,9 @@ export class GameSessionController {
   private getRewardRingColor(node: ResolvedGamePathNode) {
     const slot = node.branchSlot ?? 0;
     return REWARD_RING_SEQUENCE[slot] ?? REWARD_RING_SEQUENCE[0];
+  }
+
+  private getThemeShardColor() {
+    return this.theme === 'dark' ? '#D4BF9B' : '#393F4A';
   }
 }

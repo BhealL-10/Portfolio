@@ -37,6 +37,7 @@ interface GameHUDPayload {
   inventoryItems: Array<{
     id: string;
     name: string;
+    description: string;
     count: number;
     iconSrc: string;
   }>;
@@ -233,7 +234,7 @@ export class GameHUDSystem {
     }
     this.renderInventory(payload.inventoryItems);
     this.renderBranchHints(payload.branchHints);
-    this.renderShopBar(payload.branchHints);
+    this.renderShopBar(payload.branchHints, payload.coins);
   }
 
   private renderStatic() {
@@ -292,7 +293,7 @@ export class GameHUDSystem {
     });
   }
 
-  private renderInventory(items: Array<{ id: string; name: string; count: number; iconSrc: string }>) {
+  private renderInventory(items: Array<{ id: string; name: string; description: string; count: number; iconSrc: string }>) {
     this.inventoryBar.innerHTML = '';
     this.inventoryBar.classList.toggle('is-visible', items.length > 0);
     items.forEach((item) => {
@@ -300,9 +301,13 @@ export class GameHUDSystem {
       chip.className = 'game-hud__inventory-item';
       chip.innerHTML = `
         <img src="${item.iconSrc}" alt="" class="game-hud__inventory-icon" />
-        <span class="game-hud__inventory-count">${item.count}</span>
+        <div class="game-hud__inventory-copy">
+          <strong class="game-hud__inventory-name">${item.name}</strong>
+          <span class="game-hud__inventory-desc">${item.description}</span>
+        </div>
+        <span class="game-hud__inventory-count">x${item.count}</span>
       `;
-      chip.title = item.name;
+      chip.title = `${item.name} — ${item.description}`;
       this.inventoryBar.appendChild(chip);
     });
   }
@@ -315,7 +320,8 @@ export class GameHUDSystem {
       screenY: number;
       mode?: 'reward_branch' | 'shop_orbit';
       price?: number;
-    }>
+    }>,
+    coins = 0
   ) {
     const shopHints = hints.filter((hint) => hint.mode === 'shop_orbit');
     this.shopButtons.forEach((button, index) => {
@@ -323,11 +329,14 @@ export class GameHUDSystem {
       button.hidden = !hint;
       button.disabled = !hint;
       if (!hint) return;
+      const affordable = (hint.price ?? 0) <= coins;
+      button.disabled = !affordable;
       button.innerHTML = `
         <strong>${hint.offer.item.name[this.i18n.current]}</strong>
         <span>${hint.offer.item.description[this.i18n.current]}</span>
         <em>${this.i18n.t('gamePrice')}: ${hint.price ?? 0}</em>
       `;
+      button.classList.toggle('is-disabled', !affordable);
     });
     this.shopCloseButton.textContent = this.i18n.t('gameShopClose');
   }

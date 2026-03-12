@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { ThemeMode } from '../types/content';
+import { SpriteSheetPlane } from './SpriteSheetPlane';
 
 export interface CoinMarker {
   position: THREE.Vector3;
@@ -7,22 +8,27 @@ export interface CoinMarker {
   visible: boolean;
 }
 
-const ACCENT = '#D9624E';
+const COIN_SPRITE_URL = new URL('../../assets/images/spritesheet/coinsheetsprite.png', import.meta.url).href;
 
 export class CoinSystem {
   private readonly group = new THREE.Group();
-  private readonly pool: THREE.Mesh<THREE.TorusGeometry, THREE.MeshBasicMaterial>[] = [];
+  private readonly pool: SpriteSheetPlane[] = [];
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
-    const color = new THREE.Color(ACCENT);
     for (let index = 0; index < 36; index += 1) {
-      const mesh = new THREE.Mesh(
-        new THREE.TorusGeometry(0.22, 0.08, 8, 18),
-        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.96 })
-      );
-      mesh.visible = false;
-      this.pool.push(mesh);
-      this.group.add(mesh);
+      const sprite = new SpriteSheetPlane({
+        textureUrl: COIN_SPRITE_URL,
+        layout: { columns: 4, rows: 1 },
+        width: 0.86,
+        height: 0.86,
+        alphaTest: 0.08,
+        doubleSided: true,
+        offsetY: 0.02,
+        renderOrder: 14
+      });
+      sprite.setVisible(false);
+      this.pool.push(sprite);
+      this.group.add(sprite.group);
     }
 
     this.group.visible = false;
@@ -31,8 +37,7 @@ export class CoinSystem {
   }
 
   setTheme(theme: ThemeMode) {
-    const base = theme === 'dark' ? new THREE.Color(ACCENT) : new THREE.Color('#8B3E34');
-    this.pool.forEach((mesh) => mesh.material.color.copy(base));
+    void theme;
   }
 
   setVisible(visible: boolean) {
@@ -40,24 +45,24 @@ export class CoinSystem {
   }
 
   reset() {
-    this.pool.forEach((mesh) => {
-      mesh.visible = false;
+    this.pool.forEach((sprite) => {
+      sprite.setVisible(false);
     });
   }
 
   update(markers: CoinMarker[], elapsedTime: number) {
-    this.pool.forEach((mesh, index) => {
+    this.pool.forEach((sprite, index) => {
       const marker = markers[index];
       if (!marker || !marker.visible) {
-        mesh.visible = false;
+        sprite.setVisible(false);
         return;
       }
 
-      mesh.visible = true;
-      mesh.position.copy(marker.position);
-      mesh.rotation.x = Math.PI * 0.5;
-      mesh.rotation.y = elapsedTime * 1.8 + index * 0.24;
-      mesh.scale.setScalar(marker.scale * (1 + Math.sin(elapsedTime * 4 + index) * 0.08));
+      sprite.setVisible(true);
+      sprite.group.position.copy(marker.position);
+      sprite.group.rotation.set(0, 0, 0);
+      sprite.setScale(marker.scale * 0.72 * (1 + Math.sin(elapsedTime * 4 + index) * 0.05));
+      sprite.playLoop([0, 1, 2, 3], 8.2, elapsedTime + index * 0.05);
     });
   }
 }

@@ -6,10 +6,12 @@ const POST_MILESTONE_EVENTS: GameEventType[] = ['shop', 'treasure', 'gift', 'min
 export class EventSystem {
   private queuedEvents = new Map<number, GameEventType>();
   private bossConsumed = false;
+  private shopQueued = false;
 
   reset() {
     this.queuedEvents.clear();
     this.bossConsumed = false;
+    this.shopQueued = false;
   }
 
   schedulePostMilestoneEvents(fromIndex: number, score: number, rng: () => number) {
@@ -19,8 +21,14 @@ export class EventSystem {
     for (let offset = 0; offset < count; offset += 1) {
       const triggerIndex = fromIndex + 10 + Math.floor(rng() * 11) + offset * 3;
       if (this.queuedEvents.has(triggerIndex)) continue;
-      const type = POST_MILESTONE_EVENTS[Math.floor(rng() * POST_MILESTONE_EVENTS.length)] ?? 'gift';
+      const type =
+        !this.shopQueued && fromIndex >= 10
+          ? 'shop'
+          : POST_MILESTONE_EVENTS[Math.floor(rng() * POST_MILESTONE_EVENTS.length)] ?? 'gift';
       this.queuedEvents.set(triggerIndex, type);
+      if (type === 'shop') {
+        this.shopQueued = true;
+      }
     }
   }
 

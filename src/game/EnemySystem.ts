@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { ThemeMode } from '../types/content';
 import type { GameEnemyTier } from './gameSessionTypes';
+import { SpriteSheetPlane } from './SpriteSheetPlane';
 
 export interface EnemyMarker {
   position: THREE.Vector3;
@@ -9,18 +10,13 @@ export interface EnemyMarker {
   pole: 'north' | 'south';
 }
 
-function getTierColor(theme: ThemeMode, tier: GameEnemyTier) {
-  if (tier === 'invincible') return new THREE.Color('#F06A5A');
-  if (tier === 'elite') return new THREE.Color(theme === 'dark' ? '#E18C70' : '#A14D38');
-  if (tier === 'armored') return new THREE.Color(theme === 'dark' ? '#C9775B' : '#8E4130');
-  return new THREE.Color(theme === 'dark' ? '#D4BF9B' : '#393F4A');
-}
+const ENEMY_SPRITE_URL = new URL('../../assets/images/spritesheet/Spritsheetennemie.png', import.meta.url).href;
 
 export class EnemySystem {
   private readonly group = new THREE.Group();
   private readonly pool: Array<{
     group: THREE.Group;
-    body: THREE.Mesh<THREE.TetrahedronGeometry, THREE.MeshBasicMaterial>;
+    body: SpriteSheetPlane;
     backArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>;
   }> = [];
   private theme: ThemeMode;
@@ -29,14 +25,21 @@ export class EnemySystem {
     this.theme = theme;
     for (let index = 0; index < 18; index += 1) {
       const group = new THREE.Group();
-      const material = new THREE.MeshBasicMaterial({ color: getTierColor(theme, 'light'), transparent: true, opacity: 0.95 });
-      const body = new THREE.Mesh(new THREE.TetrahedronGeometry(0.42, 0), material);
+      const body = new SpriteSheetPlane({
+        textureUrl: ENEMY_SPRITE_URL,
+        layout: { columns: 2, rows: 2 },
+        width: 1.68,
+        height: 1.68,
+        alphaTest: 0.08,
+        doubleSided: true,
+        renderOrder: 14
+      });
       const backArrow = new THREE.Mesh(
         new THREE.ConeGeometry(0.12, 0.34, 3),
         new THREE.MeshBasicMaterial({ color: theme === 'dark' ? '#393F4A' : '#D4BF9B', transparent: true, opacity: 0.95 })
       );
       backArrow.rotation.z = Math.PI;
-      group.add(body, backArrow);
+      group.add(body.group, backArrow);
       group.visible = false;
       this.pool.push({ group, body, backArrow });
       this.group.add(group);
@@ -68,10 +71,11 @@ export class EnemySystem {
       }
 
       entry.group.visible = true;
-      entry.body.material.color.copy(getTierColor(this.theme, marker.tier));
+      entry.body.mesh.material.color.set(marker.tier === 'invincible' ? '#F06A5A' : '#FFFFFF');
+      entry.body.playLoop([0, 1, 2, 3], marker.tier === 'invincible' ? 10 : marker.tier === 'elite' ? 8.8 : 7.2, elapsedTime + index * 0.07);
       entry.backArrow.material.color.set(this.theme === 'dark' ? '#393F4A' : '#D4BF9B');
       entry.group.position.copy(marker.position);
-      entry.group.rotation.y = elapsedTime * 0.8 + index * 0.18;
+      entry.group.rotation.set(0, 0, 0);
       const scale = marker.tier === 'elite' ? 1.16 : marker.tier === 'armored' ? 1.04 : marker.tier === 'invincible' ? 1.24 : 0.92;
       entry.group.scale.setScalar(scale);
       entry.backArrow.position.set(0, marker.pole === 'north' ? -0.66 : 0.66, 0);
