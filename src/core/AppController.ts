@@ -854,7 +854,8 @@ export class AppController {
     this.hud.setActiveProject(focusIndex, this.i18n.current);
     this.hud.setUnlocked(this.slotSystem.isUnlocked());
     this.hud.setAboutOpen(this.about.opened);
-    this.hud.element.classList.toggle('is-hidden', isGameMode);
+    this.hud.setGameModeNavigation(isGameMode);
+    this.hud.element.classList.remove('is-hidden');
     this.guide.element.classList.toggle('is-hidden', isGameMode);
     this.gameHud.setVisible(isGameMode);
     if (isGameMode) {

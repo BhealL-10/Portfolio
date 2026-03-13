@@ -1003,8 +1003,17 @@ export class GamePathSystem {
       return planned;
     }
 
-    if (currentDistanceMeters >= 100 && template.sizeTier !== 'massive') {
-      const eventChance = currentDistanceMeters < 250 ? 0.028 : currentDistanceMeters < 600 ? 0.042 : 0.056;
+    if (currentDistanceMeters >= 20 && template.sizeTier !== 'massive') {
+      const eventChance =
+        currentDistanceMeters < 60
+          ? 0.018
+          : currentDistanceMeters < 100
+            ? 0.024
+            : currentDistanceMeters < 250
+              ? 0.032
+              : currentDistanceMeters < 600
+                ? 0.042
+                : 0.056;
       if (this.nextRandom() < eventChance) {
         const roll = this.nextRandom();
         if (roll < 0.16) return 'shop';

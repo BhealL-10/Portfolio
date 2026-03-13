@@ -85,7 +85,7 @@ export class CameraRailController {
     this.currentFocus.x = currentNode.isGigantic ? nextFocusX : Math.max(this.currentFocus.x, playerPosition.x - 0.08, nextFocusX);
     this.currentFocus.y = damp(this.currentFocus.y, this.targetFocus.y, currentNode.isGigantic ? 7.8 : 1.95 + laneFocusBias * 1.7, deltaTime);
 
-    const momentumZoom = profile.momentumZoomRange * Math.pow(momentumGauge, 0.82);
+    const momentumZoom = profile.momentumZoomRange * 1.35 * Math.pow(momentumGauge, 0.74);
     this.targetZoom =
       profile.baseZoom +
       momentumZoom +

@@ -71,14 +71,16 @@ export class GameHUDSystem {
   private panel: HTMLDivElement;
   private scoreLabel: HTMLSpanElement;
   private highscoreLabel: HTMLSpanElement;
+  private bestDistanceLabel: HTMLSpanElement;
   private chargeLabel: HTMLSpanElement;
   private chainLabel: HTMLSpanElement;
   private distanceLabel: HTMLSpanElement;
-  private coinsLabel: HTMLSpanElement;
   private scoreValue: HTMLSpanElement;
   private highscoreValue: HTMLSpanElement;
+  private bestDistanceValue: HTMLSpanElement;
   private chainValue: HTMLSpanElement;
   private distanceValue: HTMLSpanElement;
+  private coinsLabel: HTMLSpanElement;
   private coinsValue: HTMLSpanElement;
   private momentumBarLabel: HTMLSpanElement;
   private momentumBarValue: HTMLSpanElement;
@@ -91,6 +93,7 @@ export class GameHUDSystem {
   private metaValue: HTMLParagraphElement;
   private exitButton: HTMLButtonElement;
   private branchLayer: HTMLDivElement;
+  private stashBar: HTMLDivElement;
   private inventoryBar: HTMLDivElement;
   private branchTitle: HTMLHeadingElement;
   private branchHint: HTMLParagraphElement;
@@ -117,22 +120,9 @@ export class GameHUDSystem {
         <div class="game-hud__stats">
           <div><span data-score-label></span><strong data-score>0</strong></div>
           <div><span data-highscore-label></span><strong data-highscore>0</strong></div>
-          <div><span data-chain-label></span><strong data-chain>0</strong></div>
+          <div><span data-best-distance-label></span><strong data-best-distance>0m</strong></div>
           <div><span data-distance-label></span><strong data-distance>0m</strong></div>
-          <div><span data-coins-label></span><strong data-coins>0</strong></div>
-        </div>
-        <div class="game-hud__momentum-meter">
-          <div class="game-hud__momentum-meta">
-            <span data-momentum-bar-label></span>
-            <strong data-momentum-bar-value>0%</strong>
-          </div>
-          <div class="game-hud__momentum-shell">
-            <img src="${MOMENTUM_BAR_ASSETS.bg}" alt="" class="game-hud__momentum-bg" />
-            <div class="game-hud__momentum-mask" data-momentum-mask>
-              <img src="${MOMENTUM_BAR_ASSETS.fill1}" alt="" class="game-hud__momentum-fill game-hud__momentum-fill--primary" data-momentum-fill-primary />
-              <img src="${MOMENTUM_BAR_ASSETS.fill2}" alt="" class="game-hud__momentum-fill game-hud__momentum-fill--secondary" data-momentum-fill-secondary />
-            </div>
-          </div>
+          <div><span data-chain-label></span><strong data-chain>0%</strong></div>
         </div>
         <div class="game-hud__charge">
           <div class="game-hud__charge-meta">
@@ -148,9 +138,30 @@ export class GameHUDSystem {
           <button type="button" data-exit></button>
         </div>
       </div>
+      <div class="game-hud__momentum-dock">
+        <div class="game-hud__momentum-meter">
+          <div class="game-hud__momentum-meta">
+            <span data-momentum-bar-label></span>
+            <strong data-momentum-bar-value>0%</strong>
+          </div>
+          <div class="game-hud__momentum-shell">
+            <div class="game-hud__momentum-mask" data-momentum-mask>
+              <img src="${MOMENTUM_BAR_ASSETS.fill1}" alt="" class="game-hud__momentum-fill game-hud__momentum-fill--primary" data-momentum-fill-primary />
+              <img src="${MOMENTUM_BAR_ASSETS.fill2}" alt="" class="game-hud__momentum-fill game-hud__momentum-fill--secondary" data-momentum-fill-secondary />
+            </div>
+            <img src="${MOMENTUM_BAR_ASSETS.bg}" alt="" class="game-hud__momentum-bg" />
+          </div>
+        </div>
+      </div>
       <div class="game-hud__play-zone game-hud__play-zone--top"></div>
       <div class="game-hud__play-zone game-hud__play-zone--bottom"></div>
-      <div class="game-hud__inventory"></div>
+      <div class="game-hud__stash">
+        <div class="game-hud__wallet">
+          <span data-coins-label></span>
+          <strong data-coins>0</strong>
+        </div>
+        <div class="game-hud__inventory"></div>
+      </div>
       <div class="game-hud__branch-layer">
         <div class="game-hud__branch-header">
           <h3 data-upgrade-title></h3>
@@ -186,14 +197,16 @@ export class GameHUDSystem {
     this.panel = this.element.querySelector<HTMLDivElement>('.game-hud__panel')!;
     this.scoreLabel = this.element.querySelector<HTMLSpanElement>('[data-score-label]')!;
     this.highscoreLabel = this.element.querySelector<HTMLSpanElement>('[data-highscore-label]')!;
+    this.bestDistanceLabel = this.element.querySelector<HTMLSpanElement>('[data-best-distance-label]')!;
     this.chargeLabel = this.element.querySelector<HTMLSpanElement>('[data-charge-label]')!;
     this.chainLabel = this.element.querySelector<HTMLSpanElement>('[data-chain-label]')!;
     this.distanceLabel = this.element.querySelector<HTMLSpanElement>('[data-distance-label]')!;
-    this.coinsLabel = this.element.querySelector<HTMLSpanElement>('[data-coins-label]')!;
     this.scoreValue = this.element.querySelector<HTMLSpanElement>('[data-score]')!;
     this.highscoreValue = this.element.querySelector<HTMLSpanElement>('[data-highscore]')!;
+    this.bestDistanceValue = this.element.querySelector<HTMLSpanElement>('[data-best-distance]')!;
     this.chainValue = this.element.querySelector<HTMLSpanElement>('[data-chain]')!;
     this.distanceValue = this.element.querySelector<HTMLSpanElement>('[data-distance]')!;
+    this.coinsLabel = this.element.querySelector<HTMLSpanElement>('[data-coins-label]')!;
     this.coinsValue = this.element.querySelector<HTMLSpanElement>('[data-coins]')!;
     this.momentumBarLabel = this.element.querySelector<HTMLSpanElement>('[data-momentum-bar-label]')!;
     this.momentumBarValue = this.element.querySelector<HTMLSpanElement>('[data-momentum-bar-value]')!;
@@ -206,6 +219,7 @@ export class GameHUDSystem {
     this.metaValue = this.element.querySelector<HTMLParagraphElement>('.game-hud__meta')!;
     this.exitButton = this.element.querySelector<HTMLButtonElement>('[data-exit]')!;
     this.branchLayer = this.element.querySelector<HTMLDivElement>('.game-hud__branch-layer')!;
+    this.stashBar = this.element.querySelector<HTMLDivElement>('.game-hud__stash')!;
     this.inventoryBar = this.element.querySelector<HTMLDivElement>('.game-hud__inventory')!;
     this.branchTitle = this.element.querySelector<HTMLHeadingElement>('[data-upgrade-title]')!;
     this.branchHint = this.element.querySelector<HTMLParagraphElement>('[data-upgrade-hint]')!;
@@ -243,13 +257,15 @@ export class GameHUDSystem {
   update(payload: GameHUDPayload) {
     this.scoreValue.textContent = String(payload.score);
     this.highscoreValue.textContent = String(payload.highscore);
+    this.bestDistanceValue.textContent = `${Math.round(payload.bestDistanceMeters)}m`;
     this.distanceValue.textContent = `${Math.round(payload.distanceMeters)}m`;
     this.coinsValue.textContent = String(payload.coins);
     this.chainValue.textContent = `${Math.round(payload.momentumGauge * 100)}%`;
     this.chainValue.style.opacity = `${0.58 + payload.momentumGauge * 0.42}`;
     this.momentumBarValue.textContent = `${Math.round(payload.momentumGauge * 100)}%`;
     this.momentumMask.style.width = `${Math.round(payload.momentumGauge * 100)}%`;
-    const fillPhase = Math.floor(performance.now() / 240) % 2;
+    const fillIntervalMs = 1000 - payload.momentumGauge * 680;
+    const fillPhase = Math.floor(performance.now() / Math.max(320, fillIntervalMs)) % 2;
     this.momentumFillPrimary.style.opacity = fillPhase === 0 ? '1' : '0';
     this.momentumFillSecondary.style.opacity = fillPhase === 0 ? '0' : '1';
     this.chargeFill.style.setProperty('--charge-ratio', payload.chargeRatio.toFixed(3));
@@ -308,6 +324,8 @@ export class GameHUDSystem {
     this.gameOverBody.textContent = this.i18n.t('gameOverBody');
     this.restartButton.textContent = this.i18n.t('gameRestart');
     this.returnButton.textContent = this.i18n.t('gamePortfolio');
+    this.bestDistanceLabel.textContent = this.i18n.t('gameBestDistance');
+    this.coinsLabel.textContent = this.i18n.t('gameCoins');
   }
 
   private renderBranchHints(
@@ -350,16 +368,12 @@ export class GameHUDSystem {
 
   private renderInventory(items: Array<{ id: string; name: string; description: string; count: number; iconSrc: string }>) {
     this.inventoryBar.innerHTML = '';
-    this.inventoryBar.classList.toggle('is-visible', items.length > 0);
+    this.stashBar.classList.add('is-visible');
     items.forEach((item) => {
       const chip = document.createElement('div');
       chip.className = 'game-hud__inventory-item';
       chip.innerHTML = `
         <img src="${item.iconSrc}" alt="" class="game-hud__inventory-icon" />
-        <div class="game-hud__inventory-copy">
-          <strong class="game-hud__inventory-name">${item.name}</strong>
-          <span class="game-hud__inventory-desc">${item.description}</span>
-        </div>
         <span class="game-hud__inventory-count">x${item.count}</span>
       `;
       chip.title = `${item.name} — ${item.description}`;

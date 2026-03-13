@@ -75,6 +75,9 @@ export class GameSessionController {
   private readonly player = new THREE.Group();
   private readonly playerMainSprite: SpriteSheetPlane;
   private readonly playerBoostSprite: SpriteSheetPlane;
+  private readonly shardHudCanvas = document.createElement('canvas');
+  private readonly shardHudTexture: THREE.CanvasTexture;
+  private readonly shardHudSprite: THREE.Sprite;
   private readonly playerTrail = new THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
   private readonly trailPoints = Array.from({ length: 8 }, () => new THREE.Vector3());
   private readonly trailBuffer = new Float32Array(this.trailPoints.length * 3);
@@ -160,9 +163,25 @@ export class GameSessionController {
   private eventCooldownUntil = 0;
   private autoFireReadyAt = 0;
   private milestoneChoiceCache = new Map<number, BranchChoice[]>();
+  private airborneFromMilestone = false;
+  private airborneStartedAt = 0;
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
     this.theme = theme;
+    this.shardHudCanvas.width = 256;
+    this.shardHudCanvas.height = 256;
+    this.shardHudTexture = new THREE.CanvasTexture(this.shardHudCanvas);
+    this.shardHudTexture.colorSpace = THREE.SRGBColorSpace;
+    this.shardHudSprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: this.shardHudTexture,
+        transparent: true,
+        depthWrite: false,
+        depthTest: false
+      })
+    );
+    this.shardHudSprite.visible = false;
+    this.shardHudSprite.renderOrder = 18;
     this.playerMainSprite = new SpriteSheetPlane({
       textureUrl: PLAYER_MAIN_SPRITE_URL,
       layout: { columns: 2, rows: 2 },
@@ -184,6 +203,7 @@ export class GameSessionController {
     this.player.add(this.playerMainSprite.group, this.playerBoostSprite.group);
     this.player.visible = false;
     this.root.add(this.player);
+    this.root.add(this.shardHudSprite);
 
     const trailGeometry = new THREE.BufferGeometry();
     trailGeometry.setAttribute('position', new THREE.BufferAttribute(this.trailBuffer, 3));
@@ -267,6 +287,8 @@ export class GameSessionController {
     this.chargeActive = false;
     this.choiceMode = 'none';
     this.activeChoices = [];
+    this.airborneFromMilestone = false;
+    this.airborneStartedAt = 0;
     this.shop.reset();
     this.boss.reset();
     this.coins.reset();
@@ -277,6 +299,8 @@ export class GameSessionController {
 
   stop() {
     this.state = 'idle';
+    this.airborneFromMilestone = false;
+    this.airborneStartedAt = 0;
     this.root.visible = false;
     this.player.visible = false;
     this.playerTrail.visible = false;
@@ -327,6 +351,8 @@ export class GameSessionController {
     this.eventCooldownUntil = 0;
     this.autoFireReadyAt = 0;
     this.milestoneChoiceCache.clear();
+    this.airborneFromMilestone = false;
+    this.airborneStartedAt = 0;
     this.momentum.gauge = 0;
     this.momentum.fillRate = 0;
     this.momentum.decayRate = 0.12;
@@ -336,6 +362,7 @@ export class GameSessionController {
     this.impactWaves.clear();
     this.playerTrail.geometry.setDrawRange(0, this.trailPoints.length);
     this.trailPoints.forEach((point) => point.set(0, 0, 0));
+    this.shardHudSprite.visible = false;
     this.playerMainSprite.setScale(1);
     this.playerBoostSprite.setScale(1);
     this.coins.reset();
@@ -571,6 +598,7 @@ export class GameSessionController {
       this.updateCamera(deltaTime, currentNode, nextNode);
       this.updateTrail(deltaTime);
       this.syncPlayerVisual(elapsedTime);
+      this.syncShardHud(currentNode);
       this.syncMarkers(elapsedTime);
       return;
     }
@@ -594,6 +622,7 @@ export class GameSessionController {
     this.updateCamera(deltaTime, currentNode, nextNode);
     this.updateTrail(deltaTime);
     this.syncPlayerVisual(elapsedTime);
+    this.syncShardHud(currentNode);
     this.syncMarkers(elapsedTime);
 
     if (currentNode.isMilestone && this.playerState !== 'airborne') {
@@ -639,7 +668,7 @@ export class GameSessionController {
   }
 
   private getDisplayNodes(count: number) {
-    if (this.choiceMode === 'reward_branch' && this.activeChoices.length > 0) {
+    if (this.choiceMode === 'reward_branch' && this.activeChoices.length > 0 && !this.airborneFromMilestone) {
       this.initializeDisplayWindow(count);
       const milestoneNode = this.getResolvedNode(this.attachedIndex);
       const rewardNodes = this.activeChoices.map((choice) => resolveRuntimeNode(choice.entry, this.currentTime, this.attachedIndex));
@@ -688,6 +717,9 @@ export class GameSessionController {
 
   private advanceDisplayAnchor() {
     if (this.displayWindowIndices.length === 0) return;
+    if (this.airborneFromMilestone && this.playerState === 'airborne') {
+      return;
+    }
 
     for (let slot = 0; slot < this.displayWindowIndices.length; slot += 1) {
       const nodeIndex = this.displayWindowIndices[slot]!;
@@ -728,7 +760,11 @@ export class GameSessionController {
   private updateMomentum(deltaTime: number) {
     const decayModifier = 1 - Math.min(0.72, this.runUpgrades.modifiers.momentumRetention);
     const decay = this.momentum.decayRate * decayModifier;
-    if (!(this.orbitGraceActive && this.playerState !== 'airborne')) {
+    const airborneGraceActive =
+      this.playerState === 'airborne' &&
+      this.airborneStartedAt > 0 &&
+      this.currentTime - this.airborneStartedAt < 3;
+    if (!(this.orbitGraceActive && this.playerState !== 'airborne') && !airborneGraceActive) {
       this.momentum.gauge = clamp(this.momentum.gauge - decay * deltaTime, 0, 1);
     }
 
@@ -928,6 +964,8 @@ export class GameSessionController {
     this.jumpVisualUntil = this.currentTime + 0.14;
     this.remainingExtraJumps = Math.max(0, this.runUpgrades.modifiers.extraJumps);
     this.chargeMeter = 0;
+    this.airborneStartedAt = this.currentTime;
+    this.airborneFromMilestone = currentNode.isGigantic;
     return true;
   }
 
@@ -983,6 +1021,8 @@ export class GameSessionController {
     this.orbitGraceTravel = 0;
     this.playerState = 'attached';
     this.state = 'running_attached';
+    this.airborneFromMilestone = false;
+    this.airborneStartedAt = 0;
     this.landingVisualUntil = this.currentTime + 0.12;
     this.chargeActive = false;
     this.chargeMeter = 0;
@@ -1024,15 +1064,15 @@ export class GameSessionController {
     const twist = this.lastLandingDirection !== 0 && direction !== this.lastLandingDirection;
 
     let grade: LandingGrade = 'good';
-    if (frontalPenalty > 0.78 || tangentialAlignment < 0.28) {
+    if (frontalPenalty > 0.88 || tangentialAlignment < 0.16) {
       grade = 'miss';
-    } else if (tangentialAlignment > 0.95 && frontalPenalty < 0.2) {
+    } else if (tangentialAlignment > 0.965 && frontalPenalty < 0.18) {
       grade = 'perfect';
-    } else if (tangentialAlignment > 0.8 && frontalPenalty < 0.42) {
+    } else if (tangentialAlignment > 0.72 && frontalPenalty < 0.5) {
       grade = 'super';
     }
 
-    let momentumGain = twist ? 0.15 : 0.05;
+    let momentumGain = twist ? 0.22 : 0.05;
     if (!twist && this.momentum.gauge >= 0.5) {
       momentumGain = 0;
     } else if (!twist && this.momentum.gauge + momentumGain > 0.5) {
@@ -1044,13 +1084,13 @@ export class GameSessionController {
       momentumGain = -0.04;
       speedMultiplier = 0.84;
     } else if (grade === 'super') {
-      momentumGain += twist ? 0.035 : 0.01;
-      speedMultiplier = twist ? 1.24 : 1.08;
+      momentumGain += twist ? 0.055 : 0.018;
+      speedMultiplier = twist ? 1.34 : 1.1;
     } else if (grade === 'perfect') {
-      momentumGain += twist ? 0.055 : 0.02;
-      speedMultiplier = twist ? 1.34 : 1.14;
+      momentumGain += twist ? 0.085 : 0.026;
+      speedMultiplier = twist ? 1.48 : 1.16;
     } else if (twist) {
-      speedMultiplier = 1.18;
+      speedMultiplier = 1.24;
     }
 
     const nextGauge = clamp(
@@ -1220,9 +1260,10 @@ export class GameSessionController {
   }
 
   private updateCamera(deltaTime: number, currentNode: ResolvedGamePathNode, nextNode: ResolvedGamePathNode) {
-    const cameraCurrentNode = currentNode.isGigantic && this.playerState === 'airborne' ? nextNode : currentNode;
+    const milestoneAirborne = this.airborneFromMilestone && this.playerState === 'airborne';
+    const cameraCurrentNode = milestoneAirborne ? nextNode : currentNode;
     const cameraNextNode =
-      currentNode.isGigantic && this.playerState === 'airborne'
+      milestoneAirborne
         ? this.getResolvedNode(this.attachedIndex + 2)
         : nextNode;
     const upcomingMilestoneFactor =
@@ -1231,7 +1272,7 @@ export class GameSessionController {
         : 0;
     const largeShardFactor = clamp((Math.max(cameraCurrentNode.visualScale, cameraNextNode.visualScale) - 2.8) / 28, 0, 1.24);
     const milestoneReleaseZoom =
-      currentNode.isGigantic && this.playerState === 'airborne'
+      milestoneAirborne
         ? clamp(1 - Math.max(0, this.playerPosition.x - currentNode.resolvedX) / 24, 0, 1) * 26
         : 0;
     const milestoneZoom =
@@ -1322,6 +1363,58 @@ export class GameSessionController {
     } else {
       this.playerMainSprite.setFrame(0);
     }
+  }
+
+  private syncShardHud(currentNode: ResolvedGamePathNode) {
+    if (this.playerState === 'airborne' || this.playerState === 'dead' || this.state === 'game_over') {
+      this.shardHudSprite.visible = false;
+      return;
+    }
+
+    const ctx = this.shardHudCanvas.getContext('2d');
+    if (!ctx) {
+      this.shardHudSprite.visible = false;
+      return;
+    }
+
+    const chargeProgress = clamp(this.chargeMeter, 0, 1);
+    const orbitProgress = this.orbitGraceActive ? clamp(this.orbitGraceProgress, 0, 1) : 1;
+    const radius = this.getPhysicalRadius(currentNode);
+    const fg = this.theme === 'dark' ? '212,191,155' : '57,63,74';
+    const bg = this.theme === 'dark' ? '57,63,74' : '212,191,155';
+
+    ctx.clearRect(0, 0, 256, 256);
+    ctx.save();
+    ctx.translate(128, 128);
+    ctx.strokeStyle = `rgba(${fg},0.14)`;
+    ctx.lineWidth = 16;
+    ctx.beginPath();
+    ctx.arc(0, 0, 84, -Math.PI / 2, Math.PI * 1.5);
+    ctx.stroke();
+    ctx.strokeStyle = `rgba(${fg},0.92)`;
+    ctx.beginPath();
+    ctx.arc(0, 0, 84, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * chargeProgress);
+    ctx.stroke();
+
+    ctx.strokeStyle = `rgba(${bg},0.18)`;
+    ctx.lineWidth = 12;
+    ctx.beginPath();
+    ctx.arc(0, 0, 54, -Math.PI / 2, Math.PI * 1.5);
+    ctx.stroke();
+    ctx.strokeStyle = `rgba(${fg},0.96)`;
+    ctx.beginPath();
+    ctx.arc(0, 0, 54, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * orbitProgress);
+    ctx.stroke();
+    ctx.restore();
+
+    this.shardHudTexture.needsUpdate = true;
+    this.shardHudSprite.visible = true;
+    this.shardHudSprite.position.set(
+      currentNode.resolvedX,
+      currentNode.resolvedY + radius + Math.max(1.05, radius * 0.28),
+      currentNode.resolvedZ + 0.08
+    );
+    this.shardHudSprite.scale.setScalar(Math.max(2.2, radius));
   }
 
   private resolvePlayerVisualState(): PlayerVisualState {
@@ -1466,6 +1559,7 @@ export class GameSessionController {
     this.playerVelocity.set(0, 0, 0);
     this.playerVelocityTarget.set(0, 0, 0);
     this.angularSpeed = 0;
+    this.airborneFromMilestone = false;
     this.gameOverStartedAt = this.currentTime;
     this.playerTrail.visible = false;
     this.shop.reset();

@@ -19,7 +19,9 @@ export class NavigationHUD {
   private aboutButton: HTMLButtonElement;
   private homeButton: HTMLButtonElement;
   private unlockChip: HTMLDivElement;
+  private projectRail: HTMLDivElement;
   private dots: HTMLButtonElement[] = [];
+  private gameModeActive = false;
 
   constructor(
     host: HTMLElement,
@@ -52,19 +54,19 @@ export class NavigationHUD {
       this.unlockChip
     );
 
-    const projectRail = document.createElement('div');
-    projectRail.className = 'navigation-hud__rail';
+    this.projectRail = document.createElement('div');
+    this.projectRail.className = 'navigation-hud__rail';
 
     this.content.getProjects().forEach((_, index) => {
       const dot = document.createElement('button');
       dot.className = 'navigation-hud__dot';
       dot.type = 'button';
       dot.addEventListener('click', () => callbacks.onProjectSelect(index));
-      projectRail.appendChild(dot);
+      this.projectRail.appendChild(dot);
       this.dots.push(dot);
     });
 
-    this.element.append(this.topbar, projectRail);
+    this.element.append(this.topbar, this.projectRail);
     host.appendChild(this.element);
 
     this.i18n.onChange(() => this.renderStatic());
@@ -89,6 +91,15 @@ export class NavigationHUD {
     this.aboutButton.classList.toggle('is-active', isOpen);
   }
 
+  setGameModeNavigation(active: boolean) {
+    this.gameModeActive = active;
+    this.activeChip.hidden = active;
+    this.aboutButton.hidden = active;
+    this.unlockChip.hidden = active;
+    this.projectRail.hidden = active;
+    this.renderStatic();
+  }
+
   private createButton(onClick: () => void) {
     const button = document.createElement('button');
     button.className = 'navigation-hud__button';
@@ -101,6 +112,6 @@ export class NavigationHUD {
     this.themeButton.textContent = this.i18n.t('theme');
     this.languageButton.textContent = this.i18n.t('language');
     this.aboutButton.textContent = this.i18n.t('about');
-    this.homeButton.textContent = this.i18n.t('home');
+    this.homeButton.textContent = this.gameModeActive ? this.i18n.t('gamePortfolio') : this.i18n.t('home');
   }
 }
