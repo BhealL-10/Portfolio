@@ -763,6 +763,21 @@ export class AppController {
         return acc;
       }, []),
       inventoryItems: hudState.inventoryItems,
+      landingFeedback: hudState.landingFeedback
+        ? (() => {
+            const projected = this.renderer.projectWorldToScreen(hudState.landingFeedback.worldPosition);
+            if (!projected.visible) {
+              return null;
+            }
+            return {
+              grade: hudState.landingFeedback.grade,
+              twist: hudState.landingFeedback.twist,
+              progress: hudState.landingFeedback.progress,
+              screenX: projected.x,
+              screenY: projected.y
+            };
+          })()
+        : null,
       acquisition: hudState.acquisition,
       gameOverCause: hudState.gameOverCause
     } as const;

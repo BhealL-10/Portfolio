@@ -15,6 +15,7 @@ export class CoinSystem {
   private readonly pool: SpriteSheetPlane[] = [];
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
+    SpriteSheetPlane.preload(COIN_SPRITE_URL, { columns: 4, rows: 1 });
     for (let index = 0; index < 36; index += 1) {
       const sprite = new SpriteSheetPlane({
         textureUrl: COIN_SPRITE_URL,
@@ -62,7 +63,7 @@ export class CoinSystem {
       sprite.group.position.copy(marker.position);
       sprite.group.rotation.set(0, 0, 0);
       sprite.setScale(marker.scale * 0.72 * (1 + Math.sin(elapsedTime * 4 + index) * 0.05));
-      sprite.playLoop([0, 1, 2, 3], 8.2, elapsedTime + index * 0.05);
+      sprite.playLoop([0, 1, 2, 3], 4.0, elapsedTime + index * 0.05);
     });
   }
 }

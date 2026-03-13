@@ -114,6 +114,15 @@ export interface AcquisitionFeedback {
   subtitle?: string;
 }
 
+export type LandingGrade = 'miss' | 'good' | 'super' | 'perfect';
+
+export interface LandingFeedback {
+  grade: LandingGrade;
+  twist: boolean;
+  progress: number;
+  worldPosition: THREE.Vector3;
+}
+
 export interface MomentumState {
   gauge: number;
   fillRate: number;
@@ -164,6 +173,7 @@ export interface GameHudSnapshot {
     count: number;
     iconSrc: string;
   }>;
+  landingFeedback: LandingFeedback | null;
   acquisition: AcquisitionFeedback | null;
   gameOverCause: GameOverCause;
 }

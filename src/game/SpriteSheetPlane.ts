@@ -6,9 +6,11 @@ export interface SpriteSheetLayout {
 }
 
 export class SpriteSheetPlane {
+  private static readonly loader = new THREE.TextureLoader();
+  private static readonly textureCache = new Map<string, THREE.Texture>();
   readonly group = new THREE.Group();
   readonly mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
-  private readonly texture: THREE.Texture;
+  private texture: THREE.Texture;
   private readonly layout: SpriteSheetLayout;
   private currentFrame = -1;
 
@@ -23,14 +25,7 @@ export class SpriteSheetPlane {
     renderOrder?: number;
   }) {
     this.layout = config.layout;
-    this.texture = new THREE.TextureLoader().load(config.textureUrl);
-    this.texture.colorSpace = THREE.SRGBColorSpace;
-    this.texture.wrapS = THREE.ClampToEdgeWrapping;
-    this.texture.wrapT = THREE.ClampToEdgeWrapping;
-    this.texture.repeat.set(1 / config.layout.columns, 1 / config.layout.rows);
-    this.texture.minFilter = THREE.LinearFilter;
-    this.texture.magFilter = THREE.LinearFilter;
-    this.texture.generateMipmaps = true;
+    this.texture = SpriteSheetPlane.getTexture(config.textureUrl, config.layout);
 
     this.mesh = new THREE.Mesh(
       new THREE.PlaneGeometry(config.width, config.height),
@@ -46,6 +41,10 @@ export class SpriteSheetPlane {
     this.mesh.renderOrder = config.renderOrder ?? 10;
     this.group.add(this.mesh);
     this.setFrame(0);
+  }
+
+  static preload(textureUrl: string, layout: SpriteSheetLayout) {
+    SpriteSheetPlane.getTexture(textureUrl, layout);
   }
 
   setVisible(visible: boolean) {
@@ -73,5 +72,35 @@ export class SpriteSheetPlane {
     }
     const frame = Math.floor(elapsedTime * Math.max(0.01, framesPerSecond)) % frameIndices.length;
     this.setFrame(frameIndices[frame]!);
+  }
+
+  setTexture(textureUrl: string) {
+    const nextTexture = SpriteSheetPlane.getTexture(textureUrl, this.layout);
+    if (nextTexture === this.texture) {
+      return;
+    }
+    this.texture = nextTexture;
+    this.mesh.material.map = nextTexture;
+    this.mesh.material.needsUpdate = true;
+    this.currentFrame = -1;
+    this.setFrame(0);
+  }
+
+  private static getTexture(textureUrl: string, layout: SpriteSheetLayout) {
+    const cached = this.textureCache.get(textureUrl);
+    if (cached) {
+      return cached;
+    }
+
+    const texture = this.loader.load(textureUrl);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    texture.repeat.set(1 / layout.columns, 1 / layout.rows);
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = true;
+    this.textureCache.set(textureUrl, texture);
+    return texture;
   }
 }

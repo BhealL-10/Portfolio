@@ -864,7 +864,7 @@ export class OrbitWorldSystem {
         entity.accentRing.visible = false;
       }
 
-      entity.core.material.opacity = 1;
+      entity.core.material.opacity = 1 - (visual?.fragmentAmount ?? 0) * 0.92;
       entity.core.material.emissiveIntensity = 0.08 + (visual?.pulse ?? 0.06);
       updateDeformUniforms(entity.core.material, {
         time: elapsedTime,

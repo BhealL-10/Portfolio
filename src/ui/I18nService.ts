@@ -58,7 +58,12 @@ const uiStrings = {
     gameOverCamera: 'La caméra vous a laissé derrière.',
     gameOverEnemy: 'Un ennemi vous a touché de face.',
     gameOverBounds: 'Vous êtes sorti de la zone jouable.',
-    gameAcquired: 'Objet acquis'
+    gameAcquired: 'Objet acquis',
+    gameLandingMiss: 'Raté',
+    gameLandingGood: 'Bon',
+    gameLandingSuper: 'Super',
+    gameLandingPerfect: 'Parfait',
+    gameLandingTwist: 'Twist'
   },
   en: {
     theme: 'Theme',
@@ -117,7 +122,12 @@ const uiStrings = {
     gameOverCamera: 'The camera left you behind.',
     gameOverEnemy: 'An enemy hit you from the front.',
     gameOverBounds: 'You left the playable zone.',
-    gameAcquired: 'Item acquired'
+    gameAcquired: 'Item acquired',
+    gameLandingMiss: 'Miss',
+    gameLandingGood: 'Good',
+    gameLandingSuper: 'Super',
+    gameLandingPerfect: 'Perfect',
+    gameLandingTwist: 'Twist'
   }
 } as const;
 

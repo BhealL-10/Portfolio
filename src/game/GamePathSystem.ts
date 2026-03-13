@@ -48,12 +48,13 @@ const SIZE_TIER_ORDER: GameShardSizeTier[] = [
 const MILESTONE_HALF_WIDTH = DEFAULT_COLUMN_DISTANCE * 2.3;
 const MILESTONE_RESERVED_BEFORE = DEFAULT_COLUMN_DISTANCE;
 const MILESTONE_REWARD_OFFSET = DEFAULT_COLUMN_DISTANCE * 3;
-const MILESTONE_RESERVED_AFTER = DEFAULT_COLUMN_DISTANCE;
+const MILESTONE_RESERVED_AFTER = DEFAULT_COLUMN_DISTANCE * 1.35;
+const MILESTONE_EXIT_BUFFER = DEFAULT_COLUMN_DISTANCE * 0.45;
 
 function getMilestoneReservedRangeX(centerX: number) {
   return {
     start: centerX - MILESTONE_REWARD_OFFSET,
-    end: centerX + MILESTONE_REWARD_OFFSET + MILESTONE_RESERVED_AFTER
+    end: centerX + MILESTONE_REWARD_OFFSET + MILESTONE_RESERVED_AFTER + MILESTONE_EXIT_BUFFER
   };
 }
 
@@ -925,7 +926,7 @@ export class GamePathSystem {
 
       const prior = isolated[index - 1] ?? previous;
       if (prior.isMilestone) {
-        const priorGap = MILESTONE_REWARD_OFFSET + MILESTONE_RESERVED_AFTER;
+        const priorGap = MILESTONE_REWARD_OFFSET + MILESTONE_RESERVED_AFTER + MILESTONE_EXIT_BUFFER;
         nextNode = {
           ...nextNode,
           x: Math.max(nextNode.x, prior.x + priorGap),
@@ -946,7 +947,7 @@ export class GamePathSystem {
         if (insideReservedZone) {
           nextNode = {
             ...nextNode,
-            x: reservedRange.end + DEFAULT_COLUMN_DISTANCE,
+            x: reservedRange.end + Math.max(DEFAULT_COLUMN_DISTANCE * 0.92, nextNode.gameplayRadius * 0.42),
             y: Math.abs(nextNode.y) < laneSpacing * 1.9 ? (nextNode.y >= 0 ? laneSpacing * 2.5 : -laneSpacing * 2.5) : nextNode.y
           };
         }
@@ -997,7 +998,23 @@ export class GamePathSystem {
       return 'boss_weak' as GameEventType;
     }
 
-    return this.eventSystem.consumePlannedEvent(index, score);
+    const planned = this.eventSystem.consumePlannedEvent(index, score);
+    if (planned !== 'none') {
+      return planned;
+    }
+
+    if (currentDistanceMeters >= 100 && template.sizeTier !== 'massive') {
+      const eventChance = currentDistanceMeters < 250 ? 0.028 : currentDistanceMeters < 600 ? 0.042 : 0.056;
+      if (this.nextRandom() < eventChance) {
+        const roll = this.nextRandom();
+        if (roll < 0.16) return 'shop';
+        if (roll < 0.46) return 'gift';
+        if (roll < 0.72) return 'rare_item';
+        return 'treasure';
+      }
+    }
+
+    return 'none' as GameEventType;
   }
 
   private directionFrom(x0: number, y0: number, x1: number, y1: number): GamePathNode['direction'] {

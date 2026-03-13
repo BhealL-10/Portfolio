@@ -64,7 +64,7 @@ export function validatePatternPlacement(candidateNodes: GamePathNode[], existin
 
 function isInsideMilestoneReservedRange(candidate: GamePathNode, milestone: GamePathNode) {
   const start = milestone.x - DEFAULT_COLUMN_DISTANCE * 3;
-  const end = milestone.x + DEFAULT_COLUMN_DISTANCE * 4;
+  const end = milestone.x + DEFAULT_COLUMN_DISTANCE * 5.1;
   return candidate.x >= start && candidate.x <= end;
 }
 
