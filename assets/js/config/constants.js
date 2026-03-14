@@ -441,9 +441,9 @@ export const ANIMATION = {
  * - ACCENT: '#4CAF50' (vert vif)
  */
 export const COLORS = {
-  LIGHT_HEX: '#F2DDB8',       // Beige clair - MODIFIEZ pour changer la couleur claire
+  LIGHT_HEX: '#A5977F',       // Beige clair - MODIFIEZ pour changer la couleur claire
   LIGHT_RGB: '242, 221, 184', // Même couleur en format RGB
-  DARK_HEX: '#393F4A',        // Gris foncé - MODIFIEZ pour changer la couleur sombre
+  DARK_HEX: '#2E3644',        // Gris foncé - MODIFIEZ pour changer la couleur sombre
   DARK_RGB: '57, 63, 74',     // Même couleur en format RGB
   TITLE_TEXT: '#2d2d2d',      // Gris très foncé pour titres
   ACCENT: '#4a90d9'           // Bleu d'accent - MODIFIEZ pour changer la couleur d'accent
@@ -562,17 +562,17 @@ export const THEME = {
     background: 0xF2DDB8,
     ambient: 0xffffff,
     directional: 0xffffff,
-    shardColor: 0x393F4A,
-    emissiveColor: 0x393F4A,
+    shardColor: 0x2E3644,
+    emissiveColor: 0x2E3644,
     fogNear: 80,
     fogFar: 350
   },
   DARK: {
-    background: 0x393F4A,
+    background: 0x2E3644,
     ambient: 0x909090,
     directional: 0xffffff,
-    shardColor: 0xF2DDB8,
-    emissiveColor: 0xF2DDB8,
+    shardColor: 0xA5977F,
+    emissiveColor: 0xA5977F,
     fogNear: 80,
     fogFar: 350
   }

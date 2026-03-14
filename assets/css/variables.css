@@ -150,7 +150,7 @@ html {
    * - Exemple : https://htmlcolorcodes.com/color-picker/
    */
   --color-light: #b9a47f; /* Beige clair - utilisé pour le fond en mode clair */
-  --color-dark: #393F4A; /* Gris foncé - utilisé pour le fond en mode sombre */
+  --color-dark: #2E3644; /* Gris foncé - utilisé pour le fond en mode sombre */
   --color-title: #2d2d2d; /* Gris très foncé - pour les titres importants */
   
   /* ==================== THÈME CLAIR (par défaut) ==================== */

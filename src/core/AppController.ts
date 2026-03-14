@@ -324,7 +324,10 @@ export class AppController {
           this.game.setChargeActive(true);
         } else if (event.key === 'ArrowUp') {
           event.preventDefault();
-          this.game.triggerJump();
+          this.game.setUpActionActive(true);
+          if (!event.repeat) {
+            this.game.triggerUpAction();
+          }
         }
         return;
       }
@@ -379,6 +382,10 @@ export class AppController {
     if (!this.mode.is('game')) return;
     if (event.key === 'ArrowDown') {
       this.game.setChargeActive(false);
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      this.game.setUpActionActive(false);
     }
   };
 
@@ -406,7 +413,7 @@ export class AppController {
     const releasedJump = this.game.setChargeActive(false);
 
     if (!releasedJump && (heldDuration < 180 || deltaY > 12)) {
-      this.game.triggerJump();
+      this.game.triggerUpAction();
       event.preventDefault();
     }
 
@@ -763,6 +770,7 @@ export class AppController {
         return acc;
       }, []),
       inventoryItems: hudState.inventoryItems,
+      runSummary: hudState.runSummary,
       landingFeedback: hudState.landingFeedback
         ? (() => {
             const projected = this.renderer.projectWorldToScreen(hudState.landingFeedback.worldPosition);

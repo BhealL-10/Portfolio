@@ -44,7 +44,7 @@ export class EnemySystem {
       body.mesh.material.depthWrite = false;
       const backArrow = new THREE.Mesh(
         new THREE.ConeGeometry(0.12, 0.34, 3),
-        new THREE.MeshBasicMaterial({ color: theme === 'dark' ? '#393F4A' : '#D4BF9B', transparent: true, opacity: 0.95 })
+        new THREE.MeshBasicMaterial({ color: theme === 'dark' ? '#2E3644' : '#A5977F', transparent: true, opacity: 0.95 })
       );
       backArrow.material.depthTest = false;
       backArrow.renderOrder = 33;
@@ -61,7 +61,7 @@ export class EnemySystem {
   setTheme(theme: ThemeMode) {
     this.theme = theme;
     this.pool.forEach((entry) => {
-      entry.backArrow.material.color.set(this.theme === 'dark' ? '#D4BF9B' : '#393F4A');
+      entry.backArrow.material.color.set(this.theme === 'dark' ? '#A5977F' : '#2E3644');
     });
   }
 
@@ -111,8 +111,8 @@ export class EnemySystem {
       entry.group.visible = true;
       entry.body.mesh.material.opacity = 1;
       entry.body.mesh.material.color.set(marker.tier === 'invincible' ? '#F06A5A' : '#FFFFFF');
-      entry.body.playLoop([0, 1, 2, 3], marker.tier === 'invincible' ? 8.2 : marker.tier === 'elite' ? 7.1 : 6.1, elapsedTime + markerIndex * 0.07);
-      entry.backArrow.material.color.set(this.theme === 'dark' ? '#D4BF9B' : '#393F4A');
+      entry.body.playLoop([0, 1, 2, 3], marker.tier === 'invincible' ? 4.8 : marker.tier === 'elite' ? 4.2 : 3.6, elapsedTime + markerIndex * 0.05);
+      entry.backArrow.material.color.set(this.theme === 'dark' ? '#A5977F' : '#2E3644');
       entry.backArrow.material.opacity = 0.95;
       entry.group.position.copy(marker.position);
       entry.group.position.z += 0.88;
@@ -147,7 +147,7 @@ export class EnemySystem {
           return;
         }
         entry.group.visible = true;
-        entry.body.playLoop([4, 5, 6, 7], 9.2, deathElapsed);
+        entry.body.playLoop([4, 5, 6, 7], 6.4, deathElapsed);
         const fade = Math.max(0, 1 - deathElapsed / 0.52);
         entry.body.mesh.material.opacity = fade;
         entry.backArrow.material.opacity = fade;

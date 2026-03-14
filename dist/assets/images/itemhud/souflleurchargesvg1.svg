@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1024 512" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <rect x="0" y="0" width="1024" height="512" style="fill:none;"/>
+    <g id="Souffleur">
+        <path d="M195.789,214.571L192.751,214.571L192.103,217.516C188.741,218.09 187.244,216.93 187.965,214.571L164.633,214.84L164.035,217.516L159.249,217.516L158.223,215.7L150.346,216.891C139.442,216.488 141.122,185.305 149.943,183.426L158.629,184.749L159.249,181.546L163.437,182.352L164.655,184.212L187.068,184.5L187.367,181.815L191.555,182.889L191.555,185.842L245.267,185.002C269.965,186.578 288.966,205.078 288.966,227.256C288.966,250.469 267.595,269.315 241.272,269.315C214.949,269.315 193.578,250.469 193.578,227.256C193.578,222.836 194.353,218.575 195.789,214.571Z" style="fill:white;"/>
+    </g>
+</svg>

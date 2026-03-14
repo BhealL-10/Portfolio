@@ -4,12 +4,12 @@ import type { ThemeMode } from '../types/content';
 
 const PALETTE = {
   dark: {
-    background: new THREE.Color('#393F4A'),
-    foreground: new THREE.Color('#D4BF9B')
+    background: new THREE.Color('#2E3644'),
+    foreground: new THREE.Color('#A5977F')
   },
   light: {
-    background: new THREE.Color('#D4BF9B'),
-    foreground: new THREE.Color('#393F4A')
+    background: new THREE.Color('#A5977F'),
+    foreground: new THREE.Color('#2E3644')
   }
 } as const;
 

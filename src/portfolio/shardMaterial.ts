@@ -30,12 +30,12 @@ export interface FragmentedGeometry extends THREE.BufferGeometry {
 
 const themePalette = {
   dark: {
-    color: new THREE.Color('#D4BF9B'),
-    emissive: new THREE.Color('#D4BF9B')
+    color: new THREE.Color('#c4baad'),
+    emissive: new THREE.Color('#ddceb4')
   },
   light: {
-    color: new THREE.Color('#393F4A'),
-    emissive: new THREE.Color('#393F4A')
+    color: new THREE.Color('#4f68a0'),
+    emissive: new THREE.Color('#778091')
   }
 } as const;
 
@@ -148,8 +148,14 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uStripeColor, stripeBand * uStripeMix);
 }
 
 export function setDeformMaterialTheme(material: DeformMaterial, theme: ThemeMode) {
-  material.color.copy(themePalette[theme].color);
-  material.emissive.copy(themePalette[theme].emissive);
+  const palette = themePalette[theme];
+  material.color.copy(palette.color);
+  material.emissive.copy(palette.emissive);
+  const uniforms = material.userData.shaderUniforms;
+  if (uniforms?.uStripeColor) {
+    uniforms.uStripeColor.value.copy(palette.color);
+  }
+  material.needsUpdate = true;
 }
 
 export function updateDeformUniforms(

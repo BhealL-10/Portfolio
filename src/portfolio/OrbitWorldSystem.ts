@@ -139,15 +139,15 @@ export class OrbitWorldSystem {
     this.entityList.forEach((entity) => {
       setDeformMaterialTheme(entity.core.material, theme);
       this.updateLogoTexture(entity);
-      entity.slotIndicator.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A');
+      entity.slotIndicator.material.color.set(theme === 'dark' ? '#A5977F' : '#2E3644');
       entity.slotIndicator.visible = false;
       entity.iconPlane.visible = false;
     });
     this.gameFieldEntities.forEach((entity) => {
       setDeformMaterialTheme(entity.core.material, theme);
     });
-    this.backgroundPoints.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A');
-    this.constellationLines.forEach((line) => line.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A'));
+    this.backgroundPoints.material.color.set(theme === 'dark' ? '#A5977F' : '#2E3644');
+    this.constellationLines.forEach((line) => line.material.color.set(theme === 'dark' ? '#A5977F' : '#2E3644'));
   }
 
   setActiveIndex(index: number) {
@@ -991,7 +991,7 @@ export class OrbitWorldSystem {
     const slotIndicator = new THREE.Mesh(
       new THREE.RingGeometry(1.0, 1.18, 36),
       new THREE.MeshBasicMaterial({
-        color: this.theme === 'dark' ? '#D4BF9B' : '#393F4A',
+        color: this.theme === 'dark' ? '#A5977F' : '#2E3644',
         transparent: true,
         opacity: 0,
         side: THREE.DoubleSide,
@@ -1005,9 +1005,10 @@ export class OrbitWorldSystem {
     group.add(accentRing);
     const iconPlane = new THREE.Mesh(
       new THREE.PlaneGeometry(0.3, 0.3),
-      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, depthTest: false })
     );
     iconPlane.visible = false;
+    iconPlane.renderOrder = 42;
     this.attachIconBillboard(iconPlane);
     group.add(iconPlane);
 
@@ -1066,9 +1067,10 @@ export class OrbitWorldSystem {
     group.add(accentRing);
     const iconPlane = new THREE.Mesh(
       new THREE.PlaneGeometry(0.3, 0.3),
-      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, depthTest: false })
     );
     iconPlane.visible = false;
+    iconPlane.renderOrder = 42;
     this.attachIconBillboard(iconPlane);
     group.add(iconPlane);
     const anchor = this.getGameFieldAnchor(index);
@@ -1160,11 +1162,16 @@ export class OrbitWorldSystem {
     }
     plane.visible = true;
     plane.material.map = this.getIconTexture(visual.iconSrc, visual.iconText, visual.iconTint);
-    plane.material.opacity = 0.96;
+    plane.material.opacity = 1;
     plane.material.needsUpdate = true;
-    const baseScale = visual.iconScale ?? 0.34;
-    plane.scale.setScalar(baseScale * Math.max(scale.x, scale.y));
-    plane.position.set(0, 0, 0.04);
+    const baseScale = (visual.iconScale ?? 0.34) * 1.22;
+    const dominantScale = Math.max(scale.x, scale.y);
+    plane.scale.set(
+      baseScale * dominantScale / Math.max(0.001, scale.x),
+      baseScale * dominantScale / Math.max(0.001, scale.y),
+      1
+    );
+    plane.position.set(0, 0, Math.max(0.18, dominantScale * 0.26));
   }
 
   private getGameFieldAnchor(index: number) {
@@ -1253,7 +1260,7 @@ export class OrbitWorldSystem {
     return new THREE.Points(
       geometry,
       new THREE.PointsMaterial({
-        color: this.theme === 'dark' ? '#D4BF9B' : '#393F4A',
+        color: this.theme === 'dark' ? '#A5977F' : '#2E3644',
         size: 0.08,
         transparent: true,
         opacity: 0.35
@@ -1266,7 +1273,7 @@ export class OrbitWorldSystem {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
       const material = new THREE.LineBasicMaterial({
-        color: this.theme === 'dark' ? '#D4BF9B' : '#393F4A',
+        color: this.theme === 'dark' ? '#A5977F' : '#2E3644',
         transparent: true,
         opacity: 0.9
       });

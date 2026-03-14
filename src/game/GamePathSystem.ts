@@ -63,11 +63,19 @@ export class GamePathSystem {
   private eventSystem = new EventSystem();
   private seed = 1;
   private recentPatternIds: string[] = [];
+  private lastShopDistanceMeters = Number.NEGATIVE_INFINITY;
+  private earlyShopGuaranteed = false;
+  private rewardChanceBias = 0;
+  private shopChanceBias = 0;
 
   reset() {
     this.seed = (Math.random() * 0x7fffffff) | 1;
     this.recentPatternIds = [];
     this.eventSystem.reset();
+    this.lastShopDistanceMeters = Number.NEGATIVE_INFINITY;
+    this.earlyShopGuaranteed = false;
+    this.rewardChanceBias = 0;
+    this.shopChanceBias = 0;
     this.nodes = [
       {
         index: 0,
@@ -114,6 +122,11 @@ export class GamePathSystem {
 
   queuePostMilestoneEvents(fromIndex: number, score: number) {
     this.eventSystem.schedulePostMilestoneEvents(fromIndex, score, () => this.nextRandom());
+  }
+
+  setEventBiases(rewardChance: number, shopChance: number) {
+    this.rewardChanceBias = Math.max(0, rewardChance);
+    this.shopChanceBias = Math.max(0, shopChance);
   }
 
   getInitialNodes(count: number) {
@@ -211,8 +224,27 @@ export class GamePathSystem {
 
   getTeleportTarget(fromIndex: number, range: number) {
     this.ensureAhead(fromIndex + range + 60);
-    const candidate = Math.min(this.nodes.length - 5, fromIndex + range);
-    return validateTeleportTarget(this.nodes, fromIndex, candidate) ? candidate : -1;
+    const maxIndex = Math.min(this.nodes.length - 5, fromIndex + range);
+    let bestIndex = -1;
+    let bestRadius = Number.POSITIVE_INFINITY;
+
+    for (let candidate = fromIndex + 2; candidate <= maxIndex; candidate += 1) {
+      if (!validateTeleportTarget(this.nodes, fromIndex, candidate)) {
+        continue;
+      }
+      const node = this.nodes[candidate];
+      if (!node) continue;
+      if (node.gameplayRadius < bestRadius - 0.001) {
+        bestRadius = node.gameplayRadius;
+        bestIndex = candidate;
+        continue;
+      }
+      if (Math.abs(node.gameplayRadius - bestRadius) <= 0.001 && candidate > bestIndex) {
+        bestIndex = candidate;
+      }
+    }
+
+    return bestIndex;
   }
 
   sampleAtDistance(distance: number) {
@@ -994,12 +1026,29 @@ export class GamePathSystem {
 
     const planned = this.eventSystem.consumePlannedEvent(index, score);
     if (planned !== 'none') {
+      if (planned === 'shop') {
+        this.lastShopDistanceMeters = currentDistanceMeters;
+        if (currentDistanceMeters >= 20 && currentDistanceMeters <= 50) {
+          this.earlyShopGuaranteed = true;
+        }
+      }
       return planned;
+    }
+
+    if (!this.earlyShopGuaranteed && currentDistanceMeters >= 20 && currentDistanceMeters <= 50 && template.sizeTier !== 'massive') {
+      this.earlyShopGuaranteed = true;
+      this.lastShopDistanceMeters = currentDistanceMeters;
+      return 'shop';
+    }
+
+    if (currentDistanceMeters >= 20 && currentDistanceMeters - this.lastShopDistanceMeters >= 120 && template.sizeTier !== 'massive') {
+      this.lastShopDistanceMeters = currentDistanceMeters;
+      return 'shop';
     }
 
     if (currentDistanceMeters >= 20 && template.sizeTier !== 'massive') {
       const eventChance =
-        currentDistanceMeters < 60
+        (currentDistanceMeters < 60
           ? 0.018
           : currentDistanceMeters < 100
             ? 0.024
@@ -1007,11 +1056,21 @@ export class GamePathSystem {
               ? 0.032
               : currentDistanceMeters < 600
                 ? 0.042
-                : 0.056;
+                : 0.056) +
+        this.rewardChanceBias * 0.32 +
+        this.shopChanceBias * 0.28;
       if (this.nextRandom() < eventChance) {
         const roll = this.nextRandom();
-        if (roll < 0.22) return 'shop';
-        if (roll < 0.64) return 'gift';
+        const shopThreshold = Math.min(0.52, 0.22 + this.shopChanceBias * 1.2);
+        const rewardThreshold = Math.min(0.92, 0.64 + this.rewardChanceBias * 1.4);
+        if (roll < shopThreshold) {
+          this.lastShopDistanceMeters = currentDistanceMeters;
+          if (currentDistanceMeters >= 20 && currentDistanceMeters <= 50) {
+            this.earlyShopGuaranteed = true;
+          }
+          return 'shop';
+        }
+        if (roll < rewardThreshold) return 'gift';
         return 'rare_item';
       }
     }

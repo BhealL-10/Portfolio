@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1024 512" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <rect x="0" y="0" width="1024" height="512" style="fill:none;"/>
+    <g id="Réacteur-arriere" serif:id="Réacteur arriere" transform="matrix(-1.247266,-1.247266,0.695591,-0.695591,517.042325,1124.864985)">
+        <g id="Réacteur-arriere1" serif:id="Réacteur arriere">
+            <path id="Réacteur-arriere2" serif:id="Réacteur arriere" d="M300.587,390.635C308.524,396.887 316.17,397.476 323.502,391.955C323.502,391.955 334.451,442.344 334.451,458.76C334.451,472.58 323.231,483.8 309.411,483.8C295.591,483.8 284.371,472.58 284.371,458.76C284.371,438.717 300.587,390.635 300.587,390.635Z" style="fill:white;"/>
+        </g>
+    </g>
+</svg>

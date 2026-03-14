@@ -35,6 +35,10 @@ const uiStrings = {
     gameCoins: 'Pièces',
     gameSplits: 'Splits',
     gameRestart: 'Recommencer',
+    gameHighscores: 'Highscores',
+    gameSaveScore: 'Enregistrer',
+    gamePlayerName: 'Votre nom',
+    gameAnonymous: 'Anonyme',
     gamePortfolio: 'Portfolio',
     gameStatusTransition: 'Le chemin s’aligne.',
     gameStatusRunning: 'Maintenez bas pour charger. Haut pour sauter.',
@@ -63,7 +67,13 @@ const uiStrings = {
     gameLandingGood: 'Bon',
     gameLandingSuper: 'Super',
     gameLandingPerfect: 'Parfait',
-    gameLandingTwist: 'Twist'
+    gameLandingTwist: 'Twist',
+    gameNewBadge: 'Nouveau',
+    gameRunShards: 'Fragments',
+    gameRunKills: 'Monstres',
+    gameRunMomentum: 'Meilleur momentum',
+    gameRunNoItems: 'Aucun équipement trouvé',
+    gameLeaderboardEmpty: 'Aucun score enregistré'
   },
   en: {
     theme: 'Theme',
@@ -99,6 +109,10 @@ const uiStrings = {
     gameCoins: 'Coins',
     gameSplits: 'Splits',
     gameRestart: 'Restart',
+    gameHighscores: 'Highscores',
+    gameSaveScore: 'Save score',
+    gamePlayerName: 'Your name',
+    gameAnonymous: 'Anonymous',
     gamePortfolio: 'Portfolio',
     gameStatusTransition: 'Aligning the path.',
     gameStatusRunning: 'Hold Down to charge. Press Up to jump.',
@@ -127,7 +141,13 @@ const uiStrings = {
     gameLandingGood: 'Good',
     gameLandingSuper: 'Super',
     gameLandingPerfect: 'Perfect',
-    gameLandingTwist: 'Twist'
+    gameLandingTwist: 'Twist',
+    gameNewBadge: 'New',
+    gameRunShards: 'Shards',
+    gameRunKills: 'Monsters',
+    gameRunMomentum: 'Longest momentum',
+    gameRunNoItems: 'No equipment found',
+    gameLeaderboardEmpty: 'No scores saved yet'
   }
 } as const;
 

@@ -46,14 +46,12 @@ describe('buildUpgradeOffers', () => {
 });
 
 describe('applyItemToRunState', () => {
-  it('replaces a passive with a higher rarity version', () => {
+  it('keeps passive utilities as unique common items', () => {
     let state = createRunUpgradeState();
-    state = applyItemToRunState(state, 'gyro_stabilizer_common');
-    state = applyItemToRunState(state, 'gyro_stabilizer_rare');
-    expect(state.counts.gyro_stabilizer_common).toBeUndefined();
-    expect(state.counts.gyro_stabilizer_rare).toBe(1);
-    expect(state.passives.gyro_stabilizer).toBe('gyro_stabilizer_rare');
-    expect(state.ownedOrder).toEqual(['gyro_stabilizer_rare']);
+    state = applyItemToRunState(state, 'old_ape_rudder_common');
+    expect(state.counts.old_ape_rudder_common).toBe(1);
+    expect(state.passives.old_ape_rudder).toBe('old_ape_rudder_common');
+    expect(state.ownedOrder).toEqual(['old_ape_rudder_common']);
   });
 
   it('replaces a module with a higher rarity version and refreshes runtime', () => {

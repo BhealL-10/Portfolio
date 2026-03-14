@@ -188,4 +188,28 @@ export interface GameHudSnapshot {
   landingFeedback: LandingFeedback | null;
   acquisition: AcquisitionFeedback | null;
   gameOverCause: GameOverCause;
+  runSummary: {
+    score: number;
+    bestScore: number;
+    shardsLanded: number;
+    distanceMeters: number;
+    coinsCollected: number;
+    enemiesKilled: number;
+    longestMomentumSeconds: number;
+    personalBests: {
+      score: boolean;
+      shardsLanded: boolean;
+      distanceMeters: boolean;
+      coinsCollected: boolean;
+      enemiesKilled: boolean;
+      longestMomentumSeconds: boolean;
+    };
+    equipment: Array<{
+      id: string;
+      iconSrc: string;
+      rarityIconSrc: string;
+      rarity: RogueliteRarity;
+      kind: RogueliteItemKind;
+    }>;
+  };
 }

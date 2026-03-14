@@ -90,7 +90,7 @@ export class GameModeController {
     this.playerBody = new THREE.Mesh(
       new THREE.ConeGeometry(0.42, 1.2, 6),
       new THREE.MeshBasicMaterial({
-        color: theme === 'dark' ? '#D4BF9B' : '#393F4A'
+        color: theme === 'dark' ? '#A5977F' : '#2E3644'
       })
     );
     this.playerBody.rotation.z = -Math.PI / 2;
@@ -101,7 +101,7 @@ export class GameModeController {
 
   setTheme(theme: ThemeMode) {
     this.pool.forEach((platform) => setDeformMaterialTheme(platform.mesh.material, theme));
-    this.playerBody.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A');
+    this.playerBody.material.color.set(theme === 'dark' ? '#A5977F' : '#2E3644');
   }
 
   get currentState() {

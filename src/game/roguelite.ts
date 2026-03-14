@@ -21,13 +21,16 @@ export interface RogueliteItemStats {
   momentumRetention?: number;
   coinBonus?: number;
   shopDiscount?: number;
-  glideFactor?: number;
   preventFail?: boolean;
   rewardChance?: number;
   gradeWindowBonus?: number;
   landingPenaltyReduction?: number;
   shopChance?: number;
   shieldCooldownFactor?: number;
+  cameraBaseZoomBonus?: number;
+  cameraMomentumZoomBonus?: number;
+  gravityCentering?: number;
+  shockwaveDamping?: number;
   planeStability?: number;
   planeGlide?: number;
   propulsionPower?: number;
@@ -124,6 +127,8 @@ export interface PlayerModifierStack {
   spikeOrbit: boolean;
   coinMagnet: number;
   shopDiscount: number;
+  cameraBaseZoomBonus: number;
+  cameraMomentumZoomBonus: number;
   speedBonus: number;
   coinBonus: number;
   luck: number;
@@ -141,6 +146,8 @@ export interface PlayerModifierStack {
   gradeWindowBonus: number;
   landingPenaltyReduction: number;
   shopChance: number;
+  gravityCentering: number;
+  shockwaveDamping: number;
   shieldCooldownFactor: number;
   planeGlide: number;
   planeStability: number;
@@ -219,203 +226,150 @@ const HUD_ICON_URLS = {
   big_canon: new URL('../../assets/images/itemhud/Bigcanonhud.png', import.meta.url).href,
   front_canon: new URL('../../assets/images/itemhud/Frontcanonhud.png', import.meta.url).href,
   grappin: new URL('../../assets/images/itemhud/Grappin hud.png', import.meta.url).href,
-  passive_momentum: A_PROD_ICON_URL,
-  passive_coin: A_PROD_ICON_URL,
-  passive_shop: A_PROD_ICON_URL,
-  passive_shield: A_PROD_ICON_URL,
-  passive_grade: A_PROD_ICON_URL
+  gouvernail: new URL('../../assets/images/itemhud/Gourvernail.png', import.meta.url).href,
+  bourse: new URL('../../assets/images/itemhud/boursehud.png', import.meta.url).href,
+  contrebandier: new URL('../../assets/images/itemhud/premiercartehud.png', import.meta.url).href,
+  longue_vue: new URL('../../assets/images/itemhud/Longuevuehud.png', import.meta.url).href,
+  totem: new URL('../../assets/images/itemhud/Totemhud.png', import.meta.url).href,
+  carte_tresor: new URL('../../assets/images/itemhud/premiercartehud.png', import.meta.url).href,
+  compas: new URL('../../assets/images/itemhud/angle-morthud.png', import.meta.url).href,
+  queue: new URL('../../assets/images/itemhud/déflation.png', import.meta.url).href,
+  perroquet: new URL('../../assets/images/itemhud/Cloverhud.png', import.meta.url).href,
+  ceinture: new URL('../../assets/images/itemhud/Belthud.png', import.meta.url).href,
+  amortisseurs: new URL('../../assets/images/itemhud/amortiseurhud.png', import.meta.url).href,
+  passive_fallback: A_PROD_ICON_URL
 } as const;
 
 const PASSIVE_BLUEPRINTS: RogueliteItemBlueprint[] = [
   {
-    baseId: 'gyro_stabilizer',
-    icon: 'GYR',
+    baseId: 'old_ape_rudder',
+    icon: 'RUD',
     kind: 'passive',
     slot: null,
     category: 'momentum',
     unlockScore: 0,
-    name: loc('Stabilisateur gyroscopique', 'Gyro Stabilizer'),
+    name: loc('Gouvernail', 'Helmwheel'),
     description: loc('Le momentum retombe moins vite.', 'Momentum decays more slowly.'),
-    hudIconSrc: HUD_ICON_URLS.passive_momentum,
+    hudIconSrc: HUD_ICON_URLS.gouvernail,
     boatVisual: null,
-    statsByRarity: rarityStats({
-      common: { momentumRetention: 0.1 },
-      uncommon: { momentumRetention: 0.14 },
-      rare: { momentumRetention: 0.18 },
-      epic: { momentumRetention: 0.22 },
-      legendary: { momentumRetention: 0.26 }
-    })
+    statsByRarity: passiveStats({ momentumRetention: 0.24 })
   },
   {
-    baseId: 'coin_booster',
-    icon: 'COI',
+    baseId: 'corsair_purse',
+    icon: 'PUR',
     kind: 'passive',
     slot: null,
     category: 'economy',
     unlockScore: 0,
-    name: loc('Booster de pieces', 'Coin Booster'),
+    name: loc('Bourse du capitalisme', 'Capital Purse'),
     description: loc('Augmente les gains de pièces.', 'Increase coin rewards.'),
-    hudIconSrc: HUD_ICON_URLS.passive_coin,
+    hudIconSrc: HUD_ICON_URLS.bourse,
     boatVisual: null,
-    statsByRarity: rarityStats({
-      common: { coinBonus: 0.12 },
-      uncommon: { coinBonus: 0.18 },
-      rare: { coinBonus: 0.24 },
-      epic: { coinBonus: 0.32 },
-      legendary: { coinBonus: 0.4 }
-    })
+    statsByRarity: passiveStats({ coinBonus: 0.34 })
   },
   {
-    baseId: 'market_discount',
-    icon: 'MKT',
+    baseId: 'smuggler_favor',
+    icon: 'FAV',
     kind: 'passive',
     slot: null,
     category: 'economy',
     unlockScore: 0,
-    name: loc('Reduction marchand', 'Market Discount'),
-    description: loc('Réduit les prix du shop.', 'Lower shop prices.'),
-    hudIconSrc: HUD_ICON_URLS.passive_shop,
+    name: loc('Déflation primate', 'Primate Deflation'),
+    description: loc('Réduit les prix chez le marchand.', 'Reduce shop prices.'),
+    hudIconSrc: HUD_ICON_URLS.contrebandier,
     boatVisual: null,
-    statsByRarity: rarityStats({
-      common: { shopDiscount: 0.08 },
-      uncommon: { shopDiscount: 0.12 },
-      rare: { shopDiscount: 0.18 },
-      epic: { shopDiscount: 0.24 },
-      legendary: { shopDiscount: 0.3 }
-    })
+    statsByRarity: passiveStats({ shopDiscount: 0.2 })
   },
   {
-    baseId: 'glide_liner',
-    icon: 'GLD',
+    baseId: 'crows_nest_spyglass',
+    icon: 'SPY',
     kind: 'passive',
     slot: null,
     category: 'mobility',
     unlockScore: 0,
-    name: loc('Lisseur de trajectoire', 'Flow Liner'),
-    description: loc('Améliore légèrement le contrôle aérien sans ajouter de plané.', 'Slightly improve airborne control without adding glide.'),
-    hudIconSrc: HUD_ICON_URLS.passive_momentum,
+    name: loc('Longue-Vue', 'Spyglass'),
+    description: loc('Augmente le dézoom par défaut et accentue le dézoom gagné avec le momentum.', 'Increase default zoom-out and amplify momentum-based zoom-out.'),
+    hudIconSrc: HUD_ICON_URLS.longue_vue,
     boatVisual: null,
-    statsByRarity: rarityStats({
-      common: { planeStability: 0.04 },
-      uncommon: { planeStability: 0.06 },
-      rare: { planeStability: 0.08 },
-      epic: { planeStability: 0.1 },
-      legendary: { planeStability: 0.12 }
-    })
+    statsByRarity: passiveStats({ cameraBaseZoomBonus: 1.1, cameraMomentumZoomBonus: 0.42 })
   },
   {
-    baseId: 'fail_guard',
+    baseId: 'cunning_ape_totem',
     icon: 'FAIL',
     kind: 'passive',
     slot: null,
     category: 'utility',
     unlockScore: 20,
-    name: loc('Garde-fou', 'Fail Guard'),
+    name: loc('Totem du Déni', 'Denial Totem'),
     description: loc('Empêche les grades Raté.', 'Prevent Fail landings.'),
-    hudIconSrc: HUD_ICON_URLS.passive_grade,
+    hudIconSrc: HUD_ICON_URLS.totem,
     boatVisual: null,
-    statsByRarity: rarityStats({
-      common: { preventFail: true },
-      uncommon: { preventFail: true },
-      rare: { preventFail: true },
-      epic: { preventFail: true },
-      legendary: { preventFail: true }
-    })
+    statsByRarity: passiveStats({ preventFail: true })
   },
   {
-    baseId: 'reward_radar',
+    baseId: 'living_treasure_map',
     icon: 'RWD',
     kind: 'passive',
     slot: null,
     category: 'economy',
     unlockScore: 20,
-    name: loc('Radar de recompense', 'Reward Radar'),
-    description: loc('Augmente la chance de croiser une reward shard.', 'Increase reward shard odds.'),
-    hudIconSrc: HUD_ICON_URLS.passive_coin,
+    name: loc('Trèfle à 3 feuilles et demi', 'Three-and-a-Half Leaf Clover'),
+    description: loc('Augmente les chances de croiser une plateforme de récompense.', 'Increase reward shard odds.'),
+    hudIconSrc: HUD_ICON_URLS.carte_tresor,
     boatVisual: null,
-    statsByRarity: rarityStats({
-      common: { rewardChance: 0.04 },
-      uncommon: { rewardChance: 0.06 },
-      rare: { rewardChance: 0.08 },
-      epic: { rewardChance: 0.11 },
-      legendary: { rewardChance: 0.14 }
-    })
+    statsByRarity: passiveStats({ rewardChance: 0.12 })
   },
   {
-    baseId: 'grade_tuner',
+    baseId: 'freebooter_compass',
     icon: 'GRD',
     kind: 'passive',
     slot: null,
     category: 'utility',
     unlockScore: 20,
-    name: loc('Reglage de grade', 'Grade Tuner'),
-    description: loc('Agrandit légèrement les fenêtres Great et Super.', 'Slightly widen Great and Super windows.'),
-    hudIconSrc: HUD_ICON_URLS.passive_grade,
+    name: loc('L’Angle-mort', 'Blind Angle'),
+    description: loc('Agrandit légèrement les fenêtres Bon et Super.', 'Slightly widen Good and Super timing windows.'),
+    hudIconSrc: HUD_ICON_URLS.compas,
     boatVisual: null,
-    statsByRarity: rarityStats({
-      common: { gradeWindowBonus: 0.04 },
-      uncommon: { gradeWindowBonus: 0.06 },
-      rare: { gradeWindowBonus: 0.08 },
-      epic: { gradeWindowBonus: 0.1 },
-      legendary: { gradeWindowBonus: 0.12 }
-    })
+    statsByRarity: passiveStats({ gradeWindowBonus: 0.1 })
   },
   {
-    baseId: 'soft_recovery',
-    icon: 'REC',
+    baseId: 'lucky_monkey_tail',
+    icon: 'LCK',
     kind: 'passive',
     slot: null,
     category: 'momentum',
     unlockScore: 20,
-    name: loc('Recuperation douce', 'Soft Recovery'),
+    name: loc('Amortisseurs', 'Shock Absorbers'),
     description: loc('Réduit la perte de momentum après un mauvais atterrissage.', 'Reduce momentum loss after awkward landings.'),
-    hudIconSrc: HUD_ICON_URLS.passive_momentum,
+    hudIconSrc: HUD_ICON_URLS.amortisseurs,
     boatVisual: null,
-    statsByRarity: rarityStats({
-      common: { landingPenaltyReduction: 0.08 },
-      uncommon: { landingPenaltyReduction: 0.12 },
-      rare: { landingPenaltyReduction: 0.16 },
-      epic: { landingPenaltyReduction: 0.2 },
-      legendary: { landingPenaltyReduction: 0.25 }
-    })
+    statsByRarity: passiveStats({ landingPenaltyReduction: 0.22 })
   },
   {
-    baseId: 'shop_scanner',
-    icon: 'SHP',
+    baseId: 'merchant_parrot',
+    icon: 'PAR',
     kind: 'passive',
     slot: null,
     category: 'economy',
     unlockScore: 20,
-    name: loc('Scanner marchand', 'Shop Scanner'),
-    description: loc('Augmente la chance de shop.', 'Increase shop odds.'),
-    hudIconSrc: HUD_ICON_URLS.passive_shop,
+    name: loc('Abonnement Prémium', 'Premium Card'),
+    description: loc('Augmente la chance de croiser un marchand.', 'Increase shop odds.'),
+    hudIconSrc: HUD_ICON_URLS.perroquet,
     boatVisual: null,
-    statsByRarity: rarityStats({
-      common: { shopChance: 0.04 },
-      uncommon: { shopChance: 0.06 },
-      rare: { shopChance: 0.08 },
-      epic: { shopChance: 0.1 },
-      legendary: { shopChance: 0.12 }
-    })
+    statsByRarity: passiveStats({ shopChance: 0.12 })
   },
   {
-    baseId: 'shield_cooler',
-    icon: 'SHC',
+    baseId: 'gravity_belt',
+    icon: 'BLT',
     kind: 'passive',
     slot: null,
     category: 'utility',
     unlockScore: 20,
-    name: loc('Refroidisseur de bouclier', 'Shield Cooler'),
-    description: loc('Améliore la recharge du shield.', 'Improve shield recharge.'),
-    hudIconSrc: HUD_ICON_URLS.passive_shield,
+    name: loc('Ceinture d’orbite', 'Orbit Belt'),
+    description: loc('Ramène progressivement la trajectoire du joueur vers le centre quand l’orbite dérive trop vers le haut ou le bas.', 'Gradually pull the player trajectory back toward center when orbit drifts too far up or down.'),
+    hudIconSrc: HUD_ICON_URLS.ceinture,
     boatVisual: null,
-    statsByRarity: rarityStats({
-      common: { shieldCooldownFactor: 0.08 },
-      uncommon: { shieldCooldownFactor: 0.12 },
-      rare: { shieldCooldownFactor: 0.16 },
-      epic: { shieldCooldownFactor: 0.22 },
-      legendary: { shieldCooldownFactor: 0.28 }
-    })
+    statsByRarity: passiveStats({ gravityCentering: 0.82 })
   }
 ];
 
@@ -428,7 +382,7 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     category: 'mobility',
     unlockScore: 0,
     name: loc('Planeur', 'Plane'),
-    description: loc('Stabilise le joueur et améliore le plané.', 'Stabilize the player and strengthen gliding.'),
+    description: loc('Stabilise le bateau et prolonge le plané.', 'Stabilize the boat and extend glide.'),
     hudIconSrc: HUD_ICON_URLS.plane,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.plane, columns: 2, rows: 2, layerOrder: 30 },
     statsByRarity: rarityStats({
@@ -466,8 +420,8 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     slot: 'propulseur',
     category: 'mobility',
     unlockScore: 0,
-    name: loc('Propulseur', 'Propulsor'),
-    description: loc('Dash vers l’avant dans les airs avec des charges par saut.', 'Forward airborne dash using per-jump charges.'),
+    name: loc('Propulseur', 'Thruster'),
+    description: loc('Déclenche une impulsion vers l’avant avec des charges par saut.', 'Fire a forward dash with per-jump charges.'),
     hudIconSrc: HUD_ICON_URLS.propulseur,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.propulseur, columns: 2, rows: 2, layerOrder: 12 },
     chargesByRarity: { common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5 },
@@ -486,8 +440,8 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     slot: 'reacteur_front',
     category: 'mobility',
     unlockScore: 10,
-    name: loc('Réacteur Front', 'Front Reactor'),
-    description: loc('Pousse vers le haut pendant le saut.', 'Push upward during airborne boosts.'),
+    name: loc('Réacteur avant', 'Front Reactor'),
+    description: loc('Pousse vers le haut pendant une impulsion aérienne.', 'Push upward during airborne boosts.'),
     hudIconSrc: HUD_ICON_URLS.reacteur_front,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.reacteur_front, columns: 2, rows: 2, layerOrder: 42 },
     chargesByRarity: { common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5 },
@@ -506,8 +460,8 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     slot: 'reacteur_back',
     category: 'mobility',
     unlockScore: 10,
-    name: loc('Réacteur arriere', 'Back Reactor'),
-    description: loc('Ajoute une poussee diagonale vers l’avant et le haut.', 'Add a diagonal forward-up thrust.'),
+    name: loc('Réacteur arrière', 'Back Reactor'),
+    description: loc('Ajoute une poussée diagonale vers l’avant et le haut.', 'Add a diagonal forward-up thrust.'),
     hudIconSrc: HUD_ICON_URLS.reacteur_back,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.reacteur_back, columns: 2, rows: 2, layerOrder: 38 },
     chargesByRarity: { common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5 },
@@ -526,8 +480,8 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     slot: 'shield',
     category: 'combat',
     unlockScore: 10,
-    name: loc('Shield', 'Shield'),
-    description: loc('Bloque un impact puis se recharge.', 'Block one hit, then recharge.'),
+    name: loc('Bouclier', 'Shield'),
+    description: loc('Détruit un ennemi au contact puis se recharge.', 'Destroy one enemy on contact, then recharge.'),
     hudIconSrc: HUD_ICON_URLS.shield,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.shield, columns: 2, rows: 2, layerOrder: 60 },
     statsByRarity: rarityStats({
@@ -546,7 +500,7 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     category: 'mobility',
     unlockScore: 10,
     name: loc('Souffleur', 'Blower'),
-    description: loc('Ajoute un boost aérien maintenu avec jauge.', 'Add a sustained airborne boost with a gauge.'),
+    description: loc('Ajoute une poussée maintenue avec jauge sur shard et en vol.', 'Add a sustained boost with a gauge on shards and in the air.'),
     hudIconSrc: HUD_ICON_URLS.souffleur,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.souffleur, columns: 2, rows: 2, layerOrder: 54 },
     gaugeConfig: {
@@ -571,8 +525,8 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     slot: 'wrapper',
     category: 'utility',
     unlockScore: 10,
-    name: loc('Wrapper', 'Wrapper'),
-    description: loc('Téléporte au moins 10m plus loin sur une shard valide.', 'Teleport at least 10m farther onto a valid shard.'),
+    name: loc('Téléporteur', 'Wrapper'),
+    description: loc('Téléporte vers la plus petite plateforme valide dans sa portée.', 'Teleport to the smallest valid shard within range.'),
     hudIconSrc: HUD_ICON_URLS.wrapper,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.wrapper, columns: 2, rows: 2, layerOrder: 80 },
     statsByRarity: rarityStats({
@@ -590,8 +544,8 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     slot: 'magnet',
     category: 'economy',
     unlockScore: 10,
-    name: loc('Magnet', 'Magnet'),
-    description: loc('Attire les pièces plus loin.', 'Pull coins from farther away.'),
+    name: loc('Aimant', 'Magnet'),
+    description: loc('Attire et récupère les pièces à plus grande distance.', 'Pull in and collect coins from farther away.'),
     hudIconSrc: HUD_ICON_URLS.magnet,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.magnet, columns: 2, rows: 2, layerOrder: 44 },
     statsByRarity: rarityStats({
@@ -609,8 +563,8 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     slot: 'big_canon',
     category: 'combat',
     unlockScore: 10,
-    name: loc('Big Canon', 'Big Canon'),
-    description: loc('Tire automatiquement dans une grande zone.', 'Auto-fire inside a medium-large radial zone.'),
+    name: loc('Grand canon', 'Big Cannon'),
+    description: loc('Tire automatiquement dans une large zone.', 'Auto-fire inside a large radial zone.'),
     hudIconSrc: HUD_ICON_URLS.big_canon,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.big_canon, columns: 2, rows: 2, layerOrder: 52 },
     statsByRarity: rarityStats({
@@ -628,8 +582,8 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     slot: 'front_canon',
     category: 'combat',
     unlockScore: 10,
-    name: loc('Front Canon', 'Front Canon'),
-    description: loc('Tire seulement sur les ennemis devant le bateau.', 'Fire only at enemies crossing the frontal laser.'),
+    name: loc('Canon frontal', 'Front Cannon'),
+    description: loc('Tire sur les ennemis qui traversent le laser frontal.', 'Fire at enemies crossing the frontal laser.'),
     hudIconSrc: HUD_ICON_URLS.front_canon,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.front_canon, columns: 2, rows: 2, layerOrder: 56 },
     statsByRarity: rarityStats({
@@ -680,15 +634,17 @@ const rarityRank: Record<RogueliteRarity, number> = {
 };
 
 export const rarityLabels: Record<RogueliteRarity, LocalizedText> = {
-  common: loc('Common', 'Common'),
-  uncommon: loc('Uncommon', 'Uncommon'),
+  common: loc('Commun', 'Common'),
+  uncommon: loc('Peu commun', 'Uncommon'),
   rare: loc('Rare', 'Rare'),
-  epic: loc('Epic', 'Epic'),
-  legendary: loc('Legendary', 'Legendary')
+  epic: loc('Épique', 'Epic'),
+  legendary: loc('Légendaire', 'Legendary')
 };
 
 export const rogueliteItems: RogueliteItemDefinition[] = ITEM_BLUEPRINTS.flatMap((blueprint) =>
-  (Object.keys(rarityRank) as RogueliteRarity[]).map((rarity) => createItemDefinition(blueprint, rarity))
+  blueprint.kind === 'passive'
+    ? [createItemDefinition(blueprint, 'common')]
+    : (Object.keys(rarityRank) as RogueliteRarity[]).map((rarity) => createItemDefinition(blueprint, rarity))
 );
 
 export function createRunUpgradeState(): RunUpgradeState {
@@ -733,6 +689,8 @@ function createDefaultModifiers(): PlayerModifierStack {
     spikeOrbit: false,
     coinMagnet: 0,
     shopDiscount: 0,
+    cameraBaseZoomBonus: 0,
+    cameraMomentumZoomBonus: 0,
     speedBonus: 0,
     coinBonus: 0,
     luck: 0,
@@ -750,6 +708,8 @@ function createDefaultModifiers(): PlayerModifierStack {
     gradeWindowBonus: 0,
     landingPenaltyReduction: 0,
     shopChance: 0,
+    gravityCentering: 0,
+    shockwaveDamping: 0,
     shieldCooldownFactor: 0,
     planeGlide: 0,
     planeStability: 0,
@@ -920,12 +880,15 @@ function recomputeModifiers(runState: RunUpgradeState) {
     if (stats.momentumRetention) runState.modifiers.momentumRetention += stats.momentumRetention;
     if (stats.coinBonus) runState.modifiers.coinBonus += stats.coinBonus;
     if (stats.shopDiscount) runState.modifiers.shopDiscount += stats.shopDiscount;
-    if (stats.glideFactor) runState.modifiers.glideFactor += stats.glideFactor;
     if (stats.preventFail) runState.modifiers.failSafe = true;
     if (stats.rewardChance) runState.modifiers.rewardChance += stats.rewardChance;
     if (stats.gradeWindowBonus) runState.modifiers.gradeWindowBonus += stats.gradeWindowBonus;
     if (stats.landingPenaltyReduction) runState.modifiers.landingPenaltyReduction += stats.landingPenaltyReduction;
     if (stats.shopChance) runState.modifiers.shopChance += stats.shopChance;
+    if (stats.cameraBaseZoomBonus) runState.modifiers.cameraBaseZoomBonus += stats.cameraBaseZoomBonus;
+    if (stats.cameraMomentumZoomBonus) runState.modifiers.cameraMomentumZoomBonus += stats.cameraMomentumZoomBonus;
+    if (stats.gravityCentering) runState.modifiers.gravityCentering += stats.gravityCentering;
+    if (stats.shockwaveDamping) runState.modifiers.shockwaveDamping += stats.shockwaveDamping;
     if (stats.shieldCooldownFactor) runState.modifiers.shieldCooldownFactor += stats.shieldCooldownFactor;
     if (stats.planeGlide) runState.modifiers.planeGlide += stats.planeGlide;
     if (stats.planeStability) runState.modifiers.planeStability += stats.planeStability;
@@ -946,7 +909,10 @@ function recomputeModifiers(runState: RunUpgradeState) {
   runState.modifiers.shopDiscount = Math.min(0.45, runState.modifiers.shopDiscount);
   runState.modifiers.coinBonus = Math.min(1.2, runState.modifiers.coinBonus);
   runState.modifiers.momentumRetention = Math.min(0.72, runState.modifiers.momentumRetention);
-  runState.modifiers.glideFactor = Math.min(1.9, runState.modifiers.glideFactor);
+  runState.modifiers.cameraBaseZoomBonus = Math.min(2.4, runState.modifiers.cameraBaseZoomBonus);
+  runState.modifiers.cameraMomentumZoomBonus = Math.min(0.8, runState.modifiers.cameraMomentumZoomBonus);
+  runState.modifiers.gravityCentering = Math.min(1.6, runState.modifiers.gravityCentering);
+  runState.modifiers.shockwaveDamping = Math.min(0.82, runState.modifiers.shockwaveDamping);
 }
 
 function pickEligibleBlueprint(pool: RogueliteItemBlueprint[], used: Set<string>, rng: () => number) {
@@ -998,4 +964,14 @@ function createItemDefinition(blueprint: RogueliteItemBlueprint, rarity: Rogueli
 
 function rarityStats(stats: Record<RogueliteRarity, RogueliteItemStats>) {
   return stats;
+}
+
+function passiveStats(stats: RogueliteItemStats) {
+  return rarityStats({
+    common: stats,
+    uncommon: stats,
+    rare: stats,
+    epic: stats,
+    legendary: stats
+  });
 }

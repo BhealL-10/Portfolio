@@ -73,9 +73,9 @@ export class SimpleMirror {
   
   updateCanvasBackground() {
     // Mettre à jour la couleur de fond du body pour couvrir les espaces landscape
-    // En mode sombre: fond sombre (#393F4A), texte clair (#F2DDB8)
-    // En mode clair: fond clair (#F2DDB8), texte sombre (#393F4A)
-    const bgColor = this.isDark ? '#393F4A' : '#F2DDB8';
+    // En mode sombre: fond sombre (#2E3644), texte clair (#F2DDB8)
+    // En mode clair: fond clair (#F2DDB8), texte sombre (#2E3644)
+    const bgColor = this.isDark ? '#2E3644' : '#F2DDB8';
     document.body.style.backgroundColor = bgColor;
     document.documentElement.style.backgroundColor = bgColor;
     
@@ -128,10 +128,10 @@ export class SimpleMirror {
     
     ctx.clearRect(0, 0, w, h);
     
-    // En mode sombre: miroir sombre (#393F4A), fissures claires (#F2DDB8)
-    // En mode clair: miroir clair (#F2DDB8), fissures sombres (#393F4A)
-    const mirrorColor = this.isDark ? '#393F4A' : '#F2DDB8';
-    const crackColor = this.isDark ? '#F2DDB8' : '#393F4A';
+    // En mode sombre: miroir sombre (#2E3644), fissures claires (#F2DDB8)
+    // En mode clair: miroir clair (#F2DDB8), fissures sombres (#2E3644)
+    const mirrorColor = this.isDark ? '#2E3644' : '#F2DDB8';
+    const crackColor = this.isDark ? '#F2DDB8' : '#2E3644';
     
     // Remplir tout le canvas avec la couleur du miroir
     ctx.fillStyle = mirrorColor;
@@ -399,8 +399,8 @@ export class SimpleMirror {
       };
     });
     
-    const mirrorColor = this.isDark ? '#F2DDB8' : '#393F4A';
-    const crackColor = this.isDark ? '#F2DDB8' : '#393F4A';
+    const mirrorColor = this.isDark ? '#F2DDB8' : '#2E3644';
+    const crackColor = this.isDark ? '#F2DDB8' : '#2E3644';
     
     const animate = () => {
       const elapsed = Date.now() - startTime;

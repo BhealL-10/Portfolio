@@ -9,8 +9,8 @@ export class CameraRailController {
   private readonly lookAt = new THREE.Vector3();
   private currentFocus = new THREE.Vector2();
   private targetFocus = new THREE.Vector2();
-  private currentZoom = 13.9;
-  private targetZoom = 13.9;
+  private currentZoom = 11.8;
+  private targetZoom = 11.8;
   private railX = -12;
   private safeLeft = -Infinity;
   private safeRight = Infinity;
@@ -22,8 +22,8 @@ export class CameraRailController {
     this.railX = node.resolvedX - 4.4;
     this.currentFocus.set(node.resolvedX + 4.2, node.resolvedY);
     this.targetFocus.copy(this.currentFocus);
-    this.currentZoom = 13.9;
-    this.targetZoom = 13.9;
+    this.currentZoom = 11.8;
+    this.targetZoom = 11.8;
     this.position.set(this.currentFocus.x - CameraRailController.CAMERA_CENTER_OFFSET, node.resolvedY + 0.18, this.currentZoom);
     this.lookAt.set(this.currentFocus.x, node.resolvedY, 0);
     this.safeLeft = -Infinity;
@@ -71,7 +71,7 @@ export class CameraRailController {
     const routeY = currentNode.isGigantic ? currentNode.resolvedY : currentNode.resolvedY * 0.64 + nextNode.resolvedY * 0.36;
     const laneFocusBias = Math.pow(momentumGauge, 0.85);
     const playerYOffset = playerPosition.y - routeY;
-    const playerFollow = THREE.MathUtils.clamp(0.28 + Math.min(0.36, Math.abs(playerYOffset) / 12) + laneFocusBias * 0.18, 0.28, 0.64);
+    const playerFollow = THREE.MathUtils.clamp(0.36 + Math.min(0.4, Math.abs(playerYOffset) / 11) + laneFocusBias * 0.16, 0.36, 0.78);
     const desiredY = THREE.MathUtils.lerp(routeY, playerPosition.y, playerFollow);
 
     this.targetFocus.set(desiredX, desiredY);
@@ -81,16 +81,16 @@ export class CameraRailController {
         : Math.max(4.4, profile.cameraCatchupSpeed * 1.25);
     const nextFocusX = damp(this.currentFocus.x, this.targetFocus.x, currentNode.isGigantic ? horizontalCatchup * 2.6 : horizontalCatchup, deltaTime);
     this.currentFocus.x = currentNode.isGigantic ? nextFocusX : Math.max(this.currentFocus.x, playerPosition.x - 0.08, nextFocusX);
-    this.currentFocus.y = damp(this.currentFocus.y, this.targetFocus.y, currentNode.isGigantic ? 7.8 : 1.95 + laneFocusBias * 1.7, deltaTime);
+    this.currentFocus.y = damp(this.currentFocus.y, this.targetFocus.y, currentNode.isGigantic ? 8.4 : 4.1 + laneFocusBias * 2.2, deltaTime);
 
-    const momentumZoom = profile.momentumZoomRange * 1.02 * Math.pow(momentumGauge, 0.72);
+    const momentumZoom = profile.momentumZoomRange * Math.min(1.28, Math.max(0, momentumGauge));
     this.targetZoom =
       profile.baseZoom +
       momentumZoom +
       profile.largeShardZoom * largeShardFactor +
       milestoneZoom +
       choiceZoom;
-    this.currentZoom = damp(this.currentZoom, this.targetZoom, currentNode.isGigantic ? 14.5 : state === 'upgrade_branching' ? 1.9 : 2.6, deltaTime);
+    this.currentZoom = damp(this.currentZoom, this.targetZoom, currentNode.isGigantic ? 8.8 : state === 'upgrade_branching' ? 1.35 : 1.55, deltaTime);
 
     this.position.set(this.currentFocus.x - CameraRailController.CAMERA_CENTER_OFFSET, this.currentFocus.y + 0.18, this.currentZoom);
     this.lookAt.set(this.currentFocus.x, this.currentFocus.y, 0);

@@ -17,6 +17,37 @@ const MOMENTUM_BAR_ASSETS = {
   top: new URL('../../assets/images/spritesheet/momentum_bar_toplayer.png', import.meta.url).href
 };
 const COIN_ICON_URL = new URL('../../assets/images/spritesheet/coinsheetsprite.png', import.meta.url).href;
+const EQUIPMENT_UI_ASSETS = {
+  bgBoat: new URL('../../assets/images/itemhud/bgboatsvg.svg', import.meta.url).href,
+  charges: {
+    plane: new URL('../../assets/images/itemhud/planechargesvg.svg', import.meta.url).href,
+    wings: new URL('../../assets/images/itemhud/wingchargesvg.svg', import.meta.url).href,
+    propulseur: new URL('../../assets/images/itemhud/propulseurchargesvg.svg', import.meta.url).href,
+    reacteur_front: new URL('../../assets/images/itemhud/frontreacteurchargesvg.svg', import.meta.url).href,
+    reacteur_back: new URL('../../assets/images/itemhud/backreacteurchargesvg.svg', import.meta.url).href,
+    shield: new URL('../../assets/images/itemhud/shieldchargesvg.svg', import.meta.url).href,
+    souffleur_primary: new URL('../../assets/images/itemhud/souflleurchargesvg1.svg', import.meta.url).href,
+    souffleur_recharge: new URL('../../assets/images/itemhud/souflleurchargesvg2.svg', import.meta.url).href,
+    wrapper: new URL('../../assets/images/itemhud/wrapperchargesvg.svg', import.meta.url).href,
+    magnet: new URL('../../assets/images/itemhud/magnetchargesvg.svg', import.meta.url).href,
+    big_canon: new URL('../../assets/images/itemhud/Bigcanonchargesvg.svg', import.meta.url).href,
+    front_canon: new URL('../../assets/images/itemhud/frontcanonchargesvg.svg', import.meta.url).href,
+    grappin: new URL('../../assets/images/itemhud/Grapcharge.svg', import.meta.url).href
+  }
+} as const;
+const RARITY_COLORS: Record<RogueliteRarity, string> = {
+  common: '#F2DDB8',
+  uncommon: '#75AF80',
+  rare: '#49BCFF',
+  epic: '#8C53B4',
+  legendary: '#3B414C'
+};
+const CHARGE_LEVEL_COLORS = ['rgb(18 20 24 / 0.26)', '#F2DDB8', '#75AF80', '#49BCFF', '#8C53B4', '#3B414C'] as const;
+const EQUIPMENT_SLOT_ORDER = ['propulseur', 'reacteur_back', 'reacteur_front', 'plane', 'shield', 'wrapper', 'magnet', 'big_canon', 'front_canon', 'grappin', 'souffleur', 'wings'] as const;
+const EQUIPMENT_PANEL_VIEWBOX = { width: 613, height: 403 } as const;
+const CHARGE_COLOR_SLOTS = new Set(['propulseur', 'reacteur_front', 'reacteur_back', 'wings']);
+const ALWAYS_FULL_SLOTS = new Set(['plane', 'magnet']);
+const COOLDOWN_RING_SLOTS = new Set(['shield', 'wrapper', 'big_canon', 'front_canon', 'grappin']);
 
 type GameHUDState = 'transition' | 'running' | 'upgrade_choice' | 'game_over';
 
@@ -73,7 +104,64 @@ interface GameHUDPayload {
   } | null;
   acquisition: AcquisitionFeedback | null;
   gameOverCause: GameOverCause;
+  runSummary: {
+    score: number;
+    bestScore: number;
+    shardsLanded: number;
+    distanceMeters: number;
+    coinsCollected: number;
+    enemiesKilled: number;
+    longestMomentumSeconds: number;
+    personalBests: {
+      score: boolean;
+      shardsLanded: boolean;
+      distanceMeters: boolean;
+      coinsCollected: boolean;
+      enemiesKilled: boolean;
+      longestMomentumSeconds: boolean;
+    };
+    equipment: Array<{
+      id: string;
+      iconSrc: string;
+      rarityIconSrc: string;
+      rarity: RogueliteRarity;
+      kind: RogueliteItemKind;
+    }>;
+  };
 }
+
+interface LeaderboardEntry {
+  name: string;
+  score: number;
+  recordedAt: number;
+}
+
+interface EquipmentSvgBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  viewBoxWidth: number;
+  viewBoxHeight: number;
+}
+
+interface EquipmentShapeTemplate {
+  bounds: EquipmentSvgBounds;
+  shapeLeft: number;
+  shapeRight: number;
+  shapeWidth: number;
+  shapeTop: number;
+  shapeBottom: number;
+  shapeHeight: number;
+  ringLeft: number;
+  ringTop: number;
+  ringWidth: number;
+  ringHeight: number;
+  cooldownMarkup: string | null;
+}
+
+const LEADERBOARD_KEY = 'portfolio-game-global-highscores-v1';
+const PLAYER_NAME_KEY = 'portfolio-game-player-name';
 
 export class GameHUDSystem {
   readonly element: HTMLDivElement;
@@ -94,6 +182,7 @@ export class GameHUDSystem {
   private momentumBarLabel: HTMLSpanElement;
   private momentumBarValue: HTMLSpanElement;
   private momentumShell: HTMLDivElement;
+  private equipmentDock: HTMLDivElement;
   private chargeFill: HTMLDivElement;
   private orbitGraceIndicator: HTMLDivElement;
   private statusValue: HTMLParagraphElement;
@@ -115,8 +204,21 @@ export class GameHUDSystem {
   private gameOverOverlay: HTMLDivElement;
   private gameOverTitle: HTMLHeadingElement;
   private gameOverBody: HTMLParagraphElement;
+  private gameOverStats: HTMLDivElement;
+  private gameOverEquipment: HTMLDivElement;
+  private leaderboardPanel: HTMLDivElement;
+  private leaderboardList: HTMLDivElement;
+  private leaderboardNameInput: HTMLInputElement;
+  private leaderboardSaveButton: HTMLButtonElement;
   private restartButton: HTMLButtonElement;
   private returnButton: HTMLButtonElement;
+  private highscoresButton: HTMLButtonElement;
+  private currentGameOverSignature = '';
+  private lastSavedGameOverSignature = '';
+  private leaderboardVisible = false;
+  private currentRunSummary: GameHUDPayload['runSummary'] | null = null;
+  private readonly shapeTemplateCache = new Map<string, EquipmentShapeTemplate | null>();
+  private readonly shapeTemplatePending = new Set<string>();
 
   constructor(host: HTMLElement, private readonly i18n: I18nService, callbacks: GameHUDCallbacks) {
     this.preloadUiAssets();
@@ -146,10 +248,11 @@ export class GameHUDSystem {
         </div>
       </div>
       <div class="game-hud__momentum-dock">
+        <div class="game-hud__equipment-dock"></div>
         <div class="game-hud__momentum-meter">
           <div class="game-hud__momentum-meta">
             <span data-momentum-bar-label></span>
-            <strong data-momentum-bar-value>0%</strong>
+            <strong data-momentum-bar-value></strong>
           </div>
           <div class="game-hud__momentum-shell">
             <div class="game-hud__momentum-mask" data-momentum-mask>
@@ -193,9 +296,19 @@ export class GameHUDSystem {
         <div class="game-hud__game-over-panel">
           <h2 data-game-over-title></h2>
           <p data-game-over-body></p>
+          <div class="game-hud__game-over-stats" data-game-over-stats></div>
+          <div class="game-hud__game-over-gear" data-game-over-gear></div>
+          <div class="game-hud__leaderboard" data-leaderboard-panel hidden>
+            <div class="game-hud__leaderboard-controls">
+              <input type="text" maxlength="18" data-leaderboard-name />
+              <button type="button" data-leaderboard-save></button>
+            </div>
+            <div class="game-hud__leaderboard-list" data-leaderboard-list></div>
+          </div>
           <div class="game-hud__game-over-actions">
             <button type="button" data-restart></button>
             <button type="button" data-return></button>
+            <button type="button" data-highscores></button>
           </div>
         </div>
       </div>
@@ -218,6 +331,7 @@ export class GameHUDSystem {
     this.momentumBarLabel = this.element.querySelector<HTMLSpanElement>('[data-momentum-bar-label]')!;
     this.momentumBarValue = this.element.querySelector<HTMLSpanElement>('[data-momentum-bar-value]')!;
     this.momentumShell = this.element.querySelector<HTMLDivElement>('.game-hud__momentum-shell')!;
+    this.equipmentDock = this.element.querySelector<HTMLDivElement>('.game-hud__equipment-dock')!;
     this.chargeFill = this.element.querySelector<HTMLDivElement>('[data-charge-fill]')!;
     this.orbitGraceIndicator = this.element.querySelector<HTMLDivElement>('[data-orbit-grace]')!;
     this.statusValue = this.element.querySelector<HTMLParagraphElement>('.game-hud__status')!;
@@ -239,12 +353,32 @@ export class GameHUDSystem {
     this.gameOverOverlay = this.element.querySelector<HTMLDivElement>('.game-hud__game-over')!;
     this.gameOverTitle = this.element.querySelector<HTMLHeadingElement>('[data-game-over-title]')!;
     this.gameOverBody = this.element.querySelector<HTMLParagraphElement>('[data-game-over-body]')!;
+    this.gameOverStats = this.element.querySelector<HTMLDivElement>('[data-game-over-stats]')!;
+    this.gameOverEquipment = this.element.querySelector<HTMLDivElement>('[data-game-over-gear]')!;
+    this.leaderboardPanel = this.element.querySelector<HTMLDivElement>('[data-leaderboard-panel]')!;
+    this.leaderboardList = this.element.querySelector<HTMLDivElement>('[data-leaderboard-list]')!;
+    this.leaderboardNameInput = this.element.querySelector<HTMLInputElement>('[data-leaderboard-name]')!;
+    this.leaderboardSaveButton = this.element.querySelector<HTMLButtonElement>('[data-leaderboard-save]')!;
     this.restartButton = this.element.querySelector<HTMLButtonElement>('[data-restart]')!;
     this.returnButton = this.element.querySelector<HTMLButtonElement>('[data-return]')!;
+    this.highscoresButton = this.element.querySelector<HTMLButtonElement>('[data-highscores]')!;
 
     this.exitButton.addEventListener('click', callbacks.onExit);
     this.restartButton.addEventListener('click', callbacks.onRestart);
     this.returnButton.addEventListener('click', callbacks.onExit);
+    this.highscoresButton.addEventListener('click', () => {
+      this.leaderboardVisible = !this.leaderboardVisible;
+      this.renderLeaderboard();
+    });
+    this.leaderboardSaveButton.addEventListener('click', () => this.saveLeaderboardEntry());
+    this.leaderboardNameInput.value = window.localStorage.getItem(PLAYER_NAME_KEY) ?? '';
+    this.leaderboardNameInput.addEventListener('input', () => this.renderLeaderboard());
+    this.leaderboardNameInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        this.saveLeaderboardEntry();
+      }
+    });
     this.shopButtons.forEach((button, index) => {
       button.addEventListener('click', () => callbacks.onSelectUpgrade(index));
     });
@@ -267,7 +401,7 @@ export class GameHUDSystem {
     this.coinsValue.textContent = `× ${payload.coins}`;
     this.chainValue.textContent = `${Math.round(payload.momentumGauge * 100)}%`;
     this.chainValue.style.opacity = `${0.58 + payload.momentumGauge * 0.42}`;
-    this.momentumBarValue.textContent = `${Math.round(payload.momentumGauge * 100)}%`;
+    this.momentumBarValue.textContent = '';
     this.momentumShell.style.setProperty('--momentum-ratio', payload.momentumGauge.toFixed(3));
     const fillIntervalMs = 120;
     const fillPhase = Math.floor(performance.now() / fillIntervalMs) % 4;
@@ -305,8 +439,16 @@ export class GameHUDSystem {
     this.renderLandingFeedback(payload.landingFeedback);
     if (payload.state === 'game_over') {
       this.gameOverBody.textContent = this.getGameOverBody(payload.gameOverCause);
+      this.renderGameOverSummary(payload);
+    } else {
+      this.currentRunSummary = null;
+      this.currentGameOverSignature = '';
+      this.lastSavedGameOverSignature = '';
+      this.leaderboardVisible = false;
+      this.leaderboardPanel.hidden = true;
     }
     this.renderInventory(payload.inventoryItems);
+    this.renderEquipmentDock(payload.inventoryItems);
     this.renderBranchHints(payload.branchHints);
     this.renderShopBar(payload.branchHints, payload.coins);
   }
@@ -316,7 +458,7 @@ export class GameHUDSystem {
     this.highscoreLabel.textContent = this.i18n.t('gameBest');
     this.chargeLabel.textContent = this.i18n.t('gameCharge');
     this.chainLabel.textContent = this.i18n.t('gameMomentum');
-    this.momentumBarLabel.textContent = this.i18n.t('gameMomentum');
+    this.momentumBarLabel.textContent = '';
     this.distanceLabel.textContent = this.i18n.t('gameDistance');
     this.exitButton.textContent = this.i18n.t('gamePortfolio');
     this.branchTitle.textContent = this.i18n.t('gameUpgradeTitle');
@@ -327,8 +469,12 @@ export class GameHUDSystem {
     this.gameOverBody.textContent = this.i18n.t('gameOverBody');
     this.restartButton.textContent = this.i18n.t('gameRestart');
     this.returnButton.textContent = this.i18n.t('gamePortfolio');
+    this.highscoresButton.textContent = this.i18n.t('gameHighscores');
+    this.leaderboardNameInput.placeholder = this.i18n.t('gamePlayerName');
+    this.leaderboardSaveButton.textContent = this.i18n.t('gameSaveScore');
     this.bestDistanceLabel.textContent = this.i18n.t('gameBestDistance');
     this.walletIcon.title = this.i18n.t('gameCoins');
+    this.renderLeaderboard();
   }
 
   private renderBranchHints(
@@ -394,9 +540,11 @@ export class GameHUDSystem {
   }>) {
     this.inventoryBar.innerHTML = '';
     this.stashBar.classList.add('is-visible');
-    items.forEach((item) => {
+    items
+      .filter((item) => item.kind === 'passive')
+      .forEach((item) => {
       const chip = document.createElement('div');
-      chip.className = 'game-hud__inventory-item';
+      chip.className = `game-hud__inventory-item${item.kind === 'passive' ? ' game-hud__inventory-item--passive' : ''}`;
       const itemDefinition = getItemById(item.id);
       const showRarity = item.kind === 'module';
       const hasCharges = (item.chargeMax ?? 0) > 0;
@@ -421,7 +569,7 @@ export class GameHUDSystem {
           <img src="${item.iconSrc}" alt="" class="game-hud__inventory-icon" />
           ${showRarity ? `<img src="${item.rarityIconSrc}" alt="" class="game-hud__inventory-rarity" />` : ''}
         </div>
-        <div class="game-hud__inventory-copy">
+        <div class="game-hud__inventory-copy${item.kind === 'passive' ? ' game-hud__inventory-copy--passive' : ''}">
           <strong class="game-hud__inventory-name">${itemDefinition?.name[this.i18n.current] ?? item.name}</strong>
           <span class="game-hud__inventory-desc">${itemDefinition?.description[this.i18n.current] ?? item.description}</span>
           ${hasCooldown || hasCharges ? `<span class="game-hud__inventory-signals">${hasCooldown ? `<span class="game-hud__inventory-cooldown" style="--cooldown-progress:${cooldownProgress.toFixed(3)}"><span></span></span>` : ''}${hasCharges ? `<span class="game-hud__inventory-charge-dots">${chargeDots}</span>` : ''}</span>` : ''}
@@ -431,6 +579,105 @@ export class GameHUDSystem {
       `;
       this.inventoryBar.appendChild(chip);
     });
+  }
+
+  private renderEquipmentDock(items: Array<{
+    id: string;
+    name: string;
+    description: string;
+    count: number;
+    iconSrc: string;
+    rarity: RogueliteRarity;
+    rarityIconSrc: string;
+    kind: RogueliteItemKind;
+    cooldownRatio?: number;
+    chargeCurrent?: number;
+    chargeMax?: number;
+    resourceRatio?: number;
+    slot?: string | null;
+  }>) {
+    const modules = items
+      .filter((item) => item.kind === 'module' && item.slot)
+      .sort((a, b) => EQUIPMENT_SLOT_ORDER.indexOf(a.slot as typeof EQUIPMENT_SLOT_ORDER[number]) - EQUIPMENT_SLOT_ORDER.indexOf(b.slot as typeof EQUIPMENT_SLOT_ORDER[number]));
+
+    this.equipmentDock.innerHTML = '';
+    this.equipmentDock.hidden = false;
+    const panel = document.createElement('div');
+    panel.className = 'game-hud__equipment-panel';
+    panel.innerHTML = `<img src="${EQUIPMENT_UI_ASSETS.bgBoat}" alt="" class="game-hud__equipment-layer game-hud__equipment-layer--bg" />`;
+
+    const bgTemplate = this.shapeTemplateCache.get(EQUIPMENT_UI_ASSETS.bgBoat);
+    if (!bgTemplate) {
+      this.preloadShapeTemplate(EQUIPMENT_UI_ASSETS.bgBoat);
+    } else {
+      const dockWidth = this.equipmentDock.getBoundingClientRect().width || 486;
+      const panelHeight = dockWidth * (403 / 613);
+      const deadSpace = (panelHeight * bgTemplate.shapeBottom) / 100;
+      const shift = Math.max(0, deadSpace + 6);
+      panel.style.setProperty('--equipment-panel-shift', `${shift.toFixed(2)}px`);
+    }
+
+    modules.forEach((item, index) => {
+      const primaryChargeSrc =
+        item.slot === 'souffleur'
+          ? EQUIPMENT_UI_ASSETS.charges.souffleur_primary
+          : item.slot && item.slot in EQUIPMENT_UI_ASSETS.charges
+            ? EQUIPMENT_UI_ASSETS.charges[item.slot as keyof typeof EQUIPMENT_UI_ASSETS.charges]
+            : '';
+      const primaryTemplate = primaryChargeSrc ? this.shapeTemplateCache.get(primaryChargeSrc) : null;
+      if (primaryChargeSrc && !primaryTemplate) this.preloadShapeTemplate(primaryChargeSrc);
+      const cooldownProgress = Math.max(0, Math.min(1, 1 - (item.cooldownRatio ?? 0)));
+      const usesChargeColor = CHARGE_COLOR_SLOTS.has(item.slot ?? '');
+      const isAlwaysFull = ALWAYS_FULL_SLOTS.has(item.slot ?? '');
+      const isResourceItem = item.slot === 'souffleur';
+      const usesCooldownRing = COOLDOWN_RING_SLOTS.has(item.slot ?? '') || item.slot === 'souffleur';
+      const chargeColor = this.getChargeLevelColor(item.chargeCurrent ?? 0);
+      const fillColor = usesChargeColor ? chargeColor : RARITY_COLORS[item.rarity];
+      const isCooldownActive =
+        item.slot === 'souffleur'
+          ? (item.cooldownRatio ?? 0) > 0.001
+          : usesCooldownRing && (item.cooldownRatio ?? 0) > 0.001;
+      const fillMode = isResourceItem ? 'meter' : 'full';
+      const fillRatio = isResourceItem ? Math.max(0, Math.min(1, item.resourceRatio ?? 0)) : 1;
+      const fillVisible = isAlwaysFull || isResourceItem ? true : usesChargeColor ? (item.chargeCurrent ?? 0) > 0 : !isCooldownActive;
+      const slotIdBase = `${item.slot}-${index}`;
+
+      if (item.slot === 'propulseur' && primaryChargeSrc) {
+        panel.insertAdjacentHTML(
+          'afterbegin',
+          `<span class="game-hud__equipment-rear" data-slot="propulseur" style="--equipment-mask:url('${primaryChargeSrc}'); --equipment-rarity-color:${fillColor}; --equipment-fill-opacity:${fillVisible ? '0.78' : '0'};"></span>`
+        );
+      }
+
+      if (primaryChargeSrc) {
+        panel.insertAdjacentHTML(
+          'beforeend',
+          this.renderEquipmentIconLayer(primaryChargeSrc, primaryTemplate, {
+            layerId: `${slotIdBase}-primary`,
+            slot: item.slot,
+            fillMode,
+            fillRatio,
+            fillColor,
+            fillVisible
+          })
+        );
+      }
+
+      if (usesCooldownRing && primaryChargeSrc && primaryTemplate && isCooldownActive) {
+        panel.insertAdjacentHTML(
+          'beforeend',
+          this.renderEquipmentCooldownRing({
+            layerId: `${slotIdBase}-cooldown`,
+            slot: item.slot,
+            cooldownProgress,
+            rarityColor: RARITY_COLORS[item.rarity],
+            template: primaryTemplate
+          })
+        );
+      }
+    });
+
+    this.equipmentDock.appendChild(panel);
   }
 
   private renderShopBar(
@@ -479,6 +726,41 @@ export class GameHUDSystem {
       return `${this.i18n.t('gameBestDistance')}: ${Math.round(payload.bestDistanceMeters)}m`;
     }
     return `${this.i18n.t('gameSplits')}: ${splits}`;
+  }
+
+  private renderGameOverSummary(payload: GameHUDPayload) {
+    const summary = payload.runSummary;
+    this.currentRunSummary = summary;
+    const newBadge = `<em class="game-hud__game-over-badge">${this.i18n.t('gameNewBadge')}</em>`;
+    this.currentGameOverSignature = [
+      payload.score,
+      Math.round(summary.distanceMeters),
+      summary.coinsCollected,
+      summary.enemiesKilled,
+      Math.round(summary.longestMomentumSeconds * 10)
+    ].join(':');
+    this.gameOverStats.innerHTML = `
+      <div><span>${this.i18n.t('gameScore')}</span><strong>${summary.score}</strong>${summary.personalBests.score ? newBadge : ''}</div>
+      <div><span>${this.i18n.t('gameDistance')}</span><strong>${Math.round(summary.distanceMeters)}m</strong>${summary.personalBests.distanceMeters ? newBadge : ''}</div>
+      <div><span>${this.i18n.t('gameRunShards')}</span><strong>${summary.shardsLanded}</strong>${summary.personalBests.shardsLanded ? newBadge : ''}</div>
+      <div><span>${this.i18n.t('gameCoins')}</span><strong>${summary.coinsCollected}</strong>${summary.personalBests.coinsCollected ? newBadge : ''}</div>
+      <div><span>${this.i18n.t('gameRunKills')}</span><strong>${summary.enemiesKilled}</strong>${summary.personalBests.enemiesKilled ? newBadge : ''}</div>
+      <div><span>${this.i18n.t('gameRunMomentum')}</span><strong>${summary.longestMomentumSeconds.toFixed(1)}s</strong>${summary.personalBests.longestMomentumSeconds ? newBadge : ''}</div>
+    `;
+    this.gameOverEquipment.innerHTML = summary.equipment.length
+      ? summary.equipment
+          .map(
+            (item) => `
+              <span class="game-hud__game-over-item" title="${getItemById(item.id)?.name[this.i18n.current] ?? item.id}">
+                <img src="${item.iconSrc}" alt="" class="game-hud__game-over-item-icon" />
+                ${item.kind === 'module' ? `<img src="${item.rarityIconSrc}" alt="" class="game-hud__game-over-item-rarity" />` : ''}
+              </span>
+            `
+          )
+          .join('')
+      : `<span class="game-hud__game-over-empty">${this.i18n.t('gameRunNoItems')}</span>`;
+    this.updateLeaderboardSaveVisibility();
+    this.renderLeaderboard();
   }
 
   private renderLandingFeedback(
@@ -537,14 +819,380 @@ export class GameHUDSystem {
     return this.i18n.t('gameOverCamera');
   }
 
+  private renderEquipmentIconLayer(
+    src: string,
+    template: EquipmentShapeTemplate | null | undefined,
+    options: {
+      layerId: string;
+      slot: string | null | undefined;
+      fillMode: 'full' | 'meter';
+      fillRatio: number;
+      fillColor: string;
+      fillVisible: boolean;
+    }
+  ) {
+    const fillRatio = Math.max(0, Math.min(1, options.fillRatio));
+    const slotAttr = options.slot ?? '';
+    const shapeVars = this.getShapeStyleVars(template);
+    return `
+      <span class="game-hud__equipment-shape game-hud__equipment-shape--dark" data-slot="${slotAttr}" data-layer-id="${options.layerId}" style="--equipment-mask:url('${src}'); ${shapeVars};"></span>
+      <span class="game-hud__equipment-shape game-hud__equipment-shape--fill game-hud__equipment-shape--${options.fillMode}" data-slot="${slotAttr}" data-layer-id="${options.layerId}-fill" style="--equipment-mask:url('${src}'); ${shapeVars}; --equipment-fill:${fillRatio.toFixed(3)}; --equipment-fill-opacity:${options.fillVisible ? '1' : '0'}; --equipment-rarity-color:${options.fillColor};"></span>
+    `;
+  }
+
+  private renderEquipmentCooldownRing(options: {
+    layerId: string;
+    slot: string | null | undefined;
+    cooldownProgress: number;
+    rarityColor: string;
+    template: EquipmentShapeTemplate;
+  }) {
+    const slotAttr = options.slot ?? '';
+    const progress = Math.max(0, Math.min(1, options.cooldownProgress)).toFixed(3);
+    const viewBox = `0 0 ${options.template.bounds.viewBoxWidth} ${options.template.bounds.viewBoxHeight}`;
+    const cooldownMarkup = options.template.cooldownMarkup;
+    if (!cooldownMarkup) {
+      return '';
+    }
+    return `
+      <span class="game-hud__equipment-cooldown" data-slot="${slotAttr}" data-layer-id="${options.layerId}" style="--cooldown-progress:${progress}; --equipment-rarity-color:${options.rarityColor};">
+        <svg class="game-hud__equipment-cooldown-svg" viewBox="${viewBox}" aria-hidden="true" focusable="false">
+          <g class="game-hud__equipment-cooldown-stroke" style="--cooldown-progress:${progress}; color:${options.rarityColor};">
+            ${cooldownMarkup}
+          </g>
+        </svg>
+      </span>
+    `;
+  }
+
+  private getChargeLevelColor(chargesRemaining: number) {
+    const index = Math.max(0, Math.min(CHARGE_LEVEL_COLORS.length - 1, Math.round(chargesRemaining)));
+    return CHARGE_LEVEL_COLORS[index];
+  }
+
+  private getShapeStyleVars(template: EquipmentShapeTemplate | null | undefined) {
+    if (!template) {
+      return '--equipment-shape-left:0%; --equipment-shape-width:100%; --equipment-shape-right:0%; --equipment-shape-top:0%; --equipment-shape-height:100%; --equipment-shape-bottom:0%; --equipment-ring-left:0%; --equipment-ring-top:0%; --equipment-ring-width:100%; --equipment-ring-height:100%;';
+    }
+    return `--equipment-shape-left:${template.shapeLeft.toFixed(3)}%; --equipment-shape-width:${template.shapeWidth.toFixed(3)}%; --equipment-shape-right:${template.shapeRight.toFixed(3)}%; --equipment-shape-top:${template.shapeTop.toFixed(3)}%; --equipment-shape-height:${template.shapeHeight.toFixed(3)}%; --equipment-shape-bottom:${template.shapeBottom.toFixed(3)}%; --equipment-ring-left:${template.ringLeft.toFixed(3)}%; --equipment-ring-top:${template.ringTop.toFixed(3)}%; --equipment-ring-width:${template.ringWidth.toFixed(3)}%; --equipment-ring-height:${template.ringHeight.toFixed(3)}%;`;
+  }
+
+  private preloadShapeTemplate(src: string) {
+    if (this.shapeTemplateCache.has(src) || this.shapeTemplatePending.has(src)) {
+      return;
+    }
+    this.shapeTemplatePending.add(src);
+    void fetch(src)
+      .then((response) => response.text())
+      .then((svgText) => {
+        this.shapeTemplateCache.set(src, this.parseShapeTemplate(svgText));
+      })
+      .catch(() => {
+        this.shapeTemplateCache.set(src, null);
+      })
+      .finally(() => {
+        this.shapeTemplatePending.delete(src);
+      });
+  }
+
+  private parseShapeTemplate(svgText: string): EquipmentShapeTemplate | null {
+    if (typeof DOMParser === 'undefined' || typeof document === 'undefined') {
+      return null;
+    }
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgText, 'image/svg+xml');
+    const svgNode = doc.querySelector('svg');
+    if (!svgNode) {
+      return null;
+    }
+    const viewBox = svgNode.getAttribute('viewBox');
+    if (!viewBox) {
+      return null;
+    }
+    const [viewBoxXRaw, viewBoxYRaw, viewBoxWidthRaw, viewBoxHeightRaw] = viewBox.split(/\s+/).map((value) => Number.parseFloat(value));
+    const viewBoxX = Number.isFinite(viewBoxXRaw) ? viewBoxXRaw : 0;
+    const viewBoxY = Number.isFinite(viewBoxYRaw) ? viewBoxYRaw : 0;
+    const viewBoxWidth = Number.isFinite(viewBoxWidthRaw) && viewBoxWidthRaw > 0 ? viewBoxWidthRaw : 1;
+    const viewBoxHeight = Number.isFinite(viewBoxHeightRaw) && viewBoxHeightRaw > 0 ? viewBoxHeightRaw : 1;
+
+    const visibleNodes = Array.from(svgNode.children).filter((child) => {
+      const tag = child.tagName.toLowerCase();
+      if (tag === 'defs' || tag === 'clippath') {
+        return false;
+      }
+      if (tag === 'rect') {
+        const fill = child.getAttribute('fill');
+        const style = child.getAttribute('style') ?? '';
+        const width = Number.parseFloat(child.getAttribute('width') ?? '0');
+        const height = Number.parseFloat(child.getAttribute('height') ?? '0');
+        if ((fill === 'none' || style.includes('fill:none')) && width >= viewBoxWidth && height >= viewBoxHeight) {
+          return false;
+        }
+      }
+      return true;
+    });
+    const fillMarkup = visibleNodes.map((node) => new XMLSerializer().serializeToString(node)).join('');
+    if (!fillMarkup) {
+      return null;
+    }
+
+    const liveMeasurement = this.measureSvgGeometry(svgText);
+    const fillBounds = this.measureSvgMarkup(viewBox, fillMarkup);
+    if (!fillBounds || fillBounds.width <= 0.001 || fillBounds.height <= 0.001) {
+      return null;
+    }
+
+    const shapeLeft = ((fillBounds.x - viewBoxX) / viewBoxWidth) * 100;
+    const shapeTop = ((fillBounds.y - viewBoxY) / viewBoxHeight) * 100;
+    const shapeWidth = (fillBounds.width / viewBoxWidth) * 100;
+    const shapeHeight = (fillBounds.height / viewBoxHeight) * 100;
+    const shapeRight = 100 - shapeLeft - shapeWidth;
+    const shapeBottom = 100 - shapeTop - shapeHeight;
+    const centerX = shapeLeft + shapeWidth * 0.5;
+    const centerY = shapeTop + shapeHeight * 0.5;
+    const heightAsWidthPercent = shapeHeight * (EQUIPMENT_PANEL_VIEWBOX.height / EQUIPMENT_PANEL_VIEWBOX.width);
+    const ringWidth = Math.max(shapeWidth, heightAsWidthPercent) * 1.1;
+    const ringHeight = ringWidth * (EQUIPMENT_PANEL_VIEWBOX.width / EQUIPMENT_PANEL_VIEWBOX.height);
+    const ringLeft = Math.max(0, Math.min(100 - ringWidth, centerX - ringWidth * 0.5));
+    const ringTop = Math.max(0, Math.min(100 - ringHeight, centerY - ringHeight * 0.5));
+
+    return {
+      bounds: {
+        x: fillBounds.x,
+        y: fillBounds.y,
+        width: fillBounds.width,
+        height: fillBounds.height,
+        viewBoxWidth,
+        viewBoxHeight
+      },
+      shapeLeft,
+      shapeRight,
+      shapeWidth,
+      shapeTop,
+      shapeBottom,
+      shapeHeight,
+      ringLeft,
+      ringTop,
+      ringWidth,
+      ringHeight,
+      cooldownMarkup: liveMeasurement?.cooldownMarkup ?? null
+    };
+  }
+
+  private measureSvgMarkup(viewBox: string, markup: string) {
+    const measurementSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    measurementSvg.setAttribute('viewBox', viewBox);
+    measurementSvg.setAttribute('width', '0');
+    measurementSvg.setAttribute('height', '0');
+    measurementSvg.style.position = 'absolute';
+    measurementSvg.style.opacity = '0';
+    measurementSvg.style.pointerEvents = 'none';
+    measurementSvg.style.overflow = 'hidden';
+    measurementSvg.insertAdjacentHTML('beforeend', `<g data-measure-root>${markup}</g>`);
+    document.body.appendChild(measurementSvg);
+    try {
+      const group = measurementSvg.querySelector('g[data-measure-root]') as SVGGElement | null;
+      if (!group || typeof group.getBBox !== 'function') {
+        return null;
+      }
+      return group.getBBox();
+    } finally {
+      measurementSvg.remove();
+    }
+  }
+
+  private measureSvgGeometry(svgText: string): { cooldownMarkup: string | null } | null {
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'absolute';
+    wrapper.style.opacity = '0';
+    wrapper.style.pointerEvents = 'none';
+    wrapper.style.overflow = 'hidden';
+    wrapper.style.width = '0';
+    wrapper.style.height = '0';
+    wrapper.innerHTML = svgText;
+    document.body.appendChild(wrapper);
+    try {
+      const svg = wrapper.querySelector('svg');
+      if (!svg) {
+        return null;
+      }
+      const candidates = Array.from(svg.querySelectorAll<SVGGraphicsElement>('path, rect, circle, ellipse, polygon, polyline, line')).filter((node) => {
+        if (node.closest('defs, clipPath')) {
+          return false;
+        }
+        if (node.tagName.toLowerCase() === 'rect') {
+          const fill = node.getAttribute('fill');
+          const style = node.getAttribute('style') ?? '';
+          const width = Number.parseFloat(node.getAttribute('width') ?? '0');
+          const height = Number.parseFloat(node.getAttribute('height') ?? '0');
+          const svgViewBox = svg.getAttribute('viewBox')?.split(/\s+/).map((value) => Number.parseFloat(value));
+          const viewBoxWidth = svgViewBox && Number.isFinite(svgViewBox[2]) ? svgViewBox[2]! : 0;
+          const viewBoxHeight = svgViewBox && Number.isFinite(svgViewBox[3]) ? svgViewBox[3]! : 0;
+          if ((fill === 'none' || style.includes('fill:none')) && width >= viewBoxWidth && height >= viewBoxHeight) {
+            return false;
+          }
+        }
+        if (typeof node.getBBox !== 'function') {
+          return false;
+        }
+        const box = node.getBBox();
+        return box.width > 0.001 && box.height > 0.001;
+      });
+      if (candidates.length === 0) {
+        return null;
+      }
+
+      let longestCandidate: SVGGraphicsElement | null = null;
+      let longestLength = 0;
+      candidates.forEach((candidate) => {
+        const geometry = candidate as SVGGeometryElement;
+        if (typeof geometry.getTotalLength === 'function') {
+          const length = geometry.getTotalLength();
+          if (length > longestLength) {
+            longestLength = length;
+            longestCandidate = candidate;
+          }
+        }
+      });
+
+      let cooldownMarkup: string | null = null;
+      const outlineCandidate = longestCandidate as SVGGraphicsElement | null;
+      if (outlineCandidate) {
+        const flattened = outlineCandidate.cloneNode(true) as SVGGraphicsElement;
+        flattened.removeAttribute('style');
+        flattened.removeAttribute('fill');
+        flattened.removeAttribute('stroke');
+        const ctm = outlineCandidate.getCTM();
+        if (ctm) {
+          flattened.setAttribute('transform', `matrix(${ctm.a} ${ctm.b} ${ctm.c} ${ctm.d} ${ctm.e} ${ctm.f})`);
+        } else {
+          flattened.removeAttribute('transform');
+        }
+        flattened.setAttribute('fill', 'none');
+        flattened.setAttribute('stroke', 'currentColor');
+        flattened.setAttribute('pathLength', '100');
+        flattened.setAttribute('vector-effect', 'non-scaling-stroke');
+        cooldownMarkup = new XMLSerializer().serializeToString(flattened);
+      }
+
+      return { cooldownMarkup };
+    } finally {
+      wrapper.remove();
+    }
+  }
+
+  private saveLeaderboardEntry() {
+    if (!this.currentGameOverSignature || !this.currentRunSummary) {
+      return;
+    }
+    const name = this.getLeaderboardPlayerName();
+    window.localStorage.setItem(PLAYER_NAME_KEY, name);
+    if (!this.canSaveLeaderboardEntry(name)) {
+      this.leaderboardSaveButton.disabled = true;
+      return;
+    }
+    const entries = this.readLeaderboard();
+    const normalizedName = this.normalizeLeaderboardName(name);
+    const filteredEntries = entries.filter((entry) => this.normalizeLeaderboardName(entry.name) !== normalizedName);
+    const entry: LeaderboardEntry = {
+      name,
+      score: this.currentRunSummary.score,
+      recordedAt: Date.now()
+    };
+    filteredEntries.push(entry);
+    filteredEntries.sort((a, b) => b.score - a.score || a.recordedAt - b.recordedAt);
+    window.localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(filteredEntries.slice(0, 20)));
+    this.lastSavedGameOverSignature = this.currentGameOverSignature;
+    this.leaderboardSaveButton.disabled = true;
+    this.renderLeaderboard();
+  }
+
+  private readLeaderboard(): LeaderboardEntry[] {
+    const raw = window.localStorage.getItem(LEADERBOARD_KEY);
+    if (!raw) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(raw) as LeaderboardEntry[];
+      const uniqueEntries = new Map<string, LeaderboardEntry>();
+      parsed.forEach((entry) => {
+        const normalizedName = this.normalizeLeaderboardName(entry.name);
+        const existing = uniqueEntries.get(normalizedName);
+        if (!existing || entry.score > existing.score || (entry.score === existing.score && entry.recordedAt < existing.recordedAt)) {
+          uniqueEntries.set(normalizedName, entry);
+        }
+      });
+      return Array.from(uniqueEntries.values()).sort((a, b) => b.score - a.score || a.recordedAt - b.recordedAt);
+    } catch {
+      return [];
+    }
+  }
+
+  private renderLeaderboard() {
+    this.leaderboardPanel.hidden = !this.leaderboardVisible;
+    this.updateLeaderboardSaveVisibility();
+    if (!this.leaderboardVisible) {
+      return;
+    }
+    const entries = this.readLeaderboard();
+    this.leaderboardList.innerHTML = entries.length
+      ? entries
+          .map(
+            (entry, index) => `
+              <div class="game-hud__leaderboard-row">
+                <strong>#${index + 1} ${entry.name}</strong>
+                <span>${entry.score}</span>
+              </div>
+            `
+          )
+          .join('')
+      : `<p class="game-hud__game-over-empty">${this.i18n.t('gameLeaderboardEmpty')}</p>`;
+  }
+
+  private getLeaderboardPlayerName() {
+    return (this.leaderboardNameInput.value.trim() || this.i18n.t('gameAnonymous')).slice(0, 18);
+  }
+
+  private normalizeLeaderboardName(name: string) {
+    return name.trim().toLocaleLowerCase(this.i18n.current === 'fr' ? 'fr-FR' : 'en-US');
+  }
+
+  private updateLeaderboardSaveVisibility() {
+    const playerName = this.getLeaderboardPlayerName();
+    const canSave = this.canSaveLeaderboardEntry(playerName);
+    const controls = this.leaderboardNameInput.parentElement as HTMLElement | null;
+    if (controls) {
+      controls.hidden = !canSave;
+    }
+    this.leaderboardNameInput.hidden = !canSave;
+    this.leaderboardNameInput.disabled = !canSave;
+    this.leaderboardSaveButton.hidden = !canSave;
+    this.leaderboardSaveButton.disabled = !canSave || this.currentGameOverSignature === this.lastSavedGameOverSignature;
+  }
+
+  private canSaveLeaderboardEntry(name = this.getLeaderboardPlayerName()) {
+    if (!this.currentRunSummary) {
+      return false;
+    }
+    const existing = this.readLeaderboard().find((entry) => this.normalizeLeaderboardName(entry.name) === this.normalizeLeaderboardName(name));
+    return !existing || this.currentRunSummary.score > existing.score;
+  }
+
   private preloadUiAssets() {
     const itemAssets = rogueliteItems.flatMap((item) => [item.hudIconSrc, item.rarityIconSrc]);
     Object.values(GRADE_ASSET_URLS)
-      .concat(Object.values(MOMENTUM_BAR_ASSETS), [COIN_ICON_URL], itemAssets)
+      .concat(
+        Object.values(MOMENTUM_BAR_ASSETS),
+        [COIN_ICON_URL, EQUIPMENT_UI_ASSETS.bgBoat],
+        itemAssets,
+        Object.values(EQUIPMENT_UI_ASSETS.charges)
+      )
       .forEach((src) => {
       const image = new Image();
       image.decoding = 'async';
       image.src = src;
     });
+    Object.values(EQUIPMENT_UI_ASSETS.charges).forEach((src) => this.preloadShapeTemplate(src));
+    this.preloadShapeTemplate(EQUIPMENT_UI_ASSETS.bgBoat);
   }
 }

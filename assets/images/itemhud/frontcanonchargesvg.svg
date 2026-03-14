@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 1024 512" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <rect x="0" y="0" width="1024" height="512" style="fill:none;"/>
+    <g transform="matrix(0.631507,0.022368,-0.036267,1.023897,251.037744,-65.862833)">
+        <g id="Canon-avant" serif:id="Canon avant">
+            <path d="M991.339,371.469C988.643,371.469 889.652,379.524 882.201,379.524C871.967,379.524 863.659,371.216 863.659,360.982C863.659,350.749 871.967,342.441 882.201,342.441C889.652,342.441 988.643,350.496 991.339,350.496C997.126,350.496 1001.825,355.195 1001.825,360.982C1001.825,366.77 997.126,371.469 991.339,371.469Z" style="fill:white;"/>
+        </g>
+    </g>
+</svg>
