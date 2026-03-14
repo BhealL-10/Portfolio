@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { PathDirection } from './pathTypes';
-import type { RogueliteItemOffer } from './roguelite';
+import type { RogueliteItemKind, RogueliteItemOffer, RogueliteModuleSlot, RogueliteRarity } from './roguelite';
 
 export type GameShardSizeTier =
   | 'tiny'
@@ -17,7 +17,7 @@ export type GameShardSizeTier =
 export type GameShardShapeKind = 'round' | 'oval' | 'triangular';
 export type GameShardSpinDirection = 'cw' | 'ccw';
 export type GameShardMotionPattern = 'none' | 'vertical' | 'horizontal' | 'micro_orbit' | 'drift';
-export type GameEventType = 'none' | 'shop' | 'treasure' | 'gift' | 'mini_boss' | 'rare_item' | 'boss' | 'boss_weak';
+export type GameEventType = 'none' | 'shop' | 'gift' | 'rare_item';
 export type GameEnemyTier = 'light' | 'armored' | 'elite' | 'invincible';
 export type GameChoiceMode = 'reward_branch' | 'shop_orbit';
 export type GameColorHint = 'none' | 'accent' | 'danger' | 'reward';
@@ -60,7 +60,7 @@ export interface GamePathNode {
   visualScale: number;
   pathDistance: number;
   direction: PathDirection;
-  kind: 'normal' | 'milestone' | 'branch' | 'event' | 'boss_weak';
+  kind: 'normal' | 'milestone' | 'branch' | 'event';
   sizeTier: GameShardSizeTier;
   shapeKind: GameShardShapeKind;
   spinDirection: GameShardSpinDirection;
@@ -149,6 +149,10 @@ export interface VisiblePlatformVisual {
   deformStrength?: number;
   deformDensity?: number;
   fragmentAmount?: number;
+  iconSrc?: string | null;
+  iconText?: string | null;
+  iconTint?: string | null;
+  iconScale?: number;
 }
 
 export interface GameHudSnapshot {
@@ -172,6 +176,14 @@ export interface GameHudSnapshot {
     description: string;
     count: number;
     iconSrc: string;
+    rarity: RogueliteRarity;
+    rarityIconSrc: string;
+    kind: RogueliteItemKind;
+    cooldownRatio?: number;
+    chargeCurrent?: number;
+    chargeMax?: number;
+    resourceRatio?: number;
+    slot?: RogueliteModuleSlot | null;
   }>;
   landingFeedback: LandingFeedback | null;
   acquisition: AcquisitionFeedback | null;

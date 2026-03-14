@@ -1,16 +1,14 @@
 import { getDifficultyProfile } from './difficultyScaler';
 import type { GameEventType } from './gameSessionTypes';
 
-const POST_MILESTONE_EVENTS: GameEventType[] = ['shop', 'treasure', 'gift', 'mini_boss', 'rare_item'];
+const POST_MILESTONE_EVENTS: GameEventType[] = ['shop', 'gift', 'rare_item'];
 
 export class EventSystem {
   private queuedEvents = new Map<number, GameEventType>();
-  private bossConsumed = false;
   private shopQueued = false;
 
   reset() {
     this.queuedEvents.clear();
-    this.bossConsumed = false;
     this.shopQueued = false;
   }
 
@@ -32,12 +30,7 @@ export class EventSystem {
     }
   }
 
-  consumePlannedEvent(index: number, score: number) {
-    if (!this.bossConsumed && score >= 150 && index >= 150) {
-      this.bossConsumed = true;
-      return 'boss' as GameEventType;
-    }
-
+  consumePlannedEvent(index: number, _score: number) {
     const event = this.queuedEvents.get(index);
     if (event) {
       this.queuedEvents.delete(index);

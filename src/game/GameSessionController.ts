@@ -24,27 +24,35 @@ import {
   applyItemToRunState,
   buildUpgradeOffers,
   createRunUpgradeState,
-  rogueliteItems,
+  getItemByBaseId,
+  getItemById,
+  getModuleChargesForItem,
+  getModuleGaugeConfig,
+  type ModuleRuntimeState,
+  type RogueliteModuleSlot,
   type RogueliteItemOffer,
   type RunUpgradeState
 } from './roguelite';
 import { RunStatsSystem } from './RunStatsSystem';
 import { resolveRuntimeNode } from './ShardRuntimeResolver';
 import { ShopSystem } from './ShopSystem';
-import { BossSystem } from './BossSystem';
 import { SpriteSheetPlane } from './SpriteSheetPlane';
 
 type PlayerMotionState = 'attached' | 'charging' | 'airborne' | 'dead';
 type ChoiceMode = 'none' | 'reward_branch' | 'shop_orbit';
 type PlayerVisualState = 'attached_idle_orbit' | 'attached_fast_orbit' | 'jump_start' | 'airborne' | 'landing' | 'death';
 
-const GAME_ACCENT = '#D9624E';
 const DANGER_ACCENT = '#F06A5A';
-const SPECIAL_ACCENT_SEQUENCE = ['#FF4B4B', '#47D76B', '#4B74FF'] as const;
-const REWARD_RING_SEQUENCE = ['#4B74FF', '#FF4B4B', '#47D76B'] as const;
 const ITEM_PLACEHOLDER_ICON = '/assets/images/Logo/logomodedark.svg';
-const PLAYER_MAIN_SPRITE_URL = new URL('../../assets/images/spritesheet/Spritsheetboat.png', import.meta.url).href;
-const PLAYER_BOOST_SPRITE_URL = new URL('../../assets/images/spritesheet/Spritsheetboost.png', import.meta.url).href;
+const PLAYER_MAIN_SPRITE_URL = new URL('../../assets/images/spritesheet/BoatAirSheet.png', import.meta.url).href;
+const PLAYER_BOOST_SPRITE_URL = new URL('../../assets/images/spritesheet/BoatGlideSheet.png', import.meta.url).href;
+const STICK_MONKEY_AIR_URL = new URL('../../assets/images/spritesheet/StickmankeyAirSheet.png', import.meta.url).href;
+const STICK_MONKEY_GLIDE_URL = new URL('../../assets/images/spritesheet/StickmankeyGlideSheet.png', import.meta.url).href;
+const BIG_CANON_PROJECTILE_URL = new URL('../../assets/images/spritesheet/BigCanonProjectile.svg', import.meta.url).href;
+const FRONT_CANON_PROJECTILE_URL = new URL('../../assets/images/spritesheet/FrontCanonProjectile.svg', import.meta.url).href;
+const MAGNET_RADIUS_URL = new URL('../../assets/images/spritesheet/Magnetradius.svg', import.meta.url).href;
+const BIG_CANON_RADIUS_URL = new URL('../../assets/images/spritesheet/Bigcanonradius.svg', import.meta.url).href;
+const GRAP_RADIUS_URL = new URL('../../assets/images/spritesheet/Grapradius.svg', import.meta.url).href;
 
 function wrapAngle(angle: number) {
   const tau = Math.PI * 2;
@@ -75,9 +83,23 @@ export class GameSessionController {
   private readonly player = new THREE.Group();
   private readonly playerMainSprite: SpriteSheetPlane;
   private readonly playerBoostSprite: SpriteSheetPlane;
+  private readonly stickMonkeyAirSprite: SpriteSheetPlane;
+  private readonly stickMonkeyGlideSprite: SpriteSheetPlane;
+  private readonly moduleSprites: Partial<Record<RogueliteModuleSlot, SpriteSheetPlane>> = {};
   private readonly shardHudCanvas = document.createElement('canvas');
   private readonly shardHudTexture: THREE.CanvasTexture;
   private readonly shardHudSprite: THREE.Sprite;
+  private readonly magnetRangeIndicator: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  private readonly bigCanonRangeIndicator: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  private readonly grapRangeIndicator: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  private readonly frontCanonLaser: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  private readonly frontCanonProjectile: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  private readonly bigCanonProjectile: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  private readonly grapRope = new THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>(
+    new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ color: '#D4BF9B', transparent: true, opacity: 0.85, depthWrite: false, depthTest: false })
+  );
+  private readonly grapRopePoints = new Float32Array(6);
   private readonly playerTrail = new THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
   private readonly trailPoints = Array.from({ length: 8 }, () => new THREE.Vector3());
   private readonly trailBuffer = new Float32Array(this.trailPoints.length * 3);
@@ -87,7 +109,6 @@ export class GameSessionController {
   private readonly coins: CoinSystem;
   private readonly enemies: EnemySystem;
   private readonly shop: ShopSystem;
-  private readonly boss: BossSystem;
   private readonly scoreListeners = new Set<() => void>();
   private readonly playerPosition = new THREE.Vector3();
   private readonly playerVelocity = new THREE.Vector3();
@@ -160,8 +181,19 @@ export class GameSessionController {
   private teleportReadyAt = 0;
   private warpReadyAt = 0;
   private shieldCharges = 0;
+  private souffleurActive = false;
+  private wrapperVisualUntil = 0;
+  private shieldHitUntil = 0;
+  private shieldRechargeFlashUntil = 0;
+  private readonly moduleFlashUntil: Partial<Record<RogueliteModuleSlot, number>> = {};
+  private bigCanonFireUntil = 0;
+  private frontCanonFireUntil = 0;
+  private grapState: 'idle' | 'launch' | 'hooked' | 'landing' = 'idle';
+  private grapStateUntil = 0;
+  private grapTargetIndex: number | null = null;
+  private grapPullUntil = 0;
+  private readonly grapTargetPosition = new THREE.Vector3();
   private eventCooldownUntil = 0;
-  private autoFireReadyAt = 0;
   private milestoneChoiceCache = new Map<number, BranchChoice[]>();
   private airborneFromMilestone = false;
   private airborneStartedAt = 0;
@@ -200,10 +232,52 @@ export class GameSessionController {
       offsetY: 0.18,
       renderOrder: 15
     });
-    this.player.add(this.playerMainSprite.group, this.playerBoostSprite.group);
+    this.stickMonkeyAirSprite = new SpriteSheetPlane({
+      textureUrl: STICK_MONKEY_AIR_URL,
+      layout: { columns: 2, rows: 2 },
+      width: 2.3,
+      height: 1.16,
+      alphaTest: 0.08,
+      offsetY: 0.18,
+      renderOrder: 24
+    });
+    this.stickMonkeyGlideSprite = new SpriteSheetPlane({
+      textureUrl: STICK_MONKEY_GLIDE_URL,
+      layout: { columns: 2, rows: 2 },
+      width: 2.4,
+      height: 1.2,
+      alphaTest: 0.08,
+      offsetY: 0.18,
+      renderOrder: 24
+    });
+    this.player.add(this.playerMainSprite.group, this.playerBoostSprite.group, this.stickMonkeyAirSprite.group, this.stickMonkeyGlideSprite.group);
+    this.initializeModuleSprites();
     this.player.visible = false;
     this.root.add(this.player);
     this.root.add(this.shardHudSprite);
+    this.magnetRangeIndicator = this.createRangeIndicator(MAGNET_RADIUS_URL, '#D4BF9B', 0.16);
+    this.bigCanonRangeIndicator = this.createRangeIndicator(BIG_CANON_RADIUS_URL, '#D9624E', 0.2);
+    this.grapRangeIndicator = this.createRangeIndicator(GRAP_RADIUS_URL, '#4B74FF', 0.22);
+    this.frontCanonLaser = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 0.14),
+      new THREE.MeshBasicMaterial({ color: '#D4BF9B', transparent: true, opacity: 0.4, depthWrite: false, depthTest: false })
+    );
+    this.frontCanonLaser.visible = false;
+    this.frontCanonLaser.renderOrder = 26;
+    this.frontCanonProjectile = this.createBillboardPlane(FRONT_CANON_PROJECTILE_URL, 1.6, 0.28, 28);
+    this.bigCanonProjectile = this.createBillboardPlane(BIG_CANON_PROJECTILE_URL, 1.9, 0.34, 28);
+    this.grapRope.geometry.setAttribute('position', new THREE.BufferAttribute(this.grapRopePoints, 3));
+    this.grapRope.visible = false;
+    this.grapRope.renderOrder = 27;
+    this.root.add(
+      this.magnetRangeIndicator,
+      this.bigCanonRangeIndicator,
+      this.grapRangeIndicator,
+      this.frontCanonLaser,
+      this.frontCanonProjectile,
+      this.bigCanonProjectile,
+      this.grapRope
+    );
 
     const trailGeometry = new THREE.BufferGeometry();
     trailGeometry.setAttribute('position', new THREE.BufferAttribute(this.trailBuffer, 3));
@@ -222,7 +296,6 @@ export class GameSessionController {
     this.coins = new CoinSystem(scene, theme);
     this.enemies = new EnemySystem(scene, theme);
     this.shop = new ShopSystem(scene, theme);
-    this.boss = new BossSystem(scene, theme);
   }
 
   get currentState() {
@@ -237,13 +310,82 @@ export class GameSessionController {
     return this.stats.getSnapshot().bestShards;
   }
 
+  private initializeModuleSprites() {
+    const slots: RogueliteModuleSlot[] = [
+      'plane',
+      'propulseur',
+      'reacteur_back',
+      'reacteur_front',
+      'shield',
+      'souffleur',
+      'wrapper',
+      'magnet',
+      'big_canon',
+      'front_canon',
+      'grappin',
+      'wings'
+    ];
+    slots.forEach((slot) => {
+      const item = getItemByBaseId(slot, 'common');
+      const visual = item?.boatVisual;
+      if (!visual) return;
+      const sprite = new SpriteSheetPlane({
+        textureUrl: visual.spriteSheetUrl,
+        layout: { columns: visual.columns, rows: visual.rows },
+        width: 2.4,
+        height: 1.2,
+        alphaTest: 0.08,
+        offsetY: 0.18,
+        renderOrder: visual.layerOrder
+      });
+      sprite.setVisible(false);
+      this.moduleSprites[slot] = sprite;
+      this.player.add(sprite.group);
+    });
+  }
+
+  private createRangeIndicator(textureUrl: string, color: string, opacity: number) {
+    const texture = new THREE.TextureLoader().load(textureUrl);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({
+        map: texture,
+        color,
+        transparent: true,
+        opacity,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        depthTest: false
+      })
+    );
+    mesh.visible = false;
+    mesh.renderOrder = 28;
+    return mesh;
+  }
+
+  private createBillboardPlane(textureUrl: string, width: number, height: number, renderOrder: number) {
+    const texture = new THREE.TextureLoader().load(textureUrl);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, height),
+      new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false })
+    );
+    mesh.visible = false;
+    mesh.renderOrder = renderOrder;
+    return mesh;
+  }
+
   setTheme(theme: ThemeMode) {
     this.theme = theme;
     this.playerTrail.material.color.set(theme === 'dark' ? '#D4BF9B' : '#393F4A');
     this.coins.setTheme(theme);
     this.enemies.setTheme(theme);
     this.shop.setTheme(theme);
-    this.boss.setTheme(theme);
+    const uiColor = theme === 'dark' ? '#D4BF9B' : '#393F4A';
+    this.magnetRangeIndicator.material.color.set(uiColor);
+    this.grapRope.material.color.set(uiColor);
+    this.frontCanonLaser.material.color.set(uiColor);
   }
 
   onScoreChange(callback: () => void) {
@@ -290,7 +432,6 @@ export class GameSessionController {
     this.airborneFromMilestone = false;
     this.airborneStartedAt = 0;
     this.shop.reset();
-    this.boss.reset();
     this.coins.reset();
     this.enemies.reset();
     this.player.visible = false;
@@ -305,7 +446,6 @@ export class GameSessionController {
     this.player.visible = false;
     this.playerTrail.visible = false;
     this.shop.reset();
-    this.boss.reset();
     this.coins.reset();
     this.enemies.reset();
     this.camera.reset(this.getResolvedNode(0));
@@ -348,8 +488,20 @@ export class GameSessionController {
     this.teleportReadyAt = 0;
     this.warpReadyAt = 0;
     this.shieldCharges = 0;
+    this.souffleurActive = false;
+    this.wrapperVisualUntil = 0;
+    this.shieldHitUntil = 0;
+    this.shieldRechargeFlashUntil = 0;
+    (Object.keys(this.moduleFlashUntil) as RogueliteModuleSlot[]).forEach((slot) => {
+      delete this.moduleFlashUntil[slot];
+    });
+    this.bigCanonFireUntil = 0;
+    this.frontCanonFireUntil = 0;
+    this.grapState = 'idle';
+    this.grapStateUntil = 0;
+    this.grapTargetIndex = null;
+    this.grapPullUntil = 0;
     this.eventCooldownUntil = 0;
-    this.autoFireReadyAt = 0;
     this.milestoneChoiceCache.clear();
     this.airborneFromMilestone = false;
     this.airborneStartedAt = 0;
@@ -365,10 +517,22 @@ export class GameSessionController {
     this.shardHudSprite.visible = false;
     this.playerMainSprite.setScale(1);
     this.playerBoostSprite.setScale(1);
+    this.stickMonkeyAirSprite.setScale(1);
+    this.stickMonkeyGlideSprite.setScale(1);
+    Object.values(this.moduleSprites).forEach((sprite) => {
+      sprite?.setScale(1);
+      sprite?.setVisible(false);
+    });
+    this.magnetRangeIndicator.visible = false;
+    this.bigCanonRangeIndicator.visible = false;
+    this.grapRangeIndicator.visible = false;
+    this.frontCanonLaser.visible = false;
+    this.frontCanonProjectile.visible = false;
+    this.bigCanonProjectile.visible = false;
+    this.grapRope.visible = false;
     this.coins.reset();
     this.enemies.reset();
     this.shop.reset();
-    this.boss.reset();
   }
 
   getInitialPlatformPositions(count: number) {
@@ -420,7 +584,8 @@ export class GameSessionController {
       const targetDensity = passiveDensity + 0.42 + this.momentum.gauge * 0.34;
       const liveDensity = isCurrent ? THREE.MathUtils.lerp(passiveDensity, targetDensity, orbitRamp) : Math.max(passiveDensity, visualWave?.density ?? passiveDensity);
       const activeStrength = node.isMilestone ? 0.012 + orbitRamp * 0.02 : passiveStrength + 0.18 + orbitRamp * 0.12 + this.momentum.gauge * 0.46;
-      const specialAccent = this.getSpecialAccent(node);
+      const rewardItem = node.offerId ? getItemById(node.offerId) : null;
+      const isQuestionShard = node.eventType === 'shop' || node.eventType === 'gift' || node.eventType === 'rare_item';
       const maskedByMilestone = false;
       return {
         scale: new THREE.Vector3(
@@ -435,23 +600,18 @@ export class GameSessionController {
         tint:
           node.colorHint === 'danger'
             ? DANGER_ACCENT
-            : node.eventType === 'shop' || node.colorHint === 'reward'
+            : node.eventType === 'shop' || node.colorHint === 'reward' || node.eventType === 'gift' || node.eventType === 'rare_item'
               ? this.getThemeShardColor()
-            : node.colorHint === 'accent' && !node.isMilestone
-                ? specialAccent ?? GAME_ACCENT
-                : null,
-        ringTint: node.colorHint === 'reward' ? this.getRewardRingColor(node) : node.eventType === 'shop' ? (specialAccent ?? GAME_ACCENT) : null,
-        ringScale:
-          node.colorHint === 'reward' || node.eventType === 'shop'
-            ? Math.max(node.visualStretch.x, node.visualStretch.y) * node.visualScale * 1.48
-            : 0,
+            : null,
+        ringTint: null,
+        ringScale: 0,
         stripeTint: null,
         stripeMix: 0,
         stripePhase: 0,
         pulse:
           node.isMilestone
             ? 0.18
-            : node.eventType === 'shop'
+            : isQuestionShard
               ? 0.48
             : node.colorHint === 'reward'
                 ? 0.68
@@ -461,7 +621,11 @@ export class GameSessionController {
         deformAngle: isCurrent ? localAngle : visualWave?.angle ?? 0,
         deformStrength: isCurrent ? activeStrength : Math.max(passiveStrength, visualWave?.strength ?? 0) + (node.isMilestone ? 0 : fragmentAmount * 0.16),
         deformDensity: liveDensity,
-        fragmentAmount
+        fragmentAmount,
+        iconSrc: node.colorHint === 'reward' && rewardItem ? rewardItem.hudIconSrc : null,
+        iconText: isQuestionShard ? '?' : null,
+        iconTint: isQuestionShard ? this.getThemeContrastColor() : null,
+        iconScale: node.colorHint === 'reward' && rewardItem ? 0.42 : isQuestionShard ? 0.56 : 0.34
       };
     });
   }
@@ -563,13 +727,34 @@ export class GameSessionController {
     this.hudSnapshot.offers = this.activeChoices.map((choice) => choice.offer);
     this.hudSnapshot.branchHints = this.getBranchHints();
     this.hudSnapshot.inventoryItems = this.runUpgrades.ownedOrder.map((itemId) => {
-      const item = rogueliteItems.find((entry) => entry.id === itemId);
+      const item = getItemById(itemId);
+      const runtime = item?.slot ? this.runUpgrades.moduleRuntime[item.slot] : null;
+      const cooldownDuration = item?.slot ? this.getModuleCooldownDuration(item.slot) : 0;
+      const gaugeConfig = item ? getModuleGaugeConfig(item) : null;
+      const cooldownRatio =
+        runtime && cooldownDuration > 0
+          ? Math.min(1, runtime.cooldownRemaining / cooldownDuration)
+          : runtime && gaugeConfig && runtime.regenDelayRemaining > 0
+            ? Math.min(
+                1,
+                runtime.regenDelayRemaining /
+                  Math.max(0.001, runtime.gaugeCurrent <= 0.0001 ? gaugeConfig.emptyDelay : gaugeConfig.regenDelay)
+              )
+            : 0;
       return {
         id: itemId,
         name: item?.name.en ?? itemId,
         description: item?.description.en ?? itemId,
         count: this.runUpgrades.counts[itemId] ?? 1,
-        iconSrc: ITEM_PLACEHOLDER_ICON
+        iconSrc: item?.hudIconSrc ?? ITEM_PLACEHOLDER_ICON,
+        rarity: item?.rarity ?? 'common',
+        rarityIconSrc: item?.rarityIconSrc ?? ITEM_PLACEHOLDER_ICON,
+        kind: item?.kind ?? 'passive',
+        cooldownRatio,
+        chargeCurrent: runtime?.chargesCurrent ?? 0,
+        chargeMax: runtime?.chargesMax ?? 0,
+        resourceRatio: runtime && runtime.gaugeMax > 0 ? runtime.gaugeCurrent / runtime.gaugeMax : 0,
+        slot: item?.slot ?? null
       };
     });
     this.hudSnapshot.landingFeedback = this.landingFeedback;
@@ -578,16 +763,150 @@ export class GameSessionController {
     return this.hudSnapshot;
   }
 
+  private getEquippedItem(slot: RogueliteModuleSlot) {
+    const itemId = this.runUpgrades.modules[slot];
+    return itemId ? getItemById(itemId) : null;
+  }
+
+  private getModuleRuntime(slot: RogueliteModuleSlot): ModuleRuntimeState | null {
+    return this.runUpgrades.moduleRuntime[slot] ?? null;
+  }
+
+  private getModuleCooldownDuration(slot: RogueliteModuleSlot) {
+    switch (slot) {
+      case 'shield':
+        return Math.max(4, 14 * (1 - this.runUpgrades.modifiers.shieldCooldownFactor));
+      case 'wrapper':
+        return 18;
+      case 'grappin':
+        return Math.max(8, this.runUpgrades.modifiers.grapCooldown || this.getModuleStat('grappin', 'grapCooldown') || 30);
+      case 'big_canon':
+        return Math.max(1.4, this.runUpgrades.modifiers.bigCanonCooldown || this.getModuleStat('big_canon', 'bigCanonCooldown') || 4.5);
+      case 'front_canon':
+        return Math.max(1, this.runUpgrades.modifiers.frontCanonCooldown || this.getModuleStat('front_canon', 'frontCanonCooldown') || 2.4);
+      default:
+        return 0;
+    }
+  }
+
+  private ensureModuleRuntime(slot: RogueliteModuleSlot) {
+    const item = this.getEquippedItem(slot);
+    if (!item || !item.slot) return null;
+    const existing = this.runUpgrades.moduleRuntime[slot];
+    if (existing && existing.itemId === item.id) {
+      return existing;
+    }
+    const runtime: ModuleRuntimeState = {
+      itemId: item.id,
+      cooldownRemaining: 0,
+      chargesCurrent: getModuleChargesForItem(item),
+      chargesMax: getModuleChargesForItem(item),
+      gaugeCurrent: getModuleGaugeConfig(item)?.capacity ?? 0,
+      gaugeMax: getModuleGaugeConfig(item)?.capacity ?? 0,
+      regenDelayRemaining: 0
+    };
+    this.runUpgrades.moduleRuntime[slot] = runtime;
+    return runtime;
+  }
+
+  private getModuleStat(
+    slot: RogueliteModuleSlot,
+    stat:
+      | 'propulsionPower'
+      | 'wrapperDistance'
+      | 'magnetRange'
+      | 'frontCanonRange'
+      | 'frontCanonCooldown'
+      | 'bigCanonRange'
+      | 'bigCanonCooldown'
+      | 'grapRange'
+      | 'grapCooldown'
+  ) {
+    const item = this.getEquippedItem(slot);
+    if (!item) return 0;
+    const value = item.statsByRarity[item.rarity]?.[stat];
+    return typeof value === 'number' ? value : 0;
+  }
+
+  private resetJumpModuleCharges() {
+    (['wings', 'propulseur', 'reacteur_front', 'reacteur_back'] as RogueliteModuleSlot[]).forEach((slot) => {
+      const item = this.getEquippedItem(slot);
+      const runtime = this.ensureModuleRuntime(slot);
+      if (!item || !runtime) return;
+      const charges = getModuleChargesForItem(item);
+      runtime.chargesMax = charges;
+      runtime.chargesCurrent = charges;
+    });
+  }
+
+  private consumeModuleGauge(slot: RogueliteModuleSlot, deltaTime: number, burnPerSecond: number) {
+    const item = this.getEquippedItem(slot);
+    const runtime = this.ensureModuleRuntime(slot);
+    const config = item ? getModuleGaugeConfig(item) : null;
+    if (!item || !runtime || !config || runtime.gaugeMax <= 0 || runtime.gaugeCurrent <= 0) {
+      return false;
+    }
+    const consumed = Math.min(runtime.gaugeCurrent, burnPerSecond * deltaTime);
+    runtime.gaugeCurrent = Math.max(0, runtime.gaugeCurrent - consumed);
+    runtime.regenDelayRemaining = runtime.gaugeCurrent <= 0.0001 ? config.emptyDelay : config.regenDelay;
+    return consumed > 0;
+  }
+
+  private tickModuleRuntime(deltaTime: number) {
+    this.souffleurActive = false;
+    (Object.keys(this.runUpgrades.modules) as RogueliteModuleSlot[]).forEach((slot) => {
+      const item = this.getEquippedItem(slot);
+      const runtime = this.ensureModuleRuntime(slot);
+      if (!item || !runtime) return;
+      const previousCooldown = runtime.cooldownRemaining;
+      runtime.cooldownRemaining = Math.max(0, runtime.cooldownRemaining - deltaTime);
+      if (slot === 'shield' && previousCooldown > 0 && runtime.cooldownRemaining <= 0) {
+        this.shieldRechargeFlashUntil = this.currentTime + 0.3;
+      }
+      if (runtime.gaugeMax > 0) {
+        if (runtime.regenDelayRemaining > 0) {
+          runtime.regenDelayRemaining = Math.max(0, runtime.regenDelayRemaining - deltaTime);
+        } else {
+          const config = getModuleGaugeConfig(item);
+          if (config) {
+            runtime.gaugeCurrent = Math.min(runtime.gaugeMax, runtime.gaugeCurrent + config.regenPerSecond * deltaTime);
+          }
+        }
+      }
+    });
+    const shieldRuntime = this.ensureModuleRuntime('shield');
+    this.shieldCharges = shieldRuntime && shieldRuntime.cooldownRemaining <= 0 ? 1 : 0;
+  }
+
+  private hasModuleCharges(slot: RogueliteModuleSlot) {
+    const runtime = this.ensureModuleRuntime(slot);
+    return Boolean(runtime && runtime.chargesCurrent > 0);
+  }
+
+  private spendModuleCharge(slot: RogueliteModuleSlot) {
+    const runtime = this.ensureModuleRuntime(slot);
+    if (!runtime || runtime.chargesCurrent <= 0) return false;
+    runtime.chargesCurrent -= 1;
+    runtime.chargesCurrent = Math.max(0, runtime.chargesCurrent);
+    return true;
+  }
+
+  private triggerModuleFlash(slot: RogueliteModuleSlot, duration = 0.24) {
+    this.moduleFlashUntil[slot] = this.currentTime + duration;
+  }
+
   update(deltaTime: number, elapsedTime: number) {
     if (this.state === 'idle') return;
     this.currentTime = elapsedTime;
 
     if (this.state === 'transition_in' || this.state === 'transition_out') {
+      this.tickModuleRuntime(deltaTime);
       this.updateMomentum(deltaTime);
       return;
     }
 
     this.path.ensureAhead(this.attachedIndex);
+    this.tickModuleRuntime(deltaTime);
     this.updateMomentum(deltaTime);
     this.prewarmUpcomingMilestones();
 
@@ -668,7 +987,7 @@ export class GameSessionController {
   }
 
   private getDisplayNodes(count: number) {
-    if (this.choiceMode === 'reward_branch' && this.activeChoices.length > 0 && !this.airborneFromMilestone) {
+    if (this.choiceMode === 'reward_branch' && this.activeChoices.length > 0) {
       this.initializeDisplayWindow(count);
       const milestoneNode = this.getResolvedNode(this.attachedIndex);
       const rewardNodes = this.activeChoices.map((choice) => resolveRuntimeNode(choice.entry, this.currentTime, this.attachedIndex));
@@ -795,7 +1114,7 @@ export class GameSessionController {
     this.orbitAngle = wrapAngle(this.orbitAngle + this.orbitDirection * this.angularSpeed * deltaTime);
 
     const liveOrbit = this.getOrbitSample(currentNode, this.orbitAngle);
-    this.playerPosition.set(currentNode.resolvedX + liveOrbit.position.x, currentNode.resolvedY + liveOrbit.position.y, currentNode.resolvedZ);
+    this.playerPosition.copy(this.getPlayerOrbitWorldPosition(currentNode, this.orbitAngle, liveOrbit));
     this.playerVelocity.set(
       liveOrbit.tangent.x * orbitRadius * this.angularSpeed * this.orbitDirection,
       liveOrbit.tangent.y * orbitRadius * this.angularSpeed * this.orbitDirection,
@@ -848,9 +1167,42 @@ export class GameSessionController {
 
   private updateAirborne(deltaTime: number) {
     const previousPosition = this.scratchVector.set(this.playerPosition.x, this.playerPosition.y, this.playerPosition.z);
-    const gravityScale = clamp(1 - this.runUpgrades.modifiers.glideFactor * 0.55, 0.18, 1);
+    const gravityScale = clamp(1 - this.runUpgrades.modifiers.planeGlide * 0.92, 0.12, 1);
     this.playerVelocity.y -= 6.8 * gravityScale * deltaTime;
-    this.playerVelocity.x += this.runUpgrades.modifiers.airControl * deltaTime * 0.4;
+    this.playerVelocity.x += (this.runUpgrades.modifiers.airControl + this.runUpgrades.modifiers.planeStability * 0.7) * deltaTime * 0.52;
+
+    const usingSouffleur =
+      this.chargeActive &&
+      Boolean(this.getEquippedItem('souffleur')) &&
+      this.consumeModuleGauge('souffleur', deltaTime, 0.42);
+    this.souffleurActive = usingSouffleur;
+    if (usingSouffleur) {
+      const heading = this.scratchVectorB.set(this.playerVelocity.x || 0.001, this.playerVelocity.y || 0.001, 0).normalize();
+      this.playerVelocity.addScaledVector(heading, (0.9 + this.runUpgrades.modifiers.souffleurBoost) * deltaTime);
+      this.triggerModuleFlash('souffleur', 0.12);
+    }
+
+    if (this.grapTargetIndex === null) {
+      void this.tryActivateGrappin();
+    }
+    void this.tryActivateWrapper(true);
+
+    if (this.grapTargetIndex !== null) {
+      const grapNode = this.getResolvedNode(this.grapTargetIndex);
+      this.grapTargetPosition.set(grapNode.resolvedX, grapNode.resolvedY, grapNode.resolvedZ);
+      const pull = this.scratchVectorB.copy(this.grapTargetPosition).sub(this.playerPosition);
+      const distance = Math.max(0.001, pull.length());
+      pull.normalize();
+      this.playerVelocity.addScaledVector(pull, Math.min(9.2, 4.8 + distance * 0.18) * deltaTime);
+      if (this.currentTime >= this.grapStateUntil && this.grapState === 'launch') {
+        this.grapState = 'hooked';
+      }
+      if (this.currentTime >= this.grapPullUntil) {
+        this.grapTargetIndex = null;
+        this.grapState = 'idle';
+      }
+    }
+
     this.playerPosition.addScaledVector(this.playerVelocity, deltaTime);
 
     if (this.choiceMode === 'reward_branch' && this.activeChoices.length > 0) {
@@ -876,6 +1228,11 @@ export class GameSessionController {
         continue;
       }
       if (this.canCaptureNode(node, previousPosition)) {
+        if (this.grapTargetIndex === index) {
+          this.grapState = 'landing';
+          this.grapStateUntil = this.currentTime + 0.18;
+          this.grapTargetIndex = null;
+        }
         this.attachToNode(index, true, this.playerPosition, this.playerVelocity);
         return;
       }
@@ -886,6 +1243,11 @@ export class GameSessionController {
         break;
       }
       if (this.canCaptureNode(node, previousPosition)) {
+        if (this.grapTargetIndex === index) {
+          this.grapState = 'landing';
+          this.grapStateUntil = this.currentTime + 0.18;
+          this.grapTargetIndex = null;
+        }
         this.attachToNode(index, true, this.playerPosition, this.playerVelocity);
         return;
       }
@@ -971,6 +1333,58 @@ export class GameSessionController {
 
   private performAirAction() {
     if (this.playerState !== 'airborne') return false;
+    const forward = this.scratchVector.set(
+      Math.cos(this.player.rotation.z || 0),
+      Math.sin(this.player.rotation.z || 0),
+      0
+    ).normalize();
+    let moduleTriggered = false;
+    const combinedImpulse = this.scratchVectorB.set(0, 0, 0);
+    let combinedPower = 0;
+    if (this.hasModuleCharges('propulseur')) {
+      this.spendModuleCharge('propulseur');
+      const power = Math.max(3.6, this.getModuleStat('propulseur', 'propulsionPower'));
+      combinedImpulse.addScaledVector(forward, 0.9 + power * 0.32);
+      combinedImpulse.y += 0.06 + power * 0.05;
+      combinedPower += power * 1.18;
+      this.triggerModuleFlash('propulseur', 0.42);
+      moduleTriggered = true;
+    }
+    if (this.hasModuleCharges('wings')) {
+      this.spendModuleCharge('wings');
+      const power = Math.max(3.2, this.getModuleStat('wings', 'propulsionPower'));
+      combinedImpulse.addScaledVector(forward, 0.5 + power * 0.18);
+      combinedImpulse.y += 0.78 + power * 0.24;
+      combinedPower += power;
+      this.triggerModuleFlash('wings', 0.82);
+      moduleTriggered = true;
+    }
+    if (this.hasModuleCharges('reacteur_front')) {
+      this.spendModuleCharge('reacteur_front');
+      const power = Math.max(2.6, this.getModuleStat('reacteur_front', 'propulsionPower'));
+      combinedImpulse.y += 0.56 + power * 0.26;
+      combinedPower += power;
+      this.triggerModuleFlash('reacteur_front', 0.4);
+      moduleTriggered = true;
+    }
+    if (this.hasModuleCharges('reacteur_back')) {
+      this.spendModuleCharge('reacteur_back');
+      const power = Math.max(2.8, this.getModuleStat('reacteur_back', 'propulsionPower'));
+      combinedImpulse.addScaledVector(forward, 0.4 + power * 0.2);
+      combinedImpulse.y += 0.32 + power * 0.16;
+      combinedPower += power;
+      this.triggerModuleFlash('reacteur_back', 0.4);
+      moduleTriggered = true;
+    }
+    if (moduleTriggered) {
+      const impulse = 3.2 + combinedPower * 0.56 + this.momentum.gauge * 2.2;
+      this.playerVelocity.addScaledVector(combinedImpulse.normalize(), impulse + combinedImpulse.length() * 0.9);
+      return true;
+    }
+
+    if (this.tryActivateGrappin()) return true;
+    if (this.tryActivateWrapper(false)) return true;
+
     if (this.runUpgrades.modifiers.infiniteFlaps || this.remainingExtraJumps > 0) {
       if (!this.runUpgrades.modifiers.infiniteFlaps) {
         this.remainingExtraJumps -= 1;
@@ -981,6 +1395,59 @@ export class GameSessionController {
       return true;
     }
     return false;
+  }
+
+  private tryActivateGrappin() {
+    if (!this.getEquippedItem('grappin') || this.grapTargetIndex !== null) {
+      return false;
+    }
+    const grapRange = Math.max(4.6, this.runUpgrades.modifiers.grapRange);
+    const grapRuntime = this.ensureModuleRuntime('grappin');
+    if (!grapRuntime || grapRuntime.cooldownRemaining > 0) {
+      return false;
+    }
+    const minReach = 2.8;
+    for (let index = this.attachedIndex + 1; index <= this.attachedIndex + Math.ceil(grapRange * 2.8); index += 1) {
+      const node = this.getResolvedNode(index);
+      const distance = this.playerPosition.distanceTo(this.scratchVectorB.set(node.resolvedX, node.resolvedY, node.resolvedZ));
+      if (distance < minReach) continue;
+      if (distance <= grapRange + node.gameplayRadius) {
+        grapRuntime.cooldownRemaining = Math.max(8, this.runUpgrades.modifiers.grapCooldown || 30);
+        this.grapTargetIndex = index;
+        this.grapState = 'launch';
+        this.grapStateUntil = this.currentTime + 0.22;
+        this.grapPullUntil = this.currentTime + 1.65;
+        this.triggerModuleFlash('grappin', 0.5);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private tryActivateWrapper(emergencyOnly: boolean) {
+    if (!this.getEquippedItem('wrapper')) {
+      return false;
+    }
+    if (
+      emergencyOnly &&
+      this.playerPosition.x >= this.camera.getSafeLeft() + 2.6 &&
+      Math.abs(this.playerPosition.y) < 26
+    ) {
+      return false;
+    }
+    const wrapperDistance = Math.max(10, this.runUpgrades.modifiers.wrapperDistance);
+    const wrapperRuntime = this.ensureModuleRuntime('wrapper');
+    if (!wrapperRuntime || wrapperRuntime.cooldownRemaining > 0) {
+      return false;
+    }
+    const teleportTarget = this.path.getTeleportTarget(this.attachedIndex, Math.round(wrapperDistance));
+    if (teleportTarget <= this.attachedIndex + 1) {
+      return false;
+    }
+    wrapperRuntime.cooldownRemaining = 18;
+    this.wrapperVisualUntil = this.currentTime + 0.18;
+    this.attachToNode(teleportTarget, false, null, null);
+    return true;
   }
 
   private attachToNode(index: number, preserveMomentum: boolean, landingPosition: THREE.Vector3 | null, incomingVelocity: THREE.Vector3 | null) {
@@ -1027,9 +1494,15 @@ export class GameSessionController {
     this.chargeActive = false;
     this.chargeMeter = 0;
     this.remainingExtraJumps = Math.max(0, this.runUpgrades.modifiers.extraJumps);
+    this.resetJumpModuleCharges();
+    if (this.grapState !== 'idle') {
+      this.grapState = 'landing';
+      this.grapStateUntil = this.currentTime + 0.18;
+      this.grapTargetIndex = null;
+    }
 
     const liveOrbit = this.getOrbitSample(node, this.orbitAngle);
-    this.playerPosition.set(node.resolvedX + liveOrbit.position.x, node.resolvedY + liveOrbit.position.y, node.resolvedZ);
+    this.playerPosition.copy(this.getPlayerOrbitWorldPosition(node, this.orbitAngle, liveOrbit));
     this.playerVelocity.set(0, 0, 0);
 
     this.collectCoinsOnCurrentNode(node);
@@ -1063,16 +1536,21 @@ export class GameSessionController {
     const frontalPenalty = Math.abs(incoming2D.dot(radialDirection));
     const twist = this.lastLandingDirection !== 0 && direction !== this.lastLandingDirection;
 
+    const gradeBonus = this.runUpgrades.modifiers.gradeWindowBonus;
     let grade: LandingGrade = 'good';
-    if (frontalPenalty > 0.88 || tangentialAlignment < 0.16) {
+    if (frontalPenalty > 0.92 + gradeBonus * 0.2 || tangentialAlignment < 0.08 - gradeBonus * 0.12) {
       grade = 'miss';
     } else if (tangentialAlignment > 0.965 && frontalPenalty < 0.18) {
       grade = 'perfect';
-    } else if (tangentialAlignment > 0.72 && frontalPenalty < 0.5) {
+    } else if (tangentialAlignment > 0.62 - gradeBonus * 0.32 && frontalPenalty < 0.56 + gradeBonus * 0.28) {
       grade = 'super';
     }
 
-    let momentumGain = twist ? 0.22 : 0.05;
+    if (grade === 'miss' && this.runUpgrades.modifiers.failSafe) {
+      grade = 'good';
+    }
+
+    let momentumGain = twist ? 0.14 : 0.035;
     if (!twist && this.momentum.gauge >= 0.5) {
       momentumGain = 0;
     } else if (!twist && this.momentum.gauge + momentumGain > 0.5) {
@@ -1081,13 +1559,14 @@ export class GameSessionController {
 
     let speedMultiplier = 1;
     if (grade === 'miss') {
-      momentumGain = -0.04;
-      speedMultiplier = 0.84;
+      const penaltyScale = 1 - Math.min(0.72, this.runUpgrades.modifiers.landingPenaltyReduction);
+      momentumGain = -0.03 * penaltyScale;
+      speedMultiplier = 1 - 0.16 * penaltyScale;
     } else if (grade === 'super') {
-      momentumGain += twist ? 0.055 : 0.018;
+      momentumGain += twist ? 0.032 : 0.012;
       speedMultiplier = twist ? 1.34 : 1.1;
     } else if (grade === 'perfect') {
-      momentumGain += twist ? 0.085 : 0.026;
+      momentumGain += twist ? 0.05 : 0.018;
       speedMultiplier = twist ? 1.48 : 1.16;
     } else if (twist) {
       speedMultiplier = 1.24;
@@ -1113,7 +1592,7 @@ export class GameSessionController {
       grade,
       twist,
       progress: 0,
-      worldPosition: new THREE.Vector3(this.playerPosition.x - 2.2, this.playerPosition.y + 0.9, this.playerPosition.z)
+      worldPosition: new THREE.Vector3(this.playerPosition.x - 1.45, this.playerPosition.y + 0.82, this.playerPosition.z)
     };
   }
 
@@ -1152,10 +1631,6 @@ export class GameSessionController {
         this.eventCooldownUntil = this.currentTime + 0.2;
         break;
       }
-      case 'treasure':
-        this.stats.addCoins(this.applyCoinBonus(5));
-        this.startAcquisition(this.activeChoices[0]?.offer ?? this.buildVirtualOffer('Treasure Chest', 'common', 'TRE', 'Gain 5 coins.'), 'Treasure');
-        break;
       case 'gift': {
         const offer = buildUpgradeOffers(node.index, this.runUpgrades)[0];
         if (offer) {
@@ -1170,17 +1645,6 @@ export class GameSessionController {
         }
         break;
       }
-      case 'mini_boss':
-      case 'boss':
-        this.boss.start(this.currentTime);
-        break;
-      case 'boss_weak':
-        if (this.boss.isWeakPointPhase()) {
-          this.boss.defeat();
-          this.stats.addCoins(this.applyCoinBonus(8));
-          this.fillMomentumBurst(0.24);
-        }
-        break;
       case 'none':
       default:
         break;
@@ -1220,37 +1684,7 @@ export class GameSessionController {
     };
   }
 
-  private buildVirtualOffer(name: string, rarity: RogueliteItemOffer['item']['rarity'], icon: string, description: string): RogueliteItemOffer {
-    return {
-      item: {
-        id: `virtual-${icon}`,
-        rarity,
-        category: 'economy',
-        icon,
-        unlockScore: 0,
-        stackable: false,
-        maxStacks: 1,
-        effects: ['virtual'],
-        name: { fr: name, en: name },
-        description: { fr: description, en: description }
-      },
-      stackCount: 0
-    };
-  }
-
-  private updateEvents(deltaTime: number, elapsedTime: number, currentNode: ResolvedGamePathNode) {
-    const bossUpdate = this.boss.update(deltaTime, elapsedTime, this.playerPosition);
-    if (bossUpdate.playerHit) {
-      this.failRun('enemy');
-    }
-
-    if (this.boss.isWeakPointPhase()) {
-      const weakNode = this.findVisibleWeakPoint();
-      if (weakNode) {
-        this.boss.setWeakPoint(new THREE.Vector3(weakNode.resolvedX, weakNode.resolvedY, weakNode.resolvedZ));
-      }
-    }
-
+  private updateEvents(_deltaTime: number, elapsedTime: number, currentNode: ResolvedGamePathNode) {
     if (this.state === 'upgrade_acquired' && elapsedTime >= this.eventCooldownUntil) {
       this.state = this.playerState === 'airborne' ? 'running_airborne' : this.chargeActive ? 'running_charging' : 'running_attached';
     }
@@ -1280,8 +1714,7 @@ export class GameSessionController {
         ? 82
         : Math.max(milestoneReleaseZoom, upcomingMilestoneFactor * 38);
     const choiceZoom = this.choiceMode === 'reward_branch' ? 9.6 : this.choiceMode === 'shop_orbit' ? 3.2 : this.state === 'upgrade_acquired' ? 2.4 : 0;
-    const bossZoom = this.boss.getCameraZoomOffset();
-    const speedPressure = (this.boss.isActive() ? this.boss.getSpeedPressure() : 1) * this.momentum.speedMultiplier;
+    const speedPressure = this.momentum.speedMultiplier;
     this.camera.update({
       deltaTime,
       state: this.state,
@@ -1293,7 +1726,6 @@ export class GameSessionController {
       largeShardFactor,
       milestoneZoom,
       choiceZoom,
-      bossZoom,
       speedPressure: speedPressure * (1 - this.runUpgrades.modifiers.timeSlowFactor * 0.55)
     });
   }
@@ -1332,37 +1764,234 @@ export class GameSessionController {
     const visualState = this.resolvePlayerVisualState();
     const orbitSpeed = Math.max(this.playerVelocity.length(), Math.abs(this.angularSpeed) * Math.max(1, orbit.position.length()));
     const idleScale = 1 + this.momentum.gauge * 0.12 + Math.sin(elapsedTime * 8) * 0.02;
+    const showGlide = visualState === 'attached_idle_orbit' || visualState === 'attached_fast_orbit';
 
     if (this.state === 'game_over') {
       const collapse = clamp((elapsedTime - this.gameOverStartedAt) / 0.26, 0, 1);
       const scale = Math.max(0.02, 1 - collapse * 1.22);
       this.playerMainSprite.setVisible(true);
       this.playerBoostSprite.setVisible(false);
+      this.stickMonkeyAirSprite.setVisible(true);
+      this.stickMonkeyGlideSprite.setVisible(false);
       this.playerMainSprite.setScale(scale);
+      this.stickMonkeyAirSprite.setScale(scale);
       this.playerMainSprite.setFrame(3);
+      this.stickMonkeyAirSprite.setFrame(3);
+      Object.values(this.moduleSprites).forEach((sprite) => sprite?.setVisible(false));
+      this.syncWorldModuleIndicators(heading);
       return;
     }
 
-    if (visualState === 'attached_idle_orbit' || visualState === 'attached_fast_orbit') {
-      this.playerMainSprite.setVisible(false);
-      this.playerBoostSprite.setVisible(true);
-      this.playerBoostSprite.setScale(idleScale);
-      const speedTier = orbitSpeed < 5.4 ? [0, 1] : orbitSpeed < 8.4 ? [0, 1, 2] : [0, 1, 2, 3];
-      const fps = orbitSpeed < 5.4 ? 4.4 : orbitSpeed < 8.4 ? 7.2 : orbitSpeed < 11.5 ? 9.6 : 12.8;
-      this.playerBoostSprite.playLoop(speedTier, fps, elapsedTime);
-      return;
-    }
-
-    this.playerBoostSprite.setVisible(false);
-    this.playerMainSprite.setVisible(true);
+    this.playerMainSprite.setVisible(!showGlide);
+    this.playerBoostSprite.setVisible(showGlide);
+    this.stickMonkeyAirSprite.setVisible(!showGlide);
+    this.stickMonkeyGlideSprite.setVisible(showGlide);
     this.playerMainSprite.setScale(idleScale);
-    if (visualState === 'jump_start') {
-      this.playerMainSprite.setFrame(1);
-    } else if (visualState === 'landing') {
-      this.playerMainSprite.setFrame(2);
+    this.playerBoostSprite.setScale(idleScale);
+    this.stickMonkeyAirSprite.setScale(idleScale);
+    this.stickMonkeyGlideSprite.setScale(idleScale);
+
+    if (showGlide) {
+      this.playerBoostSprite.playLoop([0, 1, 2, 3], orbitSpeed < 5.4 ? 4.4 : orbitSpeed < 8.4 ? 7.2 : orbitSpeed < 11.5 ? 9.6 : 12.8, elapsedTime);
+      this.stickMonkeyGlideSprite.playLoop([0, 1, 2, 3], orbitSpeed < 5.4 ? 4.2 : orbitSpeed < 8.4 ? 6.6 : orbitSpeed < 11.5 ? 8.8 : 11.2, elapsedTime + 0.08);
     } else {
-      this.playerMainSprite.setFrame(0);
+      if (visualState === 'jump_start') {
+        this.playerMainSprite.setFrame(0);
+        this.stickMonkeyAirSprite.setFrame(0);
+      } else if (visualState === 'landing') {
+        this.playerMainSprite.setFrame(3);
+        this.stickMonkeyAirSprite.setFrame(3);
+      } else {
+        this.playerMainSprite.playLoop([1, 2], 5.6, elapsedTime);
+        this.stickMonkeyAirSprite.playLoop([1, 2], 5.2, elapsedTime + 0.04);
+      }
     }
+
+    this.syncModuleSprites(elapsedTime, showGlide);
+    this.syncWorldModuleIndicators(heading);
+  }
+
+  private syncModuleSprites(elapsedTime: number, showGlide: boolean) {
+    (Object.keys(this.moduleSprites) as RogueliteModuleSlot[]).forEach((slot) => {
+      const sprite = this.moduleSprites[slot];
+      const item = this.getEquippedItem(slot);
+      if (!sprite || !item) {
+        sprite?.setVisible(false);
+        return;
+      }
+
+      sprite.setVisible(true);
+      sprite.setScale(1);
+
+      if (slot === 'plane') {
+        if (!showGlide && this.playerState === 'airborne') {
+          if (this.chargeActive || Math.abs(this.playerVelocity.y) > 1.1) {
+            sprite.playLoop([0, 1, 2, 3], this.chargeActive ? 8.4 : 5.8, elapsedTime);
+          } else {
+            sprite.setFrame(0);
+          }
+        } else {
+          sprite.setFrame(0);
+        }
+        return;
+      }
+
+      if (slot === 'wings') {
+        if ((this.moduleFlashUntil.wings ?? 0) > this.currentTime) {
+          sprite.playLoop([0, 1, 2, 3, 4, 5, 6, 7], 10.8, elapsedTime);
+        } else {
+          sprite.setFrame(0);
+        }
+        return;
+      }
+
+      if (slot === 'propulseur') {
+        if ((this.moduleFlashUntil.propulseur ?? 0) > this.currentTime) {
+          sprite.playLoop([0, 1, 2, 3], 11.2, elapsedTime);
+        } else {
+          sprite.setFrame(0);
+        }
+        return;
+      }
+
+      if (slot === 'reacteur_front' || slot === 'reacteur_back' || slot === 'souffleur' || slot === 'big_canon' || slot === 'front_canon') {
+        const isHot =
+          (this.moduleFlashUntil[slot] ?? 0) > this.currentTime ||
+          (slot === 'souffleur' && this.souffleurActive) ||
+          (slot === 'big_canon' && this.bigCanonFireUntil > this.currentTime) ||
+          (slot === 'front_canon' && this.frontCanonFireUntil > this.currentTime);
+        if (isHot) {
+          sprite.playLoop([1, 2, 3], 10.6, elapsedTime);
+        } else {
+          sprite.setFrame(0);
+        }
+        return;
+      }
+
+      if (slot === 'shield') {
+        const runtime = this.getModuleRuntime('shield');
+        if (this.shieldHitUntil > this.currentTime) {
+          sprite.setFrame(1);
+        } else if (this.shieldRechargeFlashUntil > this.currentTime) {
+          sprite.setFrame(3);
+        } else if ((runtime?.cooldownRemaining ?? 0) > 0) {
+          sprite.setFrame(2);
+        } else {
+          sprite.setFrame(0);
+        }
+        return;
+      }
+
+      if (slot === 'wrapper') {
+        if (this.wrapperVisualUntil > this.currentTime) {
+          const progress = 1 - (this.wrapperVisualUntil - this.currentTime) / 0.18;
+          const frame = progress < 0.24 ? 0 : progress < 0.46 ? 1 : progress < 0.62 ? 2 : 3;
+          sprite.setFrame(frame);
+          sprite.mesh.renderOrder = frame === 2 ? 96 : item.boatVisual?.layerOrder ?? 80;
+        } else {
+          sprite.mesh.renderOrder = item.boatVisual?.layerOrder ?? 80;
+          sprite.setFrame(0);
+        }
+        return;
+      }
+
+      if (slot === 'grappin') {
+        if (this.grapState === 'launch') {
+          sprite.setFrame(1);
+        } else if (this.grapState === 'hooked') {
+          sprite.setFrame(2);
+        } else if (this.grapState === 'landing') {
+          sprite.setFrame(3);
+        } else {
+          sprite.setFrame(0);
+        }
+        if (this.grapState === 'landing' && this.currentTime >= this.grapStateUntil) {
+          this.grapState = 'idle';
+        }
+        return;
+      }
+
+      sprite.setFrame(0);
+    });
+  }
+
+  private syncWorldModuleIndicators(heading: number) {
+    const magnetVisible = Boolean(this.getEquippedItem('magnet'));
+    const bigCanonVisible = Boolean(this.getEquippedItem('big_canon'));
+    const grapVisible = Boolean(this.getEquippedItem('grappin'));
+    const frontCanonVisible = Boolean(this.getEquippedItem('front_canon'));
+
+    this.syncRangeIndicator(this.magnetRangeIndicator, magnetVisible, Math.max(3.1, 2.2 + this.runUpgrades.modifiers.magnetRange * 5.4), '#D4BF9B');
+    this.syncRangeIndicator(this.bigCanonRangeIndicator, bigCanonVisible, Math.max(2.5, this.runUpgrades.modifiers.bigCanonRange * 1.18), '#D9624E');
+    this.syncRangeIndicator(this.grapRangeIndicator, grapVisible, Math.max(2, this.runUpgrades.modifiers.grapRange * 1.16), '#4B74FF');
+    this.magnetRangeIndicator.material.opacity = magnetVisible ? 0.2 + this.momentum.gauge * 0.07 : 0;
+    this.bigCanonRangeIndicator.material.opacity = bigCanonVisible ? 0.24 + this.momentum.gauge * 0.08 : 0;
+    this.grapRangeIndicator.material.opacity =
+      !grapVisible
+        ? 0
+        : this.grapState === 'hooked'
+          ? 0.36
+          : this.grapState === 'launch'
+            ? 0.3
+            : 0.22;
+
+    this.frontCanonLaser.visible = frontCanonVisible;
+    if (frontCanonVisible) {
+      const range = Math.max(1.8, this.runUpgrades.modifiers.frontCanonRange);
+      const dx = Math.cos(heading) * range * 0.5;
+      const dy = Math.sin(heading) * range * 0.5;
+      this.frontCanonLaser.position.set(this.playerPosition.x + dx, this.playerPosition.y + dy, this.playerPosition.z + 0.01);
+      this.frontCanonLaser.rotation.z = heading;
+      this.frontCanonLaser.scale.set(range * 1.12, 1.48, 1);
+      this.frontCanonLaser.material.opacity = 0.14 + this.momentum.gauge * 0.08;
+    }
+
+    this.frontCanonProjectile.visible = this.frontCanonFireUntil > this.currentTime;
+    if (this.frontCanonProjectile.visible) {
+      this.frontCanonProjectile.position.set(
+        this.playerPosition.x + Math.cos(heading) * 1.8,
+        this.playerPosition.y + Math.sin(heading) * 1.8,
+        this.playerPosition.z + 0.02
+      );
+      this.frontCanonProjectile.rotation.z = heading;
+    }
+
+    this.bigCanonProjectile.visible = this.bigCanonFireUntil > this.currentTime;
+    if (this.bigCanonProjectile.visible) {
+      this.bigCanonProjectile.position.set(this.playerPosition.x, this.playerPosition.y + 0.28, this.playerPosition.z + 0.02);
+      this.bigCanonProjectile.rotation.z = heading;
+    }
+
+    const grapHasTarget = this.grapTargetIndex !== null && this.grapState !== 'idle';
+    this.grapRope.visible = grapHasTarget;
+    if (grapHasTarget) {
+      this.grapRope.material.opacity =
+        this.grapState === 'launch'
+          ? 0.58
+          : this.grapState === 'hooked'
+            ? 0.92
+            : 0.78;
+      const targetNode = this.getResolvedNode(this.grapTargetIndex!);
+      this.grapTargetPosition.set(targetNode.resolvedX, targetNode.resolvedY, targetNode.resolvedZ);
+      this.grapRopePoints[0] = this.playerPosition.x;
+      this.grapRopePoints[1] = this.playerPosition.y;
+      this.grapRopePoints[2] = this.playerPosition.z + 0.02;
+      this.grapRopePoints[3] = this.grapTargetPosition.x;
+      this.grapRopePoints[4] = this.grapTargetPosition.y;
+      this.grapRopePoints[5] = this.grapTargetPosition.z + 0.02;
+      this.grapRope.geometry.getAttribute('position').needsUpdate = true;
+    } else {
+      this.grapRope.material.opacity = 0.85;
+    }
+  }
+
+  private syncRangeIndicator(indicator: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>, visible: boolean, radius: number, color: string) {
+    indicator.visible = visible;
+    if (!visible) return;
+    indicator.material.color.set(color);
+    indicator.position.set(this.playerPosition.x, this.playerPosition.y, this.playerPosition.z + 0.01);
+    const diameter = radius * 2 * (1 + Math.sin(this.currentTime * 2.2) * 0.015);
+    indicator.scale.set(diameter, diameter, 1);
   }
 
   private syncShardHud(currentNode: ResolvedGamePathNode) {
@@ -1409,12 +2038,8 @@ export class GameSessionController {
 
     this.shardHudTexture.needsUpdate = true;
     this.shardHudSprite.visible = true;
-    this.shardHudSprite.position.set(
-      currentNode.resolvedX,
-      currentNode.resolvedY + radius + Math.max(1.05, radius * 0.28),
-      currentNode.resolvedZ + 0.08
-    );
-    this.shardHudSprite.scale.setScalar(Math.max(2.2, radius));
+    this.shardHudSprite.position.set(currentNode.resolvedX, currentNode.resolvedY, currentNode.resolvedZ + 0.04);
+    this.shardHudSprite.scale.setScalar(Math.max(2.1, radius * 1.46));
   }
 
   private resolvePlayerVisualState(): PlayerVisualState {
@@ -1436,20 +2061,28 @@ export class GameSessionController {
   private syncMarkers(elapsedTime: number) {
     const visibleNodes = this.getDisplayNodes(Math.min(28, this.getRecommendedVisibleCount()));
     const coinMarkers: CoinMarker[] = [];
-    const enemyMarkers: EnemyMarker[] = [];
+    const enemyMarkersById = new Map<string, EnemyMarker>();
 
     visibleNodes.forEach((node) => {
       node.coinSlots.forEach((slot) => {
         if (slot.collected) return;
+        const position = this.getCoinWorldPosition(node, slot.angle, slot.orbitScale);
+        const magnetRadius = Math.max(1.6, 1.9 + this.runUpgrades.modifiers.coinMagnet * 5.6);
+        const distanceToPlayer = position.distanceTo(this.playerPosition);
+        const attraction = clamp(1 - distanceToPlayer / magnetRadius, 0, 1);
         coinMarkers.push({
-          position: this.getCoinWorldPosition(node, slot.angle, slot.orbitScale),
+          id: `${node.index}:${Math.round(slot.angle * 1000)}:${slot.value}`,
+          position,
           scale: 0.74 + slot.value * 0.08,
-          visible: true
+          visible: true,
+          attraction,
+          targetPosition: attraction > 0 ? this.playerPosition.clone() : null
         });
       });
       if (node.enemySlot?.alive) {
-        enemyMarkers.push({
-          id: `${node.index}:${node.enemySlot.pole}`,
+        const id = `${node.index}:${node.enemySlot.pole}`;
+        enemyMarkersById.set(id, {
+          id,
           position: this.getEnemyWorldPosition(node, node.enemySlot.pole),
           visible: true,
           tier: node.enemySlot.tier,
@@ -1458,10 +2091,23 @@ export class GameSessionController {
       }
     });
 
+    for (let index = Math.max(0, this.attachedIndex - 2); index <= this.attachedIndex + 18; index += 1) {
+      const node = this.getResolvedNode(index);
+      if (!node.enemySlot?.alive) continue;
+      const id = `${node.index}:${node.enemySlot.pole}`;
+      enemyMarkersById.set(id, {
+        id,
+        position: this.getEnemyWorldPosition(node, node.enemySlot.pole),
+        visible: true,
+        tier: node.enemySlot.tier,
+        pole: node.enemySlot.pole
+      });
+    }
+
     this.coins.setVisible(this.state !== 'idle' && this.state !== 'transition_out');
     this.enemies.setVisible(this.state !== 'idle' && this.state !== 'transition_out');
     this.coins.update(coinMarkers, elapsedTime);
-    this.enemies.update(enemyMarkers, elapsedTime);
+    this.enemies.update(Array.from(enemyMarkersById.values()), elapsedTime);
   }
 
   private fillMomentumBurst(amount: number) {
@@ -1516,8 +2162,13 @@ export class GameSessionController {
   }
 
   private consumeProtectionOrFail() {
-    if (this.shieldCharges > 0) {
-      this.shieldCharges -= 1;
+    const shieldRuntime = this.ensureModuleRuntime('shield');
+    if (shieldRuntime && shieldRuntime.cooldownRemaining <= 0) {
+      const cooldownBase = 14;
+      const cooldown = Math.max(4, cooldownBase * (1 - this.runUpgrades.modifiers.shieldCooldownFactor));
+      shieldRuntime.cooldownRemaining = cooldown;
+      this.shieldCharges = 0;
+      this.shieldHitUntil = this.currentTime + 0.24;
       this.fillMomentumBurst(0.04);
       return;
     }
@@ -1525,19 +2176,50 @@ export class GameSessionController {
   }
 
   private updateAutoFire(elapsedTime: number) {
-    if (this.runUpgrades.modifiers.autoCannonLevel <= 0) return;
-    if (elapsedTime < this.autoFireReadyAt) return;
+    const hasBigCanon = Boolean(this.getEquippedItem('big_canon'));
+    const hasFrontCanon = Boolean(this.getEquippedItem('front_canon'));
+    if (!hasBigCanon && !hasFrontCanon) return;
 
-    for (let index = this.attachedIndex; index < this.attachedIndex + 8; index += 1) {
+    if (hasBigCanon) {
+      const runtime = this.ensureModuleRuntime('big_canon');
+      if (runtime && runtime.cooldownRemaining <= 0) {
+        for (let index = this.attachedIndex; index < this.attachedIndex + 12; index += 1) {
+          const node = this.getResolvedNode(index);
+          const enemy = node.enemySlot;
+          if (!enemy || !enemy.alive || enemy.tier === 'invincible') continue;
+          const position = this.getEnemyWorldPosition(node, enemy.pole);
+          if (position.distanceTo(this.playerPosition) > Math.max(2.2, this.runUpgrades.modifiers.bigCanonRange)) continue;
+          enemy.alive = false;
+          this.stats.addCoins(this.applyCoinBonus(enemy.rewardCoins));
+          this.fillMomentumBurst(0.05);
+          runtime.cooldownRemaining = Math.max(1.4, this.runUpgrades.modifiers.bigCanonCooldown || 4.5);
+          this.bigCanonFireUntil = elapsedTime + 0.24;
+          this.triggerModuleFlash('big_canon', 0.24);
+          break;
+        }
+      }
+    }
+
+    if (!hasFrontCanon) return;
+    const frontRuntime = this.ensureModuleRuntime('front_canon');
+    if (!frontRuntime || frontRuntime.cooldownRemaining > 0) return;
+    const forward = this.scratchVector.set(Math.cos(this.player.rotation.z || 0), Math.sin(this.player.rotation.z || 0), 0).normalize();
+    const range = Math.max(2.2, this.runUpgrades.modifiers.frontCanonRange);
+    for (let index = this.attachedIndex; index < this.attachedIndex + 12; index += 1) {
       const node = this.getResolvedNode(index);
       const enemy = node.enemySlot;
       if (!enemy || !enemy.alive || enemy.tier === 'invincible') continue;
       const position = this.getEnemyWorldPosition(node, enemy.pole);
-      if (position.distanceTo(this.playerPosition) > 8.2) continue;
+      const toEnemy = this.scratchVectorB.copy(position).sub(this.playerPosition);
+      const along = toEnemy.dot(forward);
+      const sideDistance = Math.abs(toEnemy.x * -forward.y + toEnemy.y * forward.x);
+      if (along <= 0 || along > range || sideDistance > 0.58) continue;
       enemy.alive = false;
       this.stats.addCoins(this.applyCoinBonus(enemy.rewardCoins));
-      this.fillMomentumBurst(0.04 + this.runUpgrades.modifiers.autoCannonLevel * 0.01);
-      this.autoFireReadyAt = elapsedTime + Math.max(2.2, 5 - this.runUpgrades.modifiers.autoCannonLevel * 1.1);
+      this.fillMomentumBurst(0.04);
+      frontRuntime.cooldownRemaining = Math.max(1, this.runUpgrades.modifiers.frontCanonCooldown || 2.4);
+      this.frontCanonFireUntil = elapsedTime + 0.18;
+      this.triggerModuleFlash('front_canon', 0.22);
       return;
     }
   }
@@ -1720,7 +2402,15 @@ export class GameSessionController {
     if (node.isGigantic) {
       return clamp(0.96 + node.visualScale * 0.042 + speedBoost * 0.4, 0.96, 2.35);
     }
-    return clamp(0.28 + node.visualScale * 0.048 + largeShardBoost + speedBoost, 0.28, 1.48);
+    const baseClearance =
+      node.visualScale <= 1.15
+        ? 0.04
+        : node.visualScale <= 1.7
+          ? 0.08
+          : node.visualScale <= 2.4
+            ? 0.12
+            : 0.16;
+    return clamp(baseClearance + node.visualScale * 0.02 + largeShardBoost * 0.46 + speedBoost * 0.64, 0.04, 1.08);
   }
 
   private applySurfaceContour(node: ResolvedGamePathNode, localAngle: number, sample: OrbitSample): OrbitSample {
@@ -1843,18 +2533,44 @@ export class GameSessionController {
     };
   }
 
+  private getPlayerOrbitWorldPosition(node: ResolvedGamePathNode, angle: number, sample: OrbitSample) {
+    const localAngle = wrapAngle(angle - (node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase));
+    const radial = sample.position.clone().normalize();
+    const travelSpeed =
+      this.playerState === 'airborne'
+        ? this.playerVelocity.length()
+        : Math.abs(this.angularSpeed) * Math.max(1, sample.position.length());
+    const deformation = Math.max(0, this.sampleSurfaceDeformation(node, localAngle));
+    const largeShardLift =
+      !node.isMilestone && node.visualScale >= 5
+        ? clamp(0.14 + deformation * 0.92 + travelSpeed * 0.012, 0.14, 0.84)
+        : clamp(deformation * 0.16 + travelSpeed * 0.003, 0, 0.12);
+    return new THREE.Vector3(
+      node.resolvedX + sample.position.x + radial.x * largeShardLift,
+      node.resolvedY + sample.position.y + radial.y * largeShardLift,
+      node.resolvedZ
+    );
+  }
+
   private getCoinWorldPosition(node: ResolvedGamePathNode, angle: number, orbitScale: number) {
     const orbit = this.getOrbitSample(node, angle);
+    const radial = orbit.position.clone().normalize();
+    const clearance = this.getOrbitClearance(node);
+    const orbitRadius = orbit.position.length() * orbitScale;
+    const coinRadius = Math.max(
+      this.getPhysicalRadius(node) + clearance * Math.max(0.92, orbitScale) + 0.26,
+      orbitRadius + 0.22
+    );
     return new THREE.Vector3(
-      node.resolvedX + orbit.position.x * orbitScale,
-      node.resolvedY + orbit.position.y * orbitScale,
+      node.resolvedX + radial.x * coinRadius,
+      node.resolvedY + radial.y * coinRadius,
       node.resolvedZ
     );
   }
 
   private getEnemyWorldPosition(node: ResolvedGamePathNode, pole: 'north' | 'south') {
     const orbit = this.getOrbitSample(node, pole === 'north' ? Math.PI * 0.5 : Math.PI * 1.5);
-    const local = orbit.position.clone().normalize().multiplyScalar(this.getPhysicalRadius(node) + 1.08);
+    const local = orbit.position.clone().normalize().multiplyScalar(this.getPhysicalRadius(node) + 0.92);
     const rotation = node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase;
     const cos = Math.cos(rotation);
     const sin = Math.sin(rotation);
@@ -1863,6 +2579,20 @@ export class GameSessionController {
       node.resolvedY + local.x * sin + local.y * cos,
       node.resolvedZ
     );
+  }
+
+  getPlayableBorderHint() {
+    const nodes = this.getDisplayNodes(Math.min(28, this.getRecommendedVisibleCount()));
+    const left = nodes[0]?.resolvedX ?? this.playerPosition.x - DEFAULT_COLUMN_DISTANCE * 2;
+    const right = nodes[nodes.length - 1]?.resolvedX ?? this.playerPosition.x + DEFAULT_COLUMN_DISTANCE * 8;
+    return {
+      top: 32,
+      bottom: -32,
+      left,
+      right,
+      tileWidth: DEFAULT_COLUMN_DISTANCE,
+      assetUrl: null as string | null
+    };
   }
 
   private isEnemyHitFromBehind(pole: 'north' | 'south') {
@@ -1916,30 +2646,11 @@ export class GameSessionController {
     return [];
   }
 
-  private findVisibleWeakPoint() {
-    for (let index = this.attachedIndex + 1; index < this.attachedIndex + 18; index += 1) {
-      const node = this.getResolvedNode(index);
-      if (node.eventType === 'boss_weak') {
-        return node;
-      }
-    }
-    return null;
-  }
-
-  private getSpecialAccent(node: ResolvedGamePathNode) {
-    if (!(node.eventType === 'shop' || (node.colorHint === 'accent' && !node.isMilestone))) {
-      return null;
-    }
-    const colorIndex = Math.floor(this.currentTime / 3) % SPECIAL_ACCENT_SEQUENCE.length;
-    return SPECIAL_ACCENT_SEQUENCE[colorIndex]!;
-  }
-
-  private getRewardRingColor(node: ResolvedGamePathNode) {
-    const slot = node.branchSlot ?? 0;
-    return REWARD_RING_SEQUENCE[slot] ?? REWARD_RING_SEQUENCE[0];
-  }
-
   private getThemeShardColor() {
     return this.theme === 'dark' ? '#D4BF9B' : '#393F4A';
+  }
+
+  private getThemeContrastColor() {
+    return this.theme === 'dark' ? '#393F4A' : '#D4BF9B';
   }
 }

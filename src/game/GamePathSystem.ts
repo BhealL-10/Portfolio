@@ -382,15 +382,13 @@ export class GamePathSystem {
         : shapeKind === 'triangular'
           ? { x: 1.18 + this.nextRandom() * 0.18, y: 1.24 + this.nextRandom() * 0.16, z: 0.64 + this.nextRandom() * 0.12 }
           : { x: 1, y: 1, z: 1 };
-    const kind = isMilestone ? 'milestone' : eventType === 'none' ? 'normal' : eventType === 'boss_weak' ? 'boss_weak' : 'event';
+    const kind = isMilestone ? 'milestone' : eventType === 'none' ? 'normal' : 'event';
     const colorHint: GamePathNode['colorHint'] =
       isMilestone
         ? 'accent'
-        : eventType === 'boss' || eventType === 'boss_weak'
-          ? 'danger'
-          : eventType === 'none'
-            ? 'none'
-            : 'accent';
+        : eventType === 'none'
+          ? 'none'
+          : 'accent';
     const visibilityBoost = isMilestone || eventType !== 'none';
 
     return this.buildNode({
@@ -830,7 +828,7 @@ export class GamePathSystem {
   private buildCoinSlots(template: GamePatternNodeTemplate, eventType: GameEventType, score: number) {
     const slots = template.coinAngles?.map((angle) => ({
       angle,
-      value: eventType === 'treasure' ? 3 : 1,
+      value: eventType === 'rare_item' ? 2 : 1,
       collected: false,
       orbitScale: 1
     })) ?? [];
@@ -994,10 +992,6 @@ export class GamePathSystem {
       return 'none' as GameEventType;
     }
 
-    if (template.sizeTier === 'massive' && score >= 150) {
-      return 'boss_weak' as GameEventType;
-    }
-
     const planned = this.eventSystem.consumePlannedEvent(index, score);
     if (planned !== 'none') {
       return planned;
@@ -1016,10 +1010,9 @@ export class GamePathSystem {
                 : 0.056;
       if (this.nextRandom() < eventChance) {
         const roll = this.nextRandom();
-        if (roll < 0.16) return 'shop';
-        if (roll < 0.46) return 'gift';
-        if (roll < 0.72) return 'rare_item';
-        return 'treasure';
+        if (roll < 0.22) return 'shop';
+        if (roll < 0.64) return 'gift';
+        return 'rare_item';
       }
     }
 

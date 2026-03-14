@@ -1,5 +1,5 @@
-import type { RogueliteItemOffer, RogueliteRarity } from './roguelite';
-import { rarityLabels } from './roguelite';
+import type { RogueliteItemKind, RogueliteItemOffer, RogueliteRarity } from './roguelite';
+import { getItemById, rarityLabels, rogueliteItems } from './roguelite';
 import { I18nService } from '../ui/I18nService';
 import type { AcquisitionFeedback, GameOverCause, LandingGrade } from './gameSessionTypes';
 
@@ -12,10 +12,11 @@ const GRADE_ASSET_URLS: Record<'miss' | 'good' | 'super' | 'perfect' | 'twist', 
 };
 
 const MOMENTUM_BAR_ASSETS = {
-  bg: new URL('../../assets/images/spritesheet/momentum_bar_bg.png', import.meta.url).href,
-  fill1: new URL('../../assets/images/spritesheet/momentum_bar_fill_1.png', import.meta.url).href,
-  fill2: new URL('../../assets/images/spritesheet/momentum_bar_fill_2.png', import.meta.url).href
+  bg: new URL('../../assets/images/spritesheet/HUDmomentum_bar_bg.png', import.meta.url).href,
+  fill: new URL('../../assets/images/spritesheet/HUDmomentum_bar_fill.png', import.meta.url).href,
+  top: new URL('../../assets/images/spritesheet/momentum_bar_toplayer.png', import.meta.url).href
 };
+const COIN_ICON_URL = new URL('../../assets/images/spritesheet/coinsheetsprite.png', import.meta.url).href;
 
 type GameHUDState = 'transition' | 'running' | 'upgrade_choice' | 'game_over';
 
@@ -54,6 +55,14 @@ interface GameHUDPayload {
     description: string;
     count: number;
     iconSrc: string;
+    rarity: RogueliteRarity;
+    rarityIconSrc: string;
+    kind: RogueliteItemKind;
+    cooldownRatio?: number;
+    chargeCurrent?: number;
+    chargeMax?: number;
+    resourceRatio?: number;
+    slot?: string | null;
   }>;
   landingFeedback: {
     grade: LandingGrade;
@@ -80,13 +89,11 @@ export class GameHUDSystem {
   private bestDistanceValue: HTMLSpanElement;
   private chainValue: HTMLSpanElement;
   private distanceValue: HTMLSpanElement;
-  private coinsLabel: HTMLSpanElement;
+  private walletIcon: HTMLSpanElement;
   private coinsValue: HTMLSpanElement;
   private momentumBarLabel: HTMLSpanElement;
   private momentumBarValue: HTMLSpanElement;
-  private momentumMask: HTMLDivElement;
-  private momentumFillPrimary: HTMLImageElement;
-  private momentumFillSecondary: HTMLImageElement;
+  private momentumShell: HTMLDivElement;
   private chargeFill: HTMLDivElement;
   private orbitGraceIndicator: HTMLDivElement;
   private statusValue: HTMLParagraphElement;
@@ -146,10 +153,10 @@ export class GameHUDSystem {
           </div>
           <div class="game-hud__momentum-shell">
             <div class="game-hud__momentum-mask" data-momentum-mask>
-              <img src="${MOMENTUM_BAR_ASSETS.fill1}" alt="" class="game-hud__momentum-fill game-hud__momentum-fill--primary" data-momentum-fill-primary />
-              <img src="${MOMENTUM_BAR_ASSETS.fill2}" alt="" class="game-hud__momentum-fill game-hud__momentum-fill--secondary" data-momentum-fill-secondary />
+              <img src="${MOMENTUM_BAR_ASSETS.fill}" alt="" class="game-hud__momentum-fill" data-momentum-fill />
             </div>
             <img src="${MOMENTUM_BAR_ASSETS.bg}" alt="" class="game-hud__momentum-bg" />
+            <img src="${MOMENTUM_BAR_ASSETS.top}" alt="" class="game-hud__momentum-top" />
           </div>
         </div>
       </div>
@@ -157,8 +164,8 @@ export class GameHUDSystem {
       <div class="game-hud__play-zone game-hud__play-zone--bottom"></div>
       <div class="game-hud__stash">
         <div class="game-hud__wallet">
-          <span data-coins-label></span>
-          <strong data-coins>0</strong>
+          <span class="game-hud__wallet-icon" data-wallet-icon aria-hidden="true" style="--wallet-coin-url:url('${COIN_ICON_URL}')"></span>
+          <strong data-coins>× 0</strong>
         </div>
         <div class="game-hud__inventory"></div>
       </div>
@@ -206,13 +213,11 @@ export class GameHUDSystem {
     this.bestDistanceValue = this.element.querySelector<HTMLSpanElement>('[data-best-distance]')!;
     this.chainValue = this.element.querySelector<HTMLSpanElement>('[data-chain]')!;
     this.distanceValue = this.element.querySelector<HTMLSpanElement>('[data-distance]')!;
-    this.coinsLabel = this.element.querySelector<HTMLSpanElement>('[data-coins-label]')!;
+    this.walletIcon = this.element.querySelector<HTMLSpanElement>('[data-wallet-icon]')!;
     this.coinsValue = this.element.querySelector<HTMLSpanElement>('[data-coins]')!;
     this.momentumBarLabel = this.element.querySelector<HTMLSpanElement>('[data-momentum-bar-label]')!;
     this.momentumBarValue = this.element.querySelector<HTMLSpanElement>('[data-momentum-bar-value]')!;
-    this.momentumMask = this.element.querySelector<HTMLDivElement>('[data-momentum-mask]')!;
-    this.momentumFillPrimary = this.element.querySelector<HTMLImageElement>('[data-momentum-fill-primary]')!;
-    this.momentumFillSecondary = this.element.querySelector<HTMLImageElement>('[data-momentum-fill-secondary]')!;
+    this.momentumShell = this.element.querySelector<HTMLDivElement>('.game-hud__momentum-shell')!;
     this.chargeFill = this.element.querySelector<HTMLDivElement>('[data-charge-fill]')!;
     this.orbitGraceIndicator = this.element.querySelector<HTMLDivElement>('[data-orbit-grace]')!;
     this.statusValue = this.element.querySelector<HTMLParagraphElement>('.game-hud__status')!;
@@ -259,15 +264,14 @@ export class GameHUDSystem {
     this.highscoreValue.textContent = String(payload.highscore);
     this.bestDistanceValue.textContent = `${Math.round(payload.bestDistanceMeters)}m`;
     this.distanceValue.textContent = `${Math.round(payload.distanceMeters)}m`;
-    this.coinsValue.textContent = String(payload.coins);
+    this.coinsValue.textContent = `× ${payload.coins}`;
     this.chainValue.textContent = `${Math.round(payload.momentumGauge * 100)}%`;
     this.chainValue.style.opacity = `${0.58 + payload.momentumGauge * 0.42}`;
     this.momentumBarValue.textContent = `${Math.round(payload.momentumGauge * 100)}%`;
-    this.momentumMask.style.width = `${Math.round(payload.momentumGauge * 100)}%`;
-    const fillIntervalMs = 1000 - payload.momentumGauge * 680;
-    const fillPhase = Math.floor(performance.now() / Math.max(320, fillIntervalMs)) % 2;
-    this.momentumFillPrimary.style.opacity = fillPhase === 0 ? '1' : '0';
-    this.momentumFillSecondary.style.opacity = fillPhase === 0 ? '0' : '1';
+    this.momentumShell.style.setProperty('--momentum-ratio', payload.momentumGauge.toFixed(3));
+    const fillIntervalMs = 120;
+    const fillPhase = Math.floor(performance.now() / fillIntervalMs) % 4;
+    this.momentumShell.style.setProperty('--momentum-frame', String(fillPhase));
     this.chargeFill.style.setProperty('--charge-ratio', payload.chargeRatio.toFixed(3));
     this.orbitGraceIndicator.classList.toggle('is-visible', payload.orbitGraceActive);
     this.orbitGraceIndicator.style.setProperty('--orbit-grace-progress', payload.orbitGraceProgress.toFixed(3));
@@ -314,7 +318,6 @@ export class GameHUDSystem {
     this.chainLabel.textContent = this.i18n.t('gameMomentum');
     this.momentumBarLabel.textContent = this.i18n.t('gameMomentum');
     this.distanceLabel.textContent = this.i18n.t('gameDistance');
-    this.coinsLabel.textContent = this.i18n.t('gameCoins');
     this.exitButton.textContent = this.i18n.t('gamePortfolio');
     this.branchTitle.textContent = this.i18n.t('gameUpgradeTitle');
     this.branchHint.textContent = this.i18n.t('gameUpgradeHint');
@@ -325,7 +328,7 @@ export class GameHUDSystem {
     this.restartButton.textContent = this.i18n.t('gameRestart');
     this.returnButton.textContent = this.i18n.t('gamePortfolio');
     this.bestDistanceLabel.textContent = this.i18n.t('gameBestDistance');
-    this.coinsLabel.textContent = this.i18n.t('gameCoins');
+    this.walletIcon.title = this.i18n.t('gameCoins');
   }
 
   private renderBranchHints(
@@ -355,28 +358,77 @@ export class GameHUDSystem {
             ? this.i18n.t('gamePathForward')
             : this.i18n.t('gamePathLower');
       card.style.transform = `translate(${offer.screenX}px, ${offer.screenY}px)`;
+      const showRarity = offer.offer.item.kind === 'module';
       card.innerHTML = `
-        <span class="game-hud__upgrade-icon">${offer.offer.item.icon}</span>
-        <span class="game-hud__upgrade-rarity">${this.getRarityLabel(offer.offer.item.rarity)}</span>
+        <span class="game-hud__upgrade-media">
+          <img src="${offer.offer.item.hudIconSrc}" alt="" class="game-hud__upgrade-icon-img" />
+          ${showRarity ? `<img src="${offer.offer.item.rarityIconSrc}" alt="" class="game-hud__upgrade-rarity-icon" />` : ''}
+        </span>
+        ${showRarity ? `<span class="game-hud__upgrade-rarity">${this.getRarityLabel(offer.offer.item.rarity)}</span>` : ''}
         <span class="game-hud__upgrade-path-label">${label}</span>
         <strong class="game-hud__upgrade-path-name">${offer.offer.item.name[this.i18n.current]}</strong>
         <span class="game-hud__upgrade-path-desc">${offer.offer.item.description[this.i18n.current]}</span>
-        ${offer.price !== undefined ? `<span class="game-hud__upgrade-price">${this.i18n.t('gamePrice')}: ${offer.price}</span>` : ''}
+        ${
+          offer.price !== undefined
+            ? `<span class="game-hud__upgrade-price">${this.i18n.t('gamePrice')}: <span class="game-hud__coin-inline" aria-hidden="true" style="--wallet-coin-url:url('${COIN_ICON_URL}')"></span> × ${offer.price}</span>`
+            : ''
+        }
       `;
     });
   }
 
-  private renderInventory(items: Array<{ id: string; name: string; description: string; count: number; iconSrc: string }>) {
+  private renderInventory(items: Array<{
+    id: string;
+    name: string;
+    description: string;
+    count: number;
+    iconSrc: string;
+    rarity: RogueliteRarity;
+    rarityIconSrc: string;
+    kind: RogueliteItemKind;
+    cooldownRatio?: number;
+    chargeCurrent?: number;
+    chargeMax?: number;
+    resourceRatio?: number;
+    slot?: string | null;
+  }>) {
     this.inventoryBar.innerHTML = '';
     this.stashBar.classList.add('is-visible');
     items.forEach((item) => {
       const chip = document.createElement('div');
       chip.className = 'game-hud__inventory-item';
+      const itemDefinition = getItemById(item.id);
+      const showRarity = item.kind === 'module';
+      const hasCharges = (item.chargeMax ?? 0) > 0;
+      const hasResource = (item.resourceRatio ?? 0) > 0 || item.slot === 'souffleur';
+      const hasCooldown =
+        (item.cooldownRatio ?? 0) > 0 ||
+        item.slot === 'souffleur' ||
+        item.slot === 'shield' ||
+        item.slot === 'wrapper' ||
+        item.slot === 'big_canon' ||
+        item.slot === 'front_canon' ||
+        item.slot === 'grappin';
+      const cooldownProgress = Math.max(0, Math.min(1, 1 - (item.cooldownRatio ?? 0)));
+      const chargeDots = hasCharges
+        ? Array.from({ length: item.chargeMax ?? 0 }, (_, index) => {
+            const active = index < (item.chargeCurrent ?? 0);
+            return `<span class="game-hud__inventory-charge-dot${active ? ' is-active' : ''}" aria-hidden="true"></span>`;
+          }).join('')
+        : '';
       chip.innerHTML = `
-        <img src="${item.iconSrc}" alt="" class="game-hud__inventory-icon" />
-        <span class="game-hud__inventory-count">x${item.count}</span>
+        <div class="game-hud__inventory-media">
+          <img src="${item.iconSrc}" alt="" class="game-hud__inventory-icon" />
+          ${showRarity ? `<img src="${item.rarityIconSrc}" alt="" class="game-hud__inventory-rarity" />` : ''}
+        </div>
+        <div class="game-hud__inventory-copy">
+          <strong class="game-hud__inventory-name">${itemDefinition?.name[this.i18n.current] ?? item.name}</strong>
+          <span class="game-hud__inventory-desc">${itemDefinition?.description[this.i18n.current] ?? item.description}</span>
+          ${hasCooldown || hasCharges ? `<span class="game-hud__inventory-signals">${hasCooldown ? `<span class="game-hud__inventory-cooldown" style="--cooldown-progress:${cooldownProgress.toFixed(3)}"><span></span></span>` : ''}${hasCharges ? `<span class="game-hud__inventory-charge-dots">${chargeDots}</span>` : ''}</span>` : ''}
+          ${hasResource ? `<span class="game-hud__inventory-meter game-hud__inventory-meter--resource"><span style="width:${Math.round((item.resourceRatio ?? 0) * 100)}%"></span></span>` : ''}
+        </div>
+        ${item.count > 1 ? `<span class="game-hud__inventory-count">x${item.count}</span>` : ''}
       `;
-      chip.title = `${item.name} — ${item.description}`;
       this.inventoryBar.appendChild(chip);
     });
   }
@@ -400,10 +452,15 @@ export class GameHUDSystem {
       if (!hint) return;
       const affordable = (hint.price ?? 0) <= coins;
       button.disabled = !affordable;
+      const showRarity = hint.offer.item.kind === 'module';
       button.innerHTML = `
+        <span class="game-hud__shop-offer-media">
+          <img src="${hint.offer.item.hudIconSrc}" alt="" class="game-hud__shop-offer-icon" />
+          ${showRarity ? `<img src="${hint.offer.item.rarityIconSrc}" alt="" class="game-hud__shop-offer-rarity" />` : ''}
+        </span>
         <strong>${hint.offer.item.name[this.i18n.current]}</strong>
         <span>${hint.offer.item.description[this.i18n.current]}</span>
-        <em>${this.i18n.t('gamePrice')}: ${hint.price ?? 0}</em>
+        <em class="game-hud__shop-price"><span class="game-hud__coin-inline" aria-hidden="true" style="--wallet-coin-url:url('${COIN_ICON_URL}')"></span> × ${hint.price ?? 0}</em>
       `;
       button.classList.toggle('is-disabled', !affordable);
     });
@@ -448,7 +505,12 @@ export class GameHUDSystem {
     this.landingFeedbackBadge.classList.toggle('is-twist', feedback.twist);
     this.landingFeedbackBadge.classList.add('is-visible');
     this.landingFeedbackBadge.style.setProperty('--landing-progress', feedback.progress.toFixed(3));
-    this.landingFeedbackBadge.style.transform = `translate(${feedback.screenX}px, ${feedback.screenY}px)`;
+    const popScale =
+      feedback.progress < 0.2
+        ? 0.78 + (feedback.progress / 0.2) * 0.34
+        : 1.12 - Math.min(1, (feedback.progress - 0.2) / 0.8) * 0.12;
+    const driftY = feedback.screenY - feedback.progress * 24;
+    this.landingFeedbackBadge.style.transform = `translate(${feedback.screenX}px, ${driftY}px) scale(${popScale.toFixed(3)})`;
   }
 
   private getLandingGradeLabel(grade: LandingGrade) {
@@ -476,7 +538,10 @@ export class GameHUDSystem {
   }
 
   private preloadUiAssets() {
-    Object.values(GRADE_ASSET_URLS).concat(Object.values(MOMENTUM_BAR_ASSETS)).forEach((src) => {
+    const itemAssets = rogueliteItems.flatMap((item) => [item.hudIconSrc, item.rarityIconSrc]);
+    Object.values(GRADE_ASSET_URLS)
+      .concat(Object.values(MOMENTUM_BAR_ASSETS), [COIN_ICON_URL], itemAssets)
+      .forEach((src) => {
       const image = new Image();
       image.decoding = 'async';
       image.src = src;

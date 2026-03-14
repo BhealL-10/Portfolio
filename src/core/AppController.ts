@@ -766,15 +766,12 @@ export class AppController {
       landingFeedback: hudState.landingFeedback
         ? (() => {
             const projected = this.renderer.projectWorldToScreen(hudState.landingFeedback.worldPosition);
-            if (!projected.visible) {
-              return null;
-            }
             return {
               grade: hudState.landingFeedback.grade,
               twist: hudState.landingFeedback.twist,
               progress: hudState.landingFeedback.progress,
-              screenX: projected.x,
-              screenY: projected.y
+              screenX: THREE.MathUtils.clamp(projected.x, 24, window.innerWidth - 24),
+              screenY: THREE.MathUtils.clamp(projected.y, 24, window.innerHeight - 24)
             };
           })()
         : null,

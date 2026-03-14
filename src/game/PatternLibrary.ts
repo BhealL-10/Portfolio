@@ -20,7 +20,7 @@ export interface GamePathPattern {
   nodes: GamePatternNodeTemplate[];
 }
 
-const ALL_EVENTS: GameEventType[] = ['shop', 'treasure', 'gift', 'mini_boss', 'rare_item'];
+const ALL_EVENTS: GameEventType[] = ['shop', 'gift', 'rare_item'];
 const ROUND_ONLY: GameShardShapeKind[] = ['round', 'oval', 'triangular'];
 const ROUND_OVAL: GameShardShapeKind[] = ['round', 'oval', 'triangular'];
 const ALL_SHAPES: GameShardShapeKind[] = ['round', 'oval', 'triangular'];

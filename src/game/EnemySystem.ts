@@ -11,8 +11,7 @@ export interface EnemyMarker {
   pole: 'north' | 'south';
 }
 
-const ENEMY_SPRITE_LIGHT_URL = new URL('../../assets/images/spritesheet/Spritsheetennemielight.png', import.meta.url).href;
-const ENEMY_SPRITE_DARK_URL = new URL('../../assets/images/spritesheet/Spritsheetennemiedark.png', import.meta.url).href;
+const ENEMY_SPRITE_URL = new URL('../../assets/images/spritesheet/Spritsheetennemie.png', import.meta.url).href;
 
 export class EnemySystem {
   private readonly group = new THREE.Group();
@@ -29,25 +28,26 @@ export class EnemySystem {
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
     this.theme = theme;
-    SpriteSheetPlane.preload(ENEMY_SPRITE_LIGHT_URL, { columns: 2, rows: 2 });
-    SpriteSheetPlane.preload(ENEMY_SPRITE_DARK_URL, { columns: 2, rows: 2 });
-    for (let index = 0; index < 32; index += 1) {
+    SpriteSheetPlane.preload(ENEMY_SPRITE_URL, { columns: 4, rows: 2 });
+    for (let index = 0; index < 64; index += 1) {
       const group = new THREE.Group();
       const body = new SpriteSheetPlane({
-        textureUrl: this.getEnemySpriteUrl(),
-        layout: { columns: 2, rows: 2 },
-        width: 2.1,
-        height: 2.1,
+        textureUrl: ENEMY_SPRITE_URL,
+        layout: { columns: 4, rows: 2 },
+        width: 2.56,
+        height: 2.56,
         alphaTest: 0.08,
         doubleSided: true,
-        renderOrder: 14
+        renderOrder: 32
       });
       body.mesh.material.depthTest = false;
+      body.mesh.material.depthWrite = false;
       const backArrow = new THREE.Mesh(
         new THREE.ConeGeometry(0.12, 0.34, 3),
         new THREE.MeshBasicMaterial({ color: theme === 'dark' ? '#393F4A' : '#D4BF9B', transparent: true, opacity: 0.95 })
       );
       backArrow.material.depthTest = false;
+      backArrow.renderOrder = 33;
       backArrow.rotation.z = Math.PI;
       group.add(body.group, backArrow);
       group.visible = false;
@@ -60,6 +60,9 @@ export class EnemySystem {
 
   setTheme(theme: ThemeMode) {
     this.theme = theme;
+    this.pool.forEach((entry) => {
+      entry.backArrow.material.color.set(this.theme === 'dark' ? '#D4BF9B' : '#393F4A');
+    });
   }
 
   setVisible(visible: boolean) {
@@ -76,6 +79,7 @@ export class EnemySystem {
 
   update(markers: EnemyMarker[], elapsedTime: number) {
     const activeIds = new Set(markers.filter((marker) => marker.visible).map((marker) => marker.id));
+    const usedEntries = new Set<(typeof this.pool)[number]>();
     this.assignedIds.clear();
 
     this.pool.forEach((entry) => {
@@ -91,32 +95,33 @@ export class EnemySystem {
       }
       const entry =
         this.pool.find((candidate) => candidate.activeId === marker.id) ??
-        this.pool.find((candidate) => !candidate.group.visible && !candidate.dying && candidate.activeId === null) ??
-        this.pool.find((candidate) => !this.assignedIds.has(candidate.activeId ?? '')) ??
+        this.pool.find((candidate) => !usedEntries.has(candidate) && !candidate.dying && !candidate.group.visible) ??
+        this.pool.find((candidate) => !usedEntries.has(candidate) && !candidate.dying && candidate.activeId === null) ??
+        this.pool.find((candidate) => !usedEntries.has(candidate) && !candidate.dying) ??
         this.pool[markerIndex % this.pool.length];
 
       if (!entry) {
         return;
       }
 
+      usedEntries.add(entry);
       this.assignedIds.add(marker.id);
       entry.activeId = marker.id;
       entry.dying = false;
       entry.group.visible = true;
-      entry.body.setTexture(this.getEnemySpriteUrl());
       entry.body.mesh.material.opacity = 1;
       entry.body.mesh.material.color.set(marker.tier === 'invincible' ? '#F06A5A' : '#FFFFFF');
-      entry.body.playLoop([0, 1], marker.tier === 'invincible' ? 7.4 : marker.tier === 'elite' ? 6.8 : 5.6, elapsedTime + markerIndex * 0.07);
-      entry.backArrow.material.color.set(this.theme === 'dark' ? '#393F4A' : '#D4BF9B');
+      entry.body.playLoop([0, 1, 2, 3], marker.tier === 'invincible' ? 8.2 : marker.tier === 'elite' ? 7.1 : 6.1, elapsedTime + markerIndex * 0.07);
+      entry.backArrow.material.color.set(this.theme === 'dark' ? '#D4BF9B' : '#393F4A');
       entry.backArrow.material.opacity = 0.95;
       entry.group.position.copy(marker.position);
-      entry.group.position.z += 0.44;
+      entry.group.position.z += 0.88;
       entry.group.rotation.set(0, 0, 0);
-      const scale = marker.tier === 'elite' ? 1.62 : marker.tier === 'armored' ? 1.42 : marker.tier === 'invincible' ? 1.8 : 1.28;
+      const scale = marker.tier === 'elite' ? 0.85 : marker.tier === 'armored' ? 0.74 : marker.tier === 'invincible' ? 0.91 : 0.67;
       entry.group.scale.setScalar(scale);
       entry.body.group.scale.set(1, marker.pole === 'south' ? -1 : 1, 1);
-      entry.body.group.position.set(0, marker.pole === 'north' ? 0.28 : -0.28, 0);
-      entry.backArrow.position.set(0, marker.pole === 'north' ? -1.04 : 1.04, 0.02);
+      entry.body.group.position.set(0, marker.pole === 'north' ? 0.46 : -0.46, 0);
+      entry.backArrow.position.set(0, marker.pole === 'north' ? -1.34 : 1.34, 0.02);
       entry.backArrow.rotation.z = marker.pole === 'north' ? Math.PI : 0;
     });
 
@@ -133,28 +138,20 @@ export class EnemySystem {
         entry.activeId = null;
         return;
       }
-      {
-        if (entry.dying) {
-          const deathElapsed = elapsedTime - entry.deathStartedAt;
-          if (deathElapsed >= 0.32) {
-            entry.group.visible = false;
-            entry.activeId = null;
-            entry.dying = false;
-            return;
-          }
-          entry.group.visible = true;
-          entry.body.setTexture(this.getEnemySpriteUrl());
-          entry.body.playLoop([2, 3], 9.5, deathElapsed);
-          const fade = Math.max(0, 1 - deathElapsed / 0.32);
-          entry.body.mesh.material.opacity = fade;
-          entry.backArrow.material.opacity = fade;
+      if (entry.dying) {
+        const deathElapsed = elapsedTime - entry.deathStartedAt;
+        if (deathElapsed >= 0.52) {
+          entry.group.visible = false;
+          entry.activeId = null;
+          entry.dying = false;
           return;
         }
+        entry.group.visible = true;
+        entry.body.playLoop([4, 5, 6, 7], 9.2, deathElapsed);
+        const fade = Math.max(0, 1 - deathElapsed / 0.52);
+        entry.body.mesh.material.opacity = fade;
+        entry.backArrow.material.opacity = fade;
       }
     });
-  }
-
-  private getEnemySpriteUrl() {
-    return this.theme === 'dark' ? ENEMY_SPRITE_DARK_URL : ENEMY_SPRITE_LIGHT_URL;
   }
 }

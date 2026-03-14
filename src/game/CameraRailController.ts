@@ -9,8 +9,8 @@ export class CameraRailController {
   private readonly lookAt = new THREE.Vector3();
   private currentFocus = new THREE.Vector2();
   private targetFocus = new THREE.Vector2();
-  private currentZoom = 18.8;
-  private targetZoom = 18.8;
+  private currentZoom = 13.9;
+  private targetZoom = 13.9;
   private railX = -12;
   private safeLeft = -Infinity;
   private safeRight = Infinity;
@@ -22,8 +22,8 @@ export class CameraRailController {
     this.railX = node.resolvedX - 4.4;
     this.currentFocus.set(node.resolvedX + 4.2, node.resolvedY);
     this.targetFocus.copy(this.currentFocus);
-    this.currentZoom = 18.8;
-    this.targetZoom = 18.8;
+    this.currentZoom = 13.9;
+    this.targetZoom = 13.9;
     this.position.set(this.currentFocus.x - CameraRailController.CAMERA_CENTER_OFFSET, node.resolvedY + 0.18, this.currentZoom);
     this.lookAt.set(this.currentFocus.x, node.resolvedY, 0);
     this.safeLeft = -Infinity;
@@ -43,7 +43,6 @@ export class CameraRailController {
     largeShardFactor: number;
     milestoneZoom: number;
     choiceZoom: number;
-    bossZoom: number;
     speedPressure: number;
   }) {
     const {
@@ -57,7 +56,6 @@ export class CameraRailController {
       largeShardFactor,
       milestoneZoom,
       choiceZoom,
-      bossZoom,
       speedPressure
     } = config;
     const profile = getDifficultyProfile(score);
@@ -85,14 +83,13 @@ export class CameraRailController {
     this.currentFocus.x = currentNode.isGigantic ? nextFocusX : Math.max(this.currentFocus.x, playerPosition.x - 0.08, nextFocusX);
     this.currentFocus.y = damp(this.currentFocus.y, this.targetFocus.y, currentNode.isGigantic ? 7.8 : 1.95 + laneFocusBias * 1.7, deltaTime);
 
-    const momentumZoom = profile.momentumZoomRange * 1.35 * Math.pow(momentumGauge, 0.74);
+    const momentumZoom = profile.momentumZoomRange * 1.02 * Math.pow(momentumGauge, 0.72);
     this.targetZoom =
       profile.baseZoom +
       momentumZoom +
       profile.largeShardZoom * largeShardFactor +
       milestoneZoom +
-      choiceZoom +
-      bossZoom;
+      choiceZoom;
     this.currentZoom = damp(this.currentZoom, this.targetZoom, currentNode.isGigantic ? 14.5 : state === 'upgrade_branching' ? 1.9 : 2.6, deltaTime);
 
     this.position.set(this.currentFocus.x - CameraRailController.CAMERA_CENTER_OFFSET, this.currentFocus.y + 0.18, this.currentZoom);

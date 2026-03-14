@@ -282,9 +282,9 @@ body {
 
 .game-hud__panel {
   position: absolute;
-  top: calc(var(--safe-top) + 72px);
+  top: calc(var(--safe-top) + 84px);
   right: calc(var(--safe-right) + 18px);
-  width: min(340px, calc(100vw - 36px));
+  width: min(320px, calc(100vw - 36px));
   border-radius: 30px;
   padding: 18px;
   backdrop-filter: blur(18px);
@@ -380,43 +380,64 @@ body {
 }
 
 .game-hud__momentum-shell {
+  --momentum-ratio: 0;
+  --momentum-frame: 0;
   position: relative;
   width: min(100%, 360px);
   aspect-ratio: 512 / 64;
+  isolation: isolate;
+  contain: paint;
+  pointer-events: none;
 }
 
 .game-hud__momentum-bg,
-.game-hud__momentum-fill {
+.game-hud__momentum-fill,
+.game-hud__momentum-top {
   display: block;
   width: 100%;
-  height: 100%;
   user-select: none;
   -webkit-user-drag: none;
   object-fit: fill;
+  backface-visibility: hidden;
+  opacity: 1;
 }
 
 .game-hud__momentum-mask {
   position: absolute;
   inset: 0;
-  width: 0%;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
+  clip-path: inset(0 calc((1 - var(--momentum-ratio)) * 100%) 0 0);
   z-index: 1;
+  pointer-events: none;
+  will-change: clip-path;
 }
 
 .game-hud__momentum-fill {
   position: absolute;
-  inset: 0;
-  transition: opacity 120ms linear;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 400%;
+  transform: translate3d(0, calc(var(--momentum-frame) * -25%), 0);
+  transform-origin: top left;
+  will-change: transform;
+  transition: none;
 }
 
 .game-hud__momentum-bg {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  height: 100%;
+  z-index: 0;
 }
 
-.game-hud__momentum-fill--secondary {
-  opacity: 0;
+.game-hud__momentum-top {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  z-index: 2;
 }
 
 .game-hud__orbit-grace {
@@ -512,6 +533,7 @@ body {
   transform: translate(-9999px, -9999px);
   translate: -100% -50%;
   transition: opacity 120ms ease;
+  transform-origin: left center;
 }
 
 .game-hud__landing-feedback.is-visible {
@@ -527,8 +549,8 @@ body {
 }
 
 .game-hud__landing-feedback-asset--twist {
-  height: 28px;
-  margin-left: 6px;
+  height: 52px;
+  margin-left: 4px;
 }
 
 .game-hud__landing-feedback.is-twist .game-hud__landing-feedback-asset--grade {
@@ -537,7 +559,7 @@ body {
 
 .game-hud__stash {
   position: absolute;
-  top: calc(var(--safe-top) + 18px);
+  top: calc(var(--safe-top) + 84px);
   left: calc(var(--safe-left) + 18px);
   display: grid;
   gap: 10px;
@@ -545,6 +567,7 @@ body {
   opacity: 0;
   pointer-events: none;
   transition: opacity 180ms ease;
+  z-index: 55;
 }
 
 .game-hud__stash.is-visible {
@@ -564,11 +587,29 @@ body {
   box-shadow: 0 18px 44px rgb(var(--color-fg-rgb) / 0.08);
 }
 
-.game-hud__wallet span {
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgb(var(--color-fg-rgb) / 0.72);
+.game-hud__wallet-icon {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  display: block;
+  background-image: var(--wallet-coin-url);
+  background-repeat: no-repeat;
+  background-size: 400% 100%;
+  background-position: 0% 0%;
+  filter: drop-shadow(0 0 6px rgb(var(--color-fg-rgb) / 0.14));
+}
+
+.game-hud__coin-inline {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: inline-block;
+  vertical-align: middle;
+  background-image: var(--wallet-coin-url);
+  background-repeat: no-repeat;
+  background-size: 400% 100%;
+  background-position: 0% 0%;
+  filter: drop-shadow(0 0 6px rgb(var(--color-fg-rgb) / 0.14));
 }
 
 .game-hud__wallet strong {
@@ -576,31 +617,47 @@ body {
 }
 
 .game-hud__inventory {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 10px;
 }
 
 .game-hud__inventory-item {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  padding: 6px;
-  border-radius: 16px;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px 12px;
+  border-radius: 18px;
   backdrop-filter: blur(18px);
   background: rgb(var(--color-bg-rgb) / 0.92);
   border: 1px solid rgb(var(--color-fg-rgb) / 0.16);
   box-shadow: 0 18px 44px rgb(var(--color-fg-rgb) / 0.08);
   position: relative;
+  max-width: min(360px, calc(100vw - 36px));
+}
+
+.game-hud__inventory-media {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
 }
 
 .game-hud__inventory-icon {
-  width: 24px;
-  height: 24px;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
   object-fit: contain;
   filter: drop-shadow(0 0 6px rgb(var(--color-fg-rgb) / 0.14));
+}
+
+.game-hud__inventory-rarity {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
 }
 
 .game-hud__inventory-count {
@@ -620,9 +677,104 @@ body {
   text-transform: uppercase;
 }
 
-.game-hud__inventory-copy,
-.game-hud__inventory-name,
-.game-hud__inventory-desc,
+.game-hud__inventory-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.game-hud__inventory-name {
+  display: block;
+  font-size: 0.82rem;
+  line-height: 1.2;
+}
+
+.game-hud__inventory-desc {
+  display: block;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: rgb(var(--color-fg-rgb) / 0.72);
+}
+
+.game-hud__inventory-meta {
+  font-size: 0.66rem;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgb(var(--color-fg-rgb) / 0.62);
+}
+
+.game-hud__inventory-signals {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+}
+
+.game-hud__inventory-cooldown {
+  --cooldown-progress: 1;
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background:
+    radial-gradient(circle at center, rgb(var(--color-bg-rgb)) 46%, transparent 48%),
+    conic-gradient(
+      rgb(var(--color-fg-rgb) / 0.94) calc(var(--cooldown-progress) * 1turn),
+      rgb(var(--color-fg-rgb) / 0.12) 0
+    );
+}
+
+.game-hud__inventory-cooldown span {
+  position: absolute;
+  inset: 4px;
+  border-radius: inherit;
+  background: rgb(var(--color-bg-rgb) / 0.94);
+  border: 1px solid rgb(var(--color-fg-rgb) / 0.14);
+}
+
+.game-hud__inventory-charge-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.game-hud__inventory-charge-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgb(var(--color-fg-rgb) / 0.18);
+  box-shadow: inset 0 0 0 1px rgb(var(--color-fg-rgb) / 0.12);
+}
+
+.game-hud__inventory-charge-dot.is-active {
+  background: rgb(var(--color-fg-rgb) / 0.94);
+  box-shadow: 0 0 0 1px rgb(var(--color-bg-rgb) / 0.18);
+}
+
+.game-hud__inventory-meter {
+  display: block;
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(var(--color-fg-rgb) / 0.1);
+  border: 1px solid rgb(var(--color-fg-rgb) / 0.12);
+}
+
+.game-hud__inventory-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: rgb(var(--color-fg-rgb) / 0.88);
+}
+
+.game-hud__inventory-meter--resource span {
+  background: rgb(var(--color-fg-rgb) / 0.9);
+}
+
 .game-hud__charge,
 .game-hud__orbit-grace,
 .game-hud__status,
@@ -694,6 +846,12 @@ body {
   color: rgb(var(--color-fg-rgb) / 0.72);
 }
 
+.game-hud__shop-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .game-hud__branch-header {
   position: absolute;
   left: 50%;
@@ -746,6 +904,34 @@ body {
   color: rgb(var(--color-fg-rgb) / 0.72);
 }
 
+.game-hud__upgrade-media,
+.game-hud__shop-offer-media {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.game-hud__upgrade-icon-img,
+.game-hud__shop-offer-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 6px rgb(var(--color-fg-rgb) / 0.14));
+}
+
+.game-hud__upgrade-rarity-icon,
+.game-hud__shop-offer-rarity {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
 .game-hud__upgrade-path-label {
   font-size: 0.7rem;
   letter-spacing: 0.08em;
@@ -763,6 +949,9 @@ body {
 }
 
 .game-hud__upgrade-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 0.72rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1028,6 +1217,8 @@ body {
 
   .game-hud__momentum-dock {
     width: min(360px, calc(100vw - 36px));
+    left: calc(var(--safe-left) + 12px);
+    bottom: calc(var(--safe-bottom) + 12px);
   }
 
   .game-hud__branch-card {
@@ -1062,6 +1253,8 @@ body {
   }
 
   .game-hud__stash {
+    top: calc(var(--safe-top) + 92px);
     max-width: calc(100vw - 36px);
+    left: calc(var(--safe-left) + 12px);
   }
 }

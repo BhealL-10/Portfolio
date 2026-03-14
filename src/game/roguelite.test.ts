@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { applyItemToRunState, buildUpgradeOffers, createRunUpgradeState, getNextUpgradeMilestone } from './roguelite';
+import {
+  applyItemToRunState,
+  buildUpgradeOffers,
+  createRunUpgradeState,
+  getNextUpgradeMilestone,
+  getRarityRank
+} from './roguelite';
 
 describe('roguelite milestones', () => {
   it('returns the expected milestone sequence', () => {
@@ -20,7 +26,7 @@ describe('buildUpgradeOffers', () => {
 
   it('respects early rarity gates', () => {
     const offers = buildUpgradeOffers(10, createRunUpgradeState(), () => 0.98);
-    expect(offers.every((offer) => ['common', 'uncommon', 'rare'].includes(offer.item.rarity))).toBe(true);
+    expect(offers.every((offer) => ['common', 'uncommon'].includes(offer.item.rarity))).toBe(true);
   });
 
   it('unlocks epic and legendary later', () => {
@@ -31,20 +37,40 @@ describe('buildUpgradeOffers', () => {
     expect(lateOffers.some((offer) => ['epic', 'legendary'].includes(offer.item.rarity))).toBe(true);
   });
 
-  it('filters non stackable owned items', () => {
+  it('does not offer the same owned module rarity again', () => {
     let state = createRunUpgradeState();
-    state = applyItemToRunState(state, 'double_jump_module');
+    state = applyItemToRunState(state, 'plane_common');
     const offers = buildUpgradeOffers(60, state, () => 0.1);
-    expect(offers.some((offer) => offer.item.id === 'double_jump_module')).toBe(false);
+    expect(offers.some((offer) => offer.item.id === 'plane_common')).toBe(false);
   });
 });
 
 describe('applyItemToRunState', () => {
-  it('stacks passive modifiers and clamps them', () => {
+  it('replaces a passive with a higher rarity version', () => {
     let state = createRunUpgradeState();
-    state = applyItemToRunState(state, 'overdrive_core');
-    state = applyItemToRunState(state, 'overdrive_core');
-    expect(state.modifiers.momentumGain).toBeGreaterThan(0);
-    expect(state.counts.overdrive_core).toBe(2);
+    state = applyItemToRunState(state, 'gyro_stabilizer_common');
+    state = applyItemToRunState(state, 'gyro_stabilizer_rare');
+    expect(state.counts.gyro_stabilizer_common).toBeUndefined();
+    expect(state.counts.gyro_stabilizer_rare).toBe(1);
+    expect(state.passives.gyro_stabilizer).toBe('gyro_stabilizer_rare');
+    expect(state.ownedOrder).toEqual(['gyro_stabilizer_rare']);
+  });
+
+  it('replaces a module with a higher rarity version and refreshes runtime', () => {
+    let state = createRunUpgradeState();
+    state = applyItemToRunState(state, 'wrapper_common');
+    state = applyItemToRunState(state, 'wrapper_epic');
+    expect(state.counts.wrapper_common).toBeUndefined();
+    expect(state.counts.wrapper_epic).toBe(1);
+    expect(state.modules.wrapper).toBe('wrapper_epic');
+    expect(state.moduleRuntime.wrapper?.itemId).toBe('wrapper_epic');
+  });
+
+  it('only offers higher rarities for an already owned module', () => {
+    let state = createRunUpgradeState();
+    state = applyItemToRunState(state, 'shield_uncommon');
+    const offers = buildUpgradeOffers(100, state, () => 0.72);
+    const shieldOffers = offers.filter((offer) => offer.item.baseId === 'shield');
+    expect(shieldOffers.every((offer) => getRarityRank(offer.item.rarity) > getRarityRank('uncommon'))).toBe(true);
   });
 });
