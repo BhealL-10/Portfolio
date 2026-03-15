@@ -190,53 +190,53 @@ interface RogueliteItemBlueprint {
 const loc = (fr: string, en: string): LocalizedText => ({ fr, en });
 
 const RARITY_ICON_URLS: Record<RogueliteRarity, string> = {
-  common: new URL('../../assets/images/itemhud/rarity-common.png', import.meta.url).href,
-  uncommon: new URL('../../assets/images/itemhud/rarity-uncommon.png', import.meta.url).href,
-  rare: new URL('../../assets/images/itemhud/rarity-rare.png', import.meta.url).href,
-  epic: new URL('../../assets/images/itemhud/rarity-epique.png', import.meta.url).href,
-  legendary: new URL('../../assets/images/itemhud/rarity-legendaire.png', import.meta.url).href
+  common: new URL('../../assets/images/itemhud/hud-rarity-common.png', import.meta.url).href,
+  uncommon: new URL('../../assets/images/itemhud/hud-rarity-uncommon.png', import.meta.url).href,
+  rare: new URL('../../assets/images/itemhud/hud-rarity-rare.png', import.meta.url).href,
+  epic: new URL('../../assets/images/itemhud/hud-rarity-epic.png', import.meta.url).href,
+  legendary: new URL('../../assets/images/itemhud/hud-rarity-legendary.png', import.meta.url).href
 };
 const A_PROD_ICON_URL = '/assets/images/Logo/logomodedark.svg';
 
 const MODULE_SHEET_URLS = {
-  plane: new URL('../../assets/images/spritesheet/PlaneSheet.png', import.meta.url).href,
-  wings: new URL('../../assets/images/spritesheet/wingSheet.png', import.meta.url).href,
-  propulseur: new URL('../../assets/images/spritesheet/PropulseurSheet.png', import.meta.url).href,
-  reacteur_front: new URL('../../assets/images/spritesheet/ReacteurFrontSheet.png', import.meta.url).href,
-  reacteur_back: new URL('../../assets/images/spritesheet/ReacteurBackSheet.png', import.meta.url).href,
-  shield: new URL('../../assets/images/spritesheet/ShieldSheet.png', import.meta.url).href,
-  souffleur: new URL('../../assets/images/spritesheet/SouffleurSheet.png', import.meta.url).href,
-  wrapper: new URL('../../assets/images/spritesheet/WrapperSheet.png', import.meta.url).href,
-  magnet: new URL('../../assets/images/spritesheet/Magnetsheet.png', import.meta.url).href,
-  big_canon: new URL('../../assets/images/spritesheet/BigCanonSheet.png', import.meta.url).href,
-  front_canon: new URL('../../assets/images/spritesheet/FrontCanonSheet.png', import.meta.url).href,
-  grappin: new URL('../../assets/images/spritesheet/GrapSheet.png', import.meta.url).href
+  plane: new URL('../../assets/images/spritesheet/module-plane-spritesheet.png', import.meta.url).href,
+  wings: new URL('../../assets/images/spritesheet/module-wings-spritesheet.png', import.meta.url).href,
+  propulseur: new URL('../../assets/images/spritesheet/module-thruster-spritesheet.png', import.meta.url).href,
+  reacteur_front: new URL('../../assets/images/spritesheet/module-front-reactor-spritesheet.png', import.meta.url).href,
+  reacteur_back: new URL('../../assets/images/spritesheet/module-rear-reactor-spritesheet.png', import.meta.url).href,
+  shield: new URL('../../assets/images/spritesheet/module-shield-spritesheet.png', import.meta.url).href,
+  souffleur: new URL('../../assets/images/spritesheet/module-blower-spritesheet.png', import.meta.url).href,
+  wrapper: new URL('../../assets/images/spritesheet/module-wrapper-spritesheet.png', import.meta.url).href,
+  magnet: new URL('../../assets/images/spritesheet/module-magnet-spritesheet.png', import.meta.url).href,
+  big_canon: new URL('../../assets/images/spritesheet/module-big-cannon-spritesheet.png', import.meta.url).href,
+  front_canon: new URL('../../assets/images/spritesheet/module-front-cannon-spritesheet.png', import.meta.url).href,
+  grappin: new URL('../../assets/images/spritesheet/module-grappling-hook-spritesheet.png', import.meta.url).href
 } as const;
 
 const HUD_ICON_URLS = {
-  plane: new URL('../../assets/images/itemhud/Planehud.png', import.meta.url).href,
-  wings: new URL('../../assets/images/itemhud/WingHud.png', import.meta.url).href,
-  propulseur: new URL('../../assets/images/itemhud/PropulseurHud.png', import.meta.url).href,
-  reacteur_front: new URL('../../assets/images/itemhud/Frontreactorhud.png', import.meta.url).href,
-  reacteur_back: new URL('../../assets/images/itemhud/backreactorhud.png', import.meta.url).href,
-  shield: new URL('../../assets/images/itemhud/Shieldhud.png', import.meta.url).href,
-  souffleur: new URL('../../assets/images/itemhud/Soufleurhud.png', import.meta.url).href,
-  wrapper: new URL('../../assets/images/itemhud/Wrapperhud.png', import.meta.url).href,
-  magnet: new URL('../../assets/images/itemhud/MagnetHud.png', import.meta.url).href,
-  big_canon: new URL('../../assets/images/itemhud/Bigcanonhud.png', import.meta.url).href,
-  front_canon: new URL('../../assets/images/itemhud/Frontcanonhud.png', import.meta.url).href,
-  grappin: new URL('../../assets/images/itemhud/Grappin hud.png', import.meta.url).href,
-  gouvernail: new URL('../../assets/images/itemhud/Gourvernail.png', import.meta.url).href,
-  bourse: new URL('../../assets/images/itemhud/boursehud.png', import.meta.url).href,
-  contrebandier: new URL('../../assets/images/itemhud/premiercartehud.png', import.meta.url).href,
-  longue_vue: new URL('../../assets/images/itemhud/Longuevuehud.png', import.meta.url).href,
-  totem: new URL('../../assets/images/itemhud/Totemhud.png', import.meta.url).href,
-  carte_tresor: new URL('../../assets/images/itemhud/premiercartehud.png', import.meta.url).href,
-  compas: new URL('../../assets/images/itemhud/angle-morthud.png', import.meta.url).href,
-  queue: new URL('../../assets/images/itemhud/déflation.png', import.meta.url).href,
-  perroquet: new URL('../../assets/images/itemhud/Cloverhud.png', import.meta.url).href,
-  ceinture: new URL('../../assets/images/itemhud/Belthud.png', import.meta.url).href,
-  amortisseurs: new URL('../../assets/images/itemhud/amortiseurhud.png', import.meta.url).href,
+  plane: new URL('../../assets/images/itemhud/hud-module-plane.png', import.meta.url).href,
+  wings: new URL('../../assets/images/itemhud/hud-module-wings.png', import.meta.url).href,
+  propulseur: new URL('../../assets/images/itemhud/hud-module-thruster.png', import.meta.url).href,
+  reacteur_front: new URL('../../assets/images/itemhud/hud-module-front-reactor.png', import.meta.url).href,
+  reacteur_back: new URL('../../assets/images/itemhud/hud-module-rear-reactor.png', import.meta.url).href,
+  shield: new URL('../../assets/images/itemhud/hud-module-shield.png', import.meta.url).href,
+  souffleur: new URL('../../assets/images/itemhud/hud-module-blower.png', import.meta.url).href,
+  wrapper: new URL('../../assets/images/itemhud/hud-module-wrapper.png', import.meta.url).href,
+  magnet: new URL('../../assets/images/itemhud/hud-module-magnet.png', import.meta.url).href,
+  big_canon: new URL('../../assets/images/itemhud/hud-module-big-cannon.png', import.meta.url).href,
+  front_canon: new URL('../../assets/images/itemhud/hud-module-front-cannon.png', import.meta.url).href,
+  grappin: new URL('../../assets/images/itemhud/hud-module-grappling-hook.png', import.meta.url).href,
+  gouvernail: new URL('../../assets/images/itemhud/hud-passive-rudder.png', import.meta.url).href,
+  bourse: new URL('../../assets/images/itemhud/hud-passive-purse.png', import.meta.url).href,
+  contrebandier: new URL('../../assets/images/itemhud/hud-passive-map.png', import.meta.url).href,
+  longue_vue: new URL('../../assets/images/itemhud/hud-passive-spyglass.png', import.meta.url).href,
+  totem: new URL('../../assets/images/itemhud/hud-passive-totem.png', import.meta.url).href,
+  carte_tresor: new URL('../../assets/images/itemhud/hud-passive-map.png', import.meta.url).href,
+  compas: new URL('../../assets/images/itemhud/hud-passive-compass.png', import.meta.url).href,
+  queue: new URL('../../assets/images/itemhud/hud-passive-tail.png', import.meta.url).href,
+  perroquet: new URL('../../assets/images/itemhud/hud-passive-parrot.png', import.meta.url).href,
+  ceinture: new URL('../../assets/images/itemhud/hud-passive-belt.png', import.meta.url).href,
+  amortisseurs: new URL('../../assets/images/itemhud/hud-passive-shock-absorbers.png', import.meta.url).href,
   passive_fallback: A_PROD_ICON_URL
 } as const;
 

@@ -44,15 +44,15 @@ type PlayerVisualState = 'attached_idle_orbit' | 'attached_fast_orbit' | 'jump_s
 
 const DANGER_ACCENT = '#F06A5A';
 const ITEM_PLACEHOLDER_ICON = '/assets/images/Logo/logomodedark.svg';
-const PLAYER_MAIN_SPRITE_URL = new URL('../../assets/images/spritesheet/BoatAirSheet.png', import.meta.url).href;
-const PLAYER_BOOST_SPRITE_URL = new URL('../../assets/images/spritesheet/BoatGlideSheet.png', import.meta.url).href;
-const STICK_MONKEY_AIR_URL = new URL('../../assets/images/spritesheet/StickmankeyAirSheet.png', import.meta.url).href;
-const STICK_MONKEY_GLIDE_URL = new URL('../../assets/images/spritesheet/StickmankeyGlideSheet.png', import.meta.url).href;
-const BIG_CANON_PROJECTILE_URL = new URL('../../assets/images/spritesheet/BigCanonProjectile.svg', import.meta.url).href;
-const FRONT_CANON_PROJECTILE_URL = new URL('../../assets/images/spritesheet/FrontCanonProjectile.svg', import.meta.url).href;
-const MAGNET_RADIUS_URL = new URL('../../assets/images/spritesheet/Magnetradius.svg', import.meta.url).href;
-const BIG_CANON_RADIUS_URL = new URL('../../assets/images/spritesheet/Bigcanonradius.svg', import.meta.url).href;
-const GRAP_RADIUS_URL = new URL('../../assets/images/spritesheet/Grapradius.svg', import.meta.url).href;
+const PLAYER_MAIN_SPRITE_URL = new URL('../../assets/images/spritesheet/player-boat-airborne-spritesheet.png', import.meta.url).href;
+const PLAYER_BOOST_SPRITE_URL = new URL('../../assets/images/spritesheet/player-boat-boost-spritesheet.png', import.meta.url).href;
+const STICK_MONKEY_AIR_URL = new URL('../../assets/images/spritesheet/character-stick-monkey-airborne-spritesheet.png', import.meta.url).href;
+const STICK_MONKEY_GLIDE_URL = new URL('../../assets/images/spritesheet/character-stick-monkey-glide-spritesheet.png', import.meta.url).href;
+const BIG_CANON_PROJECTILE_URL = new URL('../../assets/images/spritesheet/fx-projectile-big-cannon.svg', import.meta.url).href;
+const FRONT_CANON_PROJECTILE_URL = new URL('../../assets/images/spritesheet/fx-projectile-front-cannon.svg', import.meta.url).href;
+const MAGNET_RADIUS_URL = new URL('../../assets/images/spritesheet/fx-radius-magnet.svg', import.meta.url).href;
+const BIG_CANON_RADIUS_URL = new URL('../../assets/images/spritesheet/fx-radius-big-cannon.svg', import.meta.url).href;
+const GRAP_RADIUS_URL = new URL('../../assets/images/spritesheet/fx-radius-grappling-hook.svg', import.meta.url).href;
 
 function wrapAngle(angle: number) {
   const tau = Math.PI * 2;

@@ -4,35 +4,35 @@ import { I18nService } from '../ui/I18nService';
 import type { AcquisitionFeedback, GameOverCause, LandingGrade } from './gameSessionTypes';
 
 const GRADE_ASSET_URLS: Record<'miss' | 'good' | 'super' | 'perfect' | 'twist', string> = {
-  miss: new URL('../../assets/images/spritesheet/Grade-Echec.png', import.meta.url).href,
-  good: new URL('../../assets/images/spritesheet/Grade-Great.png', import.meta.url).href,
-  super: new URL('../../assets/images/spritesheet/Grade-super.png', import.meta.url).href,
-  perfect: new URL('../../assets/images/spritesheet/Grade-Perfect.png', import.meta.url).href,
-  twist: new URL('../../assets/images/spritesheet/Grade-Twist.png', import.meta.url).href
+  miss: new URL('../../assets/images/spritesheet/grade-miss-spritesheet.png', import.meta.url).href,
+  good: new URL('../../assets/images/spritesheet/grade-good-spritesheet.png', import.meta.url).href,
+  super: new URL('../../assets/images/spritesheet/grade-super-spritesheet.png', import.meta.url).href,
+  perfect: new URL('../../assets/images/spritesheet/grade-perfect-spritesheet.png', import.meta.url).href,
+  twist: new URL('../../assets/images/spritesheet/grade-twist-spritesheet.png', import.meta.url).href
 };
 
 const MOMENTUM_BAR_ASSETS = {
-  bg: new URL('../../assets/images/spritesheet/HUDmomentum_bar_bg.png', import.meta.url).href,
-  fill: new URL('../../assets/images/spritesheet/HUDmomentum_bar_fill.png', import.meta.url).href,
-  top: new URL('../../assets/images/spritesheet/momentum_bar_toplayer.png', import.meta.url).href
+  bg: new URL('../../assets/images/spritesheet/hud-momentum-bar-background.png', import.meta.url).href,
+  fill: new URL('../../assets/images/spritesheet/hud-momentum-bar-fill-spritesheet.png', import.meta.url).href,
+  top: new URL('../../assets/images/spritesheet/hud-momentum-bar-overlay.png', import.meta.url).href
 };
-const COIN_ICON_URL = new URL('../../assets/images/spritesheet/coinsheetsprite.png', import.meta.url).href;
+const COIN_ICON_URL = new URL('../../assets/images/spritesheet/pickup-coin-spritesheet.png', import.meta.url).href;
 const EQUIPMENT_UI_ASSETS = {
-  bgBoat: new URL('../../assets/images/itemhud/bgboatsvg.svg', import.meta.url).href,
+  bgBoat: new URL('../../assets/images/itemhud/ui-equipment-dock.svg', import.meta.url).href,
   charges: {
-    plane: new URL('../../assets/images/itemhud/planechargesvg.svg', import.meta.url).href,
-    wings: new URL('../../assets/images/itemhud/wingchargesvg.svg', import.meta.url).href,
-    propulseur: new URL('../../assets/images/itemhud/propulseurchargesvg.svg', import.meta.url).href,
-    reacteur_front: new URL('../../assets/images/itemhud/frontreacteurchargesvg.svg', import.meta.url).href,
-    reacteur_back: new URL('../../assets/images/itemhud/backreacteurchargesvg.svg', import.meta.url).href,
-    shield: new URL('../../assets/images/itemhud/shieldchargesvg.svg', import.meta.url).href,
-    souffleur_primary: new URL('../../assets/images/itemhud/souflleurchargesvg1.svg', import.meta.url).href,
-    souffleur_recharge: new URL('../../assets/images/itemhud/souflleurchargesvg2.svg', import.meta.url).href,
-    wrapper: new URL('../../assets/images/itemhud/wrapperchargesvg.svg', import.meta.url).href,
-    magnet: new URL('../../assets/images/itemhud/magnetchargesvg.svg', import.meta.url).href,
-    big_canon: new URL('../../assets/images/itemhud/Bigcanonchargesvg.svg', import.meta.url).href,
-    front_canon: new URL('../../assets/images/itemhud/frontcanonchargesvg.svg', import.meta.url).href,
-    grappin: new URL('../../assets/images/itemhud/Grapcharge.svg', import.meta.url).href
+    plane: new URL('../../assets/images/itemhud/hud-charge-plane.svg', import.meta.url).href,
+    wings: new URL('../../assets/images/itemhud/hud-charge-wings.svg', import.meta.url).href,
+    propulseur: new URL('../../assets/images/itemhud/hud-charge-thruster.svg', import.meta.url).href,
+    reacteur_front: new URL('../../assets/images/itemhud/hud-charge-front-reactor.svg', import.meta.url).href,
+    reacteur_back: new URL('../../assets/images/itemhud/hud-charge-rear-reactor.svg', import.meta.url).href,
+    shield: new URL('../../assets/images/itemhud/hud-charge-shield.svg', import.meta.url).href,
+    souffleur_primary: new URL('../../assets/images/itemhud/hud-charge-blower-primary.svg', import.meta.url).href,
+    souffleur_recharge: new URL('../../assets/images/itemhud/hud-charge-blower-recharge.svg', import.meta.url).href,
+    wrapper: new URL('../../assets/images/itemhud/hud-charge-wrapper.svg', import.meta.url).href,
+    magnet: new URL('../../assets/images/itemhud/hud-charge-magnet.svg', import.meta.url).href,
+    big_canon: new URL('../../assets/images/itemhud/hud-charge-big-cannon.svg', import.meta.url).href,
+    front_canon: new URL('../../assets/images/itemhud/hud-charge-front-cannon.svg', import.meta.url).href,
+    grappin: new URL('../../assets/images/itemhud/hud-charge-grappling-hook.svg', import.meta.url).href
   }
 } as const;
 const RARITY_COLORS: Record<RogueliteRarity, string> = {
