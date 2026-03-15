@@ -83,7 +83,7 @@ export class CameraRailController {
     this.currentFocus.x = currentNode.isGigantic ? nextFocusX : Math.max(this.currentFocus.x, playerPosition.x - 0.08, nextFocusX);
     this.currentFocus.y = damp(this.currentFocus.y, this.targetFocus.y, currentNode.isGigantic ? 8.4 : 4.1 + laneFocusBias * 2.2, deltaTime);
 
-    const momentumZoom = profile.momentumZoomRange * Math.min(1.28, Math.max(0, momentumGauge));
+    const momentumZoom = profile.momentumZoomRange * 1.28 * Math.min(1.45, Math.max(0, momentumGauge));
     this.targetZoom =
       profile.baseZoom +
       momentumZoom +
@@ -96,12 +96,14 @@ export class CameraRailController {
     this.lookAt.set(this.currentFocus.x, this.currentFocus.y, 0);
 
     const aspect = Math.max(0.5, window.innerWidth / Math.max(1, window.innerHeight));
-    const halfHeight = Math.tan(THREE.MathUtils.degToRad(this.fov * 0.5)) * this.currentZoom;
-    const halfWidth = halfHeight * aspect;
-    this.safeLeft = this.lookAt.x - halfWidth * 0.94;
-    this.safeRight = this.lookAt.x + halfWidth * 0.94;
-    this.safeTop = this.lookAt.y + halfHeight * 0.94;
-    this.safeBottom = this.lookAt.y - halfHeight * 0.94;
+    const renderedHalfHeight = Math.tan(THREE.MathUtils.degToRad(this.fov * 0.5)) * this.currentZoom;
+    const renderedHalfWidth = renderedHalfHeight * aspect;
+    const gameplayHalfHeight = Math.max(renderedHalfHeight, 11.8);
+    const gameplayHalfWidth = Math.max(renderedHalfWidth, 13.2);
+    this.safeLeft = this.lookAt.x - gameplayHalfWidth * 0.94;
+    this.safeRight = this.lookAt.x + gameplayHalfWidth * 0.94;
+    this.safeTop = this.lookAt.y + gameplayHalfHeight * 0.94;
+    this.safeBottom = this.lookAt.y - gameplayHalfHeight * 0.94;
   }
 
   isBehindSafeLine(position: THREE.Vector3) {

@@ -53,9 +53,6 @@ const FRONT_CANON_PROJECTILE_URL = new URL('../../assets/images/spritesheet/Fron
 const MAGNET_RADIUS_URL = new URL('../../assets/images/spritesheet/Magnetradius.svg', import.meta.url).href;
 const BIG_CANON_RADIUS_URL = new URL('../../assets/images/spritesheet/Bigcanonradius.svg', import.meta.url).href;
 const GRAP_RADIUS_URL = new URL('../../assets/images/spritesheet/Grapradius.svg', import.meta.url).href;
-const MAGNET_RADIUS_COLOR = '#75AF80';
-const BIG_CANON_RADIUS_COLOR = '#C78E5A';
-const GRAP_RADIUS_COLOR = '#A5977F';
 
 function wrapAngle(angle: number) {
   const tau = Math.PI * 2;
@@ -204,6 +201,7 @@ export class GameSessionController {
   private wrapperTeleportAt = 0;
   private wrapperHoldUntil = 0;
   private wrapperVisualUntil = 0;
+  private wrapperCooldownPending = false;
   private shieldHitUntil = 0;
   private shieldRechargeFlashUntil = 0;
   private readonly moduleFlashUntil: Partial<Record<RogueliteModuleSlot, number>> = {};
@@ -214,6 +212,7 @@ export class GameSessionController {
   private grapTargetIndex: number | null = null;
   private grapRopeLength = 0;
   private readonly grapTargetPosition = new THREE.Vector3();
+  private grapCooldownPending = false;
   private eventCooldownUntil = 0;
   private milestoneChoiceCache = new Map<number, BranchChoice[]>();
   private airborneFromMilestone = false;
@@ -276,9 +275,9 @@ export class GameSessionController {
     this.player.visible = false;
     this.root.add(this.player);
     this.root.add(this.shardHudSprite);
-    this.magnetRangeIndicator = this.createRangeIndicator(MAGNET_RADIUS_URL, '#A5977F', 0.1);
-    this.bigCanonRangeIndicator = this.createRangeIndicator(BIG_CANON_RADIUS_URL, '#A5977F', 0.1);
-    this.grapRangeIndicator = this.createRangeIndicator(GRAP_RADIUS_URL, '#A5977F', 0.1);
+    this.magnetRangeIndicator = this.createRangeIndicator(MAGNET_RADIUS_URL, 0.1);
+    this.bigCanonRangeIndicator = this.createRangeIndicator(BIG_CANON_RADIUS_URL, 0.1);
+    this.grapRangeIndicator = this.createRangeIndicator(GRAP_RADIUS_URL, 0.1);
     this.frontCanonLaser = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 0.14),
       new THREE.MeshBasicMaterial({ color: '#A5977F', transparent: true, opacity: 0.4, depthWrite: false, depthTest: false })
@@ -375,14 +374,14 @@ export class GameSessionController {
     });
   }
 
-  private createRangeIndicator(textureUrl: string, color: string, opacity: number) {
+  private createRangeIndicator(textureUrl: string, opacity: number) {
     const texture = new THREE.TextureLoader().load(textureUrl);
     texture.colorSpace = THREE.SRGBColorSpace;
     const mesh = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
       new THREE.MeshBasicMaterial({
         map: texture,
-        color,
+        color: '#ffffff',
         transparent: true,
         opacity,
         side: THREE.DoubleSide,
@@ -414,7 +413,6 @@ export class GameSessionController {
     this.enemies.setTheme(theme);
     this.shop.setTheme(theme);
     const uiColor = theme === 'dark' ? '#A5977F' : '#2E3644';
-    this.magnetRangeIndicator.material.color.set(uiColor);
     this.grapRope.material.color.set(uiColor);
     this.frontCanonLaser.material.color.set(uiColor);
   }
@@ -464,6 +462,7 @@ export class GameSessionController {
     this.wrapperTeleportAt = 0;
     this.wrapperHoldUntil = 0;
     this.wrapperVisualUntil = 0;
+    this.wrapperCooldownPending = false;
     this.choiceMode = 'none';
     this.activeChoices = [];
     this.airborneFromMilestone = false;
@@ -482,6 +481,7 @@ export class GameSessionController {
     this.wrapperTeleportAt = 0;
     this.wrapperHoldUntil = 0;
     this.wrapperVisualUntil = 0;
+    this.wrapperCooldownPending = false;
     this.airborneFromMilestone = false;
     this.airborneStartedAt = 0;
     this.root.visible = false;
@@ -536,6 +536,7 @@ export class GameSessionController {
     this.wrapperTeleportAt = 0;
     this.wrapperHoldUntil = 0;
     this.wrapperVisualUntil = 0;
+    this.wrapperCooldownPending = false;
     this.shieldHitUntil = 0;
     this.shieldRechargeFlashUntil = 0;
     (Object.keys(this.moduleFlashUntil) as RogueliteModuleSlot[]).forEach((slot) => {
@@ -547,6 +548,7 @@ export class GameSessionController {
     this.grapStateUntil = 0;
     this.grapTargetIndex = null;
     this.grapRopeLength = 0;
+    this.grapCooldownPending = false;
     this.eventCooldownUntil = 0;
     this.milestoneChoiceCache.clear();
     this.airborneFromMilestone = false;
@@ -678,9 +680,9 @@ export class GameSessionController {
         iconTint: isQuestionShard ? this.getThemeContrastColor() : null,
         iconScale:
           node.colorHint === 'reward' && rewardItem
-            ? clamp(0.88 + Math.max(node.gameplayRadius, node.visualScale) * 0.18, 1.18, 2.1)
+            ? clamp(1.76 + Math.max(node.gameplayRadius, node.visualScale) * 0.36, 2.36, 4.2)
             : isQuestionShard
-              ? 1.14
+              ? 2.28
               : 0.34
       };
     });
@@ -818,11 +820,27 @@ export class GameSessionController {
     this.hudSnapshot.inventoryItems = this.runUpgrades.ownedOrder.map((itemId) => {
       const item = getItemById(itemId);
       const runtime = item?.slot ? this.runUpgrades.moduleRuntime[item.slot] : null;
-      const cooldownDuration = item?.slot ? this.getModuleCooldownDuration(item.slot) : 0;
       const gaugeConfig = item ? getModuleGaugeConfig(item) : null;
       const cooldownRatio =
-        runtime && cooldownDuration > 0
-          ? Math.min(1, runtime.cooldownRemaining / cooldownDuration)
+        item?.slot === 'wrapper'
+          ? this.getDisplayedCooldownRatio('wrapper', runtime ?? null)
+          : item?.slot === 'grappin'
+            ? this.getDisplayedCooldownRatio('grappin', runtime ?? null)
+            : item?.slot === 'shield'
+              ? this.getDisplayedCooldownRatio('shield', runtime ?? null)
+              : item?.slot === 'souffleur' && runtime && runtime.gaugeMax > 0
+          ? Math.max(
+              runtime.regenDelayRemaining > 0 && gaugeConfig
+                ? Math.min(
+                    1,
+                    runtime.regenDelayRemaining /
+                      Math.max(0.001, runtime.gaugeCurrent <= 0.0001 ? gaugeConfig.emptyDelay : gaugeConfig.regenDelay)
+                  )
+                : 0,
+              1 - runtime.gaugeCurrent / runtime.gaugeMax
+            )
+          : runtime && item?.slot && this.getModuleCooldownDuration(item.slot) > 0
+          ? this.getDisplayedCooldownRatio(item.slot, runtime)
           : runtime && gaugeConfig && runtime.regenDelayRemaining > 0
             ? Math.min(
                 1,
@@ -840,6 +858,12 @@ export class GameSessionController {
         rarityIconSrc: item?.rarityIconSrc ?? ITEM_PLACEHOLDER_ICON,
         kind: item?.kind ?? 'passive',
         cooldownRatio,
+        blocked:
+          item?.slot === 'grappin'
+            ? this.isGrappleBusy()
+            : item?.slot === 'wrapper'
+              ? this.isWrapperBusy()
+              : false,
         chargeCurrent: runtime?.chargesCurrent ?? 0,
         chargeMax: runtime?.chargesMax ?? 0,
         resourceRatio: runtime && runtime.gaugeMax > 0 ? runtime.gaugeCurrent / runtime.gaugeMax : 0,
@@ -894,6 +918,32 @@ export class GameSessionController {
       default:
         return 0;
     }
+  }
+
+  private isWrapperBusy() {
+    return this.wrapperPendingTarget !== null || this.wrapperVisualUntil > this.currentTime || this.wrapperCooldownPending;
+  }
+
+  private isWrapperAvailable() {
+    const runtime = this.getModuleRuntime('wrapper');
+    return Boolean(this.getEquippedItem('wrapper')) && !this.isWrapperBusy() && (!runtime || runtime.cooldownRemaining <= 0);
+  }
+
+  private isGrappleBusy() {
+    return this.grapState !== 'idle' || this.grapTargetIndex !== null || this.grapCooldownPending;
+  }
+
+  private isGrappleAvailable() {
+    const runtime = this.getModuleRuntime('grappin');
+    return Boolean(this.getEquippedItem('grappin')) && !this.isGrappleBusy() && (!runtime || runtime.cooldownRemaining <= 0);
+  }
+
+  private getDisplayedCooldownRatio(slot: RogueliteModuleSlot, runtime: ModuleRuntimeState | null) {
+    const cooldownDuration = this.getModuleCooldownDuration(slot);
+    if (!runtime || cooldownDuration <= 0) {
+      return 0;
+    }
+    return Math.min(1, runtime.cooldownRemaining / cooldownDuration);
   }
 
   private ensureModuleRuntime(slot: RogueliteModuleSlot) {
@@ -1005,6 +1055,8 @@ export class GameSessionController {
   update(deltaTime: number, elapsedTime: number) {
     if (this.state === 'idle') return;
     this.currentTime = elapsedTime;
+    const shopLocked = this.isShopInteractionLocked() && this.playerState !== 'airborne';
+    const simulationDelta = shopLocked ? 0 : deltaTime;
 
     if (this.state === 'transition_in' || this.state === 'transition_out') {
       this.tickModuleRuntime(deltaTime);
@@ -1013,9 +1065,9 @@ export class GameSessionController {
     }
 
     this.path.ensureAhead(this.attachedIndex);
-    this.tickModuleRuntime(deltaTime);
-    this.updateMomentum(deltaTime);
-    this.stats.updateMomentumWindow(this.currentTime, this.state !== 'game_over' && this.momentum.gauge > 0.08);
+    this.tickModuleRuntime(simulationDelta);
+    this.updateMomentum(simulationDelta);
+    this.stats.updateMomentumWindow(this.currentTime, !shopLocked && this.state !== 'game_over' && this.momentum.gauge > 0.08);
     this.prewarmUpcomingMilestones();
 
     let currentNode = this.getResolvedNode(this.attachedIndex);
@@ -1032,7 +1084,12 @@ export class GameSessionController {
 
     const motionStartIndex = this.attachedIndex;
 
-    if (this.playerState === 'airborne') {
+    if (shopLocked) {
+      const lockedOrbit = this.getOrbitSample(currentNode, this.orbitAngle);
+      this.souffleurActive = false;
+      this.playerPosition.copy(this.getPlayerOrbitWorldPosition(currentNode, this.orbitAngle, lockedOrbit));
+      this.playerVelocity.set(0, 0, 0);
+    } else if (this.playerState === 'airborne') {
       this.updateAirborne(deltaTime);
     } else {
       this.updateAttached(deltaTime, currentNode);
@@ -1099,6 +1156,13 @@ export class GameSessionController {
       this.attachToNode(target, false, null, null);
     }
     if (this.wrapperVisualUntil > 0 && this.currentTime >= this.wrapperVisualUntil) {
+      if (this.wrapperCooldownPending) {
+        const wrapperRuntime = this.ensureModuleRuntime('wrapper');
+        if (wrapperRuntime) {
+          wrapperRuntime.cooldownRemaining = this.getModuleCooldownDuration('wrapper');
+        }
+        this.wrapperCooldownPending = false;
+      }
       this.wrapperTeleportAt = 0;
       this.wrapperHoldUntil = 0;
       this.wrapperVisualUntil = 0;
@@ -1374,10 +1438,7 @@ export class GameSessionController {
       }
       if (this.canCaptureNode(node, previousPosition)) {
         if (this.grapTargetIndex === index) {
-          this.grapState = 'landing';
-          this.grapStateUntil = this.currentTime + 1;
-          this.grapTargetIndex = null;
-          this.grapRopeLength = 0;
+          this.beginGrappleLanding();
         }
         this.attachToNode(index, true, this.playerPosition, this.playerVelocity);
         return;
@@ -1390,10 +1451,7 @@ export class GameSessionController {
       }
       if (this.canCaptureNode(node, previousPosition)) {
         if (this.grapTargetIndex === index) {
-          this.grapState = 'landing';
-          this.grapStateUntil = this.currentTime + 1;
-          this.grapTargetIndex = null;
-          this.grapRopeLength = 0;
+          this.beginGrappleLanding();
         }
         this.attachToNode(index, true, this.playerPosition, this.playerVelocity);
         return;
@@ -1574,14 +1632,10 @@ export class GameSessionController {
   }
 
   private findGrappleCandidate() {
-    if (!this.getEquippedItem('grappin') || this.grapTargetIndex !== null) {
+    if (!this.isGrappleAvailable()) {
       return null;
     }
     const grapRange = Math.max(4.6, this.runUpgrades.modifiers.grapRange);
-    const grapRuntime = this.ensureModuleRuntime('grappin');
-    if (!grapRuntime || grapRuntime.cooldownRemaining > 0) {
-      return null;
-    }
     const minReach = 2.8;
     for (let index = this.attachedIndex + 1; index <= this.attachedIndex + Math.ceil(grapRange * 2.8); index += 1) {
       const node = this.getResolvedNode(index);
@@ -1595,15 +1649,14 @@ export class GameSessionController {
   }
 
   private armGrapple(index: number, distance: number) {
-    const grapRuntime = this.ensureModuleRuntime('grappin');
-    if (!grapRuntime || grapRuntime.cooldownRemaining > 0) {
+    if (!this.isGrappleAvailable()) {
       return false;
     }
-    grapRuntime.cooldownRemaining = this.getModuleCooldownDuration('grappin');
     this.grapTargetIndex = index;
     this.grapState = 'launch';
     this.grapStateUntil = this.currentTime + 0.08;
     this.grapRopeLength = Math.max(1.45, distance);
+    this.grapCooldownPending = true;
     this.triggerModuleFlash('grappin', 0.5);
     return true;
   }
@@ -1612,7 +1665,7 @@ export class GameSessionController {
     if (!this.getEquippedItem('wrapper')) {
       return false;
     }
-    if (this.wrapperPendingTarget !== null) {
+    if (this.isWrapperBusy()) {
       return false;
     }
     if (this.choiceMode !== 'none' || this.state === 'upgrade_branching') {
@@ -1626,19 +1679,18 @@ export class GameSessionController {
       return false;
     }
     const wrapperDistance = Math.max(10, this.runUpgrades.modifiers.wrapperDistance);
-    const wrapperRuntime = this.ensureModuleRuntime('wrapper');
-    if (!wrapperRuntime || wrapperRuntime.cooldownRemaining > 0) {
+    if (!this.isWrapperAvailable()) {
       return false;
     }
     const teleportTarget = this.path.getTeleportTarget(this.attachedIndex, Math.round(wrapperDistance));
     if (teleportTarget <= this.attachedIndex + 1) {
       return false;
     }
-    wrapperRuntime.cooldownRemaining = 18;
     this.wrapperPendingTarget = teleportTarget;
     this.wrapperTeleportAt = this.currentTime + 2;
     this.wrapperHoldUntil = this.wrapperTeleportAt + 1.6;
     this.wrapperVisualUntil = this.wrapperHoldUntil + 0.4;
+    this.wrapperCooldownPending = true;
     return true;
   }
 
@@ -1689,9 +1741,7 @@ export class GameSessionController {
     this.remainingExtraJumps = Math.max(0, this.runUpgrades.modifiers.extraJumps);
     this.resetJumpModuleCharges();
     if (this.grapState !== 'idle') {
-      this.grapState = 'landing';
-      this.grapStateUntil = this.currentTime + 1;
-      this.grapTargetIndex = null;
+      this.beginGrappleLanding();
     }
     this.grapRopeLength = 0;
 
@@ -2110,6 +2160,13 @@ export class GameSessionController {
         }
         if (this.grapState === 'landing' && this.currentTime >= this.grapStateUntil) {
           this.grapState = 'idle';
+          if (this.grapCooldownPending) {
+            const grapRuntime = this.ensureModuleRuntime('grappin');
+            if (grapRuntime) {
+              grapRuntime.cooldownRemaining = this.getModuleCooldownDuration('grappin');
+            }
+            this.grapCooldownPending = false;
+          }
         }
         return;
       }
@@ -2126,59 +2183,39 @@ export class GameSessionController {
 
     const bigCanonRuntime = this.getModuleRuntime('big_canon');
     const bigCanonCooldownDuration = this.getModuleCooldownDuration('big_canon');
-    const bigCanonReady =
-      bigCanonVisible && bigCanonRuntime && bigCanonCooldownDuration > 0
-        ? clamp(1 - bigCanonRuntime.cooldownRemaining / bigCanonCooldownDuration, 0, 1)
-        : bigCanonVisible ? 1 : 0;
-    const grapRuntime = this.getModuleRuntime('grappin');
-    const grapCooldownDuration = this.getModuleCooldownDuration('grappin');
-    const grapReady =
-      grapVisible && grapRuntime && grapCooldownDuration > 0
-        ? clamp(1 - grapRuntime.cooldownRemaining / grapCooldownDuration, 0, 1)
-        : grapVisible ? 1 : 0;
+    const bigCanonReady = !bigCanonRuntime || bigCanonCooldownDuration <= 0 || bigCanonRuntime.cooldownRemaining <= 0;
+    const grapReady = grapVisible && this.isGrappleAvailable();
 
     this.syncRangeIndicator(
       this.magnetRangeIndicator,
       magnetVisible,
       Math.max(4.8, 3.4 + this.runUpgrades.modifiers.magnetRange * 7.8),
-      MAGNET_RADIUS_COLOR,
-      magnetVisible ? 0.2 + this.momentum.gauge * 0.07 : 0,
+      magnetVisible ? 0.28 : 0,
       deltaTime,
-      0.22
+      0.34
     );
     this.syncRangeIndicator(
       this.bigCanonRangeIndicator,
-      bigCanonVisible,
+      bigCanonVisible && bigCanonReady,
       Math.max(3.9, this.runUpgrades.modifiers.bigCanonRange * 1.42),
-      BIG_CANON_RADIUS_COLOR,
-      bigCanonVisible ? (0.1 + bigCanonReady * 0.24 + this.momentum.gauge * 0.04) * bigCanonReady : 0,
+      bigCanonVisible && bigCanonReady ? 0.24 : 0,
       deltaTime,
       0
     );
     this.syncRangeIndicator(
       this.grapRangeIndicator,
-      grapVisible,
+      grapReady,
       Math.max(3.25, this.runUpgrades.modifiers.grapRange * 1.42),
-      GRAP_RADIUS_COLOR,
-      !grapVisible
-        ? 0
-        : this.grapState === 'hooked'
-          ? 0.28
-          : this.grapState === 'launch'
-            ? 0.22
-            : (0.1 + grapReady * 0.22) * grapReady,
+      grapReady ? 0.28 : 0,
       deltaTime,
-      0.78
+      2.48
     );
 
     this.frontCanonLaser.visible = frontCanonVisible;
     if (frontCanonVisible) {
       const frontRuntime = this.getModuleRuntime('front_canon');
       const frontCooldownDuration = this.getModuleCooldownDuration('front_canon');
-      const frontReady =
-        frontCanonVisible && frontRuntime && frontCooldownDuration > 0
-          ? clamp(1 - frontRuntime.cooldownRemaining / frontCooldownDuration, 0, 1)
-          : 1;
+      const frontReady = !frontRuntime || frontCooldownDuration <= 0 || frontRuntime.cooldownRemaining <= 0 ? 1 : 0;
       const range = Math.max(2.4, this.runUpgrades.modifiers.frontCanonRange * 1.08);
       const dx = Math.cos(heading) * range * 0.5;
       const dy = Math.sin(heading) * range * 0.5;
@@ -2231,14 +2268,13 @@ export class GameSessionController {
     indicator: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>,
     visible: boolean,
     radius: number,
-    color: string,
     targetOpacity: number,
     deltaTime: number,
     rotationSpeed = 0
   ) {
-    indicator.material.color.set(color);
-    indicator.material.opacity = damp(indicator.material.opacity, visible ? targetOpacity : 0, 5.6, deltaTime);
-    indicator.visible = visible || indicator.material.opacity > 0.012;
+    void deltaTime;
+    indicator.material.opacity = visible ? targetOpacity : 0;
+    indicator.visible = visible;
     if (!indicator.visible) return;
     indicator.position.set(this.playerPosition.x, this.playerPosition.y, this.playerPosition.z + 0.01);
     const diameter = radius * 2 * (1 + Math.sin(this.currentTime * 2.2) * 0.015);
@@ -2429,6 +2465,10 @@ export class GameSessionController {
     if (this.grapTargetIndex === null && this.grapState === 'idle') {
       return;
     }
+    this.beginGrappleLanding();
+  }
+
+  private beginGrappleLanding() {
     this.grapState = 'landing';
     this.grapStateUntil = this.currentTime + 1;
     this.grapTargetIndex = null;

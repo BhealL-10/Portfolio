@@ -180,6 +180,7 @@ export interface GameHudSnapshot {
     rarityIconSrc: string;
     kind: RogueliteItemKind;
     cooldownRatio?: number;
+    blocked?: boolean;
     chargeCurrent?: number;
     chargeMax?: number;
     resourceRatio?: number;

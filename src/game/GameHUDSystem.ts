@@ -90,6 +90,7 @@ interface GameHUDPayload {
     rarityIconSrc: string;
     kind: RogueliteItemKind;
     cooldownRatio?: number;
+    blocked?: boolean;
     chargeCurrent?: number;
     chargeMax?: number;
     resourceRatio?: number;
@@ -181,6 +182,7 @@ export class GameHUDSystem {
   private coinsValue: HTMLSpanElement;
   private momentumBarLabel: HTMLSpanElement;
   private momentumBarValue: HTMLSpanElement;
+  private momentumDock: HTMLDivElement;
   private momentumShell: HTMLDivElement;
   private equipmentDock: HTMLDivElement;
   private chargeFill: HTMLDivElement;
@@ -330,6 +332,7 @@ export class GameHUDSystem {
     this.coinsValue = this.element.querySelector<HTMLSpanElement>('[data-coins]')!;
     this.momentumBarLabel = this.element.querySelector<HTMLSpanElement>('[data-momentum-bar-label]')!;
     this.momentumBarValue = this.element.querySelector<HTMLSpanElement>('[data-momentum-bar-value]')!;
+    this.momentumDock = this.element.querySelector<HTMLDivElement>('.game-hud__momentum-dock')!;
     this.momentumShell = this.element.querySelector<HTMLDivElement>('.game-hud__momentum-shell')!;
     this.equipmentDock = this.element.querySelector<HTMLDivElement>('.game-hud__equipment-dock')!;
     this.chargeFill = this.element.querySelector<HTMLDivElement>('[data-charge-fill]')!;
@@ -430,6 +433,7 @@ export class GameHUDSystem {
     this.panel.classList.toggle('is-hidden', payload.state === 'game_over');
     this.branchLayer.classList.toggle('is-visible', payload.state === 'upgrade_choice' && !showingShop);
     this.shopBar.classList.toggle('is-visible', payload.state === 'upgrade_choice' && showingShop);
+    this.momentumDock.classList.toggle('is-hidden', payload.state === 'upgrade_choice' && showingShop);
     this.gameOverOverlay.classList.toggle('is-visible', payload.state === 'game_over');
     this.toast.classList.toggle('is-visible', Boolean(payload.acquisition));
     if (payload.acquisition) {
@@ -533,6 +537,7 @@ export class GameHUDSystem {
     rarityIconSrc: string;
     kind: RogueliteItemKind;
     cooldownRatio?: number;
+    blocked?: boolean;
     chargeCurrent?: number;
     chargeMax?: number;
     resourceRatio?: number;
@@ -591,6 +596,7 @@ export class GameHUDSystem {
     rarityIconSrc: string;
     kind: RogueliteItemKind;
     cooldownRatio?: number;
+    blocked?: boolean;
     chargeCurrent?: number;
     chargeMax?: number;
     resourceRatio?: number;
@@ -639,7 +645,12 @@ export class GameHUDSystem {
           : usesCooldownRing && (item.cooldownRatio ?? 0) > 0.001;
       const fillMode = isResourceItem ? 'meter' : 'full';
       const fillRatio = isResourceItem ? Math.max(0, Math.min(1, item.resourceRatio ?? 0)) : 1;
-      const fillVisible = isAlwaysFull || isResourceItem ? true : usesChargeColor ? (item.chargeCurrent ?? 0) > 0 : !isCooldownActive;
+      const fillVisible =
+        isAlwaysFull || isResourceItem
+          ? true
+          : usesChargeColor
+            ? (item.chargeCurrent ?? 0) > 0
+            : !isCooldownActive && !item.blocked;
       const slotIdBase = `${item.slot}-${index}`;
 
       if (item.slot === 'propulseur' && primaryChargeSrc) {
@@ -884,8 +895,9 @@ export class GameHUDSystem {
     this.shapeTemplatePending.add(src);
     void fetch(src)
       .then((response) => response.text())
-      .then((svgText) => {
-        this.shapeTemplateCache.set(src, this.parseShapeTemplate(svgText));
+      .then((svgText) => this.parseShapeTemplate(svgText))
+      .then((template) => {
+        this.shapeTemplateCache.set(src, template);
       })
       .catch(() => {
         this.shapeTemplateCache.set(src, null);
@@ -895,7 +907,7 @@ export class GameHUDSystem {
       });
   }
 
-  private parseShapeTemplate(svgText: string): EquipmentShapeTemplate | null {
+  private async parseShapeTemplate(svgText: string): Promise<EquipmentShapeTemplate | null> {
     if (typeof DOMParser === 'undefined' || typeof document === 'undefined') {
       return null;
     }
@@ -936,11 +948,14 @@ export class GameHUDSystem {
       return null;
     }
 
-    const liveMeasurement = this.measureSvgGeometry(svgText);
     const fillBounds = this.measureSvgMarkup(viewBox, fillMarkup);
     if (!fillBounds || fillBounds.width <= 0.001 || fillBounds.height <= 0.001) {
       return null;
     }
+    const cooldownMarkup =
+      (await this.buildCooldownContourMarkup(svgText, viewBoxWidth, viewBoxHeight)) ??
+      this.measureLegacyCooldownGeometry(svgText)?.cooldownMarkup ??
+      null;
 
     const shapeLeft = ((fillBounds.x - viewBoxX) / viewBoxWidth) * 100;
     const shapeTop = ((fillBounds.y - viewBoxY) / viewBoxHeight) * 100;
@@ -975,7 +990,7 @@ export class GameHUDSystem {
       ringTop,
       ringWidth,
       ringHeight,
-      cooldownMarkup: liveMeasurement?.cooldownMarkup ?? null
+      cooldownMarkup
     };
   }
 
@@ -1001,7 +1016,234 @@ export class GameHUDSystem {
     }
   }
 
-  private measureSvgGeometry(svgText: string): { cooldownMarkup: string | null } | null {
+  private async buildCooldownContourMarkup(svgText: string, viewBoxWidth: number, viewBoxHeight: number) {
+    const image = await this.loadSvgImage(svgText).catch(() => null);
+    if (!image) {
+      return null;
+    }
+
+    const scale = Math.min(1, 768 / Math.max(1, image.naturalWidth), 768 / Math.max(1, image.naturalHeight));
+    const width = Math.max(96, Math.round(image.naturalWidth * scale));
+    const height = Math.max(48, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) {
+      return null;
+    }
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(image, 0, 0, width, height);
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const contour = this.extractOuterContourLoop(imageData.data, width, height);
+    if (!contour || contour.length < 3) {
+      return null;
+    }
+
+    const normalized = this.normalizeContourLoop(contour, width, height);
+    if (normalized.length < 3) {
+      return null;
+    }
+
+    const scaleX = viewBoxWidth / width;
+    const scaleY = viewBoxHeight / height;
+    const pathData = normalized
+      .map((point, index) => `${index === 0 ? 'M' : 'L'}${(point.x * scaleX).toFixed(2)} ${(point.y * scaleY).toFixed(2)}`)
+      .join(' ');
+    return `<path d="${pathData} Z" fill="none" stroke="currentColor" pathLength="100" vector-effect="non-scaling-stroke" />`;
+  }
+
+  private loadSvgImage(svgText: string) {
+    return new Promise<HTMLImageElement>((resolve, reject) => {
+      const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const image = new Image();
+      image.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(image);
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Failed to decode SVG image'));
+      };
+      image.src = url;
+    });
+  }
+
+  private extractOuterContourLoop(alphaData: Uint8ClampedArray, width: number, height: number) {
+    const mask = new Uint8Array(width * height);
+    for (let index = 0; index < width * height; index += 1) {
+      mask[index] = alphaData[index * 4 + 3] > 24 ? 1 : 0;
+    }
+
+    const visited = new Uint8Array(mask.length);
+    let largestComponent: number[] = [];
+    const queue = new Int32Array(mask.length);
+    const neighbors = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1]
+    ] as const;
+
+    for (let start = 0; start < mask.length; start += 1) {
+      if (!mask[start] || visited[start]) continue;
+      let head = 0;
+      let tail = 0;
+      const component: number[] = [];
+      visited[start] = 1;
+      queue[tail++] = start;
+      while (head < tail) {
+        const current = queue[head++]!;
+        component.push(current);
+        const x = current % width;
+        const y = Math.floor(current / width);
+        neighbors.forEach(([dx, dy]) => {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) return;
+          const next = ny * width + nx;
+          if (!mask[next] || visited[next]) return;
+          visited[next] = 1;
+          queue[tail++] = next;
+        });
+      }
+      if (component.length > largestComponent.length) {
+        largestComponent = component;
+      }
+    }
+
+    if (largestComponent.length === 0) {
+      return null;
+    }
+
+    const componentMask = new Uint8Array(mask.length);
+    largestComponent.forEach((index) => {
+      componentMask[index] = 1;
+    });
+
+    type Segment = { sx: number; sy: number; ex: number; ey: number };
+    const segments: Segment[] = [];
+    const addSegment = (sx: number, sy: number, ex: number, ey: number) => {
+      segments.push({ sx, sy, ex, ey });
+    };
+
+    largestComponent.forEach((pixelIndex) => {
+      const x = pixelIndex % width;
+      const y = Math.floor(pixelIndex / width);
+      const up = y > 0 ? componentMask[(y - 1) * width + x] : 0;
+      const right = x < width - 1 ? componentMask[y * width + x + 1] : 0;
+      const down = y < height - 1 ? componentMask[(y + 1) * width + x] : 0;
+      const left = x > 0 ? componentMask[y * width + x - 1] : 0;
+      if (!up) addSegment(x, y, x + 1, y);
+      if (!right) addSegment(x + 1, y, x + 1, y + 1);
+      if (!down) addSegment(x + 1, y + 1, x, y + 1);
+      if (!left) addSegment(x, y + 1, x, y);
+    });
+
+    const outgoing = new Map<string, number[]>();
+    const pointKey = (x: number, y: number) => `${x},${y}`;
+    segments.forEach((segment, index) => {
+      const key = pointKey(segment.sx, segment.sy);
+      const list = outgoing.get(key) ?? [];
+      list.push(index);
+      outgoing.set(key, list);
+    });
+
+    const used = new Uint8Array(segments.length);
+    const loops: Array<Array<{ x: number; y: number }>> = [];
+    for (let index = 0; index < segments.length; index += 1) {
+      if (used[index]) continue;
+      const loop: Array<{ x: number; y: number }> = [];
+      let currentIndex = index;
+      const startSegment = segments[currentIndex]!;
+      const startKey = pointKey(startSegment.sx, startSegment.sy);
+      while (!used[currentIndex]) {
+        const segment = segments[currentIndex]!;
+        used[currentIndex] = 1;
+        loop.push({ x: segment.sx, y: segment.sy });
+        const nextKey = pointKey(segment.ex, segment.ey);
+        if (nextKey === startKey) {
+          break;
+        }
+        const nextCandidates = outgoing.get(nextKey) ?? [];
+        const nextIndex = nextCandidates.find((candidate) => !used[candidate]);
+        if (nextIndex === undefined) {
+          break;
+        }
+        currentIndex = nextIndex;
+      }
+      if (loop.length >= 3) {
+        loops.push(loop);
+      }
+    }
+
+    if (loops.length === 0) {
+      return null;
+    }
+
+    let bestLoop = loops[0]!;
+    let bestArea = 0;
+    loops.forEach((loop) => {
+      const area = Math.abs(this.getLoopArea(loop));
+      if (area > bestArea) {
+        bestArea = area;
+        bestLoop = loop;
+      }
+    });
+    return bestLoop;
+  }
+
+  private normalizeContourLoop(points: Array<{ x: number; y: number }>, width: number, height: number) {
+    if (points.length < 3) {
+      return points;
+    }
+    const simplified = points.filter((point, index) => {
+      const previous = points[(index - 1 + points.length) % points.length]!;
+      const next = points[(index + 1) % points.length]!;
+      const collinearX = previous.x === point.x && point.x === next.x;
+      const collinearY = previous.y === point.y && point.y === next.y;
+      return !(collinearX || collinearY);
+    });
+    const loop = simplified.length >= 3 ? simplified : points.slice();
+    if (this.getLoopArea(loop) < 0) {
+      loop.reverse();
+    }
+
+    let minX = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    loop.forEach((point) => {
+      minX = Math.min(minX, point.x);
+      maxX = Math.max(maxX, point.x);
+    });
+    const centerX = (minX + maxX) * 0.5;
+    let startIndex = 0;
+    let bestY = Number.POSITIVE_INFINITY;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    loop.forEach((point, index) => {
+      const y = point.y / Math.max(1, height);
+      const distance = Math.abs(point.x - centerX) / Math.max(1, width);
+      if (y < bestY - 0.0001 || (Math.abs(y - bestY) <= 0.0001 && distance < bestDistance)) {
+        bestY = y;
+        bestDistance = distance;
+        startIndex = index;
+      }
+    });
+
+    return loop.slice(startIndex).concat(loop.slice(0, startIndex));
+  }
+
+  private getLoopArea(points: Array<{ x: number; y: number }>) {
+    let area = 0;
+    for (let index = 0; index < points.length; index += 1) {
+      const current = points[index]!;
+      const next = points[(index + 1) % points.length]!;
+      area += current.x * next.y - next.x * current.y;
+    }
+    return area * 0.5;
+  }
+
+  private measureLegacyCooldownGeometry(svgText: string): { cooldownMarkup: string | null } | null {
     const wrapper = document.createElement('div');
     wrapper.style.position = 'absolute';
     wrapper.style.opacity = '0';
@@ -1042,27 +1284,37 @@ export class GameHUDSystem {
         return null;
       }
 
-      let longestCandidate: SVGGraphicsElement | null = null;
-      let longestLength = 0;
+      let outlineCandidate: SVGGraphicsElement | null = null;
+      let bestOutlineScore = -Infinity;
       candidates.forEach((candidate) => {
         const geometry = candidate as SVGGeometryElement;
-        if (typeof geometry.getTotalLength === 'function') {
-          const length = geometry.getTotalLength();
-          if (length > longestLength) {
-            longestLength = length;
-            longestCandidate = candidate;
-          }
+        const box = candidate.getBBox();
+        const area = Math.max(0.001, box.width * box.height);
+        const length = typeof geometry.getTotalLength === 'function' ? geometry.getTotalLength() : 0;
+        const fill = candidate.getAttribute('fill');
+        const stroke = candidate.getAttribute('stroke');
+        const style = candidate.getAttribute('style') ?? '';
+        const hasStroke = stroke !== 'none' && !style.includes('stroke:none');
+        const hasFill = fill !== 'none' && !style.includes('fill:none');
+        const score =
+          area * 100 +
+          length +
+          (hasStroke ? 80 : 0) +
+          (hasFill ? 18 : 0);
+        if (score > bestOutlineScore) {
+          bestOutlineScore = score;
+          outlineCandidate = candidate;
         }
       });
 
       let cooldownMarkup: string | null = null;
-      const outlineCandidate = longestCandidate as SVGGraphicsElement | null;
       if (outlineCandidate) {
-        const flattened = outlineCandidate.cloneNode(true) as SVGGraphicsElement;
+        const tracedCandidate = outlineCandidate as SVGGraphicsElement;
+        const flattened = tracedCandidate.cloneNode(true) as SVGGraphicsElement;
         flattened.removeAttribute('style');
         flattened.removeAttribute('fill');
         flattened.removeAttribute('stroke');
-        const ctm = outlineCandidate.getCTM();
+        const ctm = tracedCandidate.getCTM();
         if (ctm) {
           flattened.setAttribute('transform', `matrix(${ctm.a} ${ctm.b} ${ctm.c} ${ctm.d} ${ctm.e} ${ctm.f})`);
         } else {

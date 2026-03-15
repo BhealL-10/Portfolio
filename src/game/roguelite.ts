@@ -276,7 +276,7 @@ const PASSIVE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     unlockScore: 0,
     name: loc('Déflation primate', 'Primate Deflation'),
     description: loc('Réduit les prix chez le marchand.', 'Reduce shop prices.'),
-    hudIconSrc: HUD_ICON_URLS.contrebandier,
+    hudIconSrc: HUD_ICON_URLS.queue,
     boatVisual: null,
     statsByRarity: passiveStats({ shopDiscount: 0.2 })
   },
@@ -315,7 +315,7 @@ const PASSIVE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     unlockScore: 20,
     name: loc('Trèfle à 3 feuilles et demi', 'Three-and-a-Half Leaf Clover'),
     description: loc('Augmente les chances de croiser une plateforme de récompense.', 'Increase reward shard odds.'),
-    hudIconSrc: HUD_ICON_URLS.carte_tresor,
+    hudIconSrc: HUD_ICON_URLS.perroquet,
     boatVisual: null,
     statsByRarity: passiveStats({ rewardChance: 0.12 })
   },
@@ -354,7 +354,7 @@ const PASSIVE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     unlockScore: 20,
     name: loc('Abonnement Prémium', 'Premium Card'),
     description: loc('Augmente la chance de croiser un marchand.', 'Increase shop odds.'),
-    hudIconSrc: HUD_ICON_URLS.perroquet,
+    hudIconSrc: HUD_ICON_URLS.carte_tresor,
     boatVisual: null,
     statsByRarity: passiveStats({ shopChance: 0.12 })
   },

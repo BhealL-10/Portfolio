@@ -37,6 +37,7 @@ export class AppController {
   private readonly about: AboutSectionSystem;
   private readonly focus: FocusPresentationSystem;
   private readonly gameHud: GameHUDSystem;
+  private readonly rotateOverlay: HTMLDivElement;
   private readonly game: GameSessionController;
   private readonly interaction: ShardInteractionSystem;
   private readonly loop: RenderLoop;
@@ -55,6 +56,7 @@ export class AppController {
   private pendingPostFocusExit: (() => void) | null = null;
   private didRunIntroPresentationFocus = false;
   private gameTransitionTweenId: number | null = null;
+  private focusEnterTweenId: number | null = null;
   private mobileChargePointerId: number | null = null;
   private mobileChargeStartY = 0;
   private mobileChargeStartedAt = 0;
@@ -110,6 +112,15 @@ export class AppController {
         }
       }
     });
+    this.rotateOverlay = document.createElement('div');
+    this.rotateOverlay.className = 'game-rotate-overlay';
+    this.rotateOverlay.innerHTML = `
+      <div class="game-rotate-overlay__panel">
+        <strong class="game-rotate-overlay__title"></strong>
+        <p class="game-rotate-overlay__body"></p>
+      </div>
+    `;
+    this.uiHost.appendChild(this.rotateOverlay);
 
     this.interaction = new ShardInteractionSystem(
       this.renderer.renderer.domElement,
@@ -277,6 +288,8 @@ export class AppController {
     window.addEventListener('wheel', this.onWheel, { passive: false });
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
+    window.addEventListener('resize', this.refreshRotateOverlayCopy);
+    window.addEventListener('orientationchange', this.refreshRotateOverlayCopy);
 
     const canvas = this.renderer.renderer.domElement;
     canvas.addEventListener('pointerdown', this.onGamePointerDown);
@@ -293,6 +306,17 @@ export class AppController {
   };
 
   private onKeyDown = (event: KeyboardEvent) => {
+    if (this.isMiniGameOrientationBlocked()) {
+      if ((this.mode.is('game') || this.mode.is('game_transition') || this.mode.is('game_over')) && event.key === 'Escape') {
+        event.preventDefault();
+        this.exitGame();
+        return;
+      }
+      if (this.mode.is('game') || this.mode.is('game_transition') || this.mode.is('game_over')) {
+        event.preventDefault();
+      }
+      return;
+    }
     if (this.mode.is('game_transition')) {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -379,6 +403,9 @@ export class AppController {
   };
 
   private onKeyUp = (event: KeyboardEvent) => {
+    if (this.isMiniGameOrientationBlocked()) {
+      return;
+    }
     if (!this.mode.is('game')) return;
     if (event.key === 'ArrowDown') {
       this.game.setChargeActive(false);
@@ -390,6 +417,10 @@ export class AppController {
   };
 
   private onGamePointerDown = (event: PointerEvent) => {
+    if (this.isMiniGameOrientationBlocked()) {
+      event.preventDefault();
+      return;
+    }
     if (this.mode.is('game_over')) {
       event.preventDefault();
       this.restartGame();
@@ -405,6 +436,12 @@ export class AppController {
   };
 
   private onGamePointerUp = (event: PointerEvent) => {
+    if (this.isMiniGameOrientationBlocked()) {
+      this.mobileChargePointerId = null;
+      this.mobileChargeStartedAt = 0;
+      this.game.setChargeActive(false);
+      return;
+    }
     if (!this.mode.is('game')) return;
     if (this.mobileChargePointerId !== event.pointerId) return;
 
@@ -462,6 +499,32 @@ export class AppController {
 
   private enterFocus(projectId: string) {
     if (!(this.mode.is('orbit') || this.mode.is('constellation_complete'))) return;
+    if (this.focusEnterTweenId !== null) {
+      this.transitions.cancel(this.focusEnterTweenId);
+      this.focusEnterTweenId = null;
+    }
+    if (this.world.releaseShardFromSlot(projectId)) {
+      this.world.setHovered(null);
+      this.refreshUI();
+      this.focusEnterTweenId = this.transitions.animate({
+        from: 0,
+        to: 1,
+        duration: 0.34,
+        easing: 'easeOutCubic',
+        onUpdate: () => {},
+        onComplete: () => {
+          this.focusEnterTweenId = null;
+          if (!(this.mode.is('orbit') || this.mode.is('constellation_complete'))) {
+            return;
+          }
+          this.mode.setMode('focus_enter');
+          this.world.setFocused(projectId);
+          this.world.setHovered(null);
+          this.refreshUI();
+        }
+      });
+      return;
+    }
     this.mode.setMode('focus_enter');
     this.world.setFocused(projectId);
     this.world.setHovered(null);
@@ -483,7 +546,7 @@ export class AppController {
     this.transitions.animate({
       from: 0,
       to: 1,
-      duration: 0.55,
+      duration: 0.92,
       easing: 'easeOutCubic',
       onUpdate: () => {},
       onComplete: () => {
@@ -791,7 +854,12 @@ export class AppController {
   private update(deltaTime: number, elapsedTime: number) {
     this.transitions.update(deltaTime);
     this.world.update(deltaTime, elapsedTime, this.mode.current);
-    this.game.update(deltaTime, elapsedTime);
+    const orientationBlocked = this.isMiniGameOrientationBlocked();
+    if (orientationBlocked) {
+      this.game.setChargeActive(false);
+      this.game.setUpActionActive(false);
+    }
+    this.game.update(orientationBlocked ? 0 : deltaTime, elapsedTime);
 
     if (this.mode.is('game') || this.mode.is('game_over')) {
       const gameFieldCount = this.getGameFieldCount();
@@ -831,8 +899,9 @@ export class AppController {
 
     const portfolioPosition = cameraOrbitPose.position.clone().lerp(focusPose.position, this.cameraFocusBlend);
     const portfolioLookAt = cameraOrbitPose.lookAt.clone().lerp(orbitPose.lookAt, 0.18).lerp(focusPose.lookAt, this.cameraFocusBlend);
-    const blendedPosition = portfolioPosition.clone().lerp(gamePose.position, this.gameTransitionProgress);
-    const blendedLookAt = portfolioLookAt.clone().lerp(gamePose.lookAt, this.gameTransitionProgress);
+    const transitionPose = this.getGameTransitionCameraPose(portfolioPosition, portfolioLookAt, gamePose.position, gamePose.lookAt);
+    const blendedPosition = transitionPose.position;
+    const blendedLookAt = transitionPose.lookAt;
     const cameraPosition = this.introStartCameraPosition.clone().lerp(blendedPosition, this.introTransitionProgress);
     const cameraLookAt = this.introStartLookAt.clone().lerp(blendedLookAt, this.introTransitionProgress);
 
@@ -847,6 +916,7 @@ export class AppController {
     }
     this.renderer.render();
     this.intro.update(deltaTime);
+    this.updateRotateOverlay();
 
     this.refreshUI();
   }
@@ -867,6 +937,8 @@ export class AppController {
       this.gameHud.update(this.getGameHudPayload());
     }
     this.world.setActiveIndex(this.activeIndex);
+    this.refreshRotateOverlayCopy();
+    this.updateRotateOverlay();
   }
 
   private getGameFieldCount() {
@@ -916,5 +988,71 @@ export class AppController {
 
   private hasSeenAllFacets(projectId: string) {
     return (this.seenFacetsByProject.get(projectId)?.size ?? 0) >= 3;
+  }
+
+  private isMobileDeviceLike() {
+    return window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900;
+  }
+
+  private isMiniGameOrientationBlocked() {
+    const isGameMode = this.mode.is('game_transition') || this.mode.is('game') || this.mode.is('game_over');
+    return isGameMode && this.isMobileDeviceLike() && window.innerHeight > window.innerWidth;
+  }
+
+  private refreshRotateOverlayCopy = () => {
+    const title = this.rotateOverlay.querySelector<HTMLElement>('.game-rotate-overlay__title');
+    const body = this.rotateOverlay.querySelector<HTMLElement>('.game-rotate-overlay__body');
+    if (!title || !body) return;
+    if (this.i18n.current === 'fr') {
+      title.textContent = 'Tournez votre téléphone';
+      body.textContent = 'Le mini-jeu se joue uniquement en mode paysage.';
+    } else {
+      title.textContent = 'Rotate your phone';
+      body.textContent = 'The mini-game is only playable in landscape mode.';
+    }
+  };
+
+  private updateRotateOverlay() {
+    this.rotateOverlay.classList.toggle('is-visible', this.isMiniGameOrientationBlocked());
+  }
+
+  private getGameTransitionCameraPose(
+    portfolioPosition: THREE.Vector3,
+    portfolioLookAt: THREE.Vector3,
+    gamePosition: THREE.Vector3,
+    gameLookAt: THREE.Vector3
+  ) {
+    if (!this.mode.is('game_transition')) {
+      return {
+        position: portfolioPosition.clone().lerp(gamePosition, this.gameTransitionProgress),
+        lookAt: portfolioLookAt.clone().lerp(gameLookAt, this.gameTransitionProgress)
+      };
+    }
+
+    const pivot = gameLookAt.clone();
+    const frontPosition = pivot.clone().add(new THREE.Vector3(0, 0.4, 24.5));
+    const alignPhase = THREE.MathUtils.smoothstep(this.gameTransitionProgress, 0, 0.38);
+    if (this.gameTransitionProgress <= 0.38) {
+      return {
+        position: portfolioPosition.clone().lerp(frontPosition, alignPhase),
+        lookAt: portfolioLookAt.clone().lerp(pivot, alignPhase)
+      };
+    }
+
+    const rotatePhase = THREE.MathUtils.smoothstep((this.gameTransitionProgress - 0.38) / 0.62, 0, 1);
+    const frontOffset = frontPosition.clone().sub(pivot);
+    const gameOffset = gamePosition.clone().sub(pivot);
+    const frontDirection = frontOffset.clone().normalize();
+    const gameDirection = gameOffset.clone().normalize();
+    const rotation = new THREE.Quaternion().setFromUnitVectors(frontDirection, gameDirection);
+    const blendedRotation = new THREE.Quaternion().slerpQuaternions(new THREE.Quaternion(), rotation, rotatePhase);
+    const rotatedOffset = frontOffset
+      .clone()
+      .applyQuaternion(blendedRotation)
+      .setLength(THREE.MathUtils.lerp(frontOffset.length(), gameOffset.length(), rotatePhase));
+    return {
+      position: pivot.clone().add(rotatedOffset),
+      lookAt: pivot.clone()
+    };
   }
 }
