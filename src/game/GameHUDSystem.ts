@@ -2,14 +2,13 @@ import type { RogueliteItemKind, RogueliteItemOffer, RogueliteRarity } from './r
 import { getItemById, rarityLabels, rogueliteItems } from './roguelite';
 import { I18nService } from '../ui/I18nService';
 import type { AcquisitionFeedback, GameOverCause, LandingGrade } from './gameSessionTypes';
-
-const GRADE_ASSET_URLS: Record<'miss' | 'good' | 'super' | 'perfect' | 'twist', string> = {
-  miss: new URL('../../assets/images/spritesheet/grade-miss-spritesheet.png', import.meta.url).href,
-  good: new URL('../../assets/images/spritesheet/grade-good-spritesheet.png', import.meta.url).href,
-  super: new URL('../../assets/images/spritesheet/grade-super-spritesheet.png', import.meta.url).href,
-  perfect: new URL('../../assets/images/spritesheet/grade-perfect-spritesheet.png', import.meta.url).href,
-  twist: new URL('../../assets/images/spritesheet/grade-twist-spritesheet.png', import.meta.url).href
-};
+import { LandingGradeDisplay } from './LandingGradeDisplay';
+import { GRADE_SPRITE_ASSET_URLS } from './GradeSpriteResolver';
+import { MobileControlsHud } from './MobileControlsHud';
+import { MOBILE_CHARGE_ASSETS, MOBILE_CONTROL_ASSETS } from './MobileControlLayoutResolver';
+import { RestartButton, RESTART_BUTTON_ASSETS } from './RestartButton';
+import { SETTINGS_BUTTON_ASSETS } from './SettingsButton';
+import { TopRightUiCluster } from './TopRightUiCluster';
 
 const MOMENTUM_BAR_ASSETS = {
   bg: new URL('../../assets/images/spritesheet/hud-momentum-bar-background.png', import.meta.url).href,
@@ -40,9 +39,9 @@ const RARITY_COLORS: Record<RogueliteRarity, string> = {
   uncommon: '#75AF80',
   rare: '#49BCFF',
   epic: '#8C53B4',
-  legendary: '#3B414C'
+  legendary: '#727c91'
 };
-const CHARGE_LEVEL_COLORS = ['rgb(18 20 24 / 0.26)', '#F2DDB8', '#75AF80', '#49BCFF', '#8C53B4', '#3B414C'] as const;
+const CHARGE_LEVEL_COLORS = ['rgb(18 20 24 / 0.26)', '#F2DDB8', '#75AF80', '#49BCFF', '#8C53B4', '#727c91'] as const;
 const EQUIPMENT_SLOT_ORDER = ['propulseur', 'reacteur_back', 'reacteur_front', 'plane', 'shield', 'wrapper', 'magnet', 'big_canon', 'front_canon', 'grappin', 'souffleur', 'wings'] as const;
 const EQUIPMENT_PANEL_VIEWBOX = { width: 613, height: 403 } as const;
 const CHARGE_COLOR_SLOTS = new Set(['propulseur', 'reacteur_front', 'reacteur_back', 'wings']);
@@ -190,6 +189,8 @@ export class GameHUDSystem {
   private statusValue: HTMLParagraphElement;
   private metaValue: HTMLParagraphElement;
   private exitButton: HTMLButtonElement;
+  private settingsThemeButton: HTMLButtonElement;
+  private settingsLanguageButton: HTMLButtonElement;
   private branchLayer: HTMLDivElement;
   private stashBar: HTMLDivElement;
   private inventoryBar: HTMLDivElement;
@@ -199,7 +200,7 @@ export class GameHUDSystem {
   private shopBar: HTMLDivElement;
   private shopButtons: HTMLButtonElement[];
   private shopCloseButton: HTMLButtonElement;
-  private landingFeedbackBadge: HTMLDivElement;
+  private landingFeedbackDisplay: LandingGradeDisplay;
   private toast: HTMLDivElement;
   private toastLabel: HTMLSpanElement;
   private toastName: HTMLElement;
@@ -213,8 +214,11 @@ export class GameHUDSystem {
   private leaderboardNameInput: HTMLInputElement;
   private leaderboardSaveButton: HTMLButtonElement;
   private restartButton: HTMLButtonElement;
+  private restartVisualButton: RestartButton;
   private returnButton: HTMLButtonElement;
   private highscoresButton: HTMLButtonElement;
+  private topRightCluster: TopRightUiCluster;
+  private mobileControls: MobileControlsHud;
   private currentGameOverSignature = '';
   private lastSavedGameOverSignature = '';
   private leaderboardVisible = false;
@@ -227,6 +231,7 @@ export class GameHUDSystem {
     this.element = document.createElement('div');
     this.element.className = 'game-hud';
     this.element.innerHTML = `
+      <div class="game-hud__top-right-anchor"></div>
       <div class="game-hud__panel">
         <div class="game-hud__stats">
           <div><span data-score-label></span><strong data-score>0</strong></div>
@@ -247,6 +252,10 @@ export class GameHUDSystem {
         <p class="game-hud__meta"></p>
         <div class="game-hud__actions">
           <button type="button" data-exit></button>
+        </div>
+        <div class="game-hud__settings-grid">
+          <button type="button" data-settings-theme></button>
+          <button type="button" data-settings-language></button>
         </div>
       </div>
       <div class="game-hud__momentum-dock">
@@ -289,11 +298,11 @@ export class GameHUDSystem {
         <button type="button" data-shop-offer="2"></button>
         <button type="button" data-shop-close></button>
       </div>
-      <div class="game-hud__landing-feedback"></div>
       <div class="game-hud__toast">
         <span data-toast-label></span>
         <strong data-toast-name></strong>
       </div>
+      <div class="game-hud__mobile-controls-anchor"></div>
       <div class="game-hud__game-over">
         <div class="game-hud__game-over-panel">
           <h2 data-game-over-title></h2>
@@ -340,6 +349,8 @@ export class GameHUDSystem {
     this.statusValue = this.element.querySelector<HTMLParagraphElement>('.game-hud__status')!;
     this.metaValue = this.element.querySelector<HTMLParagraphElement>('.game-hud__meta')!;
     this.exitButton = this.element.querySelector<HTMLButtonElement>('[data-exit]')!;
+    this.settingsThemeButton = this.element.querySelector<HTMLButtonElement>('[data-settings-theme]')!;
+    this.settingsLanguageButton = this.element.querySelector<HTMLButtonElement>('[data-settings-language]')!;
     this.branchLayer = this.element.querySelector<HTMLDivElement>('.game-hud__branch-layer')!;
     this.stashBar = this.element.querySelector<HTMLDivElement>('.game-hud__stash')!;
     this.inventoryBar = this.element.querySelector<HTMLDivElement>('.game-hud__inventory')!;
@@ -349,7 +360,6 @@ export class GameHUDSystem {
     this.shopBar = this.element.querySelector<HTMLDivElement>('.game-hud__shop-bar')!;
     this.shopButtons = Array.from(this.element.querySelectorAll<HTMLButtonElement>('[data-shop-offer]'));
     this.shopCloseButton = this.element.querySelector<HTMLButtonElement>('[data-shop-close]')!;
-    this.landingFeedbackBadge = this.element.querySelector<HTMLDivElement>('.game-hud__landing-feedback')!;
     this.toast = this.element.querySelector<HTMLDivElement>('.game-hud__toast')!;
     this.toastLabel = this.element.querySelector<HTMLSpanElement>('[data-toast-label]')!;
     this.toastName = this.element.querySelector<HTMLElement>('[data-toast-name]')!;
@@ -365,6 +375,32 @@ export class GameHUDSystem {
     this.restartButton = this.element.querySelector<HTMLButtonElement>('[data-restart]')!;
     this.returnButton = this.element.querySelector<HTMLButtonElement>('[data-return]')!;
     this.highscoresButton = this.element.querySelector<HTMLButtonElement>('[data-highscores]')!;
+    this.restartVisualButton = new RestartButton(this.restartButton, this.i18n.t('gameRestart'));
+    this.landingFeedbackDisplay = new LandingGradeDisplay();
+    this.element.appendChild(this.landingFeedbackDisplay.element);
+    this.topRightCluster = new TopRightUiCluster(
+      this.element.querySelector<HTMLDivElement>('.game-hud__top-right-anchor')!,
+      this.panel,
+      this.i18n.current === 'fr' ? 'Paramètres du jeu' : 'Game settings'
+    );
+    this.topRightCluster.settingsButton.element.addEventListener('click', () => {
+      this.topRightCluster.toggle();
+    });
+    this.mobileControls = new MobileControlsHud(
+      this.element.querySelector<HTMLDivElement>('.game-hud__mobile-controls-anchor')!,
+      {
+        jump: this.i18n.current === 'fr' ? 'Saut' : 'Jump',
+        boost: this.i18n.current === 'fr' ? 'Boost' : 'Boost',
+        grapple: this.i18n.current === 'fr' ? 'Grappin' : 'Grapple',
+        charge: this.i18n.current === 'fr' ? 'Charge' : 'Charge'
+      },
+      {
+        onChargeChange: (active) => this.dispatchGameKey(active ? 'keydown' : 'keyup', 'ArrowDown'),
+        onJump: () => this.dispatchTapKey('ArrowUp'),
+        onBoost: () => this.dispatchTapKey('ArrowUp'),
+        onGrapple: () => this.dispatchTapKey('ArrowUp')
+      }
+    );
 
     this.exitButton.addEventListener('click', callbacks.onExit);
     this.restartButton.addEventListener('click', callbacks.onRestart);
@@ -386,6 +422,8 @@ export class GameHUDSystem {
       button.addEventListener('click', () => callbacks.onSelectUpgrade(index));
     });
     this.shopCloseButton.addEventListener('click', callbacks.onCloseShop);
+    this.settingsThemeButton.addEventListener('click', () => this.triggerNavigationAction(1));
+    this.settingsLanguageButton.addEventListener('click', () => this.triggerNavigationAction(2));
     host.appendChild(this.element);
 
     this.i18n.onChange(() => this.renderStatic());
@@ -394,6 +432,10 @@ export class GameHUDSystem {
 
   setVisible(visible: boolean) {
     this.element.classList.toggle('is-visible', visible);
+    document.body.classList.toggle('game-runtime-ui-active', visible);
+    if (!visible) {
+      this.topRightCluster.toggle(false);
+    }
   }
 
   update(payload: GameHUDPayload) {
@@ -441,7 +483,13 @@ export class GameHUDSystem {
       this.toastName.textContent = payload.acquisition.offer.item.name[this.i18n.current];
     }
     this.renderLandingFeedback(payload.landingFeedback);
+    this.mobileControls.update({
+      chargeRatio: payload.chargeRatio,
+      state: payload.state,
+      inventoryItems: payload.inventoryItems.map((item) => ({ kind: item.kind, slot: item.slot }))
+    });
     if (payload.state === 'game_over') {
+      this.topRightCluster.toggle(false);
       this.gameOverBody.textContent = this.getGameOverBody(payload.gameOverCause);
       this.renderGameOverSummary(payload);
     } else {
@@ -468,10 +516,16 @@ export class GameHUDSystem {
     this.branchTitle.textContent = this.i18n.t('gameUpgradeTitle');
     this.branchHint.textContent = this.i18n.t('gameUpgradeHint');
     this.shopCloseButton.textContent = this.i18n.t('gameShopClose');
+    this.settingsThemeButton.textContent = this.i18n.t('theme');
+    this.settingsLanguageButton.textContent = this.i18n.t('language');
+    this.topRightCluster.settingsButton.element.setAttribute(
+      'aria-label',
+      this.i18n.current === 'fr' ? 'Paramètres du jeu' : 'Game settings'
+    );
     this.toastLabel.textContent = this.i18n.t('gameAcquired');
     this.gameOverTitle.textContent = this.i18n.t('gameOverTitle');
     this.gameOverBody.textContent = this.i18n.t('gameOverBody');
-    this.restartButton.textContent = this.i18n.t('gameRestart');
+    this.restartVisualButton.setLabel(this.i18n.t('gameRestart'));
     this.returnButton.textContent = this.i18n.t('gamePortfolio');
     this.highscoresButton.textContent = this.i18n.t('gameHighscores');
     this.leaderboardNameInput.placeholder = this.i18n.t('gamePlayerName');
@@ -784,26 +838,19 @@ export class GameHUDSystem {
     } | null
   ) {
     if (!feedback) {
-      this.landingFeedbackBadge.classList.remove('is-visible');
-      this.landingFeedbackBadge.innerHTML = '';
+      this.landingFeedbackDisplay.clear();
       return;
     }
 
-    const gradeSrc = this.getLandingGradeAsset(feedback.grade);
-    this.landingFeedbackBadge.innerHTML = `
-      ${feedback.twist ? `<img src="${GRADE_ASSET_URLS.twist}" alt="${this.i18n.t('gameLandingTwist')}" class="game-hud__landing-feedback-asset game-hud__landing-feedback-asset--twist" />` : ''}
-      <img src="${gradeSrc}" alt="${this.getLandingGradeLabel(feedback.grade)}" class="game-hud__landing-feedback-asset game-hud__landing-feedback-asset--grade" />
-    `;
-    this.landingFeedbackBadge.dataset.grade = feedback.grade;
-    this.landingFeedbackBadge.classList.toggle('is-twist', feedback.twist);
-    this.landingFeedbackBadge.classList.add('is-visible');
-    this.landingFeedbackBadge.style.setProperty('--landing-progress', feedback.progress.toFixed(3));
-    const popScale =
-      feedback.progress < 0.2
-        ? 0.78 + (feedback.progress / 0.2) * 0.34
-        : 1.12 - Math.min(1, (feedback.progress - 0.2) / 0.8) * 0.12;
-    const driftY = feedback.screenY - feedback.progress * 24;
-    this.landingFeedbackBadge.style.transform = `translate(${feedback.screenX}px, ${driftY}px) scale(${popScale.toFixed(3)})`;
+    this.landingFeedbackDisplay.render({
+      grade: feedback.grade,
+      twist: feedback.twist,
+      progress: feedback.progress,
+      screenX: feedback.screenX,
+      screenY: feedback.screenY,
+      gradeLabel: this.getLandingGradeLabel(feedback.grade),
+      twistLabel: this.i18n.t('gameLandingTwist')
+    });
   }
 
   private getLandingGradeLabel(grade: LandingGrade) {
@@ -813,15 +860,27 @@ export class GameHUDSystem {
     return this.i18n.t('gameLandingGood');
   }
 
-  private getLandingGradeAsset(grade: LandingGrade) {
-    if (grade === 'miss') return GRADE_ASSET_URLS.miss;
-    if (grade === 'super') return GRADE_ASSET_URLS.super;
-    if (grade === 'perfect') return GRADE_ASSET_URLS.perfect;
-    return GRADE_ASSET_URLS.good;
-  }
-
   private getRarityLabel(rarity: RogueliteRarity) {
     return rarityLabels[rarity][this.i18n.current];
+  }
+
+  private triggerNavigationAction(index: number) {
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.navigation-hud__topbar .navigation-hud__button'));
+    buttons[index]?.click();
+  }
+
+  private dispatchTapKey(key: 'ArrowUp' | 'ArrowDown') {
+    this.dispatchGameKey('keydown', key);
+    window.setTimeout(() => this.dispatchGameKey('keyup', key), 0);
+  }
+
+  private dispatchGameKey(type: 'keydown' | 'keyup', key: 'ArrowUp' | 'ArrowDown') {
+    const event = new KeyboardEvent(type, {
+      key,
+      bubbles: true,
+      cancelable: true
+    });
+    window.dispatchEvent(event);
   }
 
   private getGameOverBody(cause: GameOverCause) {
@@ -1432,12 +1491,16 @@ export class GameHUDSystem {
 
   private preloadUiAssets() {
     const itemAssets = rogueliteItems.flatMap((item) => [item.hudIconSrc, item.rarityIconSrc]);
-    Object.values(GRADE_ASSET_URLS)
+    Object.values(GRADE_SPRITE_ASSET_URLS)
       .concat(
         Object.values(MOMENTUM_BAR_ASSETS),
         [COIN_ICON_URL, EQUIPMENT_UI_ASSETS.bgBoat],
         itemAssets,
-        Object.values(EQUIPMENT_UI_ASSETS.charges)
+        Object.values(EQUIPMENT_UI_ASSETS.charges),
+        Object.values(MOBILE_CONTROL_ASSETS),
+        MOBILE_CHARGE_ASSETS,
+        Object.values(RESTART_BUTTON_ASSETS),
+        Object.values(SETTINGS_BUTTON_ASSETS)
       )
       .forEach((src) => {
       const image = new Image();
