@@ -3,8 +3,8 @@ export interface GradeAnimationSnapshot {
   opacity: number;
 }
 
-const RAPID_PHASE_END = 0.148;
-const HOLD_PHASE_END = 0.889;
+const RAPID_PHASE_END = 0.162;
+const HOLD_PHASE_END = 0.858;
 
 export class GradeAnimationController {
   resolve(progress: number): GradeAnimationSnapshot {

@@ -90,6 +90,7 @@ function buildFacet(
       en: enFacet.technologies[techIndex] || tech
     })),
     images: metaFacet.images ? metaFacet.images.map((image) => `/${image}`) : [],
+    media: null,
     links: normalizeLinks(metaFacet.links),
     featured: Boolean(metaFacet.featured)
   };
@@ -191,6 +192,15 @@ export const portfolioProjects: PortfolioProject[] = metadata.map((projectMeta, 
         : facets
   };
 });
+
+const cinemaProject = portfolioProjects.find((project) => project.numericId === 4);
+if (cinemaProject) {
+  cinemaProject.facets[0].media = {
+    kind: 'youtube',
+    embedUrl: 'https://www.youtube-nocookie.com/embed/pTmAQQ7RNNQ?rel=0&modestbranding=1&playsinline=1',
+    title: 'Mon premier court-metrage'
+  };
+}
 
 export function getProjectCount() {
   return portfolioProjects.length;

@@ -1,14 +1,17 @@
 import type { RogueliteItemKind, RogueliteItemOffer, RogueliteRarity } from './roguelite';
 import { getItemById, rarityLabels, rogueliteItems } from './roguelite';
 import { I18nService } from '../ui/I18nService';
-import type { AcquisitionFeedback, GameOverCause, LandingGrade } from './gameSessionTypes';
+import type { AcquisitionFeedback, GameOverCause, GamePlayerMotionState, LandingGrade } from './gameSessionTypes';
 import { LandingGradeDisplay } from './LandingGradeDisplay';
 import { GRADE_SPRITE_ASSET_URLS } from './GradeSpriteResolver';
 import { MobileControlsHud } from './MobileControlsHud';
 import { MOBILE_CHARGE_ASSETS, MOBILE_CONTROL_ASSETS } from './MobileControlLayoutResolver';
 import { RestartButton, RESTART_BUTTON_ASSETS } from './RestartButton';
+import { RewardBranchLabelLayoutResolver } from './RewardBranchLabelLayoutResolver';
 import { SETTINGS_BUTTON_ASSETS } from './SettingsButton';
+import { observeThemeChanges, resolveDocumentTheme } from './ThemeAssetResolver';
 import { TopRightUiCluster } from './TopRightUiCluster';
+import { buildGameOverSummaryMarkup } from './buildGameOverSummaryMarkup';
 
 const MOMENTUM_BAR_ASSETS = {
   bg: new URL('../../assets/images/spritesheet/hud-momentum-bar-background.png', import.meta.url).href,
@@ -16,6 +19,10 @@ const MOMENTUM_BAR_ASSETS = {
   top: new URL('../../assets/images/spritesheet/hud-momentum-bar-overlay.png', import.meta.url).href
 };
 const COIN_ICON_URL = new URL('../../assets/images/spritesheet/pickup-coin-spritesheet.png', import.meta.url).href;
+const LANGUAGE_BUTTON_ASSETS = {
+  fr: new URL('../../assets/images/Langue/FR.svg', import.meta.url).href,
+  en: new URL('../../assets/images/Langue/EN.svg', import.meta.url).href
+} as const;
 const EQUIPMENT_UI_ASSETS = {
   bgBoat: new URL('../../assets/images/itemhud/ui-equipment-dock.svg', import.meta.url).href,
   charges: {
@@ -53,11 +60,19 @@ type GameHUDState = 'transition' | 'running' | 'upgrade_choice' | 'game_over';
 interface GameHUDCallbacks {
   onRestart: () => void;
   onExit: () => void;
+  onMainMenu: () => void;
   onSelectUpgrade: (index: number) => void;
   onCloseShop: () => void;
+  onThemeToggle: () => void;
+  onLanguageToggle: () => void;
+  onMobileJump: () => void;
+  onMobileChargeChange: (active: boolean) => void;
+  onMobileGrapple: () => void;
+  onMobileAirborneCharge: () => void;
 }
 
 interface GameHUDPayload {
+  playerMotionState: GamePlayerMotionState;
   score: number;
   highscore: number;
   distanceMeters: number;
@@ -69,6 +84,14 @@ interface GameHUDPayload {
   momentumTier: number;
   orbitGraceActive: boolean;
   orbitGraceProgress: number;
+  mobile: {
+    airborneChargeCount: number;
+    airborneChargeDisplayCount: number;
+    hasGrapple: boolean;
+    grappleBlocked: boolean;
+    hasSouffleur: boolean;
+    hasSouffleurFuel: boolean;
+  };
   state: GameHUDState;
   offers: RogueliteItemOffer[];
   branchHints: Array<{
@@ -225,11 +248,14 @@ export class GameHUDSystem {
   private currentRunSummary: GameHUDPayload['runSummary'] | null = null;
   private readonly shapeTemplateCache = new Map<string, EquipmentShapeTemplate | null>();
   private readonly shapeTemplatePending = new Set<string>();
+  private readonly stopObservingTheme: () => void;
+  private readonly rewardBranchLayout = new RewardBranchLabelLayoutResolver();
 
   constructor(host: HTMLElement, private readonly i18n: I18nService, callbacks: GameHUDCallbacks) {
     this.preloadUiAssets();
     this.element = document.createElement('div');
     this.element.className = 'game-hud';
+    this.element.hidden = true;
     this.element.innerHTML = `
       <div class="game-hud__top-right-anchor"></div>
       <div class="game-hud__panel">
@@ -395,16 +421,16 @@ export class GameHUDSystem {
         charge: this.i18n.current === 'fr' ? 'Charge' : 'Charge'
       },
       {
-        onChargeChange: (active) => this.dispatchGameKey(active ? 'keydown' : 'keyup', 'ArrowDown'),
-        onJump: () => this.dispatchTapKey('ArrowUp'),
-        onBoost: () => this.dispatchTapKey('ArrowUp'),
-        onGrapple: () => this.dispatchTapKey('ArrowUp')
+        onChargeChange: callbacks.onMobileChargeChange,
+        onJump: callbacks.onMobileJump,
+        onAirborneCharge: callbacks.onMobileAirborneCharge,
+        onGrapple: callbacks.onMobileGrapple
       }
     );
 
     this.exitButton.addEventListener('click', callbacks.onExit);
     this.restartButton.addEventListener('click', callbacks.onRestart);
-    this.returnButton.addEventListener('click', callbacks.onExit);
+    this.returnButton.addEventListener('click', callbacks.onMainMenu);
     this.highscoresButton.addEventListener('click', () => {
       this.leaderboardVisible = !this.leaderboardVisible;
       this.renderLeaderboard();
@@ -422,8 +448,9 @@ export class GameHUDSystem {
       button.addEventListener('click', () => callbacks.onSelectUpgrade(index));
     });
     this.shopCloseButton.addEventListener('click', callbacks.onCloseShop);
-    this.settingsThemeButton.addEventListener('click', () => this.triggerNavigationAction(1));
-    this.settingsLanguageButton.addEventListener('click', () => this.triggerNavigationAction(2));
+    this.settingsThemeButton.addEventListener('click', callbacks.onThemeToggle);
+    this.settingsLanguageButton.addEventListener('click', callbacks.onLanguageToggle);
+    this.stopObservingTheme = observeThemeChanges(() => this.renderSettingsButtons());
     host.appendChild(this.element);
 
     this.i18n.onChange(() => this.renderStatic());
@@ -431,11 +458,22 @@ export class GameHUDSystem {
   }
 
   setVisible(visible: boolean) {
+    this.element.hidden = !visible;
     this.element.classList.toggle('is-visible', visible);
     document.body.classList.toggle('game-runtime-ui-active', visible);
     if (!visible) {
       this.topRightCluster.toggle(false);
+      this.landingFeedbackDisplay.clear();
+      this.branchLayer.hidden = true;
+      this.shopBar.hidden = true;
+      this.gameOverOverlay.hidden = true;
+      this.toast.hidden = true;
+      this.leaderboardPanel.hidden = true;
     }
+  }
+
+  dispose() {
+    this.stopObservingTheme();
   }
 
   update(payload: GameHUDPayload) {
@@ -472,6 +510,10 @@ export class GameHUDSystem {
     this.branchTitle.textContent = showingShop ? this.i18n.t('gameShopTitle') : this.i18n.t('gameUpgradeTitle');
     this.branchHint.textContent = showingShop ? this.i18n.t('gameShopHint') : this.i18n.t('gameUpgradeHint');
 
+    this.branchLayer.hidden = !(payload.state === 'upgrade_choice' && !showingShop);
+    this.shopBar.hidden = !(payload.state === 'upgrade_choice' && showingShop);
+    this.gameOverOverlay.hidden = payload.state !== 'game_over';
+    this.toast.hidden = !payload.acquisition;
     this.panel.classList.toggle('is-hidden', payload.state === 'game_over');
     this.branchLayer.classList.toggle('is-visible', payload.state === 'upgrade_choice' && !showingShop);
     this.shopBar.classList.toggle('is-visible', payload.state === 'upgrade_choice' && showingShop);
@@ -486,7 +528,8 @@ export class GameHUDSystem {
     this.mobileControls.update({
       chargeRatio: payload.chargeRatio,
       state: payload.state,
-      inventoryItems: payload.inventoryItems.map((item) => ({ kind: item.kind, slot: item.slot }))
+      playerMotionState: payload.playerMotionState,
+      mobile: payload.mobile
     });
     if (payload.state === 'game_over') {
       this.topRightCluster.toggle(false);
@@ -526,12 +569,13 @@ export class GameHUDSystem {
     this.gameOverTitle.textContent = this.i18n.t('gameOverTitle');
     this.gameOverBody.textContent = this.i18n.t('gameOverBody');
     this.restartVisualButton.setLabel(this.i18n.t('gameRestart'));
-    this.returnButton.textContent = this.i18n.t('gamePortfolio');
+    this.returnButton.textContent = this.i18n.t('gameMainMenu');
     this.highscoresButton.textContent = this.i18n.t('gameHighscores');
     this.leaderboardNameInput.placeholder = this.i18n.t('gamePlayerName');
     this.leaderboardSaveButton.textContent = this.i18n.t('gameSaveScore');
     this.bestDistanceLabel.textContent = this.i18n.t('gameBestDistance');
     this.walletIcon.title = this.i18n.t('gameCoins');
+    this.renderSettingsButtons();
     this.renderLeaderboard();
   }
 
@@ -554,6 +598,8 @@ export class GameHUDSystem {
 
       card.hidden = false;
       card.dataset.rarity = offer.offer.item.rarity;
+      card.dataset.slot = String(offer.slot);
+      card.dataset.mode = offer.mode ?? 'reward_branch';
       const label = offer.mode === 'shop_orbit'
         ? this.i18n.t('gameShopOffer')
         : index === 0
@@ -561,7 +607,16 @@ export class GameHUDSystem {
           : index === 1
             ? this.i18n.t('gamePathForward')
             : this.i18n.t('gamePathLower');
-      card.style.transform = `translate(${offer.screenX}px, ${offer.screenY}px)`;
+      const layout = this.rewardBranchLayout.resolve({
+        slot: offer.slot,
+        screenX: offer.screenX,
+        screenY: offer.screenY,
+        mode: offer.mode
+      });
+      card.style.left = `${layout.left}px`;
+      card.style.top = `${layout.top}px`;
+      card.style.setProperty('--branch-card-width', `${layout.width}px`);
+      card.classList.toggle('is-compact', layout.compact);
       const showRarity = offer.offer.item.kind === 'module';
       card.innerHTML = `
         <span class="game-hud__upgrade-media">
@@ -796,34 +851,15 @@ export class GameHUDSystem {
   private renderGameOverSummary(payload: GameHUDPayload) {
     const summary = payload.runSummary;
     this.currentRunSummary = summary;
-    const newBadge = `<em class="game-hud__game-over-badge">${this.i18n.t('gameNewBadge')}</em>`;
-    this.currentGameOverSignature = [
-      payload.score,
-      Math.round(summary.distanceMeters),
-      summary.coinsCollected,
-      summary.enemiesKilled,
-      Math.round(summary.longestMomentumSeconds * 10)
-    ].join(':');
-    this.gameOverStats.innerHTML = `
-      <div><span>${this.i18n.t('gameScore')}</span><strong>${summary.score}</strong>${summary.personalBests.score ? newBadge : ''}</div>
-      <div><span>${this.i18n.t('gameDistance')}</span><strong>${Math.round(summary.distanceMeters)}m</strong>${summary.personalBests.distanceMeters ? newBadge : ''}</div>
-      <div><span>${this.i18n.t('gameRunShards')}</span><strong>${summary.shardsLanded}</strong>${summary.personalBests.shardsLanded ? newBadge : ''}</div>
-      <div><span>${this.i18n.t('gameCoins')}</span><strong>${summary.coinsCollected}</strong>${summary.personalBests.coinsCollected ? newBadge : ''}</div>
-      <div><span>${this.i18n.t('gameRunKills')}</span><strong>${summary.enemiesKilled}</strong>${summary.personalBests.enemiesKilled ? newBadge : ''}</div>
-      <div><span>${this.i18n.t('gameRunMomentum')}</span><strong>${summary.longestMomentumSeconds.toFixed(1)}s</strong>${summary.personalBests.longestMomentumSeconds ? newBadge : ''}</div>
-    `;
-    this.gameOverEquipment.innerHTML = summary.equipment.length
-      ? summary.equipment
-          .map(
-            (item) => `
-              <span class="game-hud__game-over-item" title="${getItemById(item.id)?.name[this.i18n.current] ?? item.id}">
-                <img src="${item.iconSrc}" alt="" class="game-hud__game-over-item-icon" />
-                ${item.kind === 'module' ? `<img src="${item.rarityIconSrc}" alt="" class="game-hud__game-over-item-rarity" />` : ''}
-              </span>
-            `
-          )
-          .join('')
-      : `<span class="game-hud__game-over-empty">${this.i18n.t('gameRunNoItems')}</span>`;
+    const markup = buildGameOverSummaryMarkup({
+      score: payload.score,
+      summary,
+      locale: this.i18n.current,
+      t: (key) => this.i18n.t(key)
+    });
+    this.currentGameOverSignature = markup.signature;
+    this.gameOverStats.innerHTML = markup.statsMarkup;
+    this.gameOverEquipment.innerHTML = markup.equipmentMarkup;
     this.updateLeaderboardSaveVisibility();
     this.renderLeaderboard();
   }
@@ -837,20 +873,19 @@ export class GameHUDSystem {
       screenY: number;
     } | null
   ) {
-    if (!feedback) {
-      this.landingFeedbackDisplay.clear();
-      return;
-    }
-
-    this.landingFeedbackDisplay.render({
-      grade: feedback.grade,
-      twist: feedback.twist,
-      progress: feedback.progress,
-      screenX: feedback.screenX,
-      screenY: feedback.screenY,
-      gradeLabel: this.getLandingGradeLabel(feedback.grade),
-      twistLabel: this.i18n.t('gameLandingTwist')
-    });
+    this.landingFeedbackDisplay.update(
+      feedback
+        ? {
+            grade: feedback.grade,
+            twist: feedback.twist,
+            progress: feedback.progress,
+            screenX: feedback.screenX,
+            screenY: feedback.screenY,
+            gradeLabel: this.getLandingGradeLabel(feedback.grade),
+            twistLabel: this.i18n.t('gameLandingTwist')
+          }
+        : null
+    );
   }
 
   private getLandingGradeLabel(grade: LandingGrade) {
@@ -864,23 +899,56 @@ export class GameHUDSystem {
     return rarityLabels[rarity][this.i18n.current];
   }
 
-  private triggerNavigationAction(index: number) {
-    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.navigation-hud__topbar .navigation-hud__button'));
-    buttons[index]?.click();
+  private renderSettingsButtons() {
+    const languageAsset = LANGUAGE_BUTTON_ASSETS[this.i18n.current];
+    const theme = resolveDocumentTheme();
+    const themeLabel = theme === 'dark' ? (this.i18n.current === 'fr' ? 'Mode sombre' : 'Dark theme') : (this.i18n.current === 'fr' ? 'Mode clair' : 'Light theme');
+    const languageLabel = this.i18n.current === 'fr' ? 'Changer la langue' : 'Change language';
+
+    this.settingsLanguageButton.className = 'game-hud__settings-chip game-hud__settings-chip--language';
+    this.settingsLanguageButton.setAttribute('aria-label', languageLabel);
+    this.settingsLanguageButton.innerHTML = `
+      <img class="game-hud__settings-language-icon" src="${languageAsset}" alt="" />
+      <span class="game-hud__settings-chip-copy">${this.i18n.current.toUpperCase()}</span>
+    `;
+
+    this.settingsThemeButton.className = `game-hud__settings-chip game-hud__settings-chip--theme is-${theme}-theme`;
+    this.settingsThemeButton.setAttribute('aria-label', themeLabel);
+    this.settingsThemeButton.innerHTML = `
+      <span class="game-hud__settings-theme-icon" aria-hidden="true">
+        ${theme === 'dark' ? this.getMoonIconMarkup() : this.getSunIconMarkup()}
+      </span>
+      <span class="game-hud__settings-chip-copy">${theme === 'dark' ? 'MOON' : 'SUN'}</span>
+    `;
   }
 
-  private dispatchTapKey(key: 'ArrowUp' | 'ArrowDown') {
-    this.dispatchGameKey('keydown', key);
-    window.setTimeout(() => this.dispatchGameKey('keyup', key), 0);
+  private getSunIconMarkup() {
+    return `
+      <svg viewBox="0 0 24 24" class="game-hud__settings-theme-svg">
+        <circle cx="12" cy="12" r="4.25" fill="currentColor"></circle>
+        <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8">
+          <path d="M12 1.8v3.1"></path>
+          <path d="M12 19.1v3.1"></path>
+          <path d="M1.8 12h3.1"></path>
+          <path d="M19.1 12h3.1"></path>
+          <path d="M4.6 4.6l2.2 2.2"></path>
+          <path d="M17.2 17.2l2.2 2.2"></path>
+          <path d="M17.2 6.8l2.2-2.2"></path>
+          <path d="M4.6 19.4l2.2-2.2"></path>
+        </g>
+      </svg>
+    `;
   }
 
-  private dispatchGameKey(type: 'keydown' | 'keyup', key: 'ArrowUp' | 'ArrowDown') {
-    const event = new KeyboardEvent(type, {
-      key,
-      bubbles: true,
-      cancelable: true
-    });
-    window.dispatchEvent(event);
+  private getMoonIconMarkup() {
+    return `
+      <svg viewBox="0 0 24 24" class="game-hud__settings-theme-svg">
+        <path
+          d="M15.9 2.8c-3.6 1.2-6.1 4.6-6.1 8.5 0 4.9 4 8.8 8.9 8.8 1.1 0 2.1-.2 3.1-.5-1.5 1.9-3.9 3.1-6.6 3.1-4.9 0-8.9-4-8.9-8.9 0-4.8 3.8-8.7 8.6-8.9.3 0 .6 0 1 .1z"
+          fill="currentColor"
+        ></path>
+      </svg>
+    `;
   }
 
   private getGameOverBody(cause: GameOverCause) {

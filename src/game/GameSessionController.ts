@@ -4,12 +4,14 @@ import type { ThemeMode } from '../types/content';
 import { CameraRailController } from './CameraRailController';
 import { CoinSystem, type CoinMarker } from './CoinSystem';
 import { EnemySystem, type EnemyMarker } from './EnemySystem';
+import { createMiniGamePortalNode } from './MiniGamePortalLayout';
 import { DEFAULT_COLUMN_DISTANCE } from './difficultyScaler';
 import { GamePathSystem } from './GamePathSystem';
 import type {
   AcquisitionFeedback,
   BranchChoice,
   BranchLabelHint,
+  GamePlayerMotionState,
   GameHudSnapshot,
   GameHudState,
   GameOverCause,
@@ -116,6 +118,7 @@ export class GameSessionController {
   private theme: ThemeMode;
   private readonly hudSnapshot: GameHudSnapshot = {
     state: 'transition',
+    playerMotionState: 'attached',
     score: 0,
     highscore: 0,
     distanceMeters: 0,
@@ -127,6 +130,14 @@ export class GameSessionController {
     momentumTier: 0,
     orbitGraceActive: false,
     orbitGraceProgress: 1,
+    mobile: {
+      airborneChargeCount: 0,
+      airborneChargeDisplayCount: 0,
+      hasGrapple: false,
+      grappleBlocked: false,
+      hasSouffleur: false,
+      hasSouffleurFuel: false
+    },
     offers: [],
     branchHints: [],
     inventoryItems: [],
@@ -186,6 +197,8 @@ export class GameSessionController {
   private acquisitionDuration = 0.9;
   private landingFeedbackStartedAt = 0;
   private landingFeedbackDuration = 1.35;
+  private landingFeedbackNodeIndex: number | null = null;
+  private lastLandingFeedbackTriggerNodeIndex: number | null = null;
   private gameOverStartedAt = 0;
   private gameOverCause: GameOverCause = null;
   private jumpVisualUntil = 0;
@@ -422,14 +435,53 @@ export class GameSessionController {
     return () => this.scoreListeners.delete(callback);
   }
 
+  beginPortalPreview() {
+    this.resetRunState();
+    this.attachedIndex = 0;
+    this.playerState = 'attached';
+    this.state = 'portal_preview';
+    this.orbitAngle = Math.PI * 0.18;
+    this.orbitDirection = -1;
+    const node = this.getPortalPreviewNode();
+    this.angularSpeed = (Math.PI * 2) / Math.max(1.6, node.gameplayOrbitPeriod);
+    const orbit = this.getOrbitSample(node, this.orbitAngle);
+    this.playerPosition.copy(this.getPlayerOrbitWorldPosition(node, this.orbitAngle, orbit));
+    this.playerVelocity.set(0, 0, 0);
+    this.root.visible = true;
+    this.player.visible = true;
+    this.playerTrail.visible = true;
+    this.shardHudSprite.visible = false;
+    this.frontCanonLaser.visible = false;
+    this.frontCanonProjectile.visible = false;
+    this.bigCanonProjectile.visible = false;
+    this.grapRope.visible = false;
+    this.coins.reset();
+    this.enemies.reset();
+    this.shop.reset();
+    this.coins.setVisible(false);
+    this.enemies.setVisible(false);
+    this.camera.reset(node);
+    this.trailPoints.forEach((point) => point.copy(this.playerPosition));
+    this.updateTrail(0);
+  }
+
   startTransition() {
+    const preservePortalPreviewBoat = this.state === 'portal_preview';
+    const previewPosition = this.player.position.clone();
+    const previewRotation = this.player.rotation.clone();
+    const previewScale = this.player.scale.clone();
     this.resetRunState();
     this.path.reset();
     this.path.prebuild(180);
     this.camera.reset(this.getResolvedNode(0));
     this.state = 'transition_in';
     this.root.visible = true;
-    this.player.visible = false;
+    if (preservePortalPreviewBoat) {
+      this.player.position.copy(previewPosition);
+      this.player.rotation.copy(previewRotation);
+      this.player.scale.copy(previewScale);
+    }
+    this.player.visible = preservePortalPreviewBoat;
     this.playerTrail.visible = false;
   }
 
@@ -493,6 +545,14 @@ export class GameSessionController {
     this.camera.reset(this.getResolvedNode(0));
   }
 
+  getPortalPreviewLayout() {
+    const node = this.getPortalPreviewNode();
+    return {
+      position: new THREE.Vector3(node.resolvedX, node.resolvedY, node.resolvedZ),
+      visual: this.buildPortalPreviewVisual(node)
+    };
+  }
+
   resetRunState() {
     this.stats.reset(performance.now());
     this.score = 0;
@@ -506,6 +566,8 @@ export class GameSessionController {
     this.landingFeedback = null;
     this.acquisitionStartedAt = 0;
     this.landingFeedbackStartedAt = 0;
+    this.landingFeedbackNodeIndex = null;
+    this.lastLandingFeedbackTriggerNodeIndex = null;
     this.gameOverStartedAt = 0;
     this.gameOverCause = null;
     this.jumpVisualUntil = 0;
@@ -613,79 +675,7 @@ export class GameSessionController {
 
   getVisiblePlatformVisuals(count: number): VisiblePlatformVisual[] {
     const displayNodes = this.getDisplayNodes(count);
-    return displayNodes.map((node) => {
-      const isCurrent = node.index === this.attachedIndex && this.playerState !== 'airborne';
-      const localAngle = wrapAngle(this.orbitAngle - (node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase));
-      const orbitRamp = isCurrent ? (this.orbitGraceActive ? this.orbitGraceProgress : 1) : 1;
-      const visualWave = this.getVisualWaveState(node);
-      const leftEdge = Math.max(this.camera.getSafeLeft(), this.playerPosition.x - DEFAULT_COLUMN_DISTANCE * 1.35);
-      const rightEdge = node.resolvedX + this.getPhysicalRadius(node);
-      const leftScreenFragment = clamp(1 - (rightEdge - leftEdge) / 4.2, 0, 1);
-      const surpassedFragment =
-        node.index < this.attachedIndex
-          ? clamp(
-              0.42 +
-                (this.playerPosition.x - (node.resolvedX + this.getPhysicalRadius(node) * 0.32)) /
-                  Math.max(2.2, DEFAULT_COLUMN_DISTANCE * 0.92),
-              0,
-              1
-            )
-          : 0;
-      const fragmentAmount = Math.max(leftScreenFragment, surpassedFragment);
-      const passiveStrength = node.isMilestone ? 0.003 : node.shapeKind === 'round' ? 0.018 : node.shapeKind === 'oval' ? 0.038 : 0.048;
-      const passiveDensity = node.isMilestone ? 0.18 : node.shapeKind === 'round' ? 0.52 : node.shapeKind === 'oval' ? 0.68 : 0.78;
-      const targetDensity = passiveDensity + 0.42 + this.momentum.gauge * 0.34;
-      const liveDensity = isCurrent ? THREE.MathUtils.lerp(passiveDensity, targetDensity, orbitRamp) : Math.max(passiveDensity, visualWave?.density ?? passiveDensity);
-      const activeStrength = node.isMilestone ? 0.012 + orbitRamp * 0.02 : passiveStrength + 0.18 + orbitRamp * 0.12 + this.momentum.gauge * 0.46;
-      const rewardItem = node.offerId ? getItemById(node.offerId) : null;
-      const isQuestionShard = node.eventType === 'shop' || node.eventType === 'gift' || node.eventType === 'rare_item';
-      const maskedByMilestone = false;
-      return {
-        scale: new THREE.Vector3(
-          maskedByMilestone ? 0.0001 : node.visualScale * node.visualStretch.x,
-          maskedByMilestone ? 0.0001 : node.visualScale * node.visualStretch.y,
-          maskedByMilestone ? 0.0001 : node.visualScale * node.visualStretch.z
-        ),
-        shapeKind: node.shapeKind,
-        spinDirection: node.spinDirection,
-        spinSpeed: node.spinSpeed,
-        spinPhase: node.resolvedSpinPhase,
-        tint:
-          node.colorHint === 'danger'
-            ? DANGER_ACCENT
-            : node.eventType === 'shop' || node.colorHint === 'reward' || node.eventType === 'gift' || node.eventType === 'rare_item'
-              ? this.getThemeShardColor()
-            : null,
-        ringTint: null,
-        ringScale: 0,
-        stripeTint: null,
-        stripeMix: 0,
-        stripePhase: 0,
-        pulse:
-          node.isMilestone
-            ? 0.18
-            : isQuestionShard
-              ? 0.48
-            : node.colorHint === 'reward'
-                ? 0.68
-                : node.eventType !== 'none'
-                  ? 0.34
-                  : clamp(this.momentum.gauge * 0.22, 0, 0.22),
-        deformAngle: isCurrent ? localAngle : visualWave?.angle ?? 0,
-        deformStrength: isCurrent ? activeStrength : Math.max(passiveStrength, visualWave?.strength ?? 0) + (node.isMilestone ? 0 : fragmentAmount * 0.16),
-        deformDensity: liveDensity,
-        fragmentAmount,
-        iconSrc: node.colorHint === 'reward' && rewardItem ? rewardItem.hudIconSrc : null,
-        iconText: isQuestionShard ? '?' : null,
-        iconTint: isQuestionShard ? this.getThemeContrastColor() : null,
-        iconScale:
-          node.colorHint === 'reward' && rewardItem
-            ? clamp(1.76 + Math.max(node.gameplayRadius, node.visualScale) * 0.36, 2.36, 4.2)
-            : isQuestionShard
-              ? 2.28
-              : 0.34
-      };
-    });
+    return displayNodes.map((node) => this.buildVisiblePlatformVisual(node, node.index === this.attachedIndex && this.playerState !== 'airborne'));
   }
 
   getRecommendedVisibleCount() {
@@ -698,8 +688,89 @@ export class GameSessionController {
     return Math.max(56, Math.min(124, baseCount + momentumBonus + choiceBonus + visibilityBonus));
   }
 
+  private buildVisiblePlatformVisual(node: ResolvedGamePathNode, isCurrent: boolean): VisiblePlatformVisual {
+    const localAngle = wrapAngle(this.orbitAngle - (node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase));
+    const orbitRamp = isCurrent ? (this.orbitGraceActive ? this.orbitGraceProgress : 1) : 1;
+    const visualWave = this.getVisualWaveState(node);
+    const leftEdge = Math.max(this.camera.getSafeLeft(), this.playerPosition.x - DEFAULT_COLUMN_DISTANCE * 1.35);
+    const rightEdge = node.resolvedX + this.getPhysicalRadius(node);
+    const leftScreenFragment = clamp(1 - (rightEdge - leftEdge) / 4.2, 0, 1);
+    const surpassedFragment =
+      node.index < this.attachedIndex
+        ? clamp(
+            0.42 + (this.playerPosition.x - (node.resolvedX + this.getPhysicalRadius(node) * 0.32)) / Math.max(2.2, DEFAULT_COLUMN_DISTANCE * 0.92),
+            0,
+            1
+          )
+        : 0;
+    const hiddenSlotVisualBias = isCurrent ? 0.1 + orbitRamp * 0.08 : 0.04;
+    const fragmentAmount = clamp(Math.max(leftScreenFragment, surpassedFragment, hiddenSlotVisualBias), 0, 1);
+    const passiveStrength = node.isMilestone ? 0.003 : node.shapeKind === 'round' ? 0.018 : node.shapeKind === 'oval' ? 0.038 : 0.048;
+    const passiveDensity = node.isMilestone ? 0.18 : node.shapeKind === 'round' ? 0.52 : node.shapeKind === 'oval' ? 0.68 : 0.78;
+    const targetDensity = passiveDensity + 0.42 + this.momentum.gauge * 0.34;
+    const liveDensity = isCurrent ? THREE.MathUtils.lerp(passiveDensity, targetDensity, orbitRamp) : Math.max(passiveDensity, visualWave?.density ?? passiveDensity);
+    const activeStrength = node.isMilestone ? 0.012 + orbitRamp * 0.02 : passiveStrength + 0.18 + orbitRamp * 0.12 + this.momentum.gauge * 0.46;
+    const rewardItem = node.offerId ? getItemById(node.offerId) : null;
+    const isQuestionShard = node.eventType === 'shop' || node.eventType === 'gift' || node.eventType === 'rare_item';
+    const maskedByMilestone = false;
+    const stripeMix = clamp((node.isMilestone ? 0.08 : 0.12) + fragmentAmount * 0.18 + (isCurrent ? orbitRamp * 0.1 : 0), 0, 0.42);
+    const stripePhase = this.currentTime * (node.isMilestone ? 1.1 : 1.95) + localAngle * 1.6;
+
+    return {
+      scale: new THREE.Vector3(
+        maskedByMilestone ? 0.0001 : node.visualScale * node.visualStretch.x,
+        maskedByMilestone ? 0.0001 : node.visualScale * node.visualStretch.y,
+        maskedByMilestone ? 0.0001 : node.visualScale * node.visualStretch.z
+      ),
+      shapeKind: node.shapeKind,
+      spinDirection: node.spinDirection,
+      spinSpeed: node.spinSpeed,
+      spinPhase: node.resolvedSpinPhase,
+      tint:
+        node.colorHint === 'danger'
+          ? DANGER_ACCENT
+          : node.eventType === 'shop' || node.colorHint === 'reward' || node.eventType === 'gift' || node.eventType === 'rare_item'
+            ? this.getThemeShardColor()
+            : null,
+      ringTint: null,
+      ringScale: 0,
+      stripeTint: this.getThemeContrastColor(),
+      stripeMix,
+      stripePhase,
+      pulse:
+        node.isMilestone
+          ? 0.18
+          : isQuestionShard
+            ? 0.48
+            : node.colorHint === 'reward'
+              ? 0.68
+              : node.eventType !== 'none'
+                ? 0.34
+                : clamp(this.momentum.gauge * 0.22, 0, 0.22),
+      deformAngle: isCurrent ? localAngle : visualWave?.angle ?? 0,
+      deformStrength: isCurrent ? activeStrength : Math.max(passiveStrength, visualWave?.strength ?? 0) + (node.isMilestone ? 0 : fragmentAmount * 0.16),
+      deformDensity: liveDensity,
+      fragmentAmount,
+      iconSrc: node.colorHint === 'reward' && rewardItem ? rewardItem.hudIconSrc : null,
+      iconText: isQuestionShard ? '?' : null,
+      iconTint: isQuestionShard ? this.getThemeContrastColor() : null,
+      iconScale:
+        node.colorHint === 'reward' && rewardItem
+          ? clamp(1.76 + Math.max(node.gameplayRadius, node.visualScale) * 0.36, 2.36, 4.2)
+          : isQuestionShard
+            ? 2.28
+            : 0.34
+    };
+  }
+
   setChargeActive(active: boolean) {
-    if (this.state === 'idle' || this.state === 'transition_in' || this.state === 'transition_out' || this.state === 'game_over') {
+    if (
+      this.state === 'idle' ||
+      this.state === 'portal_preview' ||
+      this.state === 'transition_in' ||
+      this.state === 'transition_out' ||
+      this.state === 'game_over'
+    ) {
       return false;
     }
     if (this.isShopInteractionLocked()) {
@@ -735,7 +806,13 @@ export class GameSessionController {
   }
 
   triggerJump() {
-    if (this.state === 'idle' || this.state === 'transition_in' || this.state === 'transition_out' || this.state === 'game_over') {
+    if (
+      this.state === 'idle' ||
+      this.state === 'portal_preview' ||
+      this.state === 'transition_in' ||
+      this.state === 'transition_out' ||
+      this.state === 'game_over'
+    ) {
       return false;
     }
     if (this.isShopInteractionLocked()) {
@@ -750,7 +827,13 @@ export class GameSessionController {
   }
 
   triggerUpAction() {
-    if (this.state === 'idle' || this.state === 'transition_in' || this.state === 'transition_out' || this.state === 'game_over') {
+    if (
+      this.state === 'idle' ||
+      this.state === 'portal_preview' ||
+      this.state === 'transition_in' ||
+      this.state === 'transition_out' ||
+      this.state === 'game_over'
+    ) {
       return false;
     }
     if (this.isShopInteractionLocked()) {
@@ -764,6 +847,48 @@ export class GameSessionController {
       return true;
     }
     return this.triggerJump();
+  }
+
+  triggerMobileGrappleAction() {
+    if (
+      this.state === 'idle' ||
+      this.state === 'portal_preview' ||
+      this.state === 'transition_in' ||
+      this.state === 'transition_out' ||
+      this.state === 'game_over'
+    ) {
+      return false;
+    }
+    if (this.isShopInteractionLocked()) {
+      return false;
+    }
+    if (this.grapTargetIndex !== null && (this.grapState === 'launch' || this.grapState === 'hooked')) {
+      this.releaseGrapple();
+      return true;
+    }
+    return this.tryActivateGrappleFromCurrentState();
+  }
+
+  triggerMobileAirborneChargeAction() {
+    if (
+      this.state === 'idle' ||
+      this.state === 'portal_preview' ||
+      this.state === 'transition_in' ||
+      this.state === 'transition_out' ||
+      this.state === 'game_over'
+    ) {
+      return false;
+    }
+    if (this.isShopInteractionLocked()) {
+      return false;
+    }
+    if (this.playerState !== 'airborne') {
+      return false;
+    }
+    if (this.tryUseAirborneModuleImpulse()) {
+      return true;
+    }
+    return this.tryConsumeAirborneExtraJump();
   }
 
   selectUpgradeFallback(index: number) {
@@ -810,11 +935,13 @@ export class GameSessionController {
     const normalizedGauge = clamp(this.momentum.gauge / Math.max(1, this.runUpgrades.modifiers.momentumCap), 0, 1);
     this.stats.fillHud(this.hudSnapshot);
     this.hudSnapshot.state = this.getHudStateValue();
+    this.hudSnapshot.playerMotionState = this.playerState as GamePlayerMotionState;
     this.hudSnapshot.chargeRatio = clamp(this.chargeMeter, 0, 1);
     this.hudSnapshot.momentumGauge = normalizedGauge;
     this.hudSnapshot.momentumTier = Math.min(4, Math.floor(normalizedGauge * 5));
     this.hudSnapshot.orbitGraceActive = this.orbitGraceActive;
     this.hudSnapshot.orbitGraceProgress = this.orbitGraceProgress;
+    this.hudSnapshot.mobile = this.getMobileHudState();
     this.hudSnapshot.offers = this.activeChoices.map((choice) => choice.offer);
     this.hudSnapshot.branchHints = this.getBranchHints();
     this.hudSnapshot.inventoryItems = this.runUpgrades.ownedOrder.map((itemId) => {
@@ -892,6 +1019,28 @@ export class GameSessionController {
       }))
     };
     return this.hudSnapshot;
+  }
+
+  private getMobileHudState() {
+    const airborneChargeCount = this.getRemainingAirborneChargeCount();
+    const souffleurRuntime = this.getModuleRuntime('souffleur');
+    return {
+      airborneChargeCount,
+      airborneChargeDisplayCount: this.runUpgrades.modifiers.infiniteFlaps ? 5 : Math.max(0, Math.min(5, airborneChargeCount)),
+      hasGrapple: Boolean(this.getEquippedItem('grappin')),
+      grappleBlocked: Boolean(this.getEquippedItem('grappin')) && !this.isGrappleAvailable(),
+      hasSouffleur: Boolean(this.getEquippedItem('souffleur')),
+      hasSouffleurFuel: Boolean((souffleurRuntime?.gaugeCurrent ?? 0) > 0.001)
+    };
+  }
+
+  private getRemainingAirborneChargeCount() {
+    const chargeSlots: RogueliteModuleSlot[] = ['propulseur', 'wings', 'reacteur_front', 'reacteur_back'];
+    const moduleCharges = chargeSlots.reduce((sum, slot) => sum + (this.getModuleRuntime(slot)?.chargesCurrent ?? 0), 0);
+    if (this.runUpgrades.modifiers.infiniteFlaps) {
+      return Math.max(5, moduleCharges);
+    }
+    return moduleCharges + Math.max(0, this.remainingExtraJumps);
   }
 
   private getEquippedItem(slot: RogueliteModuleSlot) {
@@ -1058,6 +1207,11 @@ export class GameSessionController {
     const shopLocked = this.isShopInteractionLocked() && this.playerState !== 'airborne';
     const simulationDelta = shopLocked ? 0 : deltaTime;
 
+    if (this.state === 'portal_preview') {
+      this.updatePortalPreview(deltaTime, elapsedTime);
+      return;
+    }
+
     if (this.state === 'transition_in' || this.state === 'transition_out') {
       this.tickModuleRuntime(deltaTime);
       this.updateMomentum(deltaTime);
@@ -1132,6 +1286,7 @@ export class GameSessionController {
       this.landingFeedback.progress = progress;
       if (progress >= 1) {
         this.landingFeedback = null;
+        this.landingFeedbackNodeIndex = null;
       }
     }
 
@@ -1140,9 +1295,71 @@ export class GameSessionController {
 
   private getHudStateValue(): GameHudState {
     if (this.state === 'game_over') return 'game_over';
-    if (this.state === 'transition_in' || this.state === 'transition_out') return 'transition';
+    if (this.state === 'portal_preview' || this.state === 'transition_in' || this.state === 'transition_out') return 'transition';
     if (this.state === 'upgrade_branching') return 'upgrade_choice';
     return 'running';
+  }
+
+  private updatePortalPreview(deltaTime: number, elapsedTime: number) {
+    const currentNode = this.getPortalPreviewNode();
+    const orbit = this.getOrbitSample(currentNode, this.orbitAngle);
+    const orbitRadius = Math.max(1, orbit.position.length());
+    const baselineAngular = (Math.PI * 2) / Math.max(1.6, currentNode.gameplayOrbitPeriod);
+    this.angularSpeed = damp(this.angularSpeed, baselineAngular * 0.94, 1.8, deltaTime);
+    this.orbitAngle = wrapAngle(this.orbitAngle + this.orbitDirection * this.angularSpeed * deltaTime);
+
+    const liveOrbit = this.getOrbitSample(currentNode, this.orbitAngle);
+    this.playerPosition.copy(this.getPlayerOrbitWorldPosition(currentNode, this.orbitAngle, liveOrbit));
+    this.playerVelocity.set(
+      liveOrbit.tangent.x * orbitRadius * this.angularSpeed * this.orbitDirection,
+      liveOrbit.tangent.y * orbitRadius * this.angularSpeed * this.orbitDirection,
+      0
+    );
+
+    this.shardHudSprite.visible = false;
+    this.magnetRangeIndicator.visible = false;
+    this.bigCanonRangeIndicator.visible = false;
+    this.grapRangeIndicator.visible = false;
+    this.frontCanonLaser.visible = false;
+    this.frontCanonProjectile.visible = false;
+    this.bigCanonProjectile.visible = false;
+    this.grapRope.visible = false;
+    this.coins.setVisible(false);
+    this.enemies.setVisible(false);
+    this.updateTrail(deltaTime);
+    this.syncPlayerVisual(elapsedTime, deltaTime);
+  }
+
+  private getPortalPreviewNode(): ResolvedGamePathNode {
+    const node = createMiniGamePortalNode();
+    node.resolvedSpinPhase = this.currentTime * node.spinSpeed;
+    return node;
+  }
+
+  private buildPortalPreviewVisual(node: ResolvedGamePathNode): VisiblePlatformVisual {
+    const pulse = 0.14 + Math.sin(this.currentTime * 1.8) * 0.04;
+    return {
+      scale: new THREE.Vector3(node.visualScale, node.visualScale, node.visualScale),
+      shapeKind: node.shapeKind,
+      spinDirection: node.spinDirection,
+      spinSpeed: node.spinSpeed,
+      spinPhase: node.resolvedSpinPhase,
+      tint: null,
+      ringTint: null,
+      ringScale: 0,
+      stripeTint: this.getThemeContrastColor(),
+      stripeMix: 0.16,
+      stripePhase: this.currentTime * 1.92,
+      pulse,
+      deformAngle: this.orbitAngle,
+      deformStrength: 0.16 + pulse * 0.6,
+      deformDensity: 0.74,
+      fragmentAmount: 0.14,
+      iconSrc: null,
+      iconText: null,
+      iconTint: null,
+      iconScale: 0.34
+    };
   }
 
   private emitScore() {
@@ -1526,6 +1743,7 @@ export class GameSessionController {
 
     this.registerImpactWave(currentNode, this.orbitAngle, launchSpeed * 0.92);
     this.playerVelocity.copy(tangent.multiplyScalar(launchSpeed)).addScaledVector(radial, launchSpeed * 0.08);
+    this.lastLandingFeedbackTriggerNodeIndex = null;
     this.playerState = 'airborne';
     this.state = this.choiceMode === 'reward_branch' ? 'upgrade_branching' : 'running_airborne';
     this.jumpVisualUntil = this.currentTime + 0.14;
@@ -1538,6 +1756,15 @@ export class GameSessionController {
 
   private performAirAction() {
     if (this.playerState !== 'airborne') return false;
+    if (this.tryUseAirborneModuleImpulse()) return true;
+
+    if (this.tryActivateGrappin()) return true;
+    if (this.tryActivateWrapper(false)) return true;
+
+    return this.tryConsumeAirborneExtraJump();
+  }
+
+  private tryUseAirborneModuleImpulse() {
     const forward = this.scratchVector.set(
       Math.cos(this.player.rotation.z || 0),
       Math.sin(this.player.rotation.z || 0),
@@ -1581,25 +1808,26 @@ export class GameSessionController {
       this.triggerModuleFlash('reacteur_back', 0.4);
       moduleTriggered = true;
     }
-    if (moduleTriggered) {
-      const impulse = 3.2 + combinedPower * 0.56 + this.momentum.gauge * 2.2;
-      this.playerVelocity.addScaledVector(combinedImpulse.normalize(), impulse + combinedImpulse.length() * 0.9);
-      return true;
+    if (!moduleTriggered) {
+      return false;
     }
 
-    if (this.tryActivateGrappin()) return true;
-    if (this.tryActivateWrapper(false)) return true;
+    const impulse = 3.2 + combinedPower * 0.56 + this.momentum.gauge * 2.2;
+    this.playerVelocity.addScaledVector(combinedImpulse.normalize(), impulse + combinedImpulse.length() * 0.9);
+    return true;
+  }
 
-    if (this.runUpgrades.modifiers.infiniteFlaps || this.remainingExtraJumps > 0) {
-      if (!this.runUpgrades.modifiers.infiniteFlaps) {
-        this.remainingExtraJumps -= 1;
-      }
-      const impulse = 4.2 + this.runUpgrades.modifiers.jumpPower * 1.6;
-      this.playerVelocity.y = Math.max(this.playerVelocity.y, 0) + impulse;
-      this.playerVelocity.x += 0.9 + this.momentum.gauge * 1.6;
-      return true;
+  private tryConsumeAirborneExtraJump() {
+    if (!(this.runUpgrades.modifiers.infiniteFlaps || this.remainingExtraJumps > 0)) {
+      return false;
     }
-    return false;
+    if (!this.runUpgrades.modifiers.infiniteFlaps) {
+      this.remainingExtraJumps -= 1;
+    }
+    const impulse = 4.2 + this.runUpgrades.modifiers.jumpPower * 1.6;
+    this.playerVelocity.y = Math.max(this.playerVelocity.y, 0) + impulse;
+    this.playerVelocity.x += 0.9 + this.momentum.gauge * 1.6;
+    return true;
   }
 
   private tryActivateGrappleFromCurrentState() {
@@ -1824,13 +2052,21 @@ export class GameSessionController {
     this.momentum.fillRate = Math.max(0, nextGauge - this.momentum.gauge);
     this.momentum.gauge = nextGauge;
     this.lastLandingDirection = direction;
-    this.startLandingFeedback(grade, twist);
+    this.startLandingFeedback(node.index, grade, twist);
     void tangentialSpeed;
     void node;
     return angularSpeed * speedMultiplier;
   }
 
-  private startLandingFeedback(grade: LandingGrade, twist: boolean) {
+  private startLandingFeedback(nodeIndex: number, grade: LandingGrade, twist: boolean) {
+    if (this.lastLandingFeedbackTriggerNodeIndex === nodeIndex) {
+      return;
+    }
+    if (this.landingFeedbackNodeIndex === nodeIndex && this.currentTime - this.landingFeedbackStartedAt < this.landingFeedbackDuration) {
+      return;
+    }
+    this.landingFeedbackNodeIndex = nodeIndex;
+    this.lastLandingFeedbackTriggerNodeIndex = nodeIndex;
     this.landingFeedbackStartedAt = this.currentTime;
     this.landingFeedback = {
       grade,
@@ -1995,7 +2231,7 @@ export class GameSessionController {
 
   private syncPlayerVisual(elapsedTime: number, deltaTime: number) {
     this.player.position.copy(this.playerPosition);
-    const currentNode = this.getResolvedNode(this.attachedIndex);
+    const currentNode = this.state === 'portal_preview' ? this.getPortalPreviewNode() : this.getResolvedNode(this.attachedIndex);
     const orbit = this.getOrbitSample(currentNode, this.orbitAngle);
     const travel = this.playerState === 'airborne'
       ? this.scratchVector2.set(this.playerVelocity.x || 0.001, this.playerVelocity.y || 0.001).normalize()

@@ -2,6 +2,11 @@ import type { Language } from '../types/content';
 import type { ContentService } from '../data/ContentService';
 import { I18nService } from './I18nService';
 
+const LANGUAGE_BUTTON_ASSETS = {
+  fr: new URL('../../assets/images/Langue/FR.svg', import.meta.url).href,
+  en: new URL('../../assets/images/Langue/EN.svg', import.meta.url).href
+} as const;
+
 interface NavigationHUDCallbacks {
   onThemeToggle: () => void;
   onLanguageToggle: () => void;
@@ -16,11 +21,11 @@ export class NavigationHUD {
   private activeChip: HTMLDivElement;
   private themeButton: HTMLButtonElement;
   private languageButton: HTMLButtonElement;
-  private aboutButton: HTMLButtonElement;
   private homeButton: HTMLButtonElement;
   private unlockChip: HTMLDivElement;
   private projectRail: HTMLDivElement;
   private dots: HTMLButtonElement[] = [];
+  private outroDot: HTMLButtonElement;
   private gameModeActive = false;
 
   constructor(
@@ -40,7 +45,6 @@ export class NavigationHUD {
 
     this.themeButton = this.createButton(() => callbacks.onThemeToggle());
     this.languageButton = this.createButton(() => callbacks.onLanguageToggle());
-    this.aboutButton = this.createButton(() => callbacks.onAboutToggle());
     this.homeButton = this.createButton(() => callbacks.onHome());
     this.unlockChip = document.createElement('div');
     this.unlockChip.className = 'navigation-hud__chip navigation-hud__chip--status';
@@ -50,7 +54,6 @@ export class NavigationHUD {
       this.homeButton,
       this.themeButton,
       this.languageButton,
-      this.aboutButton,
       this.unlockChip
     );
 
@@ -65,11 +68,18 @@ export class NavigationHUD {
       this.projectRail.appendChild(dot);
       this.dots.push(dot);
     });
+    this.outroDot = document.createElement('button');
+    this.outroDot.className = 'navigation-hud__dot navigation-hud__dot--outro';
+    this.outroDot.type = 'button';
+    this.outroDot.setAttribute('aria-label', 'About / Outro');
+    this.outroDot.addEventListener('click', () => callbacks.onAboutToggle());
+    this.projectRail.appendChild(this.outroDot);
 
     this.element.append(this.topbar, this.projectRail);
     host.appendChild(this.element);
 
     this.i18n.onChange(() => this.renderStatic());
+    this.setOutroVisible(false);
     this.renderStatic();
   }
 
@@ -80,6 +90,7 @@ export class NavigationHUD {
       dot.classList.toggle('is-active', dotIndex === index);
       dot.title = this.content.getProjectByOrder(dotIndex)?.title[language] || '';
     });
+    this.outroDot.classList.remove('is-active');
   }
 
   setUnlocked(unlocked: boolean) {
@@ -88,16 +99,26 @@ export class NavigationHUD {
   }
 
   setAboutOpen(isOpen: boolean) {
-    this.aboutButton.classList.toggle('is-active', isOpen);
+    if (isOpen) {
+      this.setOutroVisible(true);
+    }
+    this.outroDot.classList.toggle('is-active', isOpen);
+    if (isOpen) {
+      this.dots.forEach((dot) => dot.classList.remove('is-active'));
+    }
   }
 
   setGameModeNavigation(active: boolean) {
     this.gameModeActive = active;
     this.activeChip.hidden = active;
-    this.aboutButton.hidden = active;
     this.unlockChip.hidden = active;
     this.projectRail.hidden = active;
     this.renderStatic();
+  }
+
+  setOutroVisible(visible: boolean) {
+    this.outroDot.classList.toggle('is-visible', visible);
+    this.outroDot.tabIndex = visible ? 0 : -1;
   }
 
   private createButton(onClick: () => void) {
@@ -109,9 +130,15 @@ export class NavigationHUD {
   }
 
   private renderStatic() {
-    this.themeButton.textContent = this.i18n.t('theme');
-    this.languageButton.textContent = this.i18n.t('language');
-    this.aboutButton.textContent = this.i18n.t('about');
+    const themeIsDark = document.documentElement.dataset.theme === 'dark';
+    const minimalPortfolioChrome = !this.gameModeActive;
+    this.themeButton.setAttribute('aria-label', this.i18n.t('theme'));
+    this.themeButton.innerHTML = `<span class="navigation-hud__button-icon" aria-hidden="true">${themeIsDark ? '🌙' : '☀️'}</span>`;
+    this.languageButton.setAttribute('aria-label', this.i18n.t('language'));
+    this.languageButton.innerHTML = `<img class="navigation-hud__language-icon" src="${LANGUAGE_BUTTON_ASSETS[this.i18n.current]}" alt="" />`;
     this.homeButton.textContent = this.gameModeActive ? this.i18n.t('gamePortfolio') : this.i18n.t('home');
+    this.activeChip.hidden = minimalPortfolioChrome;
+    this.homeButton.hidden = minimalPortfolioChrome;
+    this.unlockChip.hidden = minimalPortfolioChrome;
   }
 }

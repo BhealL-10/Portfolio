@@ -79,6 +79,14 @@ export class IntroVoronoiSystem {
     return this.state === 'hidden';
   }
 
+  hideImmediately() {
+    this.state = 'hidden';
+    this.opacity = 0;
+    this.shatterElapsed = 0;
+    this.element.classList.add('is-hidden');
+    this.onHidden?.();
+  }
+
   update(deltaTime: number) {
     if (this.state === 'shattering') {
       this.shatterElapsed += deltaTime;

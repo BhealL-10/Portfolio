@@ -19,6 +19,11 @@ export interface ProjectFacet {
   description: LocalizedText;
   technologies: LocalizedText[];
   images: string[];
+  media: {
+    kind: 'youtube';
+    embedUrl: string;
+    title?: string;
+  } | null;
   links: ProjectLinkSet;
   featured: boolean;
 }

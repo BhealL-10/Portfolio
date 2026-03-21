@@ -192,17 +192,17 @@ export function updateDeformUniforms(
 }
 
 export function createFragmentedIcosahedronGeometry(radius: number, detail: number) {
-  const geometry = new THREE.IcosahedronGeometry(radius, detail).toNonIndexed() as FragmentedGeometry;
+  const geometry = toNonIndexedIfNeeded(new THREE.IcosahedronGeometry(radius, detail)) as FragmentedGeometry;
   return decorateFragmentGeometry(geometry);
 }
 
 export function createFragmentedSphereGeometry(radius: number, widthSegments: number, heightSegments: number) {
-  const geometry = new THREE.SphereGeometry(radius, widthSegments, heightSegments).toNonIndexed() as FragmentedGeometry;
+  const geometry = toNonIndexedIfNeeded(new THREE.SphereGeometry(radius, widthSegments, heightSegments)) as FragmentedGeometry;
   return decorateFragmentGeometry(geometry);
 }
 
 export function createFragmentedTetrahedronGeometry(radius: number, detail: number) {
-  const geometry = new THREE.TetrahedronGeometry(radius, detail).toNonIndexed() as FragmentedGeometry;
+  const geometry = toNonIndexedIfNeeded(new THREE.TetrahedronGeometry(radius, detail)) as FragmentedGeometry;
   return decorateFragmentGeometry(geometry);
 }
 
@@ -218,9 +218,40 @@ export function createFragmentedTriangularPrismGeometry(radius: number, depth: n
     steps: 1,
     bevelEnabled: false
   })
-    .translate(0, 0, -depth * 0.5)
-    .toNonIndexed() as FragmentedGeometry;
-  return decorateFragmentGeometry(geometry);
+    .translate(0, 0, -depth * 0.5);
+  const fragmentedGeometry = toNonIndexedIfNeeded(geometry) as FragmentedGeometry;
+  return decorateFragmentGeometry(fragmentedGeometry);
+}
+
+export function createFragmentedRoundedRectGeometry(width: number, height: number, radius: number, depth: number) {
+  const halfWidth = width * 0.5;
+  const halfHeight = height * 0.5;
+  const clampedRadius = Math.min(radius, halfWidth * 0.92, halfHeight * 0.92);
+  const shape = new THREE.Shape();
+  shape.moveTo(-halfWidth + clampedRadius, -halfHeight);
+  shape.lineTo(halfWidth - clampedRadius, -halfHeight);
+  shape.quadraticCurveTo(halfWidth, -halfHeight, halfWidth, -halfHeight + clampedRadius);
+  shape.lineTo(halfWidth, halfHeight - clampedRadius);
+  shape.quadraticCurveTo(halfWidth, halfHeight, halfWidth - clampedRadius, halfHeight);
+  shape.lineTo(-halfWidth + clampedRadius, halfHeight);
+  shape.quadraticCurveTo(-halfWidth, halfHeight, -halfWidth, halfHeight - clampedRadius);
+  shape.lineTo(-halfWidth, -halfHeight + clampedRadius);
+  shape.quadraticCurveTo(-halfWidth, -halfHeight, -halfWidth + clampedRadius, -halfHeight);
+  shape.closePath();
+
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth,
+    steps: 1,
+    bevelEnabled: false,
+    curveSegments: 18
+  }).translate(0, 0, -depth * 0.5);
+
+  const fragmentedGeometry = toNonIndexedIfNeeded(geometry) as FragmentedGeometry;
+  return decorateFragmentGeometry(fragmentedGeometry);
+}
+
+function toNonIndexedIfNeeded<T extends THREE.BufferGeometry>(geometry: T) {
+  return geometry.index ? geometry.toNonIndexed() : geometry;
 }
 
 function decorateFragmentGeometry(geometry: FragmentedGeometry) {

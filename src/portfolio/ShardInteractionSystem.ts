@@ -16,6 +16,7 @@ interface InteractionCallbacks {
 }
 
 export class ShardInteractionSystem {
+  private enabled = true;
   private pointerDown = false;
   private downX = 0;
   private downY = 0;
@@ -25,6 +26,10 @@ export class ShardInteractionSystem {
   private sceneOrbiting = false;
   private downShardId: string | null = null;
   private focusGesture = false;
+
+  private isCoarsePointer() {
+    return window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900;
+  }
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -39,7 +44,19 @@ export class ShardInteractionSystem {
     this.canvas.addEventListener('pointerleave', this.onPointerLeave);
   }
 
+  setEnabled(enabled: boolean) {
+    if (this.enabled === enabled) return;
+    this.enabled = enabled;
+    if (!enabled) {
+      this.callbacks.onHover(null);
+      this.reset();
+    }
+  }
+
   private onPointerDown = (event: PointerEvent) => {
+    if (!this.enabled) {
+      return;
+    }
     const mode = this.getMode();
     if (
       mode === 'intro' ||
@@ -76,6 +93,11 @@ export class ShardInteractionSystem {
   };
 
   private onPointerMove = (event: PointerEvent) => {
+    if (!this.enabled) {
+      this.callbacks.onHover(null);
+      this.reset();
+      return;
+    }
     const mode = this.getMode();
     const moveX = event.clientX - this.downX;
     const moveY = event.clientY - this.downY;
@@ -92,14 +114,16 @@ export class ShardInteractionSystem {
     }
 
     if (mode === 'focus' || mode === 'focus_enter') {
-      if (Math.abs(moveX) > 12 && Math.abs(moveX) > Math.abs(moveY)) {
+      const focusThreshold = this.isCoarsePointer() ? 18 : 12;
+      if (Math.abs(moveX) > focusThreshold && Math.abs(moveX) > Math.abs(moveY)) {
         this.focusGesture = true;
         this.callbacks.onFocusRotation(moveX);
       }
       return;
     }
 
-    const dragThreshold = this.downShardId ? this.world.getDragThreshold(this.downShardId) : 8;
+    const pointerBias = this.isCoarsePointer() ? 1.65 : 1;
+    const dragThreshold = (this.downShardId ? this.world.getDragThreshold(this.downShardId) : 8) * pointerBias;
 
     if ((mode === 'orbit' || mode === 'constellation_complete' || mode === 'dragging') && this.downShardId && distance > dragThreshold) {
       const point = this.world.projectPointerToDragPlane(event.clientX, event.clientY, this.canvas, this.camera);
@@ -115,7 +139,7 @@ export class ShardInteractionSystem {
       return;
     }
 
-    if ((mode === 'orbit' || mode === 'constellation_complete') && !this.downShardId && distance > 4) {
+    if ((mode === 'orbit' || mode === 'constellation_complete') && !this.downShardId && distance > (this.isCoarsePointer() ? 9 : 4)) {
       this.sceneOrbiting = true;
       this.callbacks.onSceneOrbitMove(deltaX, deltaY);
     }
@@ -125,6 +149,11 @@ export class ShardInteractionSystem {
   };
 
   private onPointerUp = (event: PointerEvent) => {
+    if (!this.enabled) {
+      this.callbacks.onHover(null);
+      this.reset();
+      return;
+    }
     const mode = this.getMode();
     const distance = Math.hypot(event.clientX - this.downX, event.clientY - this.downY);
 
@@ -159,7 +188,7 @@ export class ShardInteractionSystem {
       return;
     }
 
-    if ((mode === 'orbit' || mode === 'constellation_complete') && distance <= 8) {
+    if ((mode === 'orbit' || mode === 'constellation_complete') && distance <= (this.isCoarsePointer() ? 14 : 8)) {
       const pick = this.world.pick(event.clientX, event.clientY, this.canvas, this.camera);
       if (pick) {
         this.callbacks.onShardClick(pick.shardId);
@@ -172,6 +201,11 @@ export class ShardInteractionSystem {
   };
 
   private onPointerLeave = () => {
+    if (!this.enabled) {
+      this.callbacks.onHover(null);
+      this.reset();
+      return;
+    }
     if (this.dragged) {
       this.callbacks.onDragEnd();
     }

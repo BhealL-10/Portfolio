@@ -24,6 +24,7 @@ export type GameColorHint = 'none' | 'accent' | 'danger' | 'reward';
 
 export type GameSessionState =
   | 'idle'
+  | 'portal_preview'
   | 'transition_in'
   | 'running_attached'
   | 'running_charging'
@@ -35,6 +36,7 @@ export type GameSessionState =
 
 export type GameHudState = 'transition' | 'running' | 'upgrade_choice' | 'game_over';
 export type GameOverCause = 'camera' | 'enemy' | 'out_of_bounds' | null;
+export type GamePlayerMotionState = 'attached' | 'charging' | 'airborne' | 'dead';
 
 export interface GameCoinSlot {
   angle: number;
@@ -157,6 +159,7 @@ export interface VisiblePlatformVisual {
 
 export interface GameHudSnapshot {
   state: GameHudState;
+  playerMotionState: GamePlayerMotionState;
   score: number;
   highscore: number;
   distanceMeters: number;
@@ -168,6 +171,14 @@ export interface GameHudSnapshot {
   momentumTier: number;
   orbitGraceActive: boolean;
   orbitGraceProgress: number;
+  mobile: {
+    airborneChargeCount: number;
+    airborneChargeDisplayCount: number;
+    hasGrapple: boolean;
+    grappleBlocked: boolean;
+    hasSouffleur: boolean;
+    hasSouffleurFuel: boolean;
+  };
   offers: RogueliteItemOffer[];
   branchHints: BranchLabelHint[];
   inventoryItems: Array<{

@@ -252,7 +252,7 @@ const PASSIVE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     description: loc('Le momentum retombe moins vite.', 'Momentum decays more slowly.'),
     hudIconSrc: HUD_ICON_URLS.gouvernail,
     boatVisual: null,
-    statsByRarity: passiveStats({ momentumRetention: 0.24 })
+    statsByRarity: passiveStats({ momentumRetention: 0.40 })
   },
   {
     baseId: 'corsair_purse',
@@ -265,7 +265,7 @@ const PASSIVE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     description: loc('Augmente les gains de pièces.', 'Increase coin rewards.'),
     hudIconSrc: HUD_ICON_URLS.bourse,
     boatVisual: null,
-    statsByRarity: passiveStats({ coinBonus: 0.34 })
+    statsByRarity: passiveStats({ coinBonus: 2.0 })
   },
   {
     baseId: 'smuggler_favor',
@@ -278,7 +278,7 @@ const PASSIVE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     description: loc('Réduit les prix chez le marchand.', 'Reduce shop prices.'),
     hudIconSrc: HUD_ICON_URLS.queue,
     boatVisual: null,
-    statsByRarity: passiveStats({ shopDiscount: 0.2 })
+    statsByRarity: passiveStats({ shopDiscount: 0.50 })
   },
   {
     baseId: 'crows_nest_spyglass',
@@ -291,7 +291,7 @@ const PASSIVE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     description: loc('Augmente le dézoom par défaut et accentue le dézoom gagné avec le momentum.', 'Increase default zoom-out and amplify momentum-based zoom-out.'),
     hudIconSrc: HUD_ICON_URLS.longue_vue,
     boatVisual: null,
-    statsByRarity: passiveStats({ cameraBaseZoomBonus: 1.1, cameraMomentumZoomBonus: 0.42 })
+    statsByRarity: passiveStats({ cameraBaseZoomBonus: 1.5, cameraMomentumZoomBonus: 0.5 })
   },
   {
     baseId: 'cunning_ape_totem',
@@ -317,7 +317,7 @@ const PASSIVE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     description: loc('Augmente les chances de croiser une plateforme de récompense.', 'Increase reward shard odds.'),
     hudIconSrc: HUD_ICON_URLS.perroquet,
     boatVisual: null,
-    statsByRarity: passiveStats({ rewardChance: 0.12 })
+    statsByRarity: passiveStats({ rewardChance: 0.33 })
   },
   {
     baseId: 'freebooter_compass',
@@ -343,7 +343,7 @@ const PASSIVE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     description: loc('Réduit la perte de momentum après un mauvais atterrissage.', 'Reduce momentum loss after awkward landings.'),
     hudIconSrc: HUD_ICON_URLS.amortisseurs,
     boatVisual: null,
-    statsByRarity: passiveStats({ landingPenaltyReduction: 0.22 })
+    statsByRarity: passiveStats({ landingPenaltyReduction: 0.40 })
   },
   {
     baseId: 'merchant_parrot',
@@ -356,7 +356,7 @@ const PASSIVE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     description: loc('Augmente la chance de croiser un marchand.', 'Increase shop odds.'),
     hudIconSrc: HUD_ICON_URLS.carte_tresor,
     boatVisual: null,
-    statsByRarity: passiveStats({ shopChance: 0.12 })
+    statsByRarity: passiveStats({ shopChance: 0.22 })
   },
   {
     baseId: 'gravity_belt',
@@ -364,7 +364,7 @@ const PASSIVE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     kind: 'passive',
     slot: null,
     category: 'utility',
-    unlockScore: 20,
+    unlockScore: 0,
     name: loc('Ceinture d’orbite', 'Orbit Belt'),
     description: loc('Ramène progressivement la trajectoire du joueur vers le centre quand l’orbite dérive trop vers le haut ou le bas.', 'Gradually pull the player trajectory back toward center when orbit drifts too far up or down.'),
     hudIconSrc: HUD_ICON_URLS.ceinture,
@@ -386,11 +386,11 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     hudIconSrc: HUD_ICON_URLS.plane,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.plane, columns: 2, rows: 2, layerOrder: 30 },
     statsByRarity: rarityStats({
-      common: { planeGlide: 0.18, planeStability: 0.12 },
-      uncommon: { planeGlide: 0.25, planeStability: 0.16 },
-      rare: { planeGlide: 0.33, planeStability: 0.22 },
-      epic: { planeGlide: 0.41, planeStability: 0.28 },
-      legendary: { planeGlide: 0.5, planeStability: 0.34 }
+      common: { planeGlide: 0.40, planeStability: 0.25 },
+      uncommon: { planeGlide: 0.42, planeStability: 0.25 },
+      rare: { planeGlide: 0.45, planeStability: 0.25 },
+      epic: { planeGlide: 0.48, planeStability: 0.25 },
+      legendary: { planeGlide: 0.5, planeStability: 0.25 }
     })
   },
   {
@@ -401,16 +401,16 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     category: 'mobility',
     unlockScore: 20,
     name: loc('Ailes', 'Wings'),
-    description: loc('Donne un fort boost diagonal vers l’avant et le haut.', 'Adds a strong diagonal forward-up boost.'),
+    description: loc('ajoute une poussée dans les airs diagonale.', 'Add a diagonal air thrust.'),
     hudIconSrc: HUD_ICON_URLS.wings,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.wings, columns: 4, rows: 2, layerOrder: 90 },
     chargesByRarity: { common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5 },
     statsByRarity: rarityStats({
-      common: { propulsionPower: 4.5 },
+      common: { propulsionPower: 5 },
       uncommon: { propulsionPower: 5 },
-      rare: { propulsionPower: 5.5 },
-      epic: { propulsionPower: 6 },
-      legendary: { propulsionPower: 6.5 }
+      rare: { propulsionPower: 5 },
+      epic: { propulsionPower: 5 },
+      legendary: { propulsionPower: 6 }
     })
   },
   {
@@ -421,16 +421,16 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     category: 'mobility',
     unlockScore: 0,
     name: loc('Propulseur', 'Thruster'),
-    description: loc('Déclenche une impulsion vers l’avant avec des charges par saut.', 'Fire a forward dash with per-jump charges.'),
+    description: loc('ajoute une poussée dans les airs horizontal.', 'Add a horizontal air thrust.'),
     hudIconSrc: HUD_ICON_URLS.propulseur,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.propulseur, columns: 2, rows: 2, layerOrder: 12 },
     chargesByRarity: { common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5 },
     statsByRarity: rarityStats({
-      common: { propulsionPower: 4.2 },
-      uncommon: { propulsionPower: 4.7 },
-      rare: { propulsionPower: 5.2 },
-      epic: { propulsionPower: 5.7 },
-      legendary: { propulsionPower: 6.2 }
+      common: { propulsionPower: 5 },
+      uncommon: { propulsionPower: 5 },
+      rare: { propulsionPower: 5 },
+      epic: { propulsionPower: 5 },
+      legendary: { propulsionPower: 6 }
     })
   },
   {
@@ -441,16 +441,16 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     category: 'mobility',
     unlockScore: 10,
     name: loc('Réacteur avant', 'Front Reactor'),
-    description: loc('Pousse vers le haut pendant une impulsion aérienne.', 'Push upward during airborne boosts.'),
+    description: loc('Ajoute un poussée dans les airs en verticale.', 'Add a vertical air thrust.'),
     hudIconSrc: HUD_ICON_URLS.reacteur_front,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.reacteur_front, columns: 2, rows: 2, layerOrder: 42 },
     chargesByRarity: { common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5 },
     statsByRarity: rarityStats({
-      common: { propulsionPower: 4 },
-      uncommon: { propulsionPower: 4.4 },
-      rare: { propulsionPower: 4.8 },
-      epic: { propulsionPower: 5.2 },
-      legendary: { propulsionPower: 5.6 }
+      common: { propulsionPower: 5 },
+      uncommon: { propulsionPower: 5 },
+      rare: { propulsionPower: 5 },
+      epic: { propulsionPower: 6 },
+      legendary: { propulsionPower: 6 }
     })
   },
   {
@@ -461,16 +461,16 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     category: 'mobility',
     unlockScore: 10,
     name: loc('Réacteur arrière', 'Back Reactor'),
-    description: loc('Ajoute une poussée diagonale vers l’avant et le haut.', 'Add a diagonal forward-up thrust.'),
+    description: loc('Ajoute un poussée dans les airs en diagonale.', 'Add a diagonal air thrust.'),
     hudIconSrc: HUD_ICON_URLS.reacteur_back,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.reacteur_back, columns: 2, rows: 2, layerOrder: 38 },
     chargesByRarity: { common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5 },
     statsByRarity: rarityStats({
-      common: { propulsionPower: 4.1 },
-      uncommon: { propulsionPower: 4.5 },
-      rare: { propulsionPower: 4.9 },
-      epic: { propulsionPower: 5.3 },
-      legendary: { propulsionPower: 5.7 }
+      common: { propulsionPower: 5 },
+      uncommon: { propulsionPower: 5 },
+      rare: { propulsionPower: 5 },
+      epic: { propulsionPower: 5 },
+      legendary: { propulsionPower: 6 }
     })
   },
   {
@@ -481,7 +481,7 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     category: 'combat',
     unlockScore: 10,
     name: loc('Bouclier', 'Shield'),
-    description: loc('Détruit un ennemi au contact puis se recharge.', 'Destroy one enemy on contact, then recharge.'),
+    description: loc('Protège contre un contact ennemi de front.', 'Protects against enemy contact front.'),
     hudIconSrc: HUD_ICON_URLS.shield,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.shield, columns: 2, rows: 2, layerOrder: 60 },
     statsByRarity: rarityStats({
@@ -500,22 +500,22 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     category: 'mobility',
     unlockScore: 10,
     name: loc('Souffleur', 'Blower'),
-    description: loc('Ajoute une poussée maintenue avec jauge sur shard et en vol.', 'Add a sustained boost with a gauge on shards and in the air.'),
+    description: loc('Ajoute un boost de vitesse', 'Add a speed boost.'),
     hudIconSrc: HUD_ICON_URLS.souffleur,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.souffleur, columns: 2, rows: 2, layerOrder: 54 },
     gaugeConfig: {
-      common: { capacity: 1, regenPerSecond: 0.28, regenDelay: 1.2, emptyDelay: 2.4 },
-      uncommon: { capacity: 1.12, regenPerSecond: 0.34, regenDelay: 1.1, emptyDelay: 2.2 },
-      rare: { capacity: 1.26, regenPerSecond: 0.38, regenDelay: 1, emptyDelay: 2 },
-      epic: { capacity: 1.42, regenPerSecond: 0.44, regenDelay: 0.9, emptyDelay: 1.9 },
-      legendary: { capacity: 1.6, regenPerSecond: 0.5, regenDelay: 0.8, emptyDelay: 1.8 }
+      common: { capacity: 2, regenPerSecond: 0.28, regenDelay: 1.2, emptyDelay: 2.0 },
+      uncommon: { capacity: 2.5, regenPerSecond: 0.34, regenDelay: 1.1, emptyDelay: 2.0 },
+      rare: { capacity: 3, regenPerSecond: 0.38, regenDelay: 1, emptyDelay: 2 },
+      epic: { capacity: 4, regenPerSecond: 0.44, regenDelay: 0.9, emptyDelay: 1.5 },
+      legendary: { capacity: 5, regenPerSecond: 0.5, regenDelay: 0.8, emptyDelay: 1.0 }
     },
     statsByRarity: rarityStats({
-      common: { propulsionPower: 1.2, gaugeCapacity: 1, gaugeRegenPerSecond: 0.28 },
-      uncommon: { propulsionPower: 1.38, gaugeCapacity: 1.12, gaugeRegenPerSecond: 0.34 },
-      rare: { propulsionPower: 1.56, gaugeCapacity: 1.26, gaugeRegenPerSecond: 0.38 },
-      epic: { propulsionPower: 1.76, gaugeCapacity: 1.42, gaugeRegenPerSecond: 0.44 },
-      legendary: { propulsionPower: 2, gaugeCapacity: 1.6, gaugeRegenPerSecond: 0.5 }
+      common: { propulsionPower: 2, gaugeCapacity: 2, gaugeRegenPerSecond: 0.28 },
+      uncommon: { propulsionPower: 2.5, gaugeCapacity: 2.5, gaugeRegenPerSecond: 0.34 },
+      rare: { propulsionPower: 3, gaugeCapacity: 3, gaugeRegenPerSecond: 0.38 },
+      epic: { propulsionPower: 4, gaugeCapacity: 4, gaugeRegenPerSecond: 0.44 },
+      legendary: { propulsionPower: 5, gaugeCapacity: 5, gaugeRegenPerSecond: 0.5 }
     })
   },
   {
@@ -526,15 +526,15 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     category: 'utility',
     unlockScore: 10,
     name: loc('Téléporteur', 'Wrapper'),
-    description: loc('Téléporte vers la plus petite plateforme valide dans sa portée.', 'Teleport to the smallest valid shard within range.'),
+    description: loc('Téléporte vers une projet inconnue', 'Teleport forward to a unknown project'),
     hudIconSrc: HUD_ICON_URLS.wrapper,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.wrapper, columns: 2, rows: 2, layerOrder: 80 },
     statsByRarity: rarityStats({
-      common: { wrapperDistance: 10 },
-      uncommon: { wrapperDistance: 12 },
-      rare: { wrapperDistance: 14 },
-      epic: { wrapperDistance: 16 },
-      legendary: { wrapperDistance: 18 }
+      common: { wrapperDistance: 20 },
+      uncommon: { wrapperDistance: 30 },
+      rare: { wrapperDistance: 40 },
+      epic: { wrapperDistance: 50 },
+      legendary: { wrapperDistance: 100 }
     })
   },
   {
@@ -549,11 +549,11 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     hudIconSrc: HUD_ICON_URLS.magnet,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.magnet, columns: 2, rows: 2, layerOrder: 44 },
     statsByRarity: rarityStats({
-      common: { magnetRange: 0.28 },
-      uncommon: { magnetRange: 0.38 },
-      rare: { magnetRange: 0.48 },
-      epic: { magnetRange: 0.6 },
-      legendary: { magnetRange: 0.72 }
+      common: { magnetRange: 0.3 },
+      uncommon: { magnetRange: 0.4 },
+      rare: { magnetRange: 0.6 },
+      epic: { magnetRange: 0.8 },
+      legendary: { magnetRange: 1.0 }
     })
   },
   {
@@ -564,7 +564,7 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     category: 'combat',
     unlockScore: 10,
     name: loc('Grand canon', 'Big Cannon'),
-    description: loc('Tire automatiquement dans une large zone.', 'Auto-fire inside a large radial zone.'),
+    description: loc('Tire automatiquement quand un ennemi est dans la zone.', 'Auto-fire inside a large radial zone.'),
     hudIconSrc: HUD_ICON_URLS.big_canon,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.big_canon, columns: 2, rows: 2, layerOrder: 52 },
     statsByRarity: rarityStats({
@@ -583,7 +583,7 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     category: 'combat',
     unlockScore: 10,
     name: loc('Canon frontal', 'Front Cannon'),
-    description: loc('Tire sur les ennemis qui traversent le laser frontal.', 'Fire at enemies crossing the frontal laser.'),
+    description: loc('Tire automatiquement quand un ennemi est devant le bateau.', 'Auto-fire when an enemy is in front of the boat.'),
     hudIconSrc: HUD_ICON_URLS.front_canon,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.front_canon, columns: 2, rows: 2, layerOrder: 56 },
     statsByRarity: rarityStats({
@@ -602,7 +602,7 @@ const MODULE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     category: 'utility',
     unlockScore: 10,
     name: loc('Grappin', 'Grapple'),
-    description: loc('Accroche une shard à portée et attire le joueur.', 'Hook a nearby shard and pull the player toward it.'),
+    description: loc('Un grappin quoi...', 'Just a grappling hook.'),
     hudIconSrc: HUD_ICON_URLS.grappin,
     boatVisual: { spriteSheetUrl: MODULE_SHEET_URLS.grappin, columns: 2, rows: 2, layerOrder: 58 },
     statsByRarity: rarityStats({

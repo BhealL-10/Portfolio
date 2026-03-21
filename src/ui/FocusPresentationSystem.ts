@@ -62,8 +62,6 @@ export class FocusPresentationSystem {
 
     const language = this.i18n.current;
     const facet = this.project.facets[this.facetIndex];
-    const images = facet.images.slice(0, 12);
-    const currentImage = images[this.currentSlide] || '';
 
     this.panel.innerHTML = `
       <div class="focus-layer__header">
@@ -79,7 +77,7 @@ export class FocusPresentationSystem {
         <button class="focus-layer__facet-btn" type="button">${this.i18n.t('next')}</button>
       </div>
       <div class="focus-layer__media">
-        ${this.renderMedia(images, currentImage)}
+        ${this.renderMedia(facet)}
       </div>
       <p class="focus-layer__hint">${this.i18n.t('clickToGrid')}</p>
       <div class="focus-layer__body">
@@ -108,10 +106,28 @@ export class FocusPresentationSystem {
     facetButtons[0]?.addEventListener('click', () => this.callbacks.onPrevFacet());
     facetButtons[1]?.addEventListener('click', () => this.callbacks.onNextFacet());
 
-    this.bindMediaEvents(images);
+    this.bindMediaEvents(facet);
   }
 
-  private renderMedia(images: string[], currentImage: string) {
+  private renderMedia(facet: PortfolioProject['facets'][number]) {
+    if (facet.media?.kind === 'youtube') {
+      return `
+        <div class="focus-layer__video-shell">
+          <iframe
+            class="focus-layer__video-frame"
+            src="${facet.media.embedUrl}"
+            title="${facet.media.title ?? this.project?.title[this.i18n.current] ?? 'Project video'}"
+            loading="lazy"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowfullscreen
+          ></iframe>
+        </div>
+      `;
+    }
+
+    const images = facet.images.slice(0, 12);
+    const currentImage = images[this.currentSlide] || '';
     if (images.length === 0) {
       return `<div class="focus-layer__empty">${this.i18n.t('media')}</div>`;
     }
@@ -153,7 +169,12 @@ export class FocusPresentationSystem {
       .join('');
   }
 
-  private bindMediaEvents(images: string[]) {
+  private bindMediaEvents(facet: PortfolioProject['facets'][number]) {
+    if (facet.media?.kind === 'youtube') {
+      return;
+    }
+
+    const images = facet.images.slice(0, 12);
     if (images.length <= 1) return;
 
     const image = this.panel.querySelector<HTMLImageElement>('.focus-layer__image');

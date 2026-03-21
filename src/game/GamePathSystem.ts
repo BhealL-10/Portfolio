@@ -116,6 +116,9 @@ export class GamePathSystem {
   }
 
   ensureAhead(currentIndex: number, threshold = 50, chunkSize = 30) {
+    if (this.nodes.length === 0) {
+      this.reset();
+    }
     if (this.nodes.length - currentIndex > threshold) return;
     this.append(chunkSize);
   }
@@ -285,10 +288,24 @@ export class GamePathSystem {
 
   private append(minimumNodes: number) {
     if (minimumNodes <= 0) return;
+    if (this.nodes.length === 0) {
+      this.reset();
+    }
 
     let appended = 0;
     while (appended < minimumNodes) {
       const pattern = selectPattern(this.nodes.length, () => this.nextRandom(), this.recentPatternIds);
+      if (!pattern || !Array.isArray(pattern.nodes) || pattern.nodes.length === 0) {
+        const previous = this.nodes[this.nodes.length - 1];
+        if (!previous) {
+          this.reset();
+          continue;
+        }
+        const fallback = this.buildFallbackPattern(previous);
+        this.nodes.push(...fallback);
+        appended += fallback.length;
+        continue;
+      }
       const generated = this.instantiatePattern(pattern);
       this.nodes.push(...generated);
       this.recentPatternIds.push(pattern.id);
@@ -300,14 +317,27 @@ export class GamePathSystem {
   }
 
   private instantiatePattern(pattern: GamePathPattern) {
-    const previous = this.nodes[this.nodes.length - 1]!;
+    let previous = this.nodes[this.nodes.length - 1];
+    if (!previous) {
+      this.reset();
+      previous = this.nodes[this.nodes.length - 1];
+    }
+    if (!previous) {
+      return [];
+    }
     const score = previous.index;
     const profile = getDifficultyProfile(score);
     const scale = profile.spacing / 11.5;
-    const rawCandidates = pattern.nodes.map((template, offset) => {
+    const rawCandidates = pattern.nodes.flatMap((template, offset) => {
+      if (!template) {
+        return [];
+      }
       const index = previous.index + offset + 1;
-      return this.buildTemplateNode(previous, index, template, pattern, scale, score);
+      return [this.buildTemplateNode(previous, index, template, pattern, scale, score)];
     });
+    if (rawCandidates.length === 0) {
+      return this.buildFallbackPattern(previous);
+    }
     const candidates = this.isolateMilestones(this.densifyPattern(previous, rawCandidates, score), previous, score);
     let basePattern: GamePathNode[];
 

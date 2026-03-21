@@ -17,5 +17,5 @@
     "skipLibCheck": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src_backv2backuphive/current_v3/docs/srchive/current_v3/srchive/current_v3/src", "vite.config.ts", "vitest.config.ts"]
 }

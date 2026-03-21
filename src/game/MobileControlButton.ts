@@ -18,6 +18,14 @@ export class MobileControlButton {
     this.element.appendChild(this.image);
   }
 
+  setKind(kind: string) {
+    this.element.dataset.kind = kind;
+  }
+
+  setLabel(label: string) {
+    this.element.setAttribute('aria-label', label);
+  }
+
   setIcon(iconSrc: string) {
     this.image.src = iconSrc;
   }
