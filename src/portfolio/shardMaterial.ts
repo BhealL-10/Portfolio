@@ -14,6 +14,8 @@ export interface DeformMaterial extends THREE.MeshStandardMaterial {
       uOrbitAngle: { value: number };
       uOrbitPulse: { value: number };
       uWaveDensity: { value: number };
+      uFacetWave?: { value: number };
+      uFacetDirection?: { value: number };
       uStripeMix?: { value: number };
       uStripePhase?: { value: number };
       uStripeColor?: { value: THREE.Color };
@@ -63,6 +65,8 @@ export function createDeformMaterial(theme: ThemeMode, seed: number) {
       uOrbitAngle: { value: 0 },
       uOrbitPulse: { value: 0 },
       uWaveDensity: { value: 0.72 },
+      uFacetWave: { value: 0 },
+      uFacetDirection: { value: 1 },
       uStripeMix: { value: 0 },
       uStripePhase: { value: 0 },
       uStripeColor: { value: themePalette[theme].color.clone() }
@@ -87,12 +91,16 @@ uniform float uSnap;
 uniform float uSeed;
 uniform float uOrbitAngle;
 uniform float uOrbitPulse;
-uniform float uWaveDensity;`
+uniform float uWaveDensity;
+uniform float uFacetWave;
+uniform float uFacetDirection;
+varying float vFacetShade;`
       )
       .replace(
         '#include <begin_vertex>',
         `vec3 transformed = vec3(position);
 vShardLocalPos = position;
+vFacetShade = 0.0;
 vec3 fragmentDir = vec3(0.0, 0.0, 1.0);
 float fragmentPhase = 0.0;
 #ifdef USE_UV
@@ -116,10 +124,23 @@ float snapPulse = sin(uTime * 5.4 + fragmentPhase * 11.0) * 0.5 + 0.5;
 float radialWave = sin(length(position.xy) * (8.8 + uWaveDensity * 3.2) - uTime * 5.6 + uSeed) * 0.09;
 float angularWave = sin(localAngle * (10.0 + uWaveDensity * 5.0) + uTime * 4.9 - uSeed) * 0.08;
 float snapWave = (radialWave + angularWave) * uSnap * (0.72 + snapPulse * 0.32);
+float facetTravel = (position.x * uFacetDirection) * 2.4 - uFacetWave * 7.0;
+float facetEnvelope = exp(-(facetTravel * facetTravel) / 0.9);
+float facetArch = sin(clamp(facetEnvelope, 0.0, 1.0) * 3.14159);
+float facetRoundness = sin(clamp(uFacetWave, 0.0, 1.0) * 3.14159);
+float facetCenterMask = 1.0 - smoothstep(0.12, 1.28, length(position.xy));
+float facetBend = facetArch * uFacetWave * 0.34;
+float facetShear = facetEnvelope * uFacetWave * 0.18 * sign(position.x + 0.0001) * uFacetDirection;
+vFacetShade = (facetEnvelope * 0.72 + facetCenterMask * 0.42) * uFacetWave;
 vec3 swirlAxis = normalize(vec3(-fragmentDir.y, fragmentDir.x, fragmentDir.z + 0.12));
 vec3 shardOffset = fragmentDir * (0.008 + shardNoise * 0.02) * uSnap * snapPulse;
 shardOffset += swirlAxis * (0.004 + shardNoise * 0.01) * uSnap;
 transformed += normal * (((baseWave + sideWave) * waveAttenuation) + dragWave + orbitWave + snapWave) + shardOffset;
+transformed.z += facetBend;
+transformed.y += facetShear * 0.24;
+transformed.x -= facetShear * 0.08;
+transformed.z += facetCenterMask * facetRoundness * 0.18;
+transformed.xy *= 1.0 - facetRoundness * 0.028;
 transformed.xy *= 1.0 + 0.025 * (1.0 - uSettled) + uDrag * 0.08 + uSnap * 0.028;
 transformed.z *= focusFlatten;`
       );
@@ -129,6 +150,7 @@ transformed.z *= focusFlatten;`
         '#include <common>',
         `#include <common>
 varying vec3 vShardLocalPos;
+varying float vFacetShade;
 uniform float uStripeMix;
 uniform float uStripePhase;
 uniform vec3 uStripeColor;`
@@ -139,6 +161,12 @@ uniform vec3 uStripeColor;`
 float stripeWave = 0.5 + 0.5 * sin(vShardLocalPos.y * 7.0 + vShardLocalPos.x * 2.6 + uStripePhase);
 float stripeBand = smoothstep(0.32, 0.68, stripeWave);
 diffuseColor.rgb = mix(diffuseColor.rgb, uStripeColor, stripeBand * uStripeMix);`
+      )
+      .replace(
+        '#include <dithering_fragment>',
+        `diffuseColor.rgb += vFacetShade * 0.18;
+diffuseColor.rgb *= 1.0 - vFacetShade * 0.12;
+#include <dithering_fragment>`
       );
   };
 
@@ -170,6 +198,8 @@ export function updateDeformUniforms(
     orbitAngle?: number;
     orbitPulse?: number;
     waveDensity?: number;
+    facetWave?: number;
+    facetDirection?: number;
     stripeMix?: number;
     stripePhase?: number;
     stripeColor?: string;
@@ -186,6 +216,8 @@ export function updateDeformUniforms(
   uniforms.uOrbitAngle.value = values.orbitAngle ?? 0;
   uniforms.uOrbitPulse.value = values.orbitPulse ?? 0;
   uniforms.uWaveDensity.value = values.waveDensity ?? 0.72;
+  if (uniforms.uFacetWave) uniforms.uFacetWave.value = values.facetWave ?? 0;
+  if (uniforms.uFacetDirection) uniforms.uFacetDirection.value = values.facetDirection ?? 1;
   if (uniforms.uStripeMix) uniforms.uStripeMix.value = values.stripeMix ?? 0;
   if (uniforms.uStripePhase) uniforms.uStripePhase.value = values.stripePhase ?? 0;
   if (uniforms.uStripeColor && values.stripeColor) uniforms.uStripeColor.value.set(values.stripeColor);

@@ -31,6 +31,10 @@ import { damp, wrapIndex } from './math';
 import { RenderLoop } from './RenderLoop';
 import { TransitionSystem } from './TransitionSystem';
 
+const ACCENT_COLOR_CYCLE = ['#75AF80', '#FF4545', '#49BCFF', '#8AEBEF'] as const;
+const ACCENT_COLOR_HOLD_SECONDS = 10;
+const ACCENT_COLOR_BLEND_SECONDS = 1;
+
 export class AppController {
   private readonly content = new ContentService();
   private readonly theme = new ThemeService();
@@ -69,6 +73,7 @@ export class AppController {
   private readonly seenFacetsByProject = new Map<string, Set<number>>();
   private pendingPostFocusExit: (() => void) | null = null;
   private gameTransitionTweenId: number | null = null;
+  private portfolioCameraRealignTweenId: number | null = null;
   private focusEnterTweenId: number | null = null;
   private mobileChargePointerId: number | null = null;
   private mobileChargeStartY = 0;
@@ -215,9 +220,10 @@ export class AppController {
         },
         onFocusRotation: (deltaX) => this.world.previewFacetRotation(deltaX),
         onFocusRotationEnd: () => {
-          const changed = this.world.finishFacetRotation();
-          if (changed) {
+          const direction = this.world.finishFacetRotation();
+          if (direction !== 0) {
             this.mode.setMode('focus_facet_transition');
+            this.focus.beginFacetTransition(direction);
             this.scheduleFacetCompletion();
           }
         },
@@ -290,7 +296,7 @@ export class AppController {
     this.primatrieReturnTweenId = this.transitions.animate({
       from: 0,
       to: 1,
-      duration: 1.25,
+      duration: 2,
       easing: 'easeInOutCubic',
       onUpdate: (value) => {
         this.primatrieReturnProgress = value;
@@ -751,6 +757,7 @@ export class AppController {
     const changedId = this.world.changeFacet(direction);
     if (!changedId) return;
     this.mode.setMode('focus_facet_transition');
+    this.focus.beginFacetTransition(direction);
     this.scheduleFacetCompletion();
   }
 
@@ -758,7 +765,7 @@ export class AppController {
     this.transitions.animate({
       from: 0,
       to: 1,
-      duration: 0.44,
+      duration: 1,
       easing: 'easeOutCubic',
       onUpdate: () => {},
       onComplete: () => {
@@ -854,7 +861,7 @@ export class AppController {
     }
   }
 
-  private startGameTransition(forceDirectEntry = false) {
+  private startGameTransition(forceDirectEntry = false, skipPreAlign = false) {
     if (!this.slotSystem.isUnlocked() && !forceDirectEntry) return;
     if (isGameRuntimeMode(this.mode.current)) return;
 
@@ -863,12 +870,38 @@ export class AppController {
     }
 
     if (isFocusMode(this.mode.current)) {
-      this.exitFocus(() => this.startGameTransition(forceDirectEntry));
+      this.exitFocus(() => this.startGameTransition(forceDirectEntry, skipPreAlign));
       return;
     }
 
     if (this.mode.is('dragging')) {
       this.resumeOrbitMode();
+    }
+
+    const shouldPreAlignCamera =
+      !skipPreAlign &&
+      !this.mode.is('primatrie_portal') &&
+      !this.mode.is('primatrie_transition') &&
+      (this.mode.is('orbit') || this.mode.is('constellation_complete'));
+
+    if (shouldPreAlignCamera) {
+      if (this.portfolioCameraRealignTweenId !== null) {
+        this.transitions.cancel(this.portfolioCameraRealignTweenId);
+      }
+      this.cameraOrbit.settleMotion();
+      this.cameraOrbit.alignToYaw(this.cameraOrbit.getYawTarget());
+      this.portfolioCameraRealignTweenId = this.transitions.animate({
+        from: 0,
+        to: 1,
+        duration: 0.42,
+        easing: 'easeInOutCubic',
+        onUpdate: () => {},
+        onComplete: () => {
+          this.portfolioCameraRealignTweenId = null;
+          this.startGameTransition(forceDirectEntry, true);
+        }
+      });
+      return;
     }
 
     if (!this.mode.is('primatrie_portal') && !this.mode.is('constellation_complete')) {
@@ -886,11 +919,19 @@ export class AppController {
     this.gameTransitionProgress = 0;
     this.game.startTransition();
     const projectCount = this.getGameFieldCount();
-    this.world.beginExternalLayoutTransition(
-      this.game.getInitialPlatformPositions(projectCount),
-      this.game.getInitialPlatformScales(projectCount),
-      this.game.getInitialPlatformVisuals(projectCount)
-    );
+    const initialVisuals = this.game.getInitialPlatformVisuals(projectCount);
+    const transitionIndex = THREE.MathUtils.clamp(this.activeIndex, 0, Math.max(0, projectCount - 1));
+    const transitionVisual = initialVisuals[transitionIndex] ?? initialVisuals[0];
+    const transitionAnchor = this.world.getCameraAlignedTransitionAnchor();
+    if (transitionVisual) {
+      this.world.beginSingleNodeExternalLayoutTransition(transitionAnchor, transitionVisual, transitionIndex);
+    } else {
+      this.world.beginExternalLayoutTransition(
+        this.game.getInitialPlatformPositions(projectCount),
+        this.game.getInitialPlatformScales(projectCount),
+        initialVisuals
+      );
+    }
     this.refreshUI();
 
     this.gameTransitionTweenId = this.transitions.animate({
@@ -962,7 +1003,7 @@ export class AppController {
     this.gameTransitionTweenId = this.transitions.animate({
       from: this.gameTransitionProgress,
       to: 0,
-      duration: 1.25,
+      duration: 2,
       easing: 'easeInOutCubic',
       onUpdate: (value) => {
         this.gameTransitionProgress = value;
@@ -1007,8 +1048,24 @@ export class AppController {
     };
   }
 
+  private getAccentColor(elapsedTime: number) {
+    const cycleDuration = ACCENT_COLOR_HOLD_SECONDS + ACCENT_COLOR_BLEND_SECONDS;
+    const cycleIndex = Math.floor(elapsedTime / cycleDuration) % ACCENT_COLOR_CYCLE.length;
+    const cycleTime = elapsedTime % cycleDuration;
+    const from = new THREE.Color(ACCENT_COLOR_CYCLE[cycleIndex]);
+    if (cycleTime <= ACCENT_COLOR_HOLD_SECONDS) {
+      return `#${from.getHexString()}`;
+    }
+    const to = new THREE.Color(ACCENT_COLOR_CYCLE[(cycleIndex + 1) % ACCENT_COLOR_CYCLE.length]);
+    const blend = THREE.MathUtils.clamp((cycleTime - ACCENT_COLOR_HOLD_SECONDS) / ACCENT_COLOR_BLEND_SECONDS, 0, 1);
+    from.lerp(to, blend);
+    return `#${from.getHexString()}`;
+  }
+
   private update(deltaTime: number, elapsedTime: number) {
     this.transitions.update(deltaTime);
+    const accentColor = this.getAccentColor(elapsedTime);
+    document.documentElement.style.setProperty('--accent-color', accentColor);
     const cameraOrbitPose = this.cameraOrbit.update(deltaTime, this.world.getPivot());
     this.world.setFocusCameraReference(cameraOrbitPose.position, cameraOrbitPose.lookAt);
     this.world.update(deltaTime, elapsedTime, this.mode.current);
@@ -1119,6 +1176,7 @@ export class AppController {
     }
     this.hud.element.classList.toggle('is-hidden', primatrieMode || isGameMode);
     this.guide.element.classList.toggle('is-hidden', isGameMode || primatrieMode);
+    this.uiHost.dataset.appMode = primatrieMode ? 'primatrie' : isGameMode ? 'game' : 'portfolio';
     this.gameHud.setVisible(isGameMode);
     if (isGameMode) {
       this.gameHud.update(this.getGameHudPayload());
@@ -1227,30 +1285,28 @@ export class AppController {
       };
     }
 
-    const pivot = gameLookAt.clone();
-    const frontPosition = pivot.clone().add(new THREE.Vector3(0, 0.4, 24.5));
-    const alignPhase = THREE.MathUtils.smoothstep(this.gameTransitionProgress, 0, 0.38);
-    if (this.gameTransitionProgress <= 0.38) {
+    const portfolioPivot = portfolioLookAt.clone();
+    const portfolioOffset = portfolioPosition.clone().sub(portfolioPivot);
+    const portfolioDirection =
+      portfolioOffset.lengthSq() > 0.0001 ? portfolioOffset.clone().normalize() : new THREE.Vector3(0, 0.04, 1);
+    const alignedRadius = Math.max(19.4, portfolioOffset.length() * 0.92);
+    const alignedPosition = portfolioPivot
+      .clone()
+      .addScaledVector(portfolioDirection, alignedRadius)
+      .add(new THREE.Vector3(0, 0.16, 0));
+
+    const rotatePhase = THREE.MathUtils.smoothstep(THREE.MathUtils.clamp(this.gameTransitionProgress / 0.42, 0, 1), 0, 1);
+    if (this.gameTransitionProgress <= 0.42) {
       return {
-        position: portfolioPosition.clone().lerp(frontPosition, alignPhase),
-        lookAt: portfolioLookAt.clone().lerp(pivot, alignPhase)
+        position: portfolioPosition.clone().lerp(alignedPosition, rotatePhase),
+        lookAt: portfolioLookAt.clone().lerp(portfolioPivot, rotatePhase)
       };
     }
 
-    const rotatePhase = THREE.MathUtils.smoothstep((this.gameTransitionProgress - 0.38) / 0.62, 0, 1);
-    const frontOffset = frontPosition.clone().sub(pivot);
-    const gameOffset = gamePosition.clone().sub(pivot);
-    const frontDirection = frontOffset.clone().normalize();
-    const gameDirection = gameOffset.clone().normalize();
-    const rotation = new THREE.Quaternion().setFromUnitVectors(frontDirection, gameDirection);
-    const blendedRotation = new THREE.Quaternion().slerpQuaternions(new THREE.Quaternion(), rotation, rotatePhase);
-    const rotatedOffset = frontOffset
-      .clone()
-      .applyQuaternion(blendedRotation)
-      .setLength(THREE.MathUtils.lerp(frontOffset.length(), gameOffset.length(), rotatePhase));
+    const stackPhase = THREE.MathUtils.smoothstep(THREE.MathUtils.clamp((this.gameTransitionProgress - 0.42) / 0.58, 0, 1), 0, 1);
     return {
-      position: pivot.clone().add(rotatedOffset),
-      lookAt: pivot.clone()
+      position: alignedPosition.clone().lerp(gamePosition, stackPhase),
+      lookAt: portfolioPivot.clone().lerp(gameLookAt, stackPhase)
     };
   }
 }

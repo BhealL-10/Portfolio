@@ -22,6 +22,7 @@ export class ShardInteractionSystem {
   private downY = 0;
   private lastX = 0;
   private lastY = 0;
+  private pointerDownAt = 0;
   private dragged = false;
   private sceneOrbiting = false;
   private downShardId: string | null = null;
@@ -78,6 +79,7 @@ export class ShardInteractionSystem {
     this.downY = event.clientY;
     this.lastX = event.clientX;
     this.lastY = event.clientY;
+    this.pointerDownAt = performance.now();
     this.canvas.setPointerCapture(event.pointerId);
 
     const pick = this.world.pick(event.clientX, event.clientY, this.canvas, this.camera);
@@ -124,6 +126,27 @@ export class ShardInteractionSystem {
 
     const pointerBias = this.isCoarsePointer() ? 1.65 : 1;
     const dragThreshold = (this.downShardId ? this.world.getDragThreshold(this.downShardId) : 8) * pointerBias;
+    const heldFor = performance.now() - this.pointerDownAt;
+
+    if ((mode === 'orbit' || mode === 'constellation_complete') && this.isCoarsePointer() && this.downShardId && !this.dragged) {
+      if (heldFor >= 160 && distance > dragThreshold) {
+        const point = this.world.projectPointerToDragPlane(event.clientX, event.clientY, this.canvas, this.camera);
+        if (!point) return;
+        this.dragged = this.callbacks.onDragStart(this.downShardId, point);
+        if (this.dragged) {
+          this.callbacks.onDragMove(point);
+        }
+        return;
+      }
+
+      if (distance > 10) {
+        this.sceneOrbiting = true;
+        this.callbacks.onSceneOrbitMove(deltaX, deltaY);
+        this.lastX = event.clientX;
+        this.lastY = event.clientY;
+        return;
+      }
+    }
 
     if ((mode === 'orbit' || mode === 'constellation_complete' || mode === 'dragging') && this.downShardId && distance > dragThreshold) {
       const point = this.world.projectPointerToDragPlane(event.clientX, event.clientY, this.canvas, this.camera);
@@ -221,5 +244,6 @@ export class ShardInteractionSystem {
     this.downShardId = null;
     this.lastX = 0;
     this.lastY = 0;
+    this.pointerDownAt = 0;
   }
 }

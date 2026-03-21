@@ -460,6 +460,8 @@ export class GameHUDSystem {
   setVisible(visible: boolean) {
     this.element.hidden = !visible;
     this.element.classList.toggle('is-visible', visible);
+    this.element.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    this.element.inert = !visible;
     document.body.classList.toggle('game-runtime-ui-active', visible);
     if (!visible) {
       this.topRightCluster.toggle(false);
@@ -514,10 +516,12 @@ export class GameHUDSystem {
     this.shopBar.hidden = !(payload.state === 'upgrade_choice' && showingShop);
     this.gameOverOverlay.hidden = payload.state !== 'game_over';
     this.toast.hidden = !payload.acquisition;
+    this.stashBar.hidden = payload.state === 'upgrade_choice' || payload.state === 'game_over';
     this.panel.classList.toggle('is-hidden', payload.state === 'game_over');
     this.branchLayer.classList.toggle('is-visible', payload.state === 'upgrade_choice' && !showingShop);
     this.shopBar.classList.toggle('is-visible', payload.state === 'upgrade_choice' && showingShop);
-    this.momentumDock.classList.toggle('is-hidden', payload.state === 'upgrade_choice' && showingShop);
+    this.stashBar.classList.toggle('is-visible', payload.state !== 'upgrade_choice' && payload.state !== 'game_over');
+    this.momentumDock.classList.toggle('is-hidden', payload.state === 'upgrade_choice' || payload.state === 'game_over');
     this.gameOverOverlay.classList.toggle('is-visible', payload.state === 'game_over');
     this.toast.classList.toggle('is-visible', Boolean(payload.acquisition));
     if (payload.acquisition) {
@@ -653,7 +657,6 @@ export class GameHUDSystem {
     slot?: string | null;
   }>) {
     this.inventoryBar.innerHTML = '';
-    this.stashBar.classList.add('is-visible');
     items
       .filter((item) => item.kind === 'passive')
       .forEach((item) => {

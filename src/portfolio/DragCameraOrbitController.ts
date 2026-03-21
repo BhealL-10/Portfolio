@@ -21,6 +21,33 @@ export class DragCameraOrbitController {
     this.yawVelocity = clamp(this.yawVelocity + limitedDelta * 0.00085, -0.032, 0.032);
   }
 
+  getYaw() {
+    return this.yaw;
+  }
+
+  getYawTarget() {
+    return this.yawTarget;
+  }
+
+  getRadius() {
+    return this.radius;
+  }
+
+  stopMotion() {
+    this.yawVelocity = 0;
+    this.yawTarget = this.yaw;
+  }
+
+  settleMotion() {
+    this.yawVelocity = 0;
+  }
+
+  alignToYaw(targetYaw: number) {
+    const delta = Math.atan2(Math.sin(targetYaw - this.yaw), Math.cos(targetYaw - this.yaw));
+    this.yawVelocity = 0;
+    this.yawTarget = this.yaw + delta;
+  }
+
   update(deltaTime: number, pivot: THREE.Vector3) {
     this.yawTarget += this.yawVelocity;
     this.yawVelocity = damp(this.yawVelocity, 0, 11, deltaTime);

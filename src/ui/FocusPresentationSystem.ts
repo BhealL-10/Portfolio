@@ -14,6 +14,8 @@ export class FocusPresentationSystem {
   private facetIndex = 0;
   private currentSlide = 0;
   private gridView = false;
+  private facetTransitionDirection: -1 | 1 = 1;
+  private facetTransitioning = false;
   private callbacks: FocusCallbacks;
 
   constructor(host: HTMLElement, private readonly i18n: I18nService, callbacks: FocusCallbacks) {
@@ -38,6 +40,7 @@ export class FocusPresentationSystem {
     this.facetIndex = facetIndex;
     this.currentSlide = 0;
     this.gridView = false;
+    this.facetTransitioning = false;
     this.render();
     this.element.classList.add('is-visible');
   }
@@ -45,12 +48,21 @@ export class FocusPresentationSystem {
   hide() {
     this.element.classList.remove('is-visible');
     this.project = null;
+    this.facetTransitioning = false;
+  }
+
+  beginFacetTransition(direction: -1 | 1) {
+    this.facetTransitionDirection = direction;
+    this.facetTransitioning = true;
+    this.panel.classList.add('is-facet-transitioning');
+    this.panel.dataset.facetDirection = direction > 0 ? 'next' : 'prev';
   }
 
   updateFacet(facetIndex: number) {
     this.facetIndex = facetIndex;
     this.currentSlide = 0;
     this.gridView = false;
+    this.facetTransitioning = false;
     this.render();
   }
 
@@ -63,23 +75,28 @@ export class FocusPresentationSystem {
     const language = this.i18n.current;
     const facet = this.project.facets[this.facetIndex];
 
+    this.panel.classList.toggle('is-facet-transitioning', this.facetTransitioning);
+    this.panel.dataset.facetDirection = this.facetTransitionDirection > 0 ? 'next' : 'prev';
     this.panel.innerHTML = `
+      <div class="focus-layer__panel-scroll">
+      <div class="focus-layer__content">
       <div class="focus-layer__header">
-        <div>
-          <p class="focus-layer__eyebrow">${facet.categoryLabel[language]}</p>
-          <h2>${this.project.title[language]}</h2>
-        </div>
         <button class="focus-layer__close" type="button">${this.i18n.t('close')}</button>
       </div>
-      <div class="focus-layer__facet-nav">
-        <button class="focus-layer__facet-btn" type="button">${this.i18n.t('previous')}</button>
-        <span>${this.facetIndex + 1} / ${this.project.facets.length}</span>
-        <button class="focus-layer__facet-btn" type="button">${this.i18n.t('next')}</button>
+      <div class="focus-layer__title-block">
+        <p class="focus-layer__facet-category">${facet.categoryLabel[language]}</p>
+        <div class="focus-layer__facet-nav">
+          <button class="focus-layer__facet-btn" type="button">${this.i18n.t('previous')}</button>
+          <div class="focus-layer__title-copy">
+            <h2>${this.project.title[language]}</h2>
+          </div>
+          <button class="focus-layer__facet-btn" type="button">${this.i18n.t('next')}</button>
+        </div>
+        <p class="focus-layer__facet-progress">${this.facetIndex + 1} / ${this.project.facets.length}</p>
       </div>
       <div class="focus-layer__media">
         ${this.renderMedia(facet)}
       </div>
-      <p class="focus-layer__hint">${this.i18n.t('clickToGrid')}</p>
       <div class="focus-layer__body">
         ${facet.description[language]
           .split('\n\n')
@@ -98,6 +115,8 @@ export class FocusPresentationSystem {
           ${this.renderLinks()}
         </div>
       </section>
+      </div>
+      </div>
     `;
 
     const closeButton = this.panel.querySelector<HTMLButtonElement>('.focus-layer__close');
@@ -129,7 +148,7 @@ export class FocusPresentationSystem {
     const images = facet.images.slice(0, 12);
     const currentImage = images[this.currentSlide] || '';
     if (images.length === 0) {
-      return `<div class="focus-layer__empty">${this.i18n.t('media')}</div>`;
+      return '';
     }
 
     if (images.length === 1) {
@@ -154,7 +173,7 @@ export class FocusPresentationSystem {
         <img class="focus-layer__image" src="${currentImage}" alt="Project media ${this.currentSlide + 1}">
         <button class="focus-layer__slide-nav" data-slide-dir="1" type="button">${this.i18n.t('next')}</button>
       </div>
-      <div class="focus-layer__counter">${this.currentSlide + 1} / ${images.length}</div>
+      <div class="focus-layer__facet-progress">${this.currentSlide + 1} / ${images.length}</div>
     `;
   }
 
