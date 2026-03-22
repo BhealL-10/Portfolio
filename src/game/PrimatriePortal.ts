@@ -29,7 +29,7 @@ export class PrimatriePortal {
     this.tenVsTenButton = this.element.querySelector<HTMLButtonElement>('[data-primatrie-10v10]')!;
 
     this.portfolioButton.textContent = 'Portfolio';
-    this.singlePlayerButton.textContent = 'Single player';
+    this.singlePlayerButton.textContent = 'Aventure';
     this.threeVsThreeButton.textContent = '3v3';
     this.tenVsTenButton.textContent = '10v10';
 
@@ -46,6 +46,15 @@ export class PrimatriePortal {
 
   setVisible(visible: boolean) {
     this.visible = visible;
+    if (!visible) {
+      const activeElement = document.activeElement;
+      if (activeElement instanceof HTMLElement && this.element.contains(activeElement)) {
+        activeElement.blur();
+      }
+      this.element.setAttribute('inert', '');
+    } else {
+      this.element.removeAttribute('inert');
+    }
     this.element.hidden = !visible;
     this.element.setAttribute('aria-hidden', String(!visible));
     this.element.classList.toggle('is-visible', visible);

@@ -261,7 +261,7 @@ export class IntroVoronoiSystem {
     this.progress.textContent = `${this.clickCount}/${this.clickThreshold}`;
     this.progress.style.setProperty('--intro-progress', String(this.clickCount / this.clickThreshold));
     this.logo.src =
-      this.theme.current === 'dark' ? '/assets/images/Logo/LogoApeProdLight.svg' : '/assets/images/Logo/LogoApeProdDark.svg';
+      this.theme.current === 'dark' ? '/assets/images/Logo/LogoApeProdLight.png' : '/assets/images/Logo/LogoApeProdDark.png';
   }
 
   private resize = () => {

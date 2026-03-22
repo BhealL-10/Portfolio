@@ -31,6 +31,7 @@ import {
   getModuleChargesForItem,
   getModuleGaugeConfig,
   type ModuleRuntimeState,
+  type RogueliteRarity,
   type RogueliteModuleSlot,
   type RogueliteItemOffer,
   type RunUpgradeState
@@ -39,10 +40,17 @@ import { RunStatsSystem } from './RunStatsSystem';
 import { resolveRuntimeNode } from './ShardRuntimeResolver';
 import { ShopSystem } from './ShopSystem';
 import { SpriteSheetPlane } from './SpriteSheetPlane';
+import type { GameAudioEvent, GameAudioRuntimeState } from './gameAudioTypes';
 
 type PlayerMotionState = 'attached' | 'charging' | 'airborne' | 'dead';
 type ChoiceMode = 'none' | 'reward_branch' | 'shop_orbit';
 type PlayerVisualState = 'attached_idle_orbit' | 'attached_fast_orbit' | 'jump_start' | 'airborne' | 'landing' | 'death';
+
+interface WorldHudBillboard {
+  canvas: HTMLCanvasElement;
+  texture: THREE.CanvasTexture;
+  sprite: THREE.Sprite;
+}
 
 const DANGER_ACCENT = '#F06A5A';
 const ITEM_PLACEHOLDER_ICON = '/assets/images/Logo/logomodedark.svg';
@@ -55,6 +63,13 @@ const FRONT_CANON_PROJECTILE_URL = new URL('../../assets/images/spritesheet/fx-p
 const MAGNET_RADIUS_URL = new URL('../../assets/images/spritesheet/fx-radius-magnet.svg', import.meta.url).href;
 const BIG_CANON_RADIUS_URL = new URL('../../assets/images/spritesheet/fx-radius-big-cannon.svg', import.meta.url).href;
 const GRAP_RADIUS_URL = new URL('../../assets/images/spritesheet/fx-radius-grappling-hook.svg', import.meta.url).href;
+const RARITY_COLORS: Record<RogueliteRarity, string> = {
+  common: '#F2DDB8',
+  uncommon: '#75AF80',
+  rare: '#49BCFF',
+  epic: '#8C53B4',
+  legendary: '#727C91'
+};
 
 function wrapAngle(angle: number) {
   const tau = Math.PI * 2;
@@ -91,9 +106,12 @@ export class GameSessionController {
   private readonly shardHudCanvas = document.createElement('canvas');
   private readonly shardHudTexture: THREE.CanvasTexture;
   private readonly shardHudSprite: THREE.Sprite;
-  private readonly magnetRangeIndicator: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
-  private readonly bigCanonRangeIndicator: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
-  private readonly grapRangeIndicator: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  private readonly rewardHeaderBillboard: WorldHudBillboard;
+  private readonly rewardCardBillboards: [WorldHudBillboard, WorldHudBillboard, WorldHudBillboard];
+  private readonly magnetRangeIndicator: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+  private readonly bigCanonRangeIndicator: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+  private readonly grapRangeIndicator: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+  private readonly milestonePlayerIndicator: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>;
   private readonly frontCanonLaser: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   private readonly frontCanonProjectile: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   private readonly bigCanonProjectile: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
@@ -107,7 +125,15 @@ export class GameSessionController {
   private readonly coins: CoinSystem;
   private readonly enemies: EnemySystem;
   private readonly shop: ShopSystem;
+  private locale: 'fr' | 'en' = 'en';
+  private rewardBillboardSignature = '';
+  private readonly rewardImageCache = new Map<string, HTMLImageElement>();
+  private readonly transitionPlayerStartPosition = new THREE.Vector3();
+  private readonly transitionPlayerStartRotation = new THREE.Euler();
+  private readonly transitionPlayerStartScale = new THREE.Vector3(1, 1, 1);
+  private transitionProgress = 0;
   private readonly scoreListeners = new Set<() => void>();
+  private readonly audioListeners = new Set<(event: GameAudioEvent) => void>();
   private readonly playerPosition = new THREE.Vector3();
   private readonly playerVelocity = new THREE.Vector3();
   private readonly playerVelocityTarget = new THREE.Vector3();
@@ -178,6 +204,7 @@ export class GameSessionController {
   private displayWindowIndices: number[] = [];
   private displayNextIndex = 0;
   private score = 0;
+  private awaitingFirstJump = false;
   private orbitGraceActive = false;
   private orbitGraceProgress = 1;
   private orbitGraceTravel = 0;
@@ -199,6 +226,8 @@ export class GameSessionController {
   private landingFeedbackDuration = 1.35;
   private landingFeedbackNodeIndex: number | null = null;
   private lastLandingFeedbackTriggerNodeIndex: number | null = null;
+  private landingFeedbackAirborneSerial = 0;
+  private lastLandingFeedbackConsumedSerial = -1;
   private gameOverStartedAt = 0;
   private gameOverCause: GameOverCause = null;
   private jumpVisualUntil = 0;
@@ -230,6 +259,7 @@ export class GameSessionController {
   private milestoneChoiceCache = new Map<number, BranchChoice[]>();
   private airborneFromMilestone = false;
   private airborneStartedAt = 0;
+  private momentumLossActive = false;
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
     this.theme = theme;
@@ -288,11 +318,42 @@ export class GameSessionController {
     this.player.visible = false;
     this.root.add(this.player);
     this.root.add(this.shardHudSprite);
-    this.magnetRangeIndicator = this.createRangeIndicator(MAGNET_RADIUS_URL, 0.1);
+    this.rewardHeaderBillboard = this.createWorldHudBillboard(1600, 360, 14.2, 3.2, 30, 0.99);
+    this.rewardCardBillboards = [
+      this.createWorldHudBillboard(1600, 760, 14.8, 7, 30, 0.995),
+      this.createWorldHudBillboard(1600, 760, 14.8, 7, 30, 0.995),
+      this.createWorldHudBillboard(1600, 760, 14.8, 7, 30, 0.995)
+    ];
+    this.magnetRangeIndicator = this.createSimpleRangeIndicator(this.getRarityColor('common'), 0.16);
     this.bigCanonRangeIndicator = this.createRangeIndicator(BIG_CANON_RADIUS_URL, 0.1);
-    this.grapRangeIndicator = this.createRangeIndicator(GRAP_RADIUS_URL, 0.1);
+    this.grapRangeIndicator = new THREE.Mesh(
+      new THREE.CircleGeometry(0.5, 28, -Math.PI / 8, Math.PI / 4),
+      new THREE.MeshBasicMaterial({
+        color: this.getRarityColor('common'),
+        transparent: true,
+        opacity: 0.16,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        depthTest: false
+      })
+    );
+    this.grapRangeIndicator.visible = false;
+    this.grapRangeIndicator.renderOrder = 28;
+    this.milestonePlayerIndicator = new THREE.Mesh(
+      new THREE.ConeGeometry(0.92, 1.78, 3),
+      new THREE.MeshBasicMaterial({
+        color: theme === 'dark' ? '#A5977F' : '#2E3644',
+        transparent: true,
+        opacity: 0.94,
+        depthWrite: false,
+        depthTest: false
+      })
+    );
+    this.milestonePlayerIndicator.visible = false;
+    this.milestonePlayerIndicator.renderOrder = 29;
+    this.milestonePlayerIndicator.rotation.z = Math.PI;
     this.frontCanonLaser = new THREE.Mesh(
-      new THREE.PlaneGeometry(1, 0.14),
+      new THREE.PlaneGeometry(1, 0.24),
       new THREE.MeshBasicMaterial({ color: '#A5977F', transparent: true, opacity: 0.4, depthWrite: false, depthTest: false })
     );
     this.frontCanonLaser.visible = false;
@@ -313,9 +374,12 @@ export class GameSessionController {
     this.grapRope.visible = false;
     this.grapRope.renderOrder = 27;
     this.root.add(
+      this.rewardHeaderBillboard.sprite,
+      ...this.rewardCardBillboards.map((billboard) => billboard.sprite),
       this.magnetRangeIndicator,
       this.bigCanonRangeIndicator,
       this.grapRangeIndicator,
+      this.milestonePlayerIndicator,
       this.frontCanonLaser,
       this.frontCanonProjectile,
       this.bigCanonProjectile,
@@ -407,6 +471,52 @@ export class GameSessionController {
     return mesh;
   }
 
+  private createSimpleRangeIndicator(color: string, opacity: number) {
+    const mesh = new THREE.Mesh(
+      new THREE.CircleGeometry(0.5, 40),
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        depthTest: false
+      })
+    );
+    mesh.visible = false;
+    mesh.renderOrder = 28;
+    return mesh;
+  }
+
+  private createWorldHudBillboard(
+    canvasWidth: number,
+    canvasHeight: number,
+    worldWidth: number,
+    worldHeight: number,
+    renderOrder: number,
+    opacity: number
+  ): WorldHudBillboard {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        opacity,
+        depthWrite: false,
+        depthTest: false,
+        toneMapped: false
+      })
+    );
+    sprite.scale.set(worldWidth, worldHeight, 1);
+    sprite.renderOrder = renderOrder;
+    sprite.visible = false;
+    return { canvas, texture, sprite };
+  }
+
   private createBillboardPlane(textureUrl: string, width: number, height: number, renderOrder: number) {
     const texture = new THREE.TextureLoader().load(textureUrl);
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -428,11 +538,31 @@ export class GameSessionController {
     const uiColor = theme === 'dark' ? '#A5977F' : '#2E3644';
     this.grapRope.material.color.set(uiColor);
     this.frontCanonLaser.material.color.set(uiColor);
+    this.milestonePlayerIndicator.material.color.set(uiColor);
+    this.bigCanonRangeIndicator.material.color.set('#ffffff');
+    this.rewardBillboardSignature = '';
+  }
+
+  setLocale(locale: 'fr' | 'en') {
+    if (this.locale === locale) {
+      return;
+    }
+    this.locale = locale;
+    this.rewardBillboardSignature = '';
+  }
+
+  setTransitionProgress(progress: number) {
+    this.transitionProgress = clamp(progress, 0, 1);
   }
 
   onScoreChange(callback: () => void) {
     this.scoreListeners.add(callback);
     return () => this.scoreListeners.delete(callback);
+  }
+
+  onAudioEvent(callback: (event: GameAudioEvent) => void) {
+    this.audioListeners.add(callback);
+    return () => this.audioListeners.delete(callback);
   }
 
   beginPortalPreview() {
@@ -463,6 +593,7 @@ export class GameSessionController {
     this.camera.reset(node);
     this.trailPoints.forEach((point) => point.copy(this.playerPosition));
     this.updateTrail(0);
+    this.transitionProgress = 0;
   }
 
   startTransition() {
@@ -480,9 +611,13 @@ export class GameSessionController {
       this.player.position.copy(previewPosition);
       this.player.rotation.copy(previewRotation);
       this.player.scale.copy(previewScale);
+      this.transitionPlayerStartPosition.copy(previewPosition);
+      this.transitionPlayerStartRotation.copy(previewRotation);
+      this.transitionPlayerStartScale.copy(previewScale);
     }
     this.player.visible = preservePortalPreviewBoat;
     this.playerTrail.visible = false;
+    this.transitionProgress = 0;
   }
 
   beginRun() {
@@ -498,7 +633,9 @@ export class GameSessionController {
     this.playerTrail.visible = true;
     this.attachToNode(0, false, null, null);
     this.camera.reset(this.getResolvedNode(0));
+    this.awaitingFirstJump = true;
     this.state = 'running_attached';
+    this.emitAudioEvent({ type: 'run_start' });
     this.emitScore();
   }
 
@@ -556,6 +693,7 @@ export class GameSessionController {
   resetRunState() {
     this.stats.reset(performance.now());
     this.score = 0;
+    this.awaitingFirstJump = false;
     this.chargeActive = false;
     this.upActionActive = false;
     this.chargeMeter = 0;
@@ -615,6 +753,7 @@ export class GameSessionController {
     this.milestoneChoiceCache.clear();
     this.airborneFromMilestone = false;
     this.airborneStartedAt = 0;
+    this.momentumLossActive = false;
     this.momentum.gauge = 0;
     this.momentum.fillRate = 0;
     this.momentum.decayRate = 0.12;
@@ -636,6 +775,7 @@ export class GameSessionController {
     this.magnetRangeIndicator.visible = false;
     this.bigCanonRangeIndicator.visible = false;
     this.grapRangeIndicator.visible = false;
+    this.milestonePlayerIndicator.visible = false;
     this.frontCanonLaser.visible = false;
     this.frontCanonProjectile.visible = false;
     this.bigCanonProjectile.visible = false;
@@ -1021,6 +1161,28 @@ export class GameSessionController {
     return this.hudSnapshot;
   }
 
+  getAudioState(): GameAudioRuntimeState {
+    const state = this.getHudStateValue();
+    return {
+      state,
+      playerMotionState: this.playerState as GamePlayerMotionState,
+      distanceMeters: this.stats.getSnapshot().distanceMeters,
+      momentumRatio: clamp(this.momentum.gauge / Math.max(1, this.runUpgrades.modifiers.momentumCap), 0, 1),
+      awaitingFirstJump: this.awaitingFirstJump,
+      blowerActive: this.souffleurActive && state === 'running',
+      onShardActive:
+        (state === 'running' || state === 'upgrade_choice') &&
+        this.playerState !== 'airborne' &&
+        this.playerState !== 'dead',
+      glideActive: state === 'running' && this.playerState === 'airborne' && Boolean(this.getEquippedItem('plane')),
+      speed: this.playerVelocity.length()
+    };
+  }
+
+  private emitAudioEvent(event: GameAudioEvent) {
+    this.audioListeners.forEach((listener) => listener(event));
+  }
+
   private getMobileHudState() {
     const airborneChargeCount = this.getRemainingAirborneChargeCount();
     const souffleurRuntime = this.getModuleRuntime('souffleur');
@@ -1084,7 +1246,12 @@ export class GameSessionController {
 
   private isGrappleAvailable() {
     const runtime = this.getModuleRuntime('grappin');
-    return Boolean(this.getEquippedItem('grappin')) && !this.isGrappleBusy() && (!runtime || runtime.cooldownRemaining <= 0);
+    return (
+      this.playerState === 'airborne' &&
+      Boolean(this.getEquippedItem('grappin')) &&
+      !this.isGrappleBusy() &&
+      (!runtime || runtime.cooldownRemaining <= 0)
+    );
   }
 
   private getDisplayedCooldownRatio(slot: RogueliteModuleSlot, runtime: ModuleRuntimeState | null) {
@@ -1205,16 +1372,35 @@ export class GameSessionController {
     if (this.state === 'idle') return;
     this.currentTime = elapsedTime;
     const shopLocked = this.isShopInteractionLocked() && this.playerState !== 'airborne';
-    const simulationDelta = shopLocked ? 0 : deltaTime;
+    const simulationDelta = deltaTime;
 
     if (this.state === 'portal_preview') {
+      this.hideWorldRewardBranchHud();
       this.updatePortalPreview(deltaTime, elapsedTime);
       return;
     }
 
     if (this.state === 'transition_in' || this.state === 'transition_out') {
+      this.hideWorldRewardBranchHud();
       this.tickModuleRuntime(deltaTime);
       this.updateMomentum(deltaTime);
+    if (this.state === 'transition_in' && this.player.visible) {
+      const node = this.getResolvedNode(0);
+      const orbit = this.getOrbitSample(node, this.orbitAngle);
+      const targetPosition = this.getPlayerOrbitWorldPosition(node, this.orbitAngle, orbit);
+      const targetTravel = orbit.tangent.clone().multiplyScalar(this.orbitDirection).normalize();
+      const targetHeading = Math.atan2(targetTravel.y, targetTravel.x);
+      const wrappedStartHeading = targetHeading + shortestAngleDistance(this.transitionPlayerStartRotation.z, targetHeading);
+      this.player.position.lerpVectors(this.transitionPlayerStartPosition, targetPosition, this.transitionProgress);
+      this.player.rotation.x = THREE.MathUtils.lerp(this.transitionPlayerStartRotation.x, 0, this.transitionProgress);
+      this.player.rotation.y = THREE.MathUtils.lerp(this.transitionPlayerStartRotation.y, 0, this.transitionProgress);
+      this.player.rotation.z = THREE.MathUtils.lerp(wrappedStartHeading, targetHeading, this.transitionProgress);
+      this.player.scale.lerpVectors(
+        this.transitionPlayerStartScale,
+        new THREE.Vector3(1, this.orbitDirection > 0 ? -1 : 1, 1),
+        this.transitionProgress
+      );
+    }
       return;
     }
 
@@ -1232,6 +1418,7 @@ export class GameSessionController {
       this.updateTrail(deltaTime);
       this.syncPlayerVisual(elapsedTime, deltaTime);
       this.syncShardHud(currentNode);
+      this.syncWorldRewardBranchHud(currentNode);
       this.syncMarkers(elapsedTime);
       return;
     }
@@ -1239,10 +1426,9 @@ export class GameSessionController {
     const motionStartIndex = this.attachedIndex;
 
     if (shopLocked) {
-      const lockedOrbit = this.getOrbitSample(currentNode, this.orbitAngle);
+      this.chargeActive = false;
       this.souffleurActive = false;
-      this.playerPosition.copy(this.getPlayerOrbitWorldPosition(currentNode, this.orbitAngle, lockedOrbit));
-      this.playerVelocity.set(0, 0, 0);
+      this.updateAttached(deltaTime, currentNode);
     } else if (this.playerState === 'airborne') {
       this.updateAirborne(deltaTime);
     } else {
@@ -1261,6 +1447,7 @@ export class GameSessionController {
     this.updateTrail(deltaTime);
     this.syncPlayerVisual(elapsedTime, deltaTime);
     this.syncShardHud(currentNode);
+    this.syncWorldRewardBranchHud(currentNode);
     this.syncMarkers(elapsedTime);
 
     if (currentNode.isMilestone && this.playerState !== 'airborne') {
@@ -1453,13 +1640,12 @@ export class GameSessionController {
       }
 
       this.path.ensureAhead(this.displayNextIndex + 1);
-      const replacement = this.getResolvedNode(this.displayNextIndex);
-      const spawnsOffscreenRight = replacement.resolvedX - this.getPhysicalRadius(replacement) > this.camera.getSafeRight() + 2.8;
-      if (!spawnsOffscreenRight) {
+      const replacementIndex = this.findReplacementDisplayNode(slot);
+      if (replacementIndex === null) {
         continue;
       }
-      this.displayWindowIndices[slot] = this.displayNextIndex;
-      this.displayNextIndex += 1;
+      this.displayWindowIndices[slot] = replacementIndex;
+      this.displayNextIndex = Math.max(this.displayNextIndex, replacementIndex + 1);
     }
   }
 
@@ -1480,10 +1666,52 @@ export class GameSessionController {
     }
   }
 
+  private rebuildDisplayWindowAroundCurrent() {
+    const count = Math.max(this.displayWindowIndices.length || 0, this.getRecommendedVisibleCount());
+    this.path.ensureAhead(this.attachedIndex + count + 8);
+    this.displayWindowIndices = Array.from({ length: count }, (_, offset) => this.attachedIndex + offset);
+    this.displayNextIndex = this.attachedIndex + count;
+  }
+
+  private findReplacementDisplayNode(excludeSlot: number) {
+    for (let candidateIndex = this.displayNextIndex; candidateIndex < this.displayNextIndex + 24; candidateIndex += 1) {
+      const replacement = this.getResolvedNode(candidateIndex);
+      const spawnsOffscreenRight = replacement.resolvedX - this.getPhysicalRadius(replacement) > this.camera.getSafeRight() + 2.8;
+      if (!spawnsOffscreenRight) {
+        continue;
+      }
+      if (this.isDisplayNodeOverlapping(replacement, excludeSlot)) {
+        continue;
+      }
+      return candidateIndex;
+    }
+    return null;
+  }
+
+  private isDisplayNodeOverlapping(candidate: ResolvedGamePathNode, excludeSlot: number) {
+    for (let slot = 0; slot < this.displayWindowIndices.length; slot += 1) {
+      if (slot === excludeSlot) continue;
+      const otherIndex = this.displayWindowIndices[slot];
+      if (otherIndex === undefined || otherIndex === candidate.index) continue;
+      const other = this.getResolvedNode(otherIndex);
+      const minDistance =
+        this.getPhysicalRadius(candidate) +
+        this.getPhysicalRadius(other) +
+        Math.max(0.8, Math.min(2.2, (candidate.visualScale + other.visualScale) * 0.12));
+      const dx = candidate.resolvedX - other.resolvedX;
+      const dy = candidate.resolvedY - other.resolvedY;
+      if (dx * dx + dy * dy < minDistance * minDistance) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private updateMomentum(deltaTime: number) {
     const normalizedGauge = this.getNormalizedMomentumGauge();
     const decayModifier = 1 - Math.min(0.72, this.runUpgrades.modifiers.momentumRetention);
     const decay = this.momentum.decayRate * decayModifier;
+    const previousGauge = this.momentum.gauge;
     const airborneGraceActive =
       this.playerState === 'airborne' &&
       this.airborneStartedAt > 0 &&
@@ -1491,6 +1719,11 @@ export class GameSessionController {
     if (!(this.orbitGraceActive && this.playerState !== 'airborne') && !airborneGraceActive) {
       this.momentum.gauge = clamp(this.momentum.gauge - decay * deltaTime, 0, 1);
     }
+    const losingMomentum = this.momentum.gauge < previousGauge - 0.002 && previousGauge > 0.08;
+    if (losingMomentum && !this.momentumLossActive) {
+      this.emitAudioEvent({ type: 'momentum_loss_start' });
+    }
+    this.momentumLossActive = losingMomentum;
 
     const speedTarget = 1 + normalizedGauge * 0.6 + this.runUpgrades.modifiers.speedBonus;
     const jumpTarget = 1 + normalizedGauge * 0.48 + this.runUpgrades.modifiers.chargedLeapBonus * 0.12;
@@ -1607,22 +1840,22 @@ export class GameSessionController {
       if (this.currentTime >= this.grapStateUntil && this.grapState === 'launch') {
         this.grapState = 'hooked';
         this.grapRopeLength = Math.max(1.45, distance);
+        this.emitAudioEvent({ type: 'grapple_hit' });
       }
       if (this.grapState === 'launch') {
         this.playerVelocity.addScaledVector(pull, Math.min(8.6, 4.2 + distance * 0.2) * deltaTime);
       } else {
-        if (this.upActionActive) {
-          const retractRate = 3.4 + this.momentum.gauge * 1.8;
-          this.grapRopeLength = Math.max(1.25, this.grapRopeLength - retractRate * deltaTime);
-          this.playerVelocity.addScaledVector(pull, Math.min(11.4, 6.8 + distance * 0.42) * deltaTime);
-        }
+        const retractRate = (this.upActionActive ? 10.2 : 6.8) + this.momentum.gauge * 3.2;
+        const contactLength = Math.max(0.78, grapNode.gameplayRadius * 0.56);
+        this.grapRopeLength = Math.max(contactLength, this.grapRopeLength - retractRate * deltaTime);
+        this.playerVelocity.addScaledVector(pull, Math.min(14.8, 8.2 + distance * 0.68) * deltaTime);
         if (this.chargeActive) {
-          const grapChargeBoost = this.souffleurActive ? 1.32 + this.runUpgrades.modifiers.souffleurBoost * 0.28 : 0.54;
+          const grapChargeBoost = this.souffleurActive ? 1.84 + this.runUpgrades.modifiers.souffleurBoost * 0.34 : 0.96;
           this.playerVelocity.addScaledVector(pull, grapChargeBoost * deltaTime);
         }
         const radialSpeed = this.playerVelocity.dot(pull);
         if (radialSpeed > 0) {
-          this.playerVelocity.addScaledVector(pull, -radialSpeed * 0.92);
+          this.playerVelocity.addScaledVector(pull, -radialSpeed * 0.72);
         }
       }
     }
@@ -1630,6 +1863,16 @@ export class GameSessionController {
     this.playerPosition.addScaledVector(this.playerVelocity, deltaTime);
     this.applyGrappleConstraint();
     this.collectCoinsNearPlayer();
+
+    if (this.grapTargetIndex !== null) {
+      const grappleNode = this.getResolvedNode(this.grapTargetIndex);
+      if (this.canCaptureNode(grappleNode, previousPosition)) {
+        const targetIndex = this.grapTargetIndex;
+        this.beginGrappleLanding();
+        this.attachToNode(targetIndex, true, this.playerPosition, this.playerVelocity);
+        return;
+      }
+    }
 
     if (this.choiceMode === 'reward_branch' && this.activeChoices.length > 0) {
       for (let index = 0; index < this.activeChoices.length; index += 1) {
@@ -1740,10 +1983,13 @@ export class GameSessionController {
       this.momentum.jumpMultiplier *
       this.runUpgrades.modifiers.jumpPower *
       (1 + this.runUpgrades.modifiers.speedBonus * 0.35);
+    const maxBoost = this.chargeMeter >= 0.98;
 
     this.registerImpactWave(currentNode, this.orbitAngle, launchSpeed * 0.92);
     this.playerVelocity.copy(tangent.multiplyScalar(launchSpeed)).addScaledVector(radial, launchSpeed * 0.08);
+    this.landingFeedbackAirborneSerial += 1;
     this.lastLandingFeedbackTriggerNodeIndex = null;
+    this.awaitingFirstJump = false;
     this.playerState = 'airborne';
     this.state = this.choiceMode === 'reward_branch' ? 'upgrade_branching' : 'running_airborne';
     this.jumpVisualUntil = this.currentTime + 0.14;
@@ -1751,6 +1997,8 @@ export class GameSessionController {
     this.chargeMeter = 0;
     this.airborneStartedAt = this.currentTime;
     this.airborneFromMilestone = currentNode.isGigantic;
+    this.emitAudioEvent({ type: 'jump', maxBoost, speed: launchSpeed });
+    this.emitAudioEvent({ type: 'sail', fast: launchSpeed >= 11.5 });
     return true;
   }
 
@@ -1780,6 +2028,7 @@ export class GameSessionController {
       combinedImpulse.y += 0.06 + power * 0.05;
       combinedPower += power * 1.18;
       this.triggerModuleFlash('propulseur', 0.42);
+      this.emitAudioEvent({ type: 'module_activate', slot: 'propulseur' });
       moduleTriggered = true;
     }
     if (this.hasModuleCharges('wings')) {
@@ -1789,6 +2038,7 @@ export class GameSessionController {
       combinedImpulse.y += 0.78 + power * 0.24;
       combinedPower += power;
       this.triggerModuleFlash('wings', 0.82);
+      this.emitAudioEvent({ type: 'module_activate', slot: 'wings' });
       moduleTriggered = true;
     }
     if (this.hasModuleCharges('reacteur_front')) {
@@ -1797,6 +2047,7 @@ export class GameSessionController {
       combinedImpulse.y += 0.56 + power * 0.26;
       combinedPower += power;
       this.triggerModuleFlash('reacteur_front', 0.4);
+      this.emitAudioEvent({ type: 'module_activate', slot: 'reacteur_front' });
       moduleTriggered = true;
     }
     if (this.hasModuleCharges('reacteur_back')) {
@@ -1806,6 +2057,7 @@ export class GameSessionController {
       combinedImpulse.y += 0.32 + power * 0.16;
       combinedPower += power;
       this.triggerModuleFlash('reacteur_back', 0.4);
+      this.emitAudioEvent({ type: 'module_activate', slot: 'reacteur_back' });
       moduleTriggered = true;
     }
     if (!moduleTriggered) {
@@ -1827,31 +2079,25 @@ export class GameSessionController {
     const impulse = 4.2 + this.runUpgrades.modifiers.jumpPower * 1.6;
     this.playerVelocity.y = Math.max(this.playerVelocity.y, 0) + impulse;
     this.playerVelocity.x += 0.9 + this.momentum.gauge * 1.6;
+    this.emitAudioEvent({ type: 'sail', fast: this.playerVelocity.length() >= 7.5 });
     return true;
   }
 
   private tryActivateGrappleFromCurrentState() {
+    if (this.playerState !== 'airborne') {
+      return false;
+    }
     const candidate = this.findGrappleCandidate();
     if (!candidate) {
       return false;
-    }
-    if (this.playerState !== 'airborne') {
-      const currentNode = this.getResolvedNode(this.attachedIndex);
-      const orbit = this.getOrbitSample(currentNode, this.orbitAngle);
-      const tangent = orbit.tangent.clone().multiplyScalar(this.orbitDirection).normalize();
-      const radial = orbit.position.clone().normalize();
-      this.playerState = 'airborne';
-      this.state = 'running_airborne';
-      this.airborneStartedAt = this.currentTime;
-      this.chargeActive = false;
-      this.chargeMeter = 0;
-      this.jumpVisualUntil = this.currentTime + 0.08;
-      this.playerVelocity.set(tangent.x * 2.4 + radial.x * 0.34, tangent.y * 2.4 + radial.y * 0.34 + 1.5, 0);
     }
     return this.armGrapple(candidate.index, candidate.distance);
   }
 
   private tryActivateGrappin() {
+    if (this.playerState !== 'airborne') {
+      return false;
+    }
     const candidate = this.findGrappleCandidate();
     if (!candidate) {
       return false;
@@ -1860,15 +2106,28 @@ export class GameSessionController {
   }
 
   private findGrappleCandidate() {
-    if (!this.isGrappleAvailable()) {
+    if (!this.isGrappleAvailable() || this.playerState !== 'airborne') {
       return null;
     }
+    const headingVector = this.scratchVector2.set(this.playerVelocity.x || 0.001, this.playerVelocity.y || 0.001).normalize();
+    const localUp = this.scratchVectorB.set(-headingVector.y, headingVector.x, 0);
+    const grappleOriginX = this.playerPosition.x + headingVector.x * 0.85 - localUp.x * 0.72;
+    const grappleOriginY = this.playerPosition.y + headingVector.y * 0.85 - localUp.y * 0.72;
     const grapRange = Math.max(4.6, this.runUpgrades.modifiers.grapRange);
+    const grapConeHalfAngle = Math.PI / 8;
     const minReach = 2.8;
     for (let index = this.attachedIndex + 1; index <= this.attachedIndex + Math.ceil(grapRange * 2.8); index += 1) {
       const node = this.getResolvedNode(index);
-      const distance = this.playerPosition.distanceTo(this.scratchVectorB.set(node.resolvedX, node.resolvedY, node.resolvedZ));
+      const toNodeX = node.resolvedX - grappleOriginX;
+      const toNodeY = node.resolvedY - grappleOriginY;
+      const distance = Math.hypot(toNodeX, toNodeY);
       if (distance < minReach) continue;
+      const normalizedX = toNodeX / Math.max(0.001, distance);
+      const normalizedY = toNodeY / Math.max(0.001, distance);
+      const dot = clamp(normalizedX * headingVector.x + normalizedY * headingVector.y, -1, 1);
+      if (dot <= 0) continue;
+      const angle = Math.acos(dot);
+      if (angle > grapConeHalfAngle) continue;
       if (distance <= grapRange + node.gameplayRadius) {
         return { index, distance };
       }
@@ -1886,6 +2145,7 @@ export class GameSessionController {
     this.grapRopeLength = Math.max(1.45, distance);
     this.grapCooldownPending = true;
     this.triggerModuleFlash('grappin', 0.5);
+    this.emitAudioEvent({ type: 'grapple_cast' });
     return true;
   }
 
@@ -1919,6 +2179,7 @@ export class GameSessionController {
     this.wrapperHoldUntil = this.wrapperTeleportAt + 1.6;
     this.wrapperVisualUntil = this.wrapperHoldUntil + 0.4;
     this.wrapperCooldownPending = true;
+    this.emitAudioEvent({ type: 'module_activate', slot: 'wrapper' });
     return true;
   }
 
@@ -1999,6 +2260,14 @@ export class GameSessionController {
     incomingVelocity: THREE.Vector3,
     angularSpeed: number
   ) {
+    if (
+      node.isGigantic &&
+      this.lastLandingFeedbackConsumedSerial === this.landingFeedbackAirborneSerial &&
+      this.lastLandingFeedbackTriggerNodeIndex === node.index
+    ) {
+      return angularSpeed;
+    }
+
     const incoming2D = this.scratchVector2.set(incomingVelocity.x, incomingVelocity.y);
     const incomingLength = Math.max(0.001, incoming2D.length());
     incoming2D.divideScalar(incomingLength);
@@ -2053,12 +2322,33 @@ export class GameSessionController {
     this.momentum.gauge = nextGauge;
     this.lastLandingDirection = direction;
     this.startLandingFeedback(node.index, grade, twist);
+    this.emitAudioEvent({ type: 'land', kind: this.getLandingAudioKind(node) });
+    this.emitAudioEvent({ type: 'grade', grade });
+    if (twist) {
+      this.emitAudioEvent({ type: 'twist' });
+    }
     void tangentialSpeed;
     void node;
     return angularSpeed * speedMultiplier;
   }
 
+  private getLandingAudioKind(node: ResolvedGamePathNode): 'normal' | 'milestone' | 'reward' | 'shop' {
+    if (node.eventType === 'shop') {
+      return 'shop';
+    }
+    if (node.isMilestone) {
+      return 'milestone';
+    }
+    if (node.colorHint === 'reward') {
+      return 'reward';
+    }
+    return 'normal';
+  }
+
   private startLandingFeedback(nodeIndex: number, grade: LandingGrade, twist: boolean) {
+    if (this.lastLandingFeedbackConsumedSerial === this.landingFeedbackAirborneSerial) {
+      return;
+    }
     if (this.lastLandingFeedbackTriggerNodeIndex === nodeIndex) {
       return;
     }
@@ -2067,6 +2357,7 @@ export class GameSessionController {
     }
     this.landingFeedbackNodeIndex = nodeIndex;
     this.lastLandingFeedbackTriggerNodeIndex = nodeIndex;
+    this.lastLandingFeedbackConsumedSerial = this.landingFeedbackAirborneSerial;
     this.landingFeedbackStartedAt = this.currentTime;
     this.landingFeedback = {
       grade,
@@ -2138,6 +2429,7 @@ export class GameSessionController {
     this.path.replaceFuture(this.attachedIndex, choice.pathNodes);
     this.path.ensureAhead(this.attachedIndex + 1, 50, 40);
     this.path.queuePostMilestoneEvents(this.attachedIndex + 1, this.attachedIndex + 1);
+    this.rebuildDisplayWindowAroundCurrent();
     this.milestoneChoiceCache.delete(this.attachedIndex);
     this.applyOffer(choice.offer, viaFallback ? 'Quick choice' : 'Path chosen');
     this.choiceMode = 'none';
@@ -2175,6 +2467,7 @@ export class GameSessionController {
   }
 
   private updateCamera(deltaTime: number, currentNode: ResolvedGamePathNode, nextNode: ResolvedGamePathNode) {
+    const mobileLike = window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900;
     const milestoneAirborne = this.airborneFromMilestone && this.playerState === 'airborne';
     const cameraCurrentNode = milestoneAirborne ? nextNode : currentNode;
     const cameraNextNode =
@@ -2188,16 +2481,18 @@ export class GameSessionController {
     const largeShardFactor = clamp((Math.max(cameraCurrentNode.visualScale, cameraNextNode.visualScale) - 2.8) / 28, 0, 1.24);
     const milestoneReleaseZoom =
       milestoneAirborne
-        ? clamp(1 - Math.max(0, this.playerPosition.x - currentNode.resolvedX) / 24, 0, 1) * 26
+        ? clamp(1 - Math.max(0, this.playerPosition.x - currentNode.resolvedX) / 24, 0, 1) * (mobileLike ? 19.5 : 16.2)
         : 0;
+    const milestoneLockActive = currentNode.isGigantic && this.playerState !== 'airborne';
+    const milestoneLockZoom = milestoneLockActive ? (mobileLike ? 40.5 : 50.8) : 0;
     const milestoneZoom =
-      currentNode.isGigantic && this.playerState !== 'airborne'
-        ? 82
-        : Math.max(milestoneReleaseZoom, upcomingMilestoneFactor * 38);
+      milestoneLockActive
+        ? milestoneLockZoom
+        : Math.max(milestoneReleaseZoom, upcomingMilestoneFactor * (mobileLike ? 30 : 27));
     const choiceZoom =
-      (this.choiceMode === 'reward_branch' ? 9.6 : this.choiceMode === 'shop_orbit' ? 3.2 : this.state === 'upgrade_acquired' ? 2.4 : 0) +
+      (this.choiceMode === 'reward_branch' ? (mobileLike ? 6.8 : 5.4) : this.choiceMode === 'shop_orbit' ? 2.8 : this.state === 'upgrade_acquired' ? 2.4 : 0) +
       this.runUpgrades.modifiers.cameraBaseZoomBonus;
-    const speedPressure = this.momentum.speedMultiplier;
+    const speedPressure = this.awaitingFirstJump || milestoneLockActive ? 0 : this.momentum.speedMultiplier;
     this.camera.update({
       deltaTime,
       state: this.state,
@@ -2243,6 +2538,20 @@ export class GameSessionController {
     this.playerBoostSprite.group.rotation.z = 0;
     this.playerMainSprite.group.position.set(0, 0, 0);
     this.playerBoostSprite.group.position.set(0, 0, 0);
+    const milestoneIndicatorVisible = currentNode.isGigantic && this.playerState !== 'airborne' && this.state !== 'portal_preview';
+    this.milestonePlayerIndicator.visible = milestoneIndicatorVisible;
+    if (milestoneIndicatorVisible) {
+      const orientationFlip = this.player.scale.y < 0 ? -1 : 1;
+      const localUpX = -Math.sin(heading) * orientationFlip;
+      const localUpY = Math.cos(heading) * orientationFlip;
+      const hoverOffset = 4.15 + Math.sin(elapsedTime * 3.2) * 0.18;
+      this.milestonePlayerIndicator.position.set(
+        this.playerPosition.x + localUpX * hoverOffset,
+        this.playerPosition.y + localUpY * hoverOffset,
+        this.playerPosition.z + 0.02
+      );
+      this.milestonePlayerIndicator.rotation.z = heading - Math.PI * 0.5 + (orientationFlip < 0 ? Math.PI : 0);
+    }
 
     const visualState = this.resolvePlayerVisualState();
     const orbitSpeed = Math.max(this.playerVelocity.length(), Math.abs(this.angularSpeed) * Math.max(1, orbit.position.length()));
@@ -2412,21 +2721,25 @@ export class GameSessionController {
   }
 
   private syncWorldModuleIndicators(heading: number, deltaTime: number) {
-    const magnetVisible = Boolean(this.getEquippedItem('magnet'));
+    const magnetItem = this.getEquippedItem('magnet');
+    const grapItem = this.getEquippedItem('grappin');
+    const magnetVisible = Boolean(magnetItem);
     const bigCanonVisible = Boolean(this.getEquippedItem('big_canon'));
-    const grapVisible = Boolean(this.getEquippedItem('grappin'));
-    const frontCanonVisible = Boolean(this.getEquippedItem('front_canon'));
+    const grapVisible = Boolean(grapItem);
+    const frontCanonItem = this.getEquippedItem('front_canon');
+    const frontCanonVisible = Boolean(frontCanonItem);
 
     const bigCanonRuntime = this.getModuleRuntime('big_canon');
     const bigCanonCooldownDuration = this.getModuleCooldownDuration('big_canon');
     const bigCanonReady = !bigCanonRuntime || bigCanonCooldownDuration <= 0 || bigCanonRuntime.cooldownRemaining <= 0;
     const grapReady = grapVisible && this.isGrappleAvailable();
 
+    this.magnetRangeIndicator.material.color.set(this.getRarityColor(magnetItem?.rarity ?? 'common'));
     this.syncRangeIndicator(
       this.magnetRangeIndicator,
       magnetVisible,
       Math.max(4.8, 3.4 + this.runUpgrades.modifiers.magnetRange * 7.8),
-      magnetVisible ? 0.28 : 0,
+      magnetVisible ? 0.22 : 0,
       deltaTime,
       0.34
     );
@@ -2438,14 +2751,27 @@ export class GameSessionController {
       deltaTime,
       0
     );
+    this.grapRangeIndicator.material.color.set(this.getRarityColor(grapItem?.rarity ?? 'common'));
     this.syncRangeIndicator(
       this.grapRangeIndicator,
       grapReady,
       Math.max(3.25, this.runUpgrades.modifiers.grapRange * 1.42),
-      grapReady ? 0.28 : 0,
+      grapReady ? 0.24 : 0,
       deltaTime,
       2.48
     );
+    if (grapReady) {
+      const forwardX = Math.cos(heading);
+      const forwardY = Math.sin(heading);
+      const upX = -forwardY;
+      const upY = forwardX;
+      this.grapRangeIndicator.position.set(
+        this.playerPosition.x + forwardX * 0.9 - upX * 0.68,
+        this.playerPosition.y + forwardY * 0.9 - upY * 0.68,
+        this.playerPosition.z + 0.01
+      );
+      this.grapRangeIndicator.rotation.z = heading - Math.PI / 8;
+    }
 
     this.frontCanonLaser.visible = frontCanonVisible;
     if (frontCanonVisible) {
@@ -2453,12 +2779,20 @@ export class GameSessionController {
       const frontCooldownDuration = this.getModuleCooldownDuration('front_canon');
       const frontReady = !frontRuntime || frontCooldownDuration <= 0 || frontRuntime.cooldownRemaining <= 0 ? 1 : 0;
       const range = Math.max(2.4, this.runUpgrades.modifiers.frontCanonRange * 1.08);
-      const dx = Math.cos(heading) * range * 0.5;
-      const dy = Math.sin(heading) * range * 0.5;
-      this.frontCanonLaser.position.set(this.playerPosition.x + dx, this.playerPosition.y + dy, this.playerPosition.z + 0.01);
+      const forwardX = Math.cos(heading);
+      const forwardY = Math.sin(heading);
+      const laserLength = Math.max(6.8, range * 2.1);
+      const startOffset = 1.82;
+      const centerOffset = startOffset + laserLength * 0.5;
+      this.frontCanonLaser.material.color.set(this.getRarityColor(frontCanonItem?.rarity ?? 'common'));
+      this.frontCanonLaser.position.set(
+        this.playerPosition.x + forwardX * centerOffset,
+        this.playerPosition.y + forwardY * centerOffset,
+        this.playerPosition.z + 0.01
+      );
       this.frontCanonLaser.rotation.z = heading;
-      this.frontCanonLaser.scale.set(range * 1.2, 1.62, 1);
-      this.frontCanonLaser.material.opacity = (0.08 + this.momentum.gauge * 0.05) * frontReady;
+      this.frontCanonLaser.scale.set(laserLength, 0.7, 1);
+      this.frontCanonLaser.material.opacity = (0.16 + this.momentum.gauge * 0.08) * frontReady;
       this.frontCanonLaser.visible = frontReady > 0.04;
     }
 
@@ -2500,8 +2834,201 @@ export class GameSessionController {
     }
   }
 
+  private syncWorldRewardBranchHud(currentNode: ResolvedGamePathNode) {
+    const visible = this.choiceMode === 'reward_branch' && this.state === 'upgrade_branching' && this.activeChoices.length > 0;
+    this.rewardHeaderBillboard.sprite.visible = visible;
+    this.rewardCardBillboards.forEach((billboard) => {
+      billboard.sprite.visible = visible;
+    });
+    if (!visible) {
+      return;
+    }
+
+    const signature = `${this.theme}|${this.locale}|${this.activeChoices.map((choice) => choice.offer.item.id).join('|')}`;
+    if (signature !== this.rewardBillboardSignature) {
+      this.rewardBillboardSignature = signature;
+      this.drawRewardHeaderBillboard();
+      this.activeChoices.slice(0, 3).forEach((choice, index) => {
+        const billboard = this.rewardCardBillboards[index];
+        if (!billboard) {
+          return;
+        }
+        this.drawRewardCardBillboard(billboard, choice.offer, index as 0 | 1 | 2);
+      });
+    }
+
+    const mobileLike = window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900;
+    const headerScale = mobileLike ? 1.08 : 1;
+    this.rewardHeaderBillboard.sprite.scale.set(14.2 * headerScale, 3.2 * headerScale, 1);
+    this.rewardHeaderBillboard.sprite.position.set(currentNode.resolvedX, currentNode.resolvedY + 11.2, currentNode.resolvedZ + 0.06);
+    this.activeChoices.slice(0, 3).forEach((choice, index) => {
+      const billboard = this.rewardCardBillboards[index];
+      const preview = choice.previewNodes[0] ?? choice.entry;
+      const cardScale = mobileLike ? 1.12 : 1;
+      const slotOffsetY = index === 0 ? 0.28 : index === 2 ? -0.28 : 0;
+      billboard.sprite.scale.set(14.8 * cardScale, 7 * cardScale, 1);
+      billboard.sprite.position.set(preview.x - 11.6, preview.y + slotOffsetY, preview.z + 0.06);
+    });
+  }
+
+  private hideWorldRewardBranchHud() {
+    this.rewardHeaderBillboard.sprite.visible = false;
+    this.rewardCardBillboards.forEach((billboard) => {
+      billboard.sprite.visible = false;
+    });
+  }
+
+  private drawRewardHeaderBillboard() {
+    const { canvas, texture } = this.rewardHeaderBillboard;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      return;
+    }
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    this.fillRoundedRect(context, 0, 0, canvas.width, canvas.height, 42, this.getThemeContrastColor(), 0.9);
+    this.fillRoundedRect(context, 6, 6, canvas.width - 12, canvas.height - 12, 38, this.getThemeShardColor(), 0.08);
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillStyle = this.getThemeShardColor();
+    context.font = "600 132px 'Text Me One', sans-serif";
+    context.fillText(this.locale === 'fr' ? 'Choisissez une amélioration' : 'Choose an upgrade', canvas.width * 0.5, 132);
+    context.fillStyle = this.getThemeShardColor();
+    context.globalAlpha = 0.76;
+    context.font = "400 58px 'Text Me One', sans-serif";
+    context.fillText(
+      this.locale === 'fr'
+        ? 'Sautez vers une branche. 1, 2, 3 restent disponibles.'
+        : 'Jump to a branch. 1, 2, 3 remain available.',
+      canvas.width * 0.5,
+      252
+    );
+    context.globalAlpha = 1;
+    texture.needsUpdate = true;
+  }
+
+  private drawRewardCardBillboard(billboard: WorldHudBillboard, offer: RogueliteItemOffer, slot: 0 | 1 | 2) {
+    const { canvas, texture } = billboard;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      return;
+    }
+    const bg = this.getThemeShardColor();
+    const fg = this.getThemeContrastColor();
+    const rarityColor = this.getRarityColor(offer.item.rarity);
+    const hudImage = this.getHudBillboardImage(offer.item.hudIconSrc);
+    const rarityImage = offer.item.kind === 'module' ? this.getHudBillboardImage(offer.item.rarityIconSrc) : null;
+    const pathLabel =
+      slot === 0
+        ? this.locale === 'fr'
+          ? 'Voie haute'
+          : 'Upper path'
+        : slot === 1
+          ? this.locale === 'fr'
+            ? 'Voie frontale'
+            : 'Forward path'
+          : this.locale === 'fr'
+            ? 'Voie basse'
+            : 'Lower path';
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.textAlign = 'left';
+    context.textBaseline = 'alphabetic';
+    this.fillRoundedRect(context, 0, 0, canvas.width, canvas.height, 54, bg, 0.98);
+    this.fillRoundedRect(context, 0, 0, 42, canvas.height, 28, rarityColor, 0.96);
+    this.fillRoundedRect(context, 54, 36, canvas.width - 96, canvas.height - 72, 42, fg, 0.08);
+    if (hudImage.complete) {
+      context.drawImage(hudImage, 68, 66, 228, 228);
+    }
+    if (rarityImage && rarityImage.complete) {
+      context.drawImage(rarityImage, 232, 228, 96, 96);
+    }
+    context.fillStyle = fg;
+    context.globalAlpha = 0.72;
+    context.font = "400 82px 'Text Me One', sans-serif";
+    context.fillText(pathLabel, 360, 124);
+    context.globalAlpha = 1;
+    if (offer.item.kind === 'module') {
+      context.globalAlpha = 0.72;
+      context.font = "400 70px 'Text Me One', sans-serif";
+      context.fillText(this.locale === 'fr' ? this.getRarityLabelFr(offer.item.rarity) : this.getRarityLabelEn(offer.item.rarity), 360, 220);
+      context.globalAlpha = 1;
+    }
+    context.font = "600 128px 'Text Me One', sans-serif";
+    this.drawWrappedText(context, offer.item.name[this.locale], 360, 342, canvas.width - 448, 126, 2, fg);
+    context.globalAlpha = 0.78;
+    context.font = "400 74px 'Text Me One', sans-serif";
+    this.drawWrappedText(context, offer.item.description[this.locale], 360, 536, canvas.width - 448, 82, 3, fg);
+    context.globalAlpha = 1;
+    texture.needsUpdate = true;
+  }
+
+  private fillRoundedRect(
+    context: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number,
+    color: string,
+    alpha: number
+  ) {
+    context.save();
+    context.globalAlpha = alpha;
+    context.fillStyle = color;
+    context.beginPath();
+    context.moveTo(x + radius, y);
+    context.lineTo(x + width - radius, y);
+    context.quadraticCurveTo(x + width, y, x + width, y + radius);
+    context.lineTo(x + width, y + height - radius);
+    context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    context.lineTo(x + radius, y + height);
+    context.quadraticCurveTo(x, y + height, x, y + height - radius);
+    context.lineTo(x, y + radius);
+    context.quadraticCurveTo(x, y, x + radius, y);
+    context.closePath();
+    context.fill();
+    context.restore();
+  }
+
+  private drawWrappedText(
+    context: CanvasRenderingContext2D,
+    text: string,
+    x: number,
+    y: number,
+    maxWidth: number,
+    lineHeight: number,
+    maxLines: number,
+    color: string
+  ) {
+    const words = text.split(/\s+/);
+    const lines: string[] = [];
+    let currentLine = '';
+    words.forEach((word) => {
+      const nextLine = currentLine ? `${currentLine} ${word}` : word;
+      if (context.measureText(nextLine).width > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = nextLine;
+      }
+    });
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+    context.fillStyle = color;
+    lines.slice(0, maxLines).forEach((line, index) => {
+      let output = line;
+      if (index === maxLines - 1 && lines.length > maxLines) {
+        while (output.length > 0 && context.measureText(`${output}…`).width > maxWidth) {
+          output = output.slice(0, -1);
+        }
+        output = `${output}…`;
+      }
+      context.fillText(output, x, y + index * lineHeight);
+    });
+  }
+
   private syncRangeIndicator(
-    indicator: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>,
+    indicator: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>,
     visible: boolean,
     radius: number,
     targetOpacity: number,
@@ -2640,6 +3167,7 @@ export class GameSessionController {
   }
 
   private collectCoinsOnCurrentNode(node: ResolvedGamePathNode) {
+    let collectedAny = false;
     node.coinSlots.forEach((slot) => {
       if (slot.collected) return;
       if (Math.abs(shortestAngleDistance(this.orbitAngle, slot.angle)) < 0.22 + this.runUpgrades.modifiers.coinMagnet * 0.12) {
@@ -2647,8 +3175,12 @@ export class GameSessionController {
         this.stats.addCoins(this.applyCoinBonus(slot.value), this.momentum.gauge);
         this.score = this.stats.getSnapshot().score;
         this.emitScore();
+        collectedAny = true;
       }
     });
+    if (collectedAny) {
+      this.emitAudioEvent({ type: 'coin', magnet: false });
+    }
   }
 
   private collectCoinsNearPlayer() {
@@ -2658,6 +3190,7 @@ export class GameSessionController {
     }
     const magnetRadiusSq = magnetRadius * magnetRadius;
     const visibleNodes = this.getDisplayNodes(Math.min(28, this.getRecommendedVisibleCount()));
+    let collectedAny = false;
     visibleNodes.forEach((node) => {
       node.coinSlots.forEach((slot) => {
         if (slot.collected) return;
@@ -2669,8 +3202,12 @@ export class GameSessionController {
         this.stats.addCoins(this.applyCoinBonus(slot.value), this.momentum.gauge);
         this.score = this.stats.getSnapshot().score;
         this.emitScore();
+        collectedAny = true;
       });
     });
+    if (collectedAny) {
+      this.emitAudioEvent({ type: 'coin', magnet: true });
+    }
   }
 
   private getCoinMagnetRadius() {
@@ -2705,6 +3242,9 @@ export class GameSessionController {
   }
 
   private beginGrappleLanding() {
+    if (this.grapState !== 'idle' && this.grapState !== 'landing') {
+      this.emitAudioEvent({ type: 'grapple_recall' });
+    }
     this.grapState = 'landing';
     this.grapStateUntil = this.currentTime + 1;
     this.grapTargetIndex = null;
@@ -2726,6 +3266,7 @@ export class GameSessionController {
       this.score = this.stats.getSnapshot().score;
       this.emitScore();
       this.fillMomentumBurst(0.05);
+      this.emitAudioEvent({ type: 'enemy_die' });
       return;
     }
     this.consumeProtectionOrFail(enemy);
@@ -2746,6 +3287,7 @@ export class GameSessionController {
         this.score = this.stats.getSnapshot().score;
         this.emitScore();
         this.fillMomentumBurst(0.08);
+        this.emitAudioEvent({ type: 'enemy_die' });
       } else {
         this.consumeProtectionOrFail(enemy);
       }
@@ -2769,8 +3311,10 @@ export class GameSessionController {
         this.emitScore();
       }
       this.fillMomentumBurst(0.04);
+      this.emitAudioEvent({ type: 'module_activate', slot: 'shield' });
       return;
     }
+    this.emitAudioEvent({ type: 'enemy_hit_player' });
     this.failRun('enemy');
   }
 
@@ -2797,6 +3341,8 @@ export class GameSessionController {
           runtime.cooldownRemaining = Math.max(1.4, this.runUpgrades.modifiers.bigCanonCooldown || 4.5);
           this.bigCanonFireUntil = elapsedTime + 0.24;
           this.triggerModuleFlash('big_canon', 0.24);
+          this.emitAudioEvent({ type: 'module_activate', slot: 'big_canon' });
+          this.emitAudioEvent({ type: 'enemy_die' });
           break;
         }
       }
@@ -2825,6 +3371,8 @@ export class GameSessionController {
       frontRuntime.cooldownRemaining = Math.max(1, this.runUpgrades.modifiers.frontCanonCooldown || 2.4);
       this.frontCanonFireUntil = elapsedTime + 0.18;
       this.triggerModuleFlash('front_canon', 0.22);
+      this.emitAudioEvent({ type: 'module_activate', slot: 'front_canon' });
+      this.emitAudioEvent({ type: 'enemy_die' });
       return;
     }
   }
@@ -2850,6 +3398,7 @@ export class GameSessionController {
     this.gameOverStartedAt = this.currentTime;
     this.playerTrail.visible = false;
     this.shop.reset();
+    this.emitAudioEvent({ type: 'game_over' });
     this.emitScore();
   }
 
@@ -3228,7 +3777,11 @@ export class GameSessionController {
         return {
           slot: index as 0 | 1 | 2,
           offer: choice.offer,
-          worldPosition: new THREE.Vector3(preview.x + 3.4, preview.y, preview.z),
+          worldPosition: new THREE.Vector3(
+            preview.x - (index === 1 ? 3.6 : 3.2),
+            preview.y + (index === 0 ? 0.28 : index === 2 ? -0.28 : 0),
+            preview.z
+          ),
           mode: 'reward_branch'
         };
       });
@@ -3238,13 +3791,13 @@ export class GameSessionController {
       const node = this.getResolvedNode(this.attachedIndex);
       return this.activeChoices.slice(0, 3).map((choice, index) => {
         const angle = this.activeShopAngles[index] ?? 0;
-        const radius = node.gameplayRadius + 2.1;
+        const radius = node.gameplayRadius + 3.1;
         return {
           slot: index as 0 | 1 | 2,
           offer: choice.offer,
           worldPosition: new THREE.Vector3(
             node.resolvedX + Math.cos(angle) * radius,
-            node.resolvedY + Math.sin(angle) * radius,
+            node.resolvedY + Math.sin(angle) * (radius * 0.72) + 0.84,
             node.resolvedZ
           ),
           mode: 'shop_orbit',
@@ -3262,5 +3815,45 @@ export class GameSessionController {
 
   private getThemeContrastColor() {
     return this.theme === 'dark' ? '#2E3644' : '#A5977F';
+  }
+
+  private getRarityColor(rarity: RogueliteRarity) {
+    return RARITY_COLORS[rarity];
+  }
+
+  private getRarityLabelFr(rarity: RogueliteRarity) {
+    const labels: Record<RogueliteRarity, string> = {
+      common: 'Commun',
+      uncommon: 'Peu commun',
+      rare: 'Rare',
+      epic: 'Épique',
+      legendary: 'Légendaire'
+    };
+    return labels[rarity];
+  }
+
+  private getRarityLabelEn(rarity: RogueliteRarity) {
+    const labels: Record<RogueliteRarity, string> = {
+      common: 'Common',
+      uncommon: 'Uncommon',
+      rare: 'Rare',
+      epic: 'Epic',
+      legendary: 'Legendary'
+    };
+    return labels[rarity];
+  }
+
+  private getHudBillboardImage(src: string) {
+    const cached = this.rewardImageCache.get(src);
+    if (cached) {
+      return cached;
+    }
+    const image = new Image();
+    image.src = src;
+    image.onload = () => {
+      this.rewardBillboardSignature = '';
+    };
+    this.rewardImageCache.set(src, image);
+    return image;
   }
 }

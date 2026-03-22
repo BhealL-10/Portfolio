@@ -4,6 +4,10 @@ const uiStrings = {
   fr: {
     theme: 'Thème',
     language: 'Langue',
+    gameAudio: 'Audio',
+    gameVolume: 'Volume',
+    gameMute: 'Couper',
+    gameUnmute: 'Activer',
     about: 'About / Outro',
     backToOrbit: 'Retour à l’orbite',
     unlocked: 'Mini-jeu débloqué',
@@ -79,6 +83,10 @@ const uiStrings = {
   en: {
     theme: 'Theme',
     language: 'Language',
+    gameAudio: 'Audio',
+    gameVolume: 'Volume',
+    gameMute: 'Mute',
+    gameUnmute: 'Unmute',
     about: 'About / Outro',
     backToOrbit: 'Back to orbit',
     unlocked: 'Mini-game unlocked',

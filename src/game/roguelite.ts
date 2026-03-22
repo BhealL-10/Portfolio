@@ -786,9 +786,7 @@ export function buildUpgradeOffers(score: number, runState: RunUpgradeState, rng
   const eligibleBlueprints = ITEM_BLUEPRINTS.filter((blueprint) => {
     if (score < blueprint.unlockScore) return false;
     const current = getCurrentOwnedItemForBlueprint(runState, blueprint);
-    if (!current) return true;
-    if (blueprint.kind === 'passive') return false;
-    return allowedRarities.some((rarity) => rarityRank[rarity] > rarityRank[current.rarity]);
+    return !current;
   });
 
   while (offers.length < 3 && usedBaseIds.size < eligibleBlueprints.length) {

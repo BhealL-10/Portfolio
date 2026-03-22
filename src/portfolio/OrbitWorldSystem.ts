@@ -77,9 +77,15 @@ interface GameFieldEntity {
 const ORBIT_CAMERA_POSITION = new THREE.Vector3(0, 0.88, 28.8);
 const MINI_SHARDS_PER_SLOT = 4;
 const MINI_SHARD_PALETTE = ['#75AF80', '#FF4545', '#49BCFF', '#8AEBEF'] as const;
-const DEFAULT_MINI_LOGO_TEXTURE = new URL('../../assets/images/favicon.svg', import.meta.url).href;
-const MINI_SHARD_COLOR_HOLD_SECONDS = 10;
-const MINI_SHARD_COLOR_BLEND_SECONDS = 1;
+const DEFAULT_MINI_LOGO_TEXTURE = new URL('../../assets/images/Logo/logomodedark.svg', import.meta.url).href;
+const MINI_SHARD_ACCENT_SWAP_SECONDS = 1;
+const MINI_SHARD_ACCENT_BLEND_SECONDS = 0.32;
+const MINI_IDLE_FRAGMENT_OFFSETS = [
+  new THREE.Vector3(-1.84, 0.92, -0.78),
+  new THREE.Vector3(1.52, 1.36, 0.94),
+  new THREE.Vector3(-1.18, -1.62, 1.08),
+  new THREE.Vector3(1.96, -0.84, -1.18)
+] as const;
 export class OrbitWorldSystem {
   private readonly root = new THREE.Group();
   private readonly loader = new THREE.TextureLoader();
@@ -102,6 +108,7 @@ export class OrbitWorldSystem {
   private readonly ovalGeometry = createFragmentedSphereGeometry(1.18, 18, 14);
   private readonly triangularGeometry = createFragmentedTriangularPrismGeometry(1.24, 1.48);
   private readonly focusGeometry = createFragmentedRoundedRectGeometry(2.08, 1.34, 0.24, 0.22);
+  private readonly focusWaveGeometry = createFragmentedRoundedRectGeometry(2.04, 1.38, 0.42, 0.36);
   private readonly constellationLines: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>[];
   private readonly gameFieldEntities: GameFieldEntity[];
   private readonly cameraFacingAnchor = new THREE.Object3D();
@@ -124,6 +131,9 @@ export class OrbitWorldSystem {
   private externalTransitionDelays: number[] = [];
   private speedAccentTimer = 36;
   private speedAccentId: string | null = null;
+  private miniShardAccentIndex = 0;
+  private miniShardPreviousAccentIndex = -1;
+  private miniShardNextAccentSwapAt = 0;
   private nextFocusWaveAt = 0;
   private focusWaveUntil = 0;
   private unlockCallbacks = new Set<() => void>();
@@ -419,10 +429,7 @@ export class OrbitWorldSystem {
   }
 
   getCameraAlignedTransitionAnchor(distance = 11.8) {
-    return this.cameraReferencePosition
-      .clone()
-      .addScaledVector(this.focusCameraForward, distance)
-      .add(new THREE.Vector3(0, -0.06, 0));
+    return this.cameraReferencePosition.clone().addScaledVector(this.focusCameraForward, distance);
   }
 
   setFocusCameraReference(cameraPosition: THREE.Vector3, lookAt: THREE.Vector3) {
@@ -555,7 +562,9 @@ export class OrbitWorldSystem {
   }
 
   getOrbitPositions() {
-    return this.entityList.map((entity, index) => this.computeOrbitTarget(entity, this.globalOrbitTime, index === this.activeIndex));
+    return this.resolveMinimumSpacing(
+      this.entityList.map((entity, index) => this.computeOrbitTarget(entity, this.globalOrbitTime, index === this.activeIndex))
+    );
   }
 
   getSlotPositions() {
@@ -574,7 +583,7 @@ export class OrbitWorldSystem {
     targets: THREE.Vector3[],
     scales?: number[],
     visuals?: VisiblePlatformVisual[],
-    options?: { staggerVisibleIndex?: number | null }
+    options?: { staggerVisibleIndex?: number | null; reverseStagger?: boolean }
   ) {
     this.externalLayoutActive = true;
     this.externalLayoutPositions = null;
@@ -604,7 +613,11 @@ export class OrbitWorldSystem {
     this.externalTransitionFrom = this.getCurrentShardPositions();
     this.externalTransitionTo = targets.map((target) => target.clone());
     this.externalTransitionProgress = 0;
-    this.externalTransitionDelays = this.buildExternalTransitionDelays(targets.length, options?.staggerVisibleIndex ?? null);
+    this.externalTransitionDelays = this.buildExternalTransitionDelays(
+      targets.length,
+      options?.staggerVisibleIndex ?? null,
+      options?.reverseStagger ?? false
+    );
   }
 
   setExternalLayoutProgress(progress: number) {
@@ -917,8 +930,11 @@ export class OrbitWorldSystem {
       const focusRotationX = entity.group.rotation.x + deltaTime * (0.11 + index * 0.001);
       const focusRotationY = entity.group.rotation.y + deltaTime * (0.18 + index * 0.002);
       const focusRotationZ = entity.group.rotation.z + deltaTime * (0.08 + index * 0.0015);
+      const externalTransitionActive = this.externalLayoutActive && this.externalTransitionDelays.length > 0;
 
-      if (!this.externalLayoutActive) {
+      if (externalTransitionActive) {
+        this.applyCameraFacingRotation(entity, deltaTime, 11.5);
+      } else if (!this.externalLayoutActive) {
         if (inFocusFlow || isScrollSelected || entity.snapped || isSlotPreview) {
           this.applyCameraFacingRotation(
             entity,
@@ -937,16 +953,27 @@ export class OrbitWorldSystem {
         isFocused && elapsedTime < this.focusWaveUntil
           ? Math.sin((1 - (this.focusWaveUntil - elapsedTime) / 1.15) * Math.PI) * 0.34
           : 0;
-      const facetFocusWave = entity.facetAnimation.active ? Math.sin(entity.facetAnimation.progress * Math.PI) * 0.52 : 0;
+      const facetTransitionWave = entity.facetAnimation.active ? Math.sin(entity.facetAnimation.progress * Math.PI) : 0;
+      const facetFocusWave = facetTransitionWave * 0.86;
       const focusFragmentWave = inFocusFlow ? Math.sin(entity.focusAmount * Math.PI) * 0.44 : 0;
+      const idleShardWave =
+        !this.externalLayoutActive && !inFocusFlow && !isDragging && !entity.snapped && !isSlotPreview
+          ? 0.18 + (Math.sin(elapsedTime * 1.75 + index * 0.82) * 0.5 + 0.5) * 0.18
+          : 0;
       const squashZ = isFocused ? 0.045 : entity.snapped ? 0.96 : 1;
       if (!this.externalLayoutActive) {
         entity.hiddenUntil = 0;
         entity.accentRing.visible = false;
         entity.iconPlane.visible = false;
-        const targetGeometry = inFocusFlow ? this.focusGeometry : this.roundGeometry;
+        const targetGeometry = inFocusFlow ? (entity.facetAnimation.active ? this.focusWaveGeometry : this.focusGeometry) : this.roundGeometry;
         if (entity.core.geometry !== targetGeometry) {
           entity.core.geometry = targetGeometry;
+        }
+        const facetRoundBlend = inFocusFlow ? facetTransitionWave : 0;
+        if (facetRoundBlend > 0) {
+          targetScaleX *= THREE.MathUtils.lerp(1, 0.96, facetRoundBlend);
+          targetScaleY *= THREE.MathUtils.lerp(1, 1.06, facetRoundBlend);
+          targetScaleZ *= THREE.MathUtils.lerp(1, 1.48, facetRoundBlend);
         }
         const scaleDamping = inFocusFlow ? 10.5 : isScrollSelected ? 7.8 : 8;
         entity.group.scale.x = damp(entity.group.scale.x, targetScaleX, scaleDamping, deltaTime);
@@ -990,12 +1017,14 @@ export class OrbitWorldSystem {
               ? 0.02
             : entity.snapped || isSlotPreview
               ? 0.96 + entity.slotPulse * 0.22
-              : focusFragmentWave,
+              : Math.max(focusFragmentWave, facetTransitionWave * 0.72, idleShardWave * 0.88),
         orbitAngle: this.externalLayoutVisuals?.[index]?.deformAngle ?? 0,
         orbitPulse:
           (this.externalLayoutActive ? this.externalLayoutVisuals?.[index]?.deformStrength ?? 0 : 0) +
           ambientFocusWave +
           facetFocusWave +
+          facetTransitionWave * 0.42 +
+          idleShardWave * 0.34 +
           focusFragmentWave * 0.22,
         waveDensity:
           (
@@ -1005,12 +1034,14 @@ export class OrbitWorldSystem {
                 ? 0.18
                 : entity.snapped || isSlotPreview
                   ? 1.56
-                  : 0.42
+                  : 0.62
           ) +
           ambientFocusWave * 0.55 +
-          facetFocusWave * 0.9 +
+          facetFocusWave * 1.6 +
+          facetTransitionWave * 1.2 +
+          idleShardWave * 1.15 +
           focusFragmentWave * 0.72,
-        facetWave: entity.facetAnimation.active ? Math.sin(entity.facetAnimation.progress * Math.PI) : 0,
+        facetWave: entity.facetAnimation.active ? Math.pow(facetTransitionWave, 0.78) : 0,
         facetDirection: entity.facetAnimation.direction,
         stripeMix: this.externalLayoutVisuals?.[index]?.stripeMix ?? (focusFragmentWave * 0.18 + facetFocusWave * 0.28),
         stripePhase:
@@ -1048,7 +1079,9 @@ export class OrbitWorldSystem {
       const slots = this.slotSystem.getSlots();
       const requiredMiniShardCount = Math.max(1, slots.length * MINI_SHARDS_PER_SLOT);
       const guidedSlotId = this.draggingId ? this.slotSystem.getSlotForShard(this.draggingId)?.shardId ?? null : null;
-      const miniColor = this.getMiniShardAccentColor(elapsedTime);
+      const miniAccent = this.getMiniShardAccentState(elapsedTime, requiredMiniShardCount);
+      const accentColor = new THREE.Color(this.getMiniShardAccentColor(elapsedTime));
+      const themeColor = new THREE.Color(this.theme === 'dark' ? '#A5977F' : '#2E3644');
       this.gameFieldEntities.forEach((entity, index) => {
         if (index >= requiredMiniShardCount) {
           entity.group.visible = false;
@@ -1068,35 +1101,59 @@ export class OrbitWorldSystem {
         const activated = slot.activated;
         const guided = guidedSlotId === slot.shardId;
         const guidePulse = guided ? 0.5 + 0.5 * Math.sin(elapsedTime * 5.4 + slotOrbitIndex * 0.9) : 0;
-        const orbitRadius = (activated ? 1.08 : guided ? 0.82 : 0.72) + slotOrbitIndex * (activated ? 0.38 : guided ? 0.28 : 0.22);
-        const orbitSpeed = (activated ? 1.54 : guided ? 1.08 : 0.82) + slotOrbitIndex * 0.11;
+        const orbitRadius = (activated ? 1.12 : guided ? 0.94 : 1.78) + slotOrbitIndex * (activated ? 0.46 : guided ? 0.34 : 0.76);
+        const orbitSpeed = (activated ? 1.54 : guided ? 1.08 : 0.78) + slotOrbitIndex * 0.11;
         const basePhase = (slotOrbitIndex / MINI_SHARDS_PER_SLOT) * Math.PI * 2 + slotIndex * 0.08;
         const angle = basePhase + elapsedTime * orbitSpeed * angleDirection;
-        const targetX = slot.worldPosition.x + Math.cos(angle) * orbitRadius;
-        const targetY = slot.worldPosition.y + Math.sin(angle) * orbitRadius * 0.92;
-        const targetZ = slot.worldPosition.z + Math.sin(angle * 0.9) * (activated ? 0.44 : guided ? 0.34 : 0.28);
+        const fragmentOffset = MINI_IDLE_FRAGMENT_OFFSETS[slotOrbitIndex] ?? MINI_IDLE_FRAGMENT_OFFSETS[0];
+        const drift = activated
+          ? new THREE.Vector3(Math.cos(angle) * orbitRadius, Math.sin(angle) * orbitRadius * 0.96, Math.sin(angle * 0.9) * 0.44)
+          : guided
+            ? new THREE.Vector3(Math.cos(angle) * orbitRadius, Math.sin(angle) * orbitRadius * 0.9, Math.sin(angle * 0.9) * 0.34)
+            : fragmentOffset
+                .clone()
+                .multiplyScalar(orbitRadius * 0.78)
+                .add(
+                  new THREE.Vector3(
+                    Math.sin(angle * 1.3) * 0.64,
+                    Math.cos(angle * 1.7) * 0.52,
+                    Math.sin(angle * 0.8 + slotOrbitIndex) * 1.18
+                  )
+                );
+        const targetX = slot.worldPosition.x + drift.x;
+        const targetY = slot.worldPosition.y + drift.y;
+        const targetZ = slot.worldPosition.z + drift.z;
         entity.group.visible = true;
         entity.group.position.x = damp(entity.group.position.x, targetX, 4.6, deltaTime);
         entity.group.position.y = damp(entity.group.position.y, targetY, 4.6, deltaTime);
         entity.group.position.z = damp(entity.group.position.z, targetZ, 4.6, deltaTime);
-        entity.group.rotation.x = damp(entity.group.rotation.x, entity.group.rotation.x + deltaTime * 0.16, 2, deltaTime);
-        entity.group.rotation.y = damp(entity.group.rotation.y, entity.group.rotation.y + deltaTime * 0.24, 2, deltaTime);
-        entity.group.rotation.z = damp(entity.group.rotation.z, entity.group.rotation.z + deltaTime * 0.12, 2, deltaTime);
+        entity.group.rotation.x = damp(entity.group.rotation.x, entity.group.rotation.x + deltaTime * (activated ? 0.16 : 0.32), 2, deltaTime);
+        entity.group.rotation.y = damp(entity.group.rotation.y, entity.group.rotation.y + deltaTime * (activated ? 0.24 : 0.44), 2, deltaTime);
+        entity.group.rotation.z = damp(entity.group.rotation.z, entity.group.rotation.z + deltaTime * (activated ? 0.12 : 0.28), 2, deltaTime);
         entity.group.scale.setScalar(
-          damp(entity.group.scale.x, (activated ? 0.278 : guided ? 0.236 : 0.208) + Math.sin(elapsedTime * 1.8 + index) * 0.01, 6, deltaTime)
+          damp(entity.group.scale.x, (activated ? 0.286 : guided ? 0.244 : 0.332) + Math.sin(elapsedTime * 1.8 + index) * 0.026, 6, deltaTime)
         );
         entity.accentRing.visible = false;
         entity.iconPlane.visible = false;
-        const miniScale = activated ? 0.278 : guided ? 0.236 : 0.194;
+        const miniScale = activated ? 0.286 : guided ? 0.244 : 0.352;
         const miniLogoOpacity = this.focusedId ? 0.2 : activated ? 0.96 : guided ? THREE.MathUtils.lerp(0.82, 1, guidePulse) : 0.88;
         entity.core.material.opacity = this.focusedId ? 0.28 : 1;
         entity.core.material.emissiveIntensity = this.focusedId ? 0.08 : activated ? 0.24 : guided ? THREE.MathUtils.lerp(0.16, 0.28, guidePulse) : 0.14;
-        entity.core.material.color.set(miniColor);
-        entity.core.material.emissive.set(miniColor);
+        const accentBlend =
+          index === miniAccent.activeIndex
+            ? miniAccent.blend
+            : index === miniAccent.previousIndex
+              ? 1 - miniAccent.blend
+              : 0;
+        const targetColor = themeColor.clone().lerp(accentColor, accentBlend);
+        entity.core.material.color.lerp(targetColor, THREE.MathUtils.clamp(deltaTime * 8.4, 0, 1));
+        entity.core.material.emissive.lerp(targetColor, THREE.MathUtils.clamp(deltaTime * 8.4, 0, 1));
         this.syncMiniLogoPlanes(entity, this.entities.get(slot.shardId)?.project ?? null, miniLogoOpacity, miniScale);
         entity.logoPlanes.forEach((plane, planeIndex) => {
           const planeAngle = Number(plane.userData.logoAngle ?? 0);
-          const visibility = 0.16 + Math.max(0, Math.cos(angle + planeAngle - Math.PI * 0.5)) * 0.84;
+          const visibility = activated || guided
+            ? 0.16 + Math.max(0, Math.cos(angle + planeAngle - Math.PI * 0.5)) * 0.84
+            : 0.22 + Math.max(0, Math.cos(angle * 0.62 + planeAngle - Math.PI * 0.35)) * 0.78;
           plane.visible = miniLogoOpacity * visibility > 0.06;
           plane.material.opacity = miniLogoOpacity * visibility * (0.9 + planeIndex * 0.04);
         });
@@ -1106,10 +1163,10 @@ export class OrbitWorldSystem {
           drag: 0,
           focus: 0,
           settled: 0,
-          snap: activated ? 0.08 : guided ? 0.18 : 0.64,
+          snap: activated ? 0.08 : guided ? 0.22 : 1.2,
           orbitAngle: angle,
-          orbitPulse: activated ? 0.16 : guided ? 0.12 : 0.14,
-          waveDensity: activated ? 0.78 : guided ? 0.64 : 1.18,
+          orbitPulse: activated ? 0.16 : guided ? 0.14 : 0.34,
+          waveDensity: activated ? 0.78 : guided ? 0.76 : 1.92,
           stripeMix: 0
         });
       });
@@ -1177,7 +1234,7 @@ export class OrbitWorldSystem {
       this.syncMiniLogoPlanes(entity, null, 0, 0);
       this.syncIconPlane(entity.iconPlane, visual, targetScale);
 
-      entity.core.material.opacity = 1 - (visual?.fragmentAmount ?? 0) * 0.92;
+      entity.core.material.opacity = 1;
       entity.core.material.emissiveIntensity = 0.08 + (visual?.pulse ?? 0.06);
       updateDeformUniforms(entity.core.material, {
         time: elapsedTime,
@@ -1197,7 +1254,7 @@ export class OrbitWorldSystem {
   }
 
   private buildSingleNodeExternalLayout(position: THREE.Vector3, visual: VisiblePlatformVisual, visibleIndex: number) {
-    const totalCount = this.getGameFieldCapacity();
+    const totalCount = this.entityList.length;
     const stackDirection = this.focusCameraForward.clone().normalize();
     const orderedIndices = Array.from({ length: totalCount }, (_, index) => index).filter((index) => index !== visibleIndex);
     const positions = Array.from({ length: totalCount }, (_, index) => {
@@ -1268,14 +1325,18 @@ export class OrbitWorldSystem {
     this.pivot.set(0, 0, 0);
   }
 
-  private buildExternalTransitionDelays(totalCount: number, visibleIndex: number | null) {
+  private buildExternalTransitionDelays(totalCount: number, visibleIndex: number | null, reverse = false) {
     const delays = Array.from({ length: totalCount }, () => 0);
     if (visibleIndex === null || totalCount <= 1) {
       return delays;
     }
     const ordered = Array.from({ length: totalCount }, (_, index) => index).filter((index) => index !== visibleIndex);
-    ordered.push(visibleIndex);
-    const step = Math.min(0.06, 0.52 / Math.max(1, ordered.length));
+    if (reverse) {
+      ordered.unshift(visibleIndex);
+    } else {
+      ordered.push(visibleIndex);
+    }
+    const step = reverse ? Math.min(0.098, 0.82 / Math.max(1, ordered.length)) : 0.084;
     ordered.forEach((index, order) => {
       delays[index] = order * step;
     });
@@ -1288,16 +1349,51 @@ export class OrbitWorldSystem {
     return THREE.MathUtils.smoothstep(normalized, 0, 1);
   }
 
+  private getMiniShardAccentState(elapsedTime: number, count: number) {
+    if (count <= 1) {
+      return { activeIndex: 0, previousIndex: -1, blend: 1 };
+    }
+
+    if (this.miniShardNextAccentSwapAt <= 0) {
+      this.miniShardAccentIndex = Math.floor(Math.random() * count);
+      this.miniShardPreviousAccentIndex = -1;
+      this.miniShardNextAccentSwapAt = elapsedTime + MINI_SHARD_ACCENT_SWAP_SECONDS;
+    }
+
+    while (elapsedTime >= this.miniShardNextAccentSwapAt) {
+      this.miniShardPreviousAccentIndex = this.miniShardAccentIndex;
+      let nextIndex = this.miniShardAccentIndex;
+      while (nextIndex === this.miniShardAccentIndex && count > 1) {
+        nextIndex = Math.floor(Math.random() * count);
+      }
+      this.miniShardAccentIndex = nextIndex;
+      this.miniShardNextAccentSwapAt += MINI_SHARD_ACCENT_SWAP_SECONDS;
+    }
+
+    this.miniShardAccentIndex = THREE.MathUtils.clamp(this.miniShardAccentIndex, 0, count - 1);
+    if (this.miniShardPreviousAccentIndex >= count) {
+      this.miniShardPreviousAccentIndex = -1;
+    }
+
+    const swapStartedAt = this.miniShardNextAccentSwapAt - MINI_SHARD_ACCENT_SWAP_SECONDS;
+    const blend = THREE.MathUtils.clamp((elapsedTime - swapStartedAt) / MINI_SHARD_ACCENT_BLEND_SECONDS, 0, 1);
+    return {
+      activeIndex: this.miniShardAccentIndex,
+      previousIndex: this.miniShardPreviousAccentIndex,
+      blend
+    };
+  }
+
   private getMiniShardAccentColor(elapsedTime: number) {
-    const cycleDuration = MINI_SHARD_COLOR_HOLD_SECONDS + MINI_SHARD_COLOR_BLEND_SECONDS;
+    const cycleDuration = 10 + 1;
     const cycleIndex = Math.floor(elapsedTime / cycleDuration) % MINI_SHARD_PALETTE.length;
     const cycleTime = elapsedTime % cycleDuration;
     const from = new THREE.Color(MINI_SHARD_PALETTE[cycleIndex]);
-    if (cycleTime <= MINI_SHARD_COLOR_HOLD_SECONDS) {
+    if (cycleTime <= 10) {
       return `#${from.getHexString()}`;
     }
     const to = new THREE.Color(MINI_SHARD_PALETTE[(cycleIndex + 1) % MINI_SHARD_PALETTE.length]);
-    const blend = THREE.MathUtils.clamp((cycleTime - MINI_SHARD_COLOR_HOLD_SECONDS) / MINI_SHARD_COLOR_BLEND_SECONDS, 0, 1);
+    const blend = THREE.MathUtils.clamp((cycleTime - 10) / 1, 0, 1);
     from.lerp(to, blend);
     return `#${from.getHexString()}`;
   }
@@ -1320,13 +1416,28 @@ export class OrbitWorldSystem {
     );
 
     if (isActive && !this.focusedId) {
-      return this.cameraReferencePosition
-        .clone()
-        .addScaledVector(this.focusCameraForward, 11.8)
-        .add(new THREE.Vector3(0, -0.14, 0));
+      return this.getCameraAlignedTransitionAnchor(11.8).add(new THREE.Vector3(0, -0.14, 0));
     }
 
     return rotated;
+  }
+
+  private resolveMinimumSpacing(positions: THREE.Vector3[], minDistance = 2.2) {
+    const resolved = positions.map((position) => position.clone());
+    for (let iteration = 0; iteration < 3; iteration += 1) {
+      for (let index = 0; index < resolved.length; index += 1) {
+        for (let otherIndex = index + 1; otherIndex < resolved.length; otherIndex += 1) {
+          const delta = resolved[index].clone().sub(resolved[otherIndex]);
+          const distance = Math.max(0.0001, delta.length());
+          if (distance >= minDistance) continue;
+          const correction = (minDistance - distance) * 0.5;
+          delta.normalize();
+          resolved[index].addScaledVector(delta, correction);
+          resolved[otherIndex].addScaledVector(delta, -correction);
+        }
+      }
+    }
+    return resolved;
   }
 
   private createShard(project: PortfolioProject, index: number) {
@@ -1474,7 +1585,7 @@ export class OrbitWorldSystem {
             depthTest: false
           })
         );
-      plane.position.set(Math.sin(angle) * 0.19, 0, Math.cos(angle) * 0.19);
+      plane.position.set(Math.sin(angle) * 0.52, Math.sin(angle * 2) * 0.09, Math.cos(angle) * 0.52);
       plane.lookAt(0, 0, 0);
       plane.userData.logoAngle = angle;
       plane.visible = false;
@@ -1638,7 +1749,7 @@ export class OrbitWorldSystem {
       });
     }
 
-    const planeScale = Math.max(0.24, scale * 1.9);
+    const planeScale = Math.max(0.28, scale * 2.18);
     entity.logoPlanes.forEach((plane, index) => {
       plane.visible = opacity > 0.02;
       plane.material.opacity = opacity * (0.86 + index * 0.06);

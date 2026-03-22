@@ -65,6 +65,8 @@ interface GameHUDCallbacks {
   onCloseShop: () => void;
   onThemeToggle: () => void;
   onLanguageToggle: () => void;
+  onAudioMuteToggle: () => void;
+  onAudioVolumeChange: (value: number) => void;
   onMobileJump: () => void;
   onMobileChargeChange: (active: boolean) => void;
   onMobileGrapple: () => void;
@@ -189,6 +191,13 @@ const PLAYER_NAME_KEY = 'portfolio-game-player-name';
 export class GameHUDSystem {
   readonly element: HTMLDivElement;
   private panel: HTMLDivElement;
+  private runStrip: HTMLDivElement;
+  private runStripScoreLabel: HTMLSpanElement;
+  private runStripBestLabel: HTMLSpanElement;
+  private runStripDistanceLabel: HTMLSpanElement;
+  private runStripScoreValue: HTMLSpanElement;
+  private runStripBestValue: HTMLSpanElement;
+  private runStripDistanceValue: HTMLSpanElement;
   private scoreLabel: HTMLSpanElement;
   private highscoreLabel: HTMLSpanElement;
   private bestDistanceLabel: HTMLSpanElement;
@@ -214,6 +223,10 @@ export class GameHUDSystem {
   private exitButton: HTMLButtonElement;
   private settingsThemeButton: HTMLButtonElement;
   private settingsLanguageButton: HTMLButtonElement;
+  private settingsMuteButton: HTMLButtonElement;
+  private settingsVolumeLabel: HTMLSpanElement;
+  private settingsVolumeValue: HTMLSpanElement;
+  private settingsVolumeInput: HTMLInputElement;
   private branchLayer: HTMLDivElement;
   private stashBar: HTMLDivElement;
   private inventoryBar: HTMLDivElement;
@@ -227,12 +240,14 @@ export class GameHUDSystem {
   private toast: HTMLDivElement;
   private toastLabel: HTMLSpanElement;
   private toastName: HTMLElement;
+  private toastIcon: HTMLImageElement;
   private gameOverOverlay: HTMLDivElement;
   private gameOverTitle: HTMLHeadingElement;
   private gameOverBody: HTMLParagraphElement;
   private gameOverStats: HTMLDivElement;
   private gameOverEquipment: HTMLDivElement;
   private leaderboardPanel: HTMLDivElement;
+  private leaderboardSummary: HTMLDivElement;
   private leaderboardList: HTMLDivElement;
   private leaderboardNameInput: HTMLInputElement;
   private leaderboardSaveButton: HTMLButtonElement;
@@ -250,6 +265,8 @@ export class GameHUDSystem {
   private readonly shapeTemplatePending = new Set<string>();
   private readonly stopObservingTheme: () => void;
   private readonly rewardBranchLayout = new RewardBranchLabelLayoutResolver();
+  private audioMuted = false;
+  private audioVolume = 0.86;
 
   constructor(host: HTMLElement, private readonly i18n: I18nService, callbacks: GameHUDCallbacks) {
     this.preloadUiAssets();
@@ -258,6 +275,11 @@ export class GameHUDSystem {
     this.element.hidden = true;
     this.element.innerHTML = `
       <div class="game-hud__top-right-anchor"></div>
+      <div class="game-hud__run-strip">
+        <div><span data-run-strip-score-label></span><strong data-run-strip-score>0</strong></div>
+        <div><span data-run-strip-best-label></span><strong data-run-strip-best>0</strong></div>
+        <div><span data-run-strip-distance-label></span><strong data-run-strip-distance>0m</strong></div>
+      </div>
       <div class="game-hud__panel">
         <div class="game-hud__stats">
           <div><span data-score-label></span><strong data-score>0</strong></div>
@@ -282,6 +304,12 @@ export class GameHUDSystem {
         <div class="game-hud__settings-grid">
           <button type="button" data-settings-theme></button>
           <button type="button" data-settings-language></button>
+          <button type="button" data-settings-mute></button>
+          <label class="game-hud__settings-volume">
+            <span class="game-hud__settings-volume-copy" data-settings-volume-label></span>
+            <input type="range" min="0" max="1" step="0.01" data-settings-volume />
+            <strong class="game-hud__settings-volume-value" data-settings-volume-value>86%</strong>
+          </label>
         </div>
       </div>
       <div class="game-hud__momentum-dock">
@@ -325,6 +353,7 @@ export class GameHUDSystem {
         <button type="button" data-shop-close></button>
       </div>
       <div class="game-hud__toast">
+        <img data-toast-icon alt="" class="game-hud__toast-icon" />
         <span data-toast-label></span>
         <strong data-toast-name></strong>
       </div>
@@ -336,6 +365,7 @@ export class GameHUDSystem {
           <div class="game-hud__game-over-stats" data-game-over-stats></div>
           <div class="game-hud__game-over-gear" data-game-over-gear></div>
           <div class="game-hud__leaderboard" data-leaderboard-panel hidden>
+            <div class="game-hud__leaderboard-summary" data-leaderboard-summary></div>
             <div class="game-hud__leaderboard-controls">
               <input type="text" maxlength="18" data-leaderboard-name />
               <button type="button" data-leaderboard-save></button>
@@ -352,6 +382,13 @@ export class GameHUDSystem {
     `;
 
     this.panel = this.element.querySelector<HTMLDivElement>('.game-hud__panel')!;
+    this.runStrip = this.element.querySelector<HTMLDivElement>('.game-hud__run-strip')!;
+    this.runStripScoreLabel = this.element.querySelector<HTMLSpanElement>('[data-run-strip-score-label]')!;
+    this.runStripBestLabel = this.element.querySelector<HTMLSpanElement>('[data-run-strip-best-label]')!;
+    this.runStripDistanceLabel = this.element.querySelector<HTMLSpanElement>('[data-run-strip-distance-label]')!;
+    this.runStripScoreValue = this.element.querySelector<HTMLSpanElement>('[data-run-strip-score]')!;
+    this.runStripBestValue = this.element.querySelector<HTMLSpanElement>('[data-run-strip-best]')!;
+    this.runStripDistanceValue = this.element.querySelector<HTMLSpanElement>('[data-run-strip-distance]')!;
     this.scoreLabel = this.element.querySelector<HTMLSpanElement>('[data-score-label]')!;
     this.highscoreLabel = this.element.querySelector<HTMLSpanElement>('[data-highscore-label]')!;
     this.bestDistanceLabel = this.element.querySelector<HTMLSpanElement>('[data-best-distance-label]')!;
@@ -377,6 +414,10 @@ export class GameHUDSystem {
     this.exitButton = this.element.querySelector<HTMLButtonElement>('[data-exit]')!;
     this.settingsThemeButton = this.element.querySelector<HTMLButtonElement>('[data-settings-theme]')!;
     this.settingsLanguageButton = this.element.querySelector<HTMLButtonElement>('[data-settings-language]')!;
+    this.settingsMuteButton = this.element.querySelector<HTMLButtonElement>('[data-settings-mute]')!;
+    this.settingsVolumeLabel = this.element.querySelector<HTMLSpanElement>('[data-settings-volume-label]')!;
+    this.settingsVolumeValue = this.element.querySelector<HTMLSpanElement>('[data-settings-volume-value]')!;
+    this.settingsVolumeInput = this.element.querySelector<HTMLInputElement>('[data-settings-volume]')!;
     this.branchLayer = this.element.querySelector<HTMLDivElement>('.game-hud__branch-layer')!;
     this.stashBar = this.element.querySelector<HTMLDivElement>('.game-hud__stash')!;
     this.inventoryBar = this.element.querySelector<HTMLDivElement>('.game-hud__inventory')!;
@@ -387,6 +428,7 @@ export class GameHUDSystem {
     this.shopButtons = Array.from(this.element.querySelectorAll<HTMLButtonElement>('[data-shop-offer]'));
     this.shopCloseButton = this.element.querySelector<HTMLButtonElement>('[data-shop-close]')!;
     this.toast = this.element.querySelector<HTMLDivElement>('.game-hud__toast')!;
+    this.toastIcon = this.element.querySelector<HTMLImageElement>('[data-toast-icon]')!;
     this.toastLabel = this.element.querySelector<HTMLSpanElement>('[data-toast-label]')!;
     this.toastName = this.element.querySelector<HTMLElement>('[data-toast-name]')!;
     this.gameOverOverlay = this.element.querySelector<HTMLDivElement>('.game-hud__game-over')!;
@@ -395,6 +437,7 @@ export class GameHUDSystem {
     this.gameOverStats = this.element.querySelector<HTMLDivElement>('[data-game-over-stats]')!;
     this.gameOverEquipment = this.element.querySelector<HTMLDivElement>('[data-game-over-gear]')!;
     this.leaderboardPanel = this.element.querySelector<HTMLDivElement>('[data-leaderboard-panel]')!;
+    this.leaderboardSummary = this.element.querySelector<HTMLDivElement>('[data-leaderboard-summary]')!;
     this.leaderboardList = this.element.querySelector<HTMLDivElement>('[data-leaderboard-list]')!;
     this.leaderboardNameInput = this.element.querySelector<HTMLInputElement>('[data-leaderboard-name]')!;
     this.leaderboardSaveButton = this.element.querySelector<HTMLButtonElement>('[data-leaderboard-save]')!;
@@ -450,6 +493,10 @@ export class GameHUDSystem {
     this.shopCloseButton.addEventListener('click', callbacks.onCloseShop);
     this.settingsThemeButton.addEventListener('click', callbacks.onThemeToggle);
     this.settingsLanguageButton.addEventListener('click', callbacks.onLanguageToggle);
+    this.settingsMuteButton.addEventListener('click', callbacks.onAudioMuteToggle);
+    this.settingsVolumeInput.addEventListener('input', () => {
+      callbacks.onAudioVolumeChange(Number(this.settingsVolumeInput.value));
+    });
     this.stopObservingTheme = observeThemeChanges(() => this.renderSettingsButtons());
     host.appendChild(this.element);
 
@@ -462,6 +509,7 @@ export class GameHUDSystem {
     this.element.classList.toggle('is-visible', visible);
     this.element.setAttribute('aria-hidden', visible ? 'false' : 'true');
     this.element.inert = !visible;
+    this.element.style.pointerEvents = visible ? '' : 'none';
     document.body.classList.toggle('game-runtime-ui-active', visible);
     if (!visible) {
       this.topRightCluster.toggle(false);
@@ -471,6 +519,15 @@ export class GameHUDSystem {
       this.gameOverOverlay.hidden = true;
       this.toast.hidden = true;
       this.leaderboardPanel.hidden = true;
+      this.branchLayer.inert = true;
+      this.shopBar.inert = true;
+      this.gameOverOverlay.inert = true;
+      this.toast.inert = true;
+    } else {
+      this.branchLayer.inert = false;
+      this.shopBar.inert = false;
+      this.gameOverOverlay.inert = false;
+      this.toast.inert = false;
     }
   }
 
@@ -478,11 +535,20 @@ export class GameHUDSystem {
     this.stopObservingTheme();
   }
 
+  setAudioControls(settings: { volume: number; muted: boolean }) {
+    this.audioVolume = Math.min(1, Math.max(0, settings.volume));
+    this.audioMuted = settings.muted;
+    this.renderAudioControls();
+  }
+
   update(payload: GameHUDPayload) {
     this.scoreValue.textContent = String(payload.score);
     this.highscoreValue.textContent = String(payload.highscore);
     this.bestDistanceValue.textContent = `${Math.round(payload.bestDistanceMeters)}m`;
     this.distanceValue.textContent = `${Math.round(payload.distanceMeters)}m`;
+    this.runStripScoreValue.textContent = String(payload.score);
+    this.runStripBestValue.textContent = String(payload.highscore);
+    this.runStripDistanceValue.textContent = `${Math.round(payload.distanceMeters)}m`;
     this.coinsValue.textContent = `× ${payload.coins}`;
     this.chainValue.textContent = `${Math.round(payload.momentumGauge * 100)}%`;
     this.chainValue.style.opacity = `${0.58 + payload.momentumGauge * 0.42}`;
@@ -508,17 +574,23 @@ export class GameHUDSystem {
             ? this.i18n.t('gameStatusUpgrade')
             : this.i18n.t('gameStatusGameOver');
     this.metaValue.textContent = this.renderMeta(payload);
-    const showingShop = payload.branchHints.some((hint) => hint.mode === 'shop_orbit');
+    const shopHints = payload.branchHints.filter((hint) => hint.mode === 'shop_orbit');
+    const showingShop = shopHints.length > 0;
     this.branchTitle.textContent = showingShop ? this.i18n.t('gameShopTitle') : this.i18n.t('gameUpgradeTitle');
     this.branchHint.textContent = showingShop ? this.i18n.t('gameShopHint') : this.i18n.t('gameUpgradeHint');
 
-    this.branchLayer.hidden = !(payload.state === 'upgrade_choice' && !showingShop);
+    this.branchLayer.hidden = !(payload.state === 'upgrade_choice' && showingShop);
     this.shopBar.hidden = !(payload.state === 'upgrade_choice' && showingShop);
     this.gameOverOverlay.hidden = payload.state !== 'game_over';
     this.toast.hidden = !payload.acquisition;
+    this.branchLayer.inert = !(payload.state === 'upgrade_choice' && showingShop);
+    this.shopBar.inert = !(payload.state === 'upgrade_choice' && showingShop);
+    this.gameOverOverlay.inert = payload.state !== 'game_over';
+    this.toast.inert = !payload.acquisition;
     this.stashBar.hidden = payload.state === 'upgrade_choice' || payload.state === 'game_over';
     this.panel.classList.toggle('is-hidden', payload.state === 'game_over');
-    this.branchLayer.classList.toggle('is-visible', payload.state === 'upgrade_choice' && !showingShop);
+    this.runStrip.hidden = payload.state === 'game_over';
+    this.branchLayer.classList.toggle('is-visible', payload.state === 'upgrade_choice' && showingShop);
     this.shopBar.classList.toggle('is-visible', payload.state === 'upgrade_choice' && showingShop);
     this.stashBar.classList.toggle('is-visible', payload.state !== 'upgrade_choice' && payload.state !== 'game_over');
     this.momentumDock.classList.toggle('is-hidden', payload.state === 'upgrade_choice' || payload.state === 'game_over');
@@ -526,7 +598,20 @@ export class GameHUDSystem {
     this.toast.classList.toggle('is-visible', Boolean(payload.acquisition));
     if (payload.acquisition) {
       this.toast.style.setProperty('--toast-progress', payload.acquisition.progress.toFixed(3));
-      this.toastName.textContent = payload.acquisition.offer.item.name[this.i18n.current];
+      this.toastIcon.src = payload.acquisition.offer.item.hudIconSrc;
+      this.toastIcon.hidden = false;
+      if (payload.acquisition.offer.item.kind === 'passive') {
+        this.toastLabel.hidden = true;
+        this.toastName.hidden = true;
+      } else {
+        this.toastLabel.hidden = false;
+        this.toastName.hidden = false;
+        this.toastName.textContent = payload.acquisition.offer.item.name[this.i18n.current];
+      }
+    } else {
+      this.toastIcon.hidden = true;
+      this.toastLabel.hidden = false;
+      this.toastName.hidden = false;
     }
     this.renderLandingFeedback(payload.landingFeedback);
     this.mobileControls.update({
@@ -537,7 +622,6 @@ export class GameHUDSystem {
     });
     if (payload.state === 'game_over') {
       this.topRightCluster.toggle(false);
-      this.gameOverBody.textContent = this.getGameOverBody(payload.gameOverCause);
       this.renderGameOverSummary(payload);
     } else {
       this.currentRunSummary = null;
@@ -548,12 +632,16 @@ export class GameHUDSystem {
     }
     this.renderInventory(payload.inventoryItems);
     this.renderEquipmentDock(payload.inventoryItems);
-    this.renderBranchHints(payload.branchHints);
-    this.renderShopBar(payload.branchHints, payload.coins);
+    this.renderBranchHints(shopHints);
+    this.renderShopBar(shopHints, payload.coins);
+    this.renderGameOverMode(payload.gameOverCause);
   }
 
   private renderStatic() {
     this.scoreLabel.textContent = this.i18n.t('gameScore');
+    this.runStripScoreLabel.textContent = this.i18n.t('gameScore');
+    this.runStripBestLabel.textContent = this.i18n.t('gameBest');
+    this.runStripDistanceLabel.textContent = this.i18n.t('gameDistance');
     this.highscoreLabel.textContent = this.i18n.t('gameBest');
     this.chargeLabel.textContent = this.i18n.t('gameCharge');
     this.chainLabel.textContent = this.i18n.t('gameMomentum');
@@ -580,6 +668,7 @@ export class GameHUDSystem {
     this.bestDistanceLabel.textContent = this.i18n.t('gameBestDistance');
     this.walletIcon.title = this.i18n.t('gameCoins');
     this.renderSettingsButtons();
+    this.renderAudioControls();
     this.renderLeaderboard();
   }
 
@@ -593,6 +682,15 @@ export class GameHUDSystem {
       price?: number;
     }>
   ) {
+    const layouts = this.rewardBranchLayout.resolveMany(
+      hints.map((offer) => ({
+        slot: offer.slot,
+        screenX: offer.screenX,
+        screenY: offer.screenY,
+        mode: offer.mode
+      }))
+    );
+
     this.branchCards.forEach((card, index) => {
       const offer = hints[index];
       if (!offer) {
@@ -605,13 +703,13 @@ export class GameHUDSystem {
       card.dataset.slot = String(offer.slot);
       card.dataset.mode = offer.mode ?? 'reward_branch';
       const label = offer.mode === 'shop_orbit'
-        ? this.i18n.t('gameShopOffer')
+        ? ''
         : index === 0
           ? this.i18n.t('gamePathUpper')
           : index === 1
             ? this.i18n.t('gamePathForward')
             : this.i18n.t('gamePathLower');
-      const layout = this.rewardBranchLayout.resolve({
+      const layout = layouts[index] ?? this.rewardBranchLayout.resolve({
         slot: offer.slot,
         screenX: offer.screenX,
         screenY: offer.screenY,
@@ -628,7 +726,7 @@ export class GameHUDSystem {
           ${showRarity ? `<img src="${offer.offer.item.rarityIconSrc}" alt="" class="game-hud__upgrade-rarity-icon" />` : ''}
         </span>
         ${showRarity ? `<span class="game-hud__upgrade-rarity">${this.getRarityLabel(offer.offer.item.rarity)}</span>` : ''}
-        <span class="game-hud__upgrade-path-label">${label}</span>
+        ${label ? `<span class="game-hud__upgrade-path-label">${label}</span>` : ''}
         <strong class="game-hud__upgrade-path-name">${offer.offer.item.name[this.i18n.current]}</strong>
         <span class="game-hud__upgrade-path-desc">${offer.offer.item.description[this.i18n.current]}</span>
         ${
@@ -823,18 +921,33 @@ export class GameHUDSystem {
       const affordable = (hint.price ?? 0) <= coins;
       button.disabled = !affordable;
       const showRarity = hint.offer.item.kind === 'module';
+      const layout = this.rewardBranchLayout.resolve({
+        slot: hint.slot,
+        screenX: hint.screenX,
+        screenY: hint.screenY,
+        mode: 'shop_orbit'
+      });
+      button.style.left = `${layout.left}px`;
+      button.style.top = `${layout.top}px`;
       button.innerHTML = `
         <span class="game-hud__shop-offer-media">
           <img src="${hint.offer.item.hudIconSrc}" alt="" class="game-hud__shop-offer-icon" />
           ${showRarity ? `<img src="${hint.offer.item.rarityIconSrc}" alt="" class="game-hud__shop-offer-rarity" />` : ''}
         </span>
-        <strong>${hint.offer.item.name[this.i18n.current]}</strong>
-        <span>${hint.offer.item.description[this.i18n.current]}</span>
         <em class="game-hud__shop-price"><span class="game-hud__coin-inline" aria-hidden="true" style="--wallet-coin-url:url('${COIN_ICON_URL}')"></span> × ${hint.price ?? 0}</em>
       `;
       button.classList.toggle('is-disabled', !affordable);
     });
+    this.shopCloseButton.className = 'game-hud__shop-close';
     this.shopCloseButton.textContent = this.i18n.t('gameShopClose');
+    const centerHint = shopHints[1] ?? shopHints[0] ?? null;
+    if (centerHint) {
+      this.shopCloseButton.style.left = `${Math.round(centerHint.screenX)}px`;
+      this.shopCloseButton.style.top = `${Math.round(centerHint.screenY)}px`;
+    } else {
+      this.shopCloseButton.style.left = '50%';
+      this.shopCloseButton.style.top = '50%';
+    }
   }
 
   private renderMeta(payload: GameHUDPayload) {
@@ -865,6 +978,17 @@ export class GameHUDSystem {
     this.gameOverEquipment.innerHTML = markup.equipmentMarkup;
     this.updateLeaderboardSaveVisibility();
     this.renderLeaderboard();
+  }
+
+  private renderGameOverMode(cause: GameOverCause) {
+    const leaderboardMode = this.leaderboardVisible;
+    this.gameOverStats.hidden = leaderboardMode;
+    this.gameOverEquipment.hidden = leaderboardMode;
+    this.leaderboardPanel.hidden = !leaderboardMode;
+    this.highscoresButton.hidden = leaderboardMode;
+    this.highscoresButton.disabled = leaderboardMode;
+    this.gameOverTitle.textContent = leaderboardMode ? this.getHighscoresTitle() : this.i18n.t('gameOverTitle');
+    this.gameOverBody.textContent = leaderboardMode ? this.getHighscoresBody() : this.getGameOverBody(cause);
   }
 
   private renderLandingFeedback(
@@ -912,17 +1036,26 @@ export class GameHUDSystem {
     this.settingsLanguageButton.setAttribute('aria-label', languageLabel);
     this.settingsLanguageButton.innerHTML = `
       <img class="game-hud__settings-language-icon" src="${languageAsset}" alt="" />
-      <span class="game-hud__settings-chip-copy">${this.i18n.current.toUpperCase()}</span>
     `;
 
     this.settingsThemeButton.className = `game-hud__settings-chip game-hud__settings-chip--theme is-${theme}-theme`;
     this.settingsThemeButton.setAttribute('aria-label', themeLabel);
     this.settingsThemeButton.innerHTML = `
-      <span class="game-hud__settings-theme-icon" aria-hidden="true">
-        ${theme === 'dark' ? this.getMoonIconMarkup() : this.getSunIconMarkup()}
-      </span>
-      <span class="game-hud__settings-chip-copy">${theme === 'dark' ? 'MOON' : 'SUN'}</span>
+      <span class="game-hud__settings-theme-icon" aria-hidden="true">${theme === 'dark' ? '🌙' : '☀️'}</span>
     `;
+  }
+
+  private renderAudioControls() {
+    const muteLabel = this.audioMuted ? this.i18n.t('gameUnmute') : this.i18n.t('gameMute');
+    this.settingsMuteButton.className = `game-hud__settings-chip game-hud__settings-chip--mute${this.audioMuted ? ' is-muted' : ''}`;
+    this.settingsMuteButton.setAttribute('aria-label', muteLabel);
+    this.settingsMuteButton.innerHTML = `
+      <span class="game-hud__settings-theme-icon" aria-hidden="true">${this.audioMuted ? '🔇' : '🔊'}</span>
+    `;
+    this.settingsVolumeLabel.textContent = this.i18n.t('gameVolume');
+    this.settingsVolumeValue.textContent = `${Math.round(this.audioVolume * 100)}%`;
+    this.settingsVolumeInput.value = this.audioVolume.toFixed(2);
+    this.settingsVolumeInput.setAttribute('aria-label', this.i18n.t('gameAudio'));
   }
 
   private getSunIconMarkup() {
@@ -1516,6 +1649,7 @@ export class GameHUDSystem {
     if (!this.leaderboardVisible) {
       return;
     }
+    this.leaderboardSummary.innerHTML = this.renderLeaderboardSummary();
     const entries = this.readLeaderboard();
     this.leaderboardList.innerHTML = entries.length
       ? entries
@@ -1550,6 +1684,42 @@ export class GameHUDSystem {
     this.leaderboardNameInput.disabled = !canSave;
     this.leaderboardSaveButton.hidden = !canSave;
     this.leaderboardSaveButton.disabled = !canSave || this.currentGameOverSignature === this.lastSavedGameOverSignature;
+  }
+
+  private renderLeaderboardSummary() {
+    if (!this.currentRunSummary) {
+      return '';
+    }
+    const bests = [
+      { label: this.i18n.t('gameScore'), value: String(this.currentRunSummary.score), isBest: this.currentRunSummary.personalBests.score },
+      { label: this.i18n.t('gameBestDistance'), value: `${Math.round(this.currentRunSummary.distanceMeters)}m`, isBest: this.currentRunSummary.personalBests.distanceMeters },
+      { label: this.i18n.t('gameCoins'), value: String(this.currentRunSummary.coinsCollected), isBest: this.currentRunSummary.personalBests.coinsCollected },
+      { label: this.i18n.current === 'fr' ? 'Ennemis' : 'Enemies', value: String(this.currentRunSummary.enemiesKilled), isBest: this.currentRunSummary.personalBests.enemiesKilled }
+    ];
+    return `
+      <div class="game-hud__leaderboard-personal">
+        ${bests
+          .map(
+            (entry) => `
+              <div class="game-hud__leaderboard-personal-row">
+                <span>${entry.label}</span>
+                <strong>${entry.value}${entry.isBest ? ` <em>${this.i18n.current === 'fr' ? 'PB' : 'PB'}</em>` : ''}</strong>
+              </div>
+            `
+          )
+          .join('')}
+      </div>
+    `;
+  }
+
+  private getHighscoresTitle() {
+    return this.i18n.current === 'fr' ? 'Highscores' : 'Highscores';
+  }
+
+  private getHighscoresBody() {
+    return this.i18n.current === 'fr'
+      ? 'Classement détaillé et records personnels de la run.'
+      : 'Detailed leaderboard and personal run records.';
   }
 
   private canSaveLeaderboardEntry(name = this.getLeaderboardPlayerName()) {

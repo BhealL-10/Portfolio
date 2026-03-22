@@ -29,6 +29,10 @@ export class DragCameraOrbitController {
     return this.yawTarget;
   }
 
+  isSettled(epsilon = 0.0025) {
+    return Math.abs(Math.atan2(Math.sin(this.yawTarget - this.yaw), Math.cos(this.yawTarget - this.yaw))) <= epsilon && Math.abs(this.yawVelocity) <= 0.0008;
+  }
+
   getRadius() {
     return this.radius;
   }

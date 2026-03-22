@@ -14,28 +14,32 @@ interface ActiveShopOffer {
 
 export class ShopSystem {
   private readonly group = new THREE.Group();
-  private readonly pool: THREE.Mesh<THREE.IcosahedronGeometry, THREE.MeshBasicMaterial>[] = [];
+  private readonly loader = new THREE.TextureLoader();
+  private readonly pool: THREE.Sprite[] = [];
   private activeOffers: ActiveShopOffer[] = [];
   private open = false;
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
-    const color = new THREE.Color(theme === 'dark' ? ACCENT : '#8E4130');
     for (let index = 0; index < 3; index += 1) {
-      const mesh = new THREE.Mesh(
-        new THREE.IcosahedronGeometry(0.34, 0),
-        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.94 })
+      const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          color: new THREE.Color(theme === 'dark' ? '#ffffff' : '#f2e8d6'),
+          transparent: true,
+          opacity: 0.96
+        })
       );
-      mesh.visible = false;
-      this.pool.push(mesh);
-      this.group.add(mesh);
+      sprite.visible = false;
+      sprite.renderOrder = 28;
+      this.pool.push(sprite);
+      this.group.add(sprite);
     }
     this.group.visible = false;
     scene.add(this.group);
   }
 
   setTheme(theme: ThemeMode) {
-    const color = new THREE.Color(theme === 'dark' ? ACCENT : '#8E4130');
-    this.pool.forEach((mesh) => mesh.material.color.copy(color));
+    const color = new THREE.Color(theme === 'dark' ? '#ffffff' : '#f2e8d6');
+    this.pool.forEach((sprite) => sprite.material.color.copy(color));
   }
 
   reset() {
@@ -56,6 +60,16 @@ export class ShopSystem {
       purchased: false,
       offer
     }));
+    this.activeOffers.forEach((activeOffer, index) => {
+      const sprite = this.pool[index];
+      if (!sprite) return;
+      const material = sprite.material;
+      material.map = this.loader.load(activeOffer.offer.item.hudIconSrc);
+      if (material.map) {
+        material.map.colorSpace = THREE.SRGBColorSpace;
+      }
+      material.needsUpdate = true;
+    });
     this.open = this.activeOffers.length > 0;
     this.group.visible = this.open;
     return offers;
@@ -151,8 +165,8 @@ export class ShopSystem {
         center.y + Math.sin(offer.angle) * (radius + 1.6),
         0
       );
-      mesh.rotation.y = elapsedTime * 1.4 + index * 0.35;
-      mesh.scale.setScalar(1 + Math.sin(elapsedTime * 3 + index) * 0.06);
+      mesh.material.rotation = elapsedTime * 0.12 * (index % 2 === 0 ? 1 : -1);
+      mesh.scale.setScalar(0.94 + Math.sin(elapsedTime * 3 + index) * 0.05);
     });
   }
 

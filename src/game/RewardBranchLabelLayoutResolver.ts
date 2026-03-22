@@ -13,42 +13,85 @@ export interface RewardBranchLabelLayout {
 }
 
 export class RewardBranchLabelLayoutResolver {
+  resolveMany(inputs: RewardBranchLabelLayoutInput[]) {
+    const layouts = inputs.map((input) => this.resolveSingle(input));
+    if (inputs.length <= 1) {
+      return layouts;
+    }
+
+    const gap = layouts[0]?.compact ? 8 : 12;
+    const estimatedHeight = layouts[0]?.compact ? 108 : 122;
+    const topPadding = layouts[0]?.compact ? 10 : 16;
+    const bottomPadding = layouts[0]?.compact ? 14 : 22;
+    const viewportBottom = window.innerHeight - bottomPadding - estimatedHeight * 0.5;
+
+    const ordered = layouts
+      .map((layout, index) => ({ layout, index }))
+      .sort((a, b) => a.layout.top - b.layout.top);
+
+    for (let index = 1; index < ordered.length; index += 1) {
+      const previous = ordered[index - 1]!;
+      const current = ordered[index]!;
+      const minimumTop = previous.layout.top + estimatedHeight + gap;
+      if (current.layout.top < minimumTop) {
+        current.layout.top = minimumTop;
+      }
+    }
+
+    for (let index = ordered.length - 2; index >= 0; index -= 1) {
+      const current = ordered[index]!;
+      const next = ordered[index + 1]!;
+      if (next.layout.top > viewportBottom) {
+        next.layout.top = viewportBottom;
+      }
+      const maximumTop = next.layout.top - estimatedHeight - gap;
+      if (current.layout.top > maximumTop) {
+        current.layout.top = maximumTop;
+      }
+    }
+
+    ordered.forEach(({ layout }) => {
+      layout.top = Math.round(Math.max(topPadding + estimatedHeight * 0.5, Math.min(viewportBottom, layout.top)));
+    });
+
+    return layouts;
+  }
+
   resolve(input: RewardBranchLabelLayoutInput): RewardBranchLabelLayout {
+    return this.resolveSingle(input);
+  }
+
+  private resolveSingle(input: RewardBranchLabelLayoutInput): RewardBranchLabelLayout {
     const compact = window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 760;
-    const sidePadding = compact ? 12 : 24;
-    const topPadding = compact ? 14 : 26;
-    const bottomPadding = compact ? 18 : 30;
-    const width = Math.round(Math.max(156, Math.min(compact ? 212 : 248, window.innerWidth - sidePadding * 2)));
+    const sidePadding = compact ? 10 : 20;
+    const topPadding = compact ? 10 : 18;
+    const bottomPadding = compact ? 14 : 22;
+    const width = Math.round(Math.max(132, Math.min(compact ? 156 : 196, window.innerWidth - sidePadding * 2)));
 
     if (input.mode !== 'shop_orbit') {
-      if (compact) {
-        const top = Math.round(topPadding + 124 + input.slot * 132);
-        return {
-          left: Math.round(window.innerWidth * 0.5),
-          top,
-          width: Math.min(width, window.innerWidth - sidePadding * 2),
-          compact: true
-        };
-      }
-
-      const gap = 18;
-      const totalWidth = width * 3 + gap * 2;
-      const startLeft = Math.max(sidePadding, (window.innerWidth - totalWidth) * 0.5);
+      const anchorGap = compact ? 26 : 34;
+      const slotVerticalOffset = input.slot === 0 ? (compact ? -10 : -12) : input.slot === 2 ? (compact ? 10 : 12) : 0;
+      const left = Math.round(
+        Math.max(
+          sidePadding + width,
+          Math.min(window.innerWidth - sidePadding, input.screenX - anchorGap)
+        )
+      );
+      const top = Math.round(
+        Math.max(
+          topPadding + 48,
+          Math.min(window.innerHeight - bottomPadding - 48, input.screenY + slotVerticalOffset)
+        )
+      );
       return {
-        left: Math.round(startLeft + input.slot * (width + gap) + width * 0.5),
-        top: Math.round(window.innerHeight - bottomPadding - 170),
+        left,
+        top,
         width,
-        compact: false
+        compact
       };
     }
 
-    const verticalOffset = compact
-      ? input.mode === 'shop_orbit'
-        ? 58
-        : 68
-      : input.mode === 'shop_orbit'
-        ? 76
-        : 88;
+    const verticalOffset = compact ? 68 : 84;
     const left = Math.round(
       Math.max(
         sidePadding + width * 0.5,

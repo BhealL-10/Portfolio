@@ -45,9 +45,9 @@ const SIZE_TIER_ORDER: GameShardSizeTier[] = [
   'massive'
 ];
 
-const MILESTONE_HALF_WIDTH = DEFAULT_COLUMN_DISTANCE * 2.3;
+const MILESTONE_HALF_WIDTH = DEFAULT_COLUMN_DISTANCE * 1.72;
 const MILESTONE_RESERVED_BEFORE = DEFAULT_COLUMN_DISTANCE;
-const MILESTONE_REWARD_OFFSET = DEFAULT_COLUMN_DISTANCE * 3;
+const MILESTONE_REWARD_OFFSET = DEFAULT_COLUMN_DISTANCE * 3.28;
 const MILESTONE_RESERVED_AFTER = DEFAULT_COLUMN_DISTANCE * 1.35;
 const MILESTONE_EXIT_BUFFER = DEFAULT_COLUMN_DISTANCE * 0.45;
 
@@ -176,9 +176,9 @@ export class GamePathSystem {
     const laneSpacing = score < 50 ? 8.4 : 7.2;
     const branchEntryX = milestone.x + MILESTONE_REWARD_OFFSET;
     const definitions = [
-      { slot: 0 as const, yBias: laneSpacing * 2, direction: 'up_right' as const },
+      { slot: 0 as const, yBias: laneSpacing * 1.58, direction: 'up_right' as const },
       { slot: 1 as const, yBias: 0, direction: 'right' as const },
-      { slot: 2 as const, yBias: -laneSpacing * 2, direction: 'down_right' as const }
+      { slot: 2 as const, yBias: -laneSpacing * 1.58, direction: 'down_right' as const }
     ];
 
     return offers.slice(0, 3).map((offer, index) => {
