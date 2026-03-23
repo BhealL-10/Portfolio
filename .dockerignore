@@ -1,11 +1,69 @@
 # =============================================================================
 # Portfolio 3D - Docker Ignore
 # =============================================================================
-# Exclure tout sauf nginx.conf car les fichiers sont montés via volume
+# Architecture multi-stage:
+#   Stage 1 (Builder): Nécessite package.json, src/, config Vite, etc.
+#   Stage 2 (Prod): Copie UNIQUEMENT dist/ depuis Stage 1
+#
+# Inclure tous les fichiers nécessaires au build Vite
+# Exclure les fichiers volumineux/inutiles
 # =============================================================================
 
-# Tout exclure par défaut
-*
+# Systèmes de fichiers
+.git
+.gitignore
+.DS_Store
+Thumbs.db
 
-# Inclure uniquement nginx.conf pour la config
-!nginx.conf
+# Node/Package managers
+node_modules/
+.npm
+.pnpm-store/
+*.tgz
+
+# Build outputs (seront régénérés)
+# dist/ est régénéré dans stage builder, pas nécessaire dans contexte
+# test-results/ n'est pas utile en prod
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime
+.env
+.env.local
+.env.*.local
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.circleci/
+
+# Tests
+coverage/
+test-results/
+vitest.config.ts  # config de test, pas nécessaire en prod
+
+# Archive/Docs (non essentiels)
+archive/
+docs/
+*.md
+textfren.md
+
+# Fichiers Docker lui-même
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+redeploy.sh
