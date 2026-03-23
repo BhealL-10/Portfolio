@@ -24,6 +24,8 @@ node_modules/
 # Build outputs (seront régénérés)
 # dist/ est régénéré dans stage builder, pas nécessaire dans contexte
 # test-results/ n'est pas utile en prod
+dist/
+test-results/
 
 # Logs
 logs/

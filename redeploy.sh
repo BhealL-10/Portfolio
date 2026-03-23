@@ -8,7 +8,7 @@
 #     - Compile TypeScript/Vite
 #     - Génère dist/ avec assets hashés
 #   
-#   Stage 2 (Production): Nginx Alpine
+#   Stage 2 (nginx-prod): Nginx Alpine
 #     - Copie UNIQUEMENT dist/ depuis Stage 1
 #     - Aucune source TypeScript ni dépendances
 #     - Taille image final: ~20-30MB
@@ -16,7 +16,7 @@
 # Contexte Docker:
 #   .dockerignore configure quels fichiers sont inclus dans le contexte:
 #   - ✅ Inclus: package.json, src/, assets/, index.html, config Vite
-#   - ❌ Exclu: .git, node_modules/, logs, archives, etc.
+#   - ❌ Exclu: .git, node_modules/, logs, dist/, archives, etc.
 #
 # IMPORTANT: Ne jamais ajouter de volume mount (./:/usr/share/nginx/html)
 # qui exposerait les fichiers source. La prod sert UNIQUEMENT le build compilé.

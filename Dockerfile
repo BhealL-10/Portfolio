@@ -7,11 +7,11 @@
 #   docker run -d -p 80:80 --name portfolio portfolio-3d
 # 
 # Note: .dockerignore configure le contexte Docker pour inclure les fichiers
-# essentiels (package.json, src/, config Vite, assets, etc.) tout en
-# excluant les fichiers volumineux/inutiles (node_modules/, .git, etc.)
+# essentiels (package.json, src/, assets/, index.html, config Vite) tout en
+# excluant les fichiers volumineux/inutiles (node_modules/, .git, dist/, etc.)
 # =============================================================================
 
-# Stage 1: Build the Vite bundle
+# Stage 1: Build the Vite bundle with Node
 # =============================================================================
 FROM node:20-alpine AS builder
 
@@ -20,27 +20,27 @@ WORKDIR /app
 # Install pnpm globally
 RUN npm install -g pnpm@latest
 
-# Copy build configuration files
+# Copy package configuration files (guaranteed to exist)
 COPY package.json ./
-COPY pnpm-lock.yaml* ./
 COPY tsconfig.json ./
 COPY vite.config.ts ./
 
+# Copy pnpm lockfile if it exists (wildcards don't error if file missing)
+COPY pnpm-lock.yaml* ./
+
 # Install dependencies using pnpm
-# Fallback to regular install if pnpm-lock.yaml doesn't exist
+# Fallback: if pnpm-lock.yaml doesn't exist, install normally
 RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 
-# Copy source code and assets (filtered by .dockerignore)
-COPY src ./src
-COPY index.html ./
-COPY assets ./assets 2>/dev/null || true
+# Copy all application source files (filtered by .dockerignore)
+COPY . .
 
 # Build the Vite bundle
 RUN pnpm run build
 
-# Stage 2: Serve with Nginx
+# Stage 2: Serve compiled bundle with Nginx (lightweight)
 # =============================================================================
-FROM nginx:alpine AS production
+FROM nginx:alpine AS nginx-prod
 
 # Métadonnées
 LABEL maintainer="Portfolio-BhealL"
@@ -57,6 +57,7 @@ RUN rm -f /etc/nginx/conf.d/default.conf
 COPY nginx.conf /etc/nginx/nginx.conf
 
 # Copier UNIQUEMENT les fichiers compilés depuis le stage builder
+# Cela garantit qu'aucune source TypeScript ne sera servie
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Ajuster les permissions pour nginx
