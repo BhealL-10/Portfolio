@@ -1,5 +1,5 @@
 # =============================================================================
-# Portfolio 3D - Production Dockerfile
+# Portfolio 3D - Production Dockerfile (Multi-Stage Build)
 # =============================================================================
 # Build:
 #   docker build -t portfolio-3d .
@@ -7,9 +7,26 @@
 #   docker run -d -p 80:80 --name portfolio portfolio-3d
 # =============================================================================
 
-# -----------------------------------------------------------------------------
-# Build stage - Prepare static files
-# -----------------------------------------------------------------------------
+# Stage 1: Build the Vite bundle
+# =============================================================================
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Build the Vite bundle
+RUN npm run build
+
+# Stage 2: Serve with Nginx
+# =============================================================================
 FROM nginx:alpine AS production
 
 # Métadonnées
@@ -26,10 +43,12 @@ RUN rm -f /etc/nginx/conf.d/default.conf
 # Copier la configuration nginx personnalisée
 COPY nginx.conf /etc/nginx/nginx.conf
 
+# Copier UNIQUEMENT les fichiers compilés depuis le stage builder
+COPY --from=builder /app/dist /usr/share/nginx/html
+
 # Ajuster les permissions pour nginx
 RUN chown -R nginx:nginx /var/cache/nginx && \
     chown -R nginx:nginx /var/log/nginx && \
-    mkdir -p /usr/share/nginx/html && \
     chown -R nginx:nginx /usr/share/nginx/html && \
     chmod 755 /usr/share/nginx/html
 

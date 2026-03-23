@@ -12,8 +12,8 @@ export function isGameRuntimeMode(mode: AppMode) {
   return mode === 'game_transition' || mode === 'game' || mode === 'game_over';
 }
 
-export function isPrimatrieMode(mode: AppMode) {
-  return mode === 'primatrie_portal' || mode === 'primatrie_transition';
+export function isprimaterieMode(mode: AppMode) {
+  return mode === 'primaterie_portal' || mode === 'primaterie_transition';
 }
 
 export function isPortfolioBrowseMode(mode: AppMode) {

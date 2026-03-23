@@ -11,7 +11,6 @@ const retainedUnreferenced = [
   'assets/images/shared/branding/variants/logo-hub-light.svg',
   'assets/images/shared/branding/variants/logo-v2-dark.svg',
   'assets/images/shared/branding/variants/logo-v2-light.svg',
-  'assets/images/portfolio/projects/ape-prod/home-screen.svg',
   'assets/images/portfolio/projects/ape-prod/value-proposition.png',
   'assets/images/portfolio/projects/davinci-resolve/gallery-01.webp',
   'assets/images/portfolio/projects/davinci-resolve/gallery-02.webp',
@@ -414,7 +413,6 @@ function reorganizePortfolioImages() {
   const projectMoves = {
     'assets/images/projects/intro.png': 'assets/images/portfolio/projects/ape-prod/cover.png',
     'assets/images/projects/Imageprofile.png': 'assets/images/portfolio/projects/ape-prod/profile.png',
-    'assets/images/projects/AcceuilPortfolio.svg': 'assets/images/portfolio/projects/ape-prod/home-screen.svg',
     'assets/images/projects/Vpropreterportofolio.png': 'assets/images/portfolio/projects/ape-prod/value-proposition.png',
     'assets/images/projects/TonoIntro.png': 'assets/images/portfolio/projects/tono-discord-bot/cover.png',
     'assets/images/projects/Davinciintro.png': 'assets/images/portfolio/projects/davinci-resolve/cover.png',

@@ -51,11 +51,11 @@
     --game-gameover-label-size: clamp(0.38rem, 1.5vh, 0.46rem);
     --game-gameover-value-size: clamp(0.52rem, 2vh, 0.64rem);
     --game-help-footer-copy-size: clamp(0.54rem, 1.9vh, 0.62rem);
-    --game-primatrie-logo-width: min(100px, 12vw);
-    --game-primatrie-logo-padding-bottom: min(20px, 4dvh);
-    --game-primatrie-anchor-width: min(156px, calc(100vw - 18px));
-    --game-primatrie-anchor-max-height: min(38dvh, 220px);
-    --game-primatrie-anchor-padding: 10px 6px 7px;
+    --game-primaterie-logo-width: min(100px, 12vw);
+    --game-primaterie-logo-padding-bottom: min(20px, 4dvh);
+    --game-primaterie-anchor-width: min(156px, calc(100vw - 18px));
+    --game-primaterie-anchor-max-height: min(38dvh, 220px);
+    --game-primaterie-anchor-padding: 10px 6px 7px;
   }
 
   .game-hud__run-strip {
@@ -304,27 +304,27 @@
     gap: 4px;
   }
 
-  .primatrie-portal__logo-wrap {
-    transform: translate3d(var(--primatrie-anchor-x, 50vw), calc(var(--primatrie-anchor-y, 25vh) - 62px), 0) translateX(-50%);
+  .primaterie-portal__logo-wrap {
+    transform: translate3d(var(--primaterie-anchor-x, 50vw), calc(var(--primaterie-anchor-y, 25vh) - 62px), 0) translateX(-50%);
   }
 
-  .primatrie-portal__chrome {
+  .primaterie-portal__chrome {
     top: calc(var(--safe-top) + 8px);
     left: calc(var(--safe-left) + 8px);
     gap: 6px;
   }
 
-  .primatrie-portal__chrome-button {
+  .primaterie-portal__chrome-button {
     width: 24px;
     height: 24px;
   }
 
-  .primatrie-portal__actions {
+  .primaterie-portal__actions {
     gap: 4px;
     margin-top: 10px;
   }
 
-  .primatrie-portal__actions button {
+  .primaterie-portal__actions button {
     min-height: 24px;
     font-size: 0.95rem;
     padding: 4px 5px;

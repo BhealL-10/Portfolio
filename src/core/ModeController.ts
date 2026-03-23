@@ -2,8 +2,8 @@ export type AppMode =
   | 'intro'
   | 'intro_shattering'
   | 'intro_transition'
-  | 'primatrie_portal'
-  | 'primatrie_transition'
+  | 'primaterie_portal'
+  | 'primaterie_transition'
   | 'orbit'
   | 'dragging'
   | 'focus_enter'
@@ -17,11 +17,11 @@ export type AppMode =
   | 'game_over';
 
 const allowedTransitions: Record<AppMode, AppMode[]> = {
-  intro: ['intro_shattering', 'primatrie_portal'],
+  intro: ['intro_shattering', 'primaterie_portal'],
   intro_shattering: ['intro_transition'],
   intro_transition: ['orbit'],
-  primatrie_portal: ['game_transition', 'primatrie_transition'],
-  primatrie_transition: ['orbit'],
+  primaterie_portal: ['game_transition', 'primaterie_transition'],
+  primaterie_transition: ['orbit'],
   orbit: ['dragging', 'focus_enter', 'about_section', 'constellation_complete', 'game_transition'],
   dragging: ['orbit', 'constellation_complete', 'game_transition'],
   focus_enter: ['focus', 'focus_exit'],
@@ -30,7 +30,7 @@ const allowedTransitions: Record<AppMode, AppMode[]> = {
   focus_exit: ['orbit', 'constellation_complete'],
   about_section: ['orbit', 'constellation_complete'],
   constellation_complete: ['focus_enter', 'about_section', 'orbit', 'game_transition'],
-  game_transition: ['game', 'orbit', 'constellation_complete', 'primatrie_portal'],
+  game_transition: ['game', 'orbit', 'constellation_complete', 'primaterie_portal'],
   game: ['game_over', 'orbit', 'game_transition'],
   game_over: ['game', 'orbit', 'game_transition']
 };

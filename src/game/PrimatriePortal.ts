@@ -11,7 +11,7 @@ const HUB_LOGO_ASSETS = {
   light: new URL('../../assets/images/shared/branding/primaterie-mark-dark.svg', import.meta.url).href
 } as const;
 
-export class PrimatriePortal {
+export class primateriePortal {
   readonly element: HTMLDivElement;
   private readonly chrome: HTMLDivElement;
   private readonly logo: HTMLImageElement;
@@ -27,34 +27,34 @@ export class PrimatriePortal {
 
   constructor(host: HTMLElement, callbacks: { onPortfolio: () => void; onSinglePlayer: () => void; onThemeToggle: () => void; onLanguageToggle: () => void }) {
     this.element = document.createElement('div');
-    this.element.className = 'primatrie-portal';
+    this.element.className = 'primaterie-portal';
     this.element.innerHTML = `
-      <div class="primatrie-portal__chrome">
-        <img class="primatrie-portal__chrome-button primatrie-portal__chrome-button--theme" data-primatrie-theme alt="" role="button" tabindex="0" />
-        <img class="primatrie-portal__chrome-button primatrie-portal__chrome-button--language" data-primatrie-language alt="" role="button" tabindex="0" />
+      <div class="primaterie-portal__chrome">
+        <img class="primaterie-portal__chrome-button primaterie-portal__chrome-button--theme" data-primaterie-theme alt="" role="button" tabindex="0" />
+        <img class="primaterie-portal__chrome-button primaterie-portal__chrome-button--language" data-primaterie-language alt="" role="button" tabindex="0" />
       </div>
-      <div class="primatrie-portal__logo-wrap">
-        <img class="primatrie-portal__logo" data-primatrie-logo alt="Primatrie" />
+      <div class="primaterie-portal__logo-wrap">
+        <img class="primaterie-portal__logo" data-primaterie-logo alt="primaterie" />
       </div>
-      <div class="primatrie-portal__anchor">
-        <div class="primatrie-portal__actions">
-          <button type="button" data-primatrie-single></button>
-          <button type="button" data-primatrie-3v3 disabled></button>
-          <button type="button" data-primatrie-10v10 disabled></button>
-          <button type="button" data-primatrie-portfolio></button>
+      <div class="primaterie-portal__anchor">
+        <div class="primaterie-portal__actions">
+          <button type="button" data-primaterie-single></button>
+          <button type="button" data-primaterie-3v3 disabled></button>
+          <button type="button" data-primaterie-10v10 disabled></button>
+          <button type="button" data-primaterie-portfolio></button>
         </div>
       </div>
     `;
 
-    this.chrome = this.element.querySelector<HTMLDivElement>('.primatrie-portal__chrome')!;
-    this.logo = this.element.querySelector<HTMLImageElement>('[data-primatrie-logo]')!;
-    this.anchor = this.element.querySelector<HTMLDivElement>('.primatrie-portal__anchor')!;
-    this.themeButton = this.element.querySelector<HTMLImageElement>('[data-primatrie-theme]')!;
-    this.languageButton = this.element.querySelector<HTMLImageElement>('[data-primatrie-language]')!;
-    this.portfolioButton = this.element.querySelector<HTMLButtonElement>('[data-primatrie-portfolio]')!;
-    this.singlePlayerButton = this.element.querySelector<HTMLButtonElement>('[data-primatrie-single]')!;
-    this.threeVsThreeButton = this.element.querySelector<HTMLButtonElement>('[data-primatrie-3v3]')!;
-    this.tenVsTenButton = this.element.querySelector<HTMLButtonElement>('[data-primatrie-10v10]')!;
+    this.chrome = this.element.querySelector<HTMLDivElement>('.primaterie-portal__chrome')!;
+    this.logo = this.element.querySelector<HTMLImageElement>('[data-primaterie-logo]')!;
+    this.anchor = this.element.querySelector<HTMLDivElement>('.primaterie-portal__anchor')!;
+    this.themeButton = this.element.querySelector<HTMLImageElement>('[data-primaterie-theme]')!;
+    this.languageButton = this.element.querySelector<HTMLImageElement>('[data-primaterie-language]')!;
+    this.portfolioButton = this.element.querySelector<HTMLButtonElement>('[data-primaterie-portfolio]')!;
+    this.singlePlayerButton = this.element.querySelector<HTMLButtonElement>('[data-primaterie-single]')!;
+    this.threeVsThreeButton = this.element.querySelector<HTMLButtonElement>('[data-primaterie-3v3]')!;
+    this.tenVsTenButton = this.element.querySelector<HTMLButtonElement>('[data-primaterie-10v10]')!;
 
     this.portfolioButton.textContent = 'Portfolio';
     this.singlePlayerButton.textContent = 'Aventure';
@@ -109,9 +109,9 @@ export class PrimatriePortal {
   }
 
   setAnchor(screenX: number, screenY: number, scale = 1) {
-    this.anchor.style.setProperty('--primatrie-anchor-x', `${screenX.toFixed(2)}px`);
-    this.anchor.style.setProperty('--primatrie-anchor-y', `${screenY.toFixed(2)}px`);
-    this.anchor.style.setProperty('--primatrie-anchor-scale', scale.toFixed(3));
+    this.anchor.style.setProperty('--primaterie-anchor-x', `${screenX.toFixed(2)}px`);
+    this.anchor.style.setProperty('--primaterie-anchor-y', `${screenY.toFixed(2)}px`);
+    this.anchor.style.setProperty('--primaterie-anchor-scale', scale.toFixed(3));
   }
 
   private renderStatic() {

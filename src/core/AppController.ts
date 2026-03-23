@@ -5,7 +5,7 @@ import { GameHUDSystem } from '../game/GameHUDSystem';
 import { GameAudioSystem } from '../game/GameAudioSystem';
 import { MINI_GAME_PORTAL_CAMERA_OFFSET } from '../game/MiniGamePortalLayout';
 import { projectGameHudPayload } from '../game/projectGameHudPayload';
-import { PrimatriePortal } from '../game/PrimatriePortal';
+import { primateriePortal } from '../game/PrimatriePortal';
 import { GameSessionController } from '../game/GameSessionController';
 import { DragCameraOrbitController } from '../portfolio/DragCameraOrbitController';
 import { IntroVoronoiSystem } from '../portfolio/IntroVoronoiSystem';
@@ -27,7 +27,7 @@ import {
   isIntroMode,
   isPortfolioBrowseMode,
   isPortfolioInteractionMode,
-  isPrimatrieMode
+  isprimaterieMode
 } from './appModePredicates';
 import { damp, wrapIndex } from './math';
 import { RenderLoop } from './RenderLoop';
@@ -38,8 +38,8 @@ const ACCENT_COLOR_HOLD_SECONDS = 10;
 const ACCENT_COLOR_BLEND_SECONDS = 1;
 const PORTFOLIO_TO_GAME_ROTATE_PHASE_END = 0.08;
 const PORTFOLIO_TO_GAME_HOLD_PHASE_END = 0.16;
-const PRIMATRIE_TO_GAME_CINEMATIC_FOCUS_END = 0.12;
-const PRIMATRIE_TO_GAME_CINEMATIC_HOLD_END = 0.28;
+const primaterie_TO_GAME_CINEMATIC_FOCUS_END = 0.12;
+const primaterie_TO_GAME_CINEMATIC_HOLD_END = 0.28;
 
 export class AppController {
   private readonly content = new ContentService();
@@ -61,7 +61,7 @@ export class AppController {
   private readonly focus: FocusPresentationSystem;
   private readonly gameHud: GameHUDSystem;
   private readonly audio: GameAudioSystem;
-  private readonly primatriePortal: PrimatriePortal;
+  private readonly primateriePortal: primateriePortal;
   private readonly rotateOverlay: HTMLDivElement;
   private readonly portfolioOrientationOverlay: HTMLDivElement;
   private readonly gameTransitionBlurOverlay: HTMLDivElement;
@@ -88,9 +88,9 @@ export class AppController {
   private mobileChargeStartY = 0;
   private mobileChargeStartedAt = 0;
   private entryRoute: AppEntryRoute;
-  private primatrieReturnProgress = 0;
-  private primatrieReturnTweenId: number | null = null;
-  private gameTransitionFromPrimatrie = false;
+  private primaterieReturnProgress = 0;
+  private primaterieReturnTweenId: number | null = null;
+  private gameTransitionFromprimaterie = false;
   private gameTransitionReturningToHub = false;
   private gameTransitionAnchor: THREE.Vector3 | null = null;
 
@@ -187,17 +187,17 @@ export class AppController {
     this.gameTransitionBlurOverlay = document.createElement('div');
     this.gameTransitionBlurOverlay.className = 'game-transition-blur-overlay';
     this.uiHost.appendChild(this.gameTransitionBlurOverlay);
-    this.primatriePortal = new PrimatriePortal(this.uiHost, {
+    this.primateriePortal = new primateriePortal(this.uiHost, {
       onPortfolio: () => {
-        this.returnToPortfolioFromPrimatriePortal();
+        this.returnToPortfolioFromprimateriePortal();
       },
       onSinglePlayer: () => {
-        this.launchPrimatrieSinglePlayer();
+        this.launchprimaterieSinglePlayer();
       },
       onThemeToggle: () => this.theme.toggle(),
       onLanguageToggle: () => this.i18n.toggle()
     });
-    this.primatriePortal.setLocale(this.i18n.current);
+    this.primateriePortal.setLocale(this.i18n.current);
 
     this.interaction = new ShardInteractionSystem(
       this.renderer.renderer.domElement,
@@ -270,53 +270,53 @@ export class AppController {
   }
 
   private initializeEntryRoute() {
-    if (this.entryRoute !== 'primatrie') {
-      this.primatriePortal.setVisible(false);
+    if (this.entryRoute !== 'primaterie') {
+      this.primateriePortal.setVisible(false);
       return;
     }
 
     this.intro.hideImmediately();
     this.introTransitionProgress = 1;
-    this.enterPrimatriePortalMode();
+    this.enterprimateriePortalMode();
   }
 
-  private setPrimatriePortalVisible(visible: boolean) {
-    this.primatriePortal.setVisible(visible);
+  private setprimateriePortalVisible(visible: boolean) {
+    this.primateriePortal.setVisible(visible);
   }
 
-  private enterPrimatriePortalMode() {
-    if (!this.mode.is('primatrie_portal')) {
-      this.mode.setMode('primatrie_portal');
+  private enterprimateriePortalMode() {
+    if (!this.mode.is('primaterie_portal')) {
+      this.mode.setMode('primaterie_portal');
     }
-    this.primatrieReturnProgress = 0;
+    this.primaterieReturnProgress = 0;
     this.slotSystem.reset();
     this.interaction.reset();
     this.world.setHovered(null);
     this.game.beginPortalPreview();
-    this.syncPrimatriePortalLayout();
-    this.setPrimatriePortalVisible(true);
+    this.syncprimateriePortalLayout();
+    this.setprimateriePortalVisible(true);
     this.refreshUI();
   }
 
-  private launchPrimatrieSinglePlayer() {
-    this.setPrimatriePortalVisible(false);
+  private launchprimaterieSinglePlayer() {
+    this.setprimateriePortalVisible(false);
     this.startGameTransition(true);
   }
 
-  private returnToPortfolioFromPrimatriePortal() {
-    if (!this.mode.is('primatrie_portal')) {
+  private returnToPortfolioFromprimateriePortal() {
+    if (!this.mode.is('primaterie_portal')) {
       return;
     }
-    if (this.primatrieReturnTweenId !== null) {
-      this.transitions.cancel(this.primatrieReturnTweenId);
-      this.primatrieReturnTweenId = null;
+    if (this.primaterieReturnTweenId !== null) {
+      this.transitions.cancel(this.primaterieReturnTweenId);
+      this.primaterieReturnTweenId = null;
     }
 
     this.entryRoute = 'portfolio';
     window.history.replaceState(null, '', '/');
-    this.setPrimatriePortalVisible(false);
-    this.mode.setMode('primatrie_transition');
-    this.primatrieReturnProgress = 0;
+    this.setprimateriePortalVisible(false);
+    this.mode.setMode('primaterie_transition');
+    this.primaterieReturnProgress = 0;
     this.game.stop();
     this.world.beginExternalLayoutTransition(this.world.getOrbitPositions(), undefined, undefined, {
       staggerVisibleIndex: 0,
@@ -324,18 +324,18 @@ export class AppController {
     });
     this.refreshUI();
 
-    this.primatrieReturnTweenId = this.transitions.animate({
+    this.primaterieReturnTweenId = this.transitions.animate({
       from: 0,
       to: 1,
       duration: 2,
       easing: 'easeInOutCubic',
       onUpdate: (value) => {
-        this.primatrieReturnProgress = value;
+        this.primaterieReturnProgress = value;
         this.world.setExternalLayoutProgress(value);
       },
       onComplete: () => {
-        this.primatrieReturnTweenId = null;
-        this.primatrieReturnProgress = 0;
+        this.primaterieReturnTweenId = null;
+        this.primaterieReturnProgress = 0;
         this.slotSystem.reset();
         this.interaction.reset();
         this.world.resetPortfolioState();
@@ -348,13 +348,13 @@ export class AppController {
     });
   }
 
-  private syncPrimatriePortalLayout() {
+  private syncprimateriePortalLayout() {
     const preview = this.game.getPortalPreviewLayout();
     this.world.setSingleNodeExternalLayout(preview.position, preview.visual);
     const projected = this.renderer.projectWorldToScreen(preview.position);
     const mobileBias = window.innerWidth <= 820 ? 0.84 : 1;
     const viewportScale = THREE.MathUtils.clamp((window.innerWidth / 1440) * mobileBias, 0.64, 1);
-    this.primatriePortal.setAnchor(projected.x, projected.y, viewportScale);
+    this.primateriePortal.setAnchor(projected.x, projected.y, viewportScale);
   }
 
   private bindEvents() {
@@ -363,13 +363,13 @@ export class AppController {
       this.musicBackdrop.setTheme(theme);
       this.world.setTheme(theme);
       this.game.setTheme(theme);
-      this.primatriePortal.setLocale(this.i18n.current);
+      this.primateriePortal.setLocale(this.i18n.current);
       this.refreshUI();
     });
 
     this.i18n.onChange(() => {
       this.game.setLocale(this.i18n.current);
-      this.primatriePortal.setLocale(this.i18n.current);
+      this.primateriePortal.setLocale(this.i18n.current);
       this.refreshUI();
       const focusedProject = this.world.getFocusedProject();
       if (focusedProject) {
@@ -468,7 +468,7 @@ export class AppController {
   }
 
   private onWheel = (event: WheelEvent) => {
-    if (isPrimatrieMode(this.mode.current)) return;
+    if (isprimaterieMode(this.mode.current)) return;
     if (this.isPortfolioOrientationBlocked()) return;
     if (!isPortfolioBrowseMode(this.mode.current) && !this.about.opened) return;
     if (Date.now() - this.lastWheelAt < 120) return;
@@ -479,7 +479,7 @@ export class AppController {
   };
 
   private onKeyDown = (event: KeyboardEvent) => {
-    if (isPrimatrieMode(this.mode.current)) {
+    if (isprimaterieMode(this.mode.current)) {
       return;
     }
     if (this.isPortfolioOrientationBlocked()) {
@@ -582,7 +582,7 @@ export class AppController {
   };
 
   private onKeyUp = (event: KeyboardEvent) => {
-    if (isPrimatrieMode(this.mode.current)) {
+    if (isprimaterieMode(this.mode.current)) {
       return;
     }
     if (this.isPortfolioOrientationBlocked()) {
@@ -695,7 +695,7 @@ export class AppController {
   }
 
   private selectProject(index: number) {
-    if (isPrimatrieMode(this.mode.current)) {
+    if (isprimaterieMode(this.mode.current)) {
       return;
     }
     if (this.isPortfolioOrientationBlocked()) {
@@ -723,7 +723,7 @@ export class AppController {
   }
 
   private enterFocus(projectId: string) {
-    if (isPrimatrieMode(this.mode.current)) return;
+    if (isprimaterieMode(this.mode.current)) return;
     if (this.isPortfolioOrientationBlocked()) return;
     if (!isPortfolioBrowseMode(this.mode.current)) return;
     const projectIndex = this.content.getProjectIndex(projectId);
@@ -829,7 +829,7 @@ export class AppController {
     if (
       isIntroMode(this.mode.current) ||
       isGameRuntimeMode(this.mode.current) ||
-      isPrimatrieMode(this.mode.current)
+      isprimaterieMode(this.mode.current)
     ) {
       return;
     }
@@ -864,8 +864,8 @@ export class AppController {
   }
 
   private returnHome() {
-    if (isPrimatrieMode(this.mode.current)) {
-      this.returnToPortfolioFromPrimatriePortal();
+    if (isprimaterieMode(this.mode.current)) {
+      this.returnToPortfolioFromprimateriePortal();
       return;
     }
 
@@ -888,7 +888,7 @@ export class AppController {
   }
 
   private resumeOrbitMode() {
-    if (isPrimatrieMode(this.mode.current)) {
+    if (isprimaterieMode(this.mode.current)) {
       return;
     }
     if (this.slotSystem.isUnlocked()) {
@@ -935,8 +935,8 @@ export class AppController {
 
     const shouldPreAlignCamera =
       !skipPreAlign &&
-      !this.mode.is('primatrie_portal') &&
-      !this.mode.is('primatrie_transition') &&
+      !this.mode.is('primaterie_portal') &&
+      !this.mode.is('primaterie_transition') &&
       (this.mode.is('orbit') || this.mode.is('constellation_complete'));
 
     if (shouldPreAlignCamera) {
@@ -963,11 +963,11 @@ export class AppController {
       return;
     }
 
-    if (!this.mode.is('primatrie_portal') && !this.mode.is('constellation_complete')) {
+    if (!this.mode.is('primaterie_portal') && !this.mode.is('constellation_complete')) {
       this.mode.setMode('constellation_complete');
     }
-    this.setPrimatriePortalVisible(false);
-    this.gameTransitionFromPrimatrie = this.mode.is('primatrie_portal');
+    this.setprimateriePortalVisible(false);
+    this.gameTransitionFromprimaterie = this.mode.is('primaterie_portal');
     this.syncWorldCameraReferenceFromRenderer();
 
     if (this.gameTransitionTweenId !== null) {
@@ -999,7 +999,7 @@ export class AppController {
     this.gameTransitionTweenId = this.transitions.animate({
       from: 0,
       to: 1,
-      duration: this.gameTransitionFromPrimatrie ? 6.35 : 6,
+      duration: this.gameTransitionFromprimaterie ? 6.35 : 6,
       easing: 'easeInOutCubic',
       onUpdate: (value) => {
         this.gameTransitionProgress = value;
@@ -1009,7 +1009,7 @@ export class AppController {
       onComplete: () => {
         this.gameTransitionTweenId = null;
         this.gameTransitionProgress = 1;
-        this.gameTransitionFromPrimatrie = false;
+        this.gameTransitionFromprimaterie = false;
         this.gameTransitionReturningToHub = false;
         this.gameTransitionAnchor = null;
         this.mode.setMode('game');
@@ -1056,7 +1056,7 @@ export class AppController {
     this.game.prepareReturnTransition();
     this.gameTransitionReturningToHub = true;
     this.syncWorldCameraReferenceFromRenderer();
-    if (this.entryRoute === 'primatrie') {
+    if (this.entryRoute === 'primaterie') {
       const preview = this.game.getPortalPreviewLayout();
       this.gameTransitionAnchor = preview.position.clone();
       this.world.beginSingleNodeExternalLayoutTransition(preview.position, preview.visual);
@@ -1085,12 +1085,12 @@ export class AppController {
       onComplete: () => {
         this.gameTransitionTweenId = null;
         this.game.stop();
-        this.gameTransitionFromPrimatrie = false;
+        this.gameTransitionFromprimaterie = false;
         this.gameTransitionReturningToHub = false;
         this.gameTransitionProgress = 0;
         this.gameTransitionAnchor = null;
-        if (this.entryRoute === 'primatrie') {
-          this.enterPrimatriePortalMode();
+        if (this.entryRoute === 'primaterie') {
+          this.enterprimateriePortalMode();
           return;
         }
         this.slotSystem.reset();
@@ -1106,8 +1106,8 @@ export class AppController {
   }
 
   private returnToMiniGameMainMenu() {
-    this.entryRoute = 'primatrie';
-    window.history.replaceState(null, '', '/primatrie');
+    this.entryRoute = 'primaterie';
+    window.history.replaceState(null, '', '/primaterie');
     this.exitGame();
   }
 
@@ -1115,7 +1115,7 @@ export class AppController {
     return projectGameHudPayload(this.game.getHudState(), (worldPosition) => this.renderer.projectWorldToScreen(worldPosition));
   }
 
-  private getPrimatriePortalCameraPose() {
+  private getprimateriePortalCameraPose() {
     const preview = this.game.getPortalPreviewLayout();
     const mobilePreviewScale = window.innerWidth <= 820 ? 0.88 : 1;
     return {
@@ -1159,8 +1159,8 @@ export class AppController {
     this.audio.setEnabled(audioActive);
     this.audio.update(this.game.getAudioState(), deltaTime);
 
-    if (this.mode.is('primatrie_portal')) {
-      this.syncPrimatriePortalLayout();
+    if (this.mode.is('primaterie_portal')) {
+      this.syncprimateriePortalLayout();
     }
 
     if (this.mode.is('game') || this.mode.is('game_over')) {
@@ -1197,24 +1197,24 @@ export class AppController {
     const orbitPose = this.world.getOrbitCameraPose();
     const focusPose = this.world.getFocusCameraPose();
     const gamePose = this.game.getCameraPose();
-    const primatriePose =
-      this.mode.is('primatrie_portal') || this.mode.is('primatrie_transition') || this.gameTransitionFromPrimatrie
-        ? this.getPrimatriePortalCameraPose()
+    const primateriePose =
+      this.mode.is('primaterie_portal') || this.mode.is('primaterie_transition') || this.gameTransitionFromprimaterie
+        ? this.getprimateriePortalCameraPose()
         : null;
 
     const portfolioPosition = cameraOrbitPose.position.clone().lerp(focusPose.position, this.cameraFocusBlend);
     const portfolioLookAt = cameraOrbitPose.lookAt.clone().lerp(orbitPose.lookAt, 0.18).lerp(focusPose.lookAt, this.cameraFocusBlend);
-    const primatrieBasePosition =
-      primatriePose && (this.mode.is('primatrie_portal') || this.mode.is('primatrie_transition'))
-        ? primatriePose.position.clone().lerp(portfolioPosition, this.primatrieReturnProgress)
+    const primaterieBasePosition =
+      primateriePose && (this.mode.is('primaterie_portal') || this.mode.is('primaterie_transition'))
+        ? primateriePose.position.clone().lerp(portfolioPosition, this.primaterieReturnProgress)
         : portfolioPosition;
-    const primatrieBaseLookAt =
-      primatriePose && (this.mode.is('primatrie_portal') || this.mode.is('primatrie_transition'))
-        ? primatriePose.lookAt.clone().lerp(portfolioLookAt, this.primatrieReturnProgress)
+    const primaterieBaseLookAt =
+      primateriePose && (this.mode.is('primaterie_portal') || this.mode.is('primaterie_transition'))
+        ? primateriePose.lookAt.clone().lerp(portfolioLookAt, this.primaterieReturnProgress)
         : portfolioLookAt;
     const transitionPose = this.getGameTransitionCameraPose(
-      this.gameTransitionFromPrimatrie && primatriePose ? primatriePose.position : primatrieBasePosition,
-      this.gameTransitionFromPrimatrie && primatriePose ? primatriePose.lookAt : primatrieBaseLookAt,
+      this.gameTransitionFromprimaterie && primateriePose ? primateriePose.position : primaterieBasePosition,
+      this.gameTransitionFromprimaterie && primateriePose ? primateriePose.lookAt : primaterieBaseLookAt,
       gamePose.position,
       gamePose.lookAt
     );
@@ -1237,13 +1237,13 @@ export class AppController {
     this.musicBackdrop.setVisible(musicBackdropVisible);
     this.musicBackdrop.update(deltaTime, elapsedTime, this.renderer.camera, musicReactiveState);
     const cinematicBlurStrength =
-      this.mode.is('game_transition') && this.gameTransitionFromPrimatrie
+      this.mode.is('game_transition') && this.gameTransitionFromprimaterie
         ? Math.max(
             0,
             Math.sin(
               Math.PI *
                 THREE.MathUtils.clamp(
-                  this.gameTransitionProgress / Math.max(0.0001, PRIMATRIE_TO_GAME_CINEMATIC_HOLD_END),
+                  this.gameTransitionProgress / Math.max(0.0001, primaterie_TO_GAME_CINEMATIC_HOLD_END),
                   0,
                   1
                 )
@@ -1268,7 +1268,7 @@ export class AppController {
     const focusIndex = focusedProject ? this.content.getProjectIndex(focusedProject.id) : this.activeIndex;
     const isGameMode = isGameRuntimeMode(this.mode.current);
     const showGameHud = isGameMode && !this.gameTransitionReturningToHub;
-    const primatrieMode = isPrimatrieMode(this.mode.current);
+    const primaterieMode = isprimaterieMode(this.mode.current);
     const portfolioBlocked = this.isPortfolioOrientationBlocked();
 
     this.hud.setActiveProject(focusIndex, this.i18n.current);
@@ -1276,15 +1276,15 @@ export class AppController {
     this.hud.setAboutOpen(this.about.opened);
     this.hud.setGameModeNavigation(isGameMode);
     this.hud.setOutroVisible(
-      this.about.opened || (!primatrieMode && !isGameMode && isPortfolioBrowseMode(this.mode.current) && this.lastWheelAt > 0)
+      this.about.opened || (!primaterieMode && !isGameMode && isPortfolioBrowseMode(this.mode.current) && this.lastWheelAt > 0)
     );
-    this.interaction.setEnabled(isPortfolioInteractionMode(this.mode.current) && !primatrieMode && !isGameMode && !portfolioBlocked);
-    if (isGameMode || primatrieMode || portfolioBlocked) {
+    this.interaction.setEnabled(isPortfolioInteractionMode(this.mode.current) && !primaterieMode && !isGameMode && !portfolioBlocked);
+    if (isGameMode || primaterieMode || portfolioBlocked) {
       this.world.setHovered(null);
     }
-    this.hud.element.classList.toggle('is-hidden', primatrieMode || isGameMode);
-    this.guide.element.classList.toggle('is-hidden', isGameMode || primatrieMode);
-    this.uiHost.dataset.appMode = primatrieMode ? 'primatrie' : isGameMode ? 'game' : 'portfolio';
+    this.hud.element.classList.toggle('is-hidden', primaterieMode || isGameMode);
+    this.guide.element.classList.toggle('is-hidden', isGameMode || primaterieMode);
+    this.uiHost.dataset.appMode = primaterieMode ? 'primaterie' : isGameMode ? 'game' : 'portfolio';
     this.gameHud.setVisible(showGameHud);
     if (showGameHud) {
       this.gameHud.update(this.getGameHudPayload());
@@ -1301,7 +1301,7 @@ export class AppController {
   }
 
   private updateGuide() {
-    if (isGameRuntimeMode(this.mode.current) || isPrimatrieMode(this.mode.current)) {
+    if (isGameRuntimeMode(this.mode.current) || isprimaterieMode(this.mode.current)) {
       return;
     }
 
@@ -1353,7 +1353,7 @@ export class AppController {
   }
 
   private isPortfolioOrientationBlocked() {
-    return !isGameRuntimeMode(this.mode.current) && !isPrimatrieMode(this.mode.current) && this.isMobileDeviceLike() && window.innerWidth > window.innerHeight;
+    return !isGameRuntimeMode(this.mode.current) && !isprimaterieMode(this.mode.current) && this.isMobileDeviceLike() && window.innerWidth > window.innerHeight;
   }
 
   private refreshRotateOverlayCopy = () => {
@@ -1386,7 +1386,7 @@ export class AppController {
     gamePosition: THREE.Vector3,
     gameLookAt: THREE.Vector3
   ) {
-    if (this.mode.is('game_transition') && this.gameTransitionFromPrimatrie) {
+    if (this.mode.is('game_transition') && this.gameTransitionFromprimaterie) {
       const focusPoint = this.game.getPlayerFocusPoint().clone().add(new THREE.Vector3(0, 0.2, 0));
       const entryOffset = portfolioPosition.clone().sub(focusPoint);
       const entryDirection =
@@ -1396,9 +1396,9 @@ export class AppController {
         .addScaledVector(entryDirection, Math.max(0.54, entryOffset.length() * 0.14))
         .add(new THREE.Vector3(0, 0.04, 0));
 
-      if (this.gameTransitionProgress <= PRIMATRIE_TO_GAME_CINEMATIC_FOCUS_END) {
+      if (this.gameTransitionProgress <= primaterie_TO_GAME_CINEMATIC_FOCUS_END) {
         const zoomPhase = THREE.MathUtils.smoothstep(
-          THREE.MathUtils.clamp(this.gameTransitionProgress / PRIMATRIE_TO_GAME_CINEMATIC_FOCUS_END, 0, 1),
+          THREE.MathUtils.clamp(this.gameTransitionProgress / primaterie_TO_GAME_CINEMATIC_FOCUS_END, 0, 1),
           0,
           1
         );
@@ -1408,7 +1408,7 @@ export class AppController {
         };
       }
 
-      if (this.gameTransitionProgress <= PRIMATRIE_TO_GAME_CINEMATIC_HOLD_END) {
+      if (this.gameTransitionProgress <= primaterie_TO_GAME_CINEMATIC_HOLD_END) {
         return {
           position: cinematicPosition,
           lookAt: focusPoint
@@ -1417,8 +1417,8 @@ export class AppController {
 
       const returnPhase = THREE.MathUtils.smoothstep(
         THREE.MathUtils.clamp(
-          (this.gameTransitionProgress - PRIMATRIE_TO_GAME_CINEMATIC_HOLD_END) /
-            Math.max(0.0001, 1 - PRIMATRIE_TO_GAME_CINEMATIC_HOLD_END),
+          (this.gameTransitionProgress - primaterie_TO_GAME_CINEMATIC_HOLD_END) /
+            Math.max(0.0001, 1 - primaterie_TO_GAME_CINEMATIC_HOLD_END),
           0,
           1
         ),

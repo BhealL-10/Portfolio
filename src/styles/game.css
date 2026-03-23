@@ -2160,7 +2160,7 @@ html[data-theme='dark'] .game-hud__leaderboard-rank {
   width: var(--game-mobile-control-charge-icon-width);
 }
 
-.primatrie-portal {
+.primaterie-portal {
   position: absolute;
   inset: 0;
   opacity: 0;
@@ -2169,12 +2169,12 @@ html[data-theme='dark'] .game-hud__leaderboard-rank {
   transition: opacity 220ms ease;
 }
 
-.primatrie-portal.is-visible {
+.primaterie-portal.is-visible {
   opacity: 1;
   pointer-events: auto;
 }
 
-.primatrie-portal__chrome {
+.primaterie-portal__chrome {
   position: absolute;
   top: calc(var(--safe-top) + 18px);
   left: calc(var(--safe-left) + 18px);
@@ -2185,61 +2185,61 @@ html[data-theme='dark'] .game-hud__leaderboard-rank {
   pointer-events: auto;
 }
 
-.primatrie-portal__chrome-button {
+.primaterie-portal__chrome-button {
   width: 34px;
   height: 34px;
   cursor: pointer;
   filter: drop-shadow(0 6px 18px rgb(0 0 0 / 0.16));
 }
 
-.primatrie-portal__logo-wrap {
+.primaterie-portal__logo-wrap {
   position: absolute;
   left: 0;
   top: 0;
-  transform: translate3d(var(--primatrie-anchor-x, 50vw), calc(var(--primatrie-anchor-y, 28vh) - 104px), 0) translateX(-50%);
+  transform: translate3d(var(--primaterie-anchor-x, 50vw), calc(var(--primaterie-anchor-y, 28vh) - 104px), 0) translateX(-50%);
   pointer-events: none;
   z-index: 1;
 }
 
-.primatrie-portal__logo {
+.primaterie-portal__logo {
   display: block;
-  width: var(--game-primatrie-logo-width);
+  width: var(--game-primaterie-logo-width);
   height: auto;
   filter: drop-shadow(0 10px 24px rgb(0 0 0 / 0.16));
 }
 
-.primatrie-portal__anchor {
-  --primatrie-anchor-x: 50vw;
-  --primatrie-anchor-y: 50vh;
-  --primatrie-anchor-scale: 2;
+.primaterie-portal__anchor {
+  --primaterie-anchor-x: 50vw;
+  --primaterie-anchor-y: 50vh;
+  --primaterie-anchor-scale: 2;
   position: absolute;
   left: 0;
   top: 0;
-  width: var(--game-primatrie-anchor-width);
-  max-height: var(--game-primatrie-anchor-max-height);
-  padding: var(--game-primatrie-anchor-padding);
+  width: var(--game-primaterie-anchor-width);
+  max-height: var(--game-primaterie-anchor-max-height);
+  padding: var(--game-primaterie-anchor-padding);
   border-radius: 100%;
   background: transparent;
   color: rgb(var(--color-bg));
   pointer-events: none;
   text-align: center;
   overflow: clip;
-  transform: translate3d(var(--primatrie-anchor-x), var(--primatrie-anchor-y), 0) translate(-50%, -50%) scale(var(--primatrie-anchor-scale));
+  transform: translate3d(var(--primaterie-anchor-x), var(--primaterie-anchor-y), 0) translate(-50%, -50%) scale(var(--primaterie-anchor-scale));
 }
 
-.primatrie-portal.is-visible .primatrie-portal__anchor,
-.primatrie-portal.is-visible .primatrie-portal__actions button {
+.primaterie-portal.is-visible .primaterie-portal__anchor,
+.primaterie-portal.is-visible .primaterie-portal__actions button {
   pointer-events: auto;
 }
 
-.primatrie-portal__actions {
+.primaterie-portal__actions {
   display: grid;
   grid-template-columns: 1fr;
   gap: 6px;
   margin-top: 18px;
 }
 
-.primatrie-portal__actions button {
+.primaterie-portal__actions button {
   min-height: clamp(32px, 4vw, 38px);
   border: 0;
   background: var(--color-bg);
@@ -2253,17 +2253,17 @@ html[data-theme='dark'] .game-hud__leaderboard-rank {
   transition: transform 180ms ease, background 180ms ease, opacity 180ms ease, border-color 180ms ease;
 }
 
-.primatrie-portal__actions button:hover:not(:disabled) {
+.primaterie-portal__actions button:hover:not(:disabled) {
   transform: translateY(-1px) scale(1.01);
   color: var(--color-bg);
   background: rgb(var(--color-fg-rgb) / 0.12);
 }
 
-.primatrie-portal__actions button:active:not(:disabled) {
+.primaterie-portal__actions button:active:not(:disabled) {
   transform: translateY(0) scale(0.985);
 }
 
-.primatrie-portal__actions button:disabled {
+.primaterie-portal__actions button:disabled {
   opacity: 0.42;
   cursor: default;
 }

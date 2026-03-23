@@ -7,7 +7,7 @@ Le point d'entree actif reste [src/main.ts](/home/bheall/workspace/Portfolio/src
 - [src/styles/core.css](/home/bheall/workspace/Portfolio/src/styles/core.css)
   Contient les variables globales, les themes, les animations partagees, le shell applicatif, la navigation, les overlays globaux et les variables de dimensionnement du HUD du jeu.
 - [src/styles/game.css](/home/bheall/workspace/Portfolio/src/styles/game.css)
-  Regroupe les styles du mini-jeu, du HUD, des panneaux, du game over, des controles tactiles et du portail Primatrie.
+  Regroupe les styles du mini-jeu, du HUD, des panneaux, du game over, des controles tactiles et du portail primaterie.
 - [src/styles/focus-about.css](/home/bheall/workspace/Portfolio/src/styles/focus-about.css)
   Centralise les styles des couches `focus` et `about`.
 - [src/styles/responsive.css](/home/bheall/workspace/Portfolio/src/styles/responsive.css)

@@ -157,9 +157,9 @@
     --game-mobile-control-side-icon-width: 54px;
     --game-mobile-control-jump-icon-width: 56px;
     --game-mobile-control-charge-icon-width: 60px;
-    --game-primatrie-logo-width: min(124px, 34vw);
-    --game-primatrie-anchor-width: min(176px, calc(100vw - 18px));
-    --game-primatrie-anchor-padding: 12px 7px 8px;
+    --game-primaterie-logo-width: min(124px, 34vw);
+    --game-primaterie-anchor-width: min(176px, calc(100vw - 18px));
+    --game-primaterie-anchor-padding: 12px 7px 8px;
   }
 
   .game-hud__game-over-actions {
@@ -431,23 +431,23 @@
     width: min(118px, 30vw);
   }
 
-  .primatrie-portal__actions button {
+  .primaterie-portal__actions button {
     min-height: 28px;
     padding: 5px 6px;
     font-size: 0.48rem;
   }
 
-  .primatrie-portal__logo-wrap {
-    transform: translate3d(var(--primatrie-anchor-x, 50vw), calc(var(--primatrie-anchor-y, 50vh) - 78px), 0) translateX(-50%);
+  .primaterie-portal__logo-wrap {
+    transform: translate3d(var(--primaterie-anchor-x, 50vw), calc(var(--primaterie-anchor-y, 50vh) - 78px), 0) translateX(-50%);
   }
 
-  .primatrie-portal__chrome {
+  .primaterie-portal__chrome {
     top: calc(var(--safe-top) + 12px);
     left: calc(var(--safe-left) + 12px);
     gap: 8px;
   }
 
-  .primatrie-portal__chrome-button {
+  .primaterie-portal__chrome-button {
     width: 30px;
     height: 30px;
   }

@@ -2,6 +2,14 @@
 # =============================================================================
 # Script de Redéploiement Portfolio
 # =============================================================================
+# Ce script utilise un Dockerfile multi-stage:
+#   Stage 1: Node.js - npm install + npm run build → dist/
+#   Stage 2: Nginx Alpine - Copy dist/ → /usr/share/nginx/html
+# 
+# IMPORTANT: Ne pas modifier docker-compose.yml pour ajouter des volumes
+# qui monteraient la source (./) - cela exposerait les fichiers source!
+# Seul le bundle compilé dist/ doit être servi par Nginx.
+# =============================================================================
 
 set -e
 
@@ -16,8 +24,8 @@ docker compose down 2>/dev/null || true
 echo "🗑️  Suppression de l'ancienne image..."
 docker rmi portfolio-3d:latest 2>/dev/null || true
 
-# Rebuild l'image
-echo "🔨 Build de la nouvelle image..."
+# Rebuild l'image (y compris npm install + npm run build dans le stage builder)
+echo "🔨 Build de la nouvelle image (compilation Vite incluse)..."
 docker compose build --no-cache
 
 # Démarrer le conteneur
@@ -43,10 +51,15 @@ echo ""
 echo "🏥 Test du healthcheck:"
 docker exec portfolio-3d curl -f http://localhost/health 2>/dev/null && echo "✅ Healthcheck OK" || echo "❌ Healthcheck FAILED"
 
-# Vérifier le contenu du volume
+# Vérifier le contenu du volume et que c'est bien le bundle compilé
 echo ""
-echo "📁 Contenu du volume /usr/share/nginx/html:"
-docker exec portfolio-3d ls -la /usr/share/nginx/html | head -10
+echo "📁 Contenu servi par Nginx (/usr/share/nginx/html):"
+docker exec portfolio-3d ls -la /usr/share/nginx/html
+
+# Vérifier que l'index.html référence les assets hashés (preuve du build Vite)
+echo ""
+echo "✅ Vérification que l'index.html référence des assets compilés:"
+docker exec portfolio-3d grep -o '/assets/index-[A-Za-z0-9]*\.js' /usr/share/nginx/html/index.html && echo "✅ Assets hashés détectés (Vite build OK)" || echo "❌ Assets hashés non trouvés!"
 
 # Tester l'accès à index.html
 echo ""

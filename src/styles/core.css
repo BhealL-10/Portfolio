@@ -82,10 +82,10 @@
   --game-gameover-label-size: clamp(0.54rem, 0.66vw, 0.64rem);
   --game-gameover-value-size: clamp(0.8rem, 1vw, 0.94rem);
   --game-help-footer-copy-size: 0.72rem;
-  --game-primatrie-logo-width: min(150px, 14vw);
-  --game-primatrie-anchor-width: min(224px, calc(100vw - 24px));
-  --game-primatrie-anchor-max-height: min(48dvh, 340px);
-  --game-primatrie-anchor-padding: clamp(14px, 2vw, 20px) clamp(10px, 1.6vw, 14px) clamp(12px, 1.9vw, 18px);
+  --game-primaterie-logo-width: min(150px, 14vw);
+  --game-primaterie-anchor-width: min(224px, calc(100vw - 24px));
+  --game-primaterie-anchor-max-height: min(48dvh, 340px);
+  --game-primaterie-anchor-padding: clamp(14px, 2vw, 20px) clamp(10px, 1.6vw, 14px) clamp(12px, 1.9vw, 18px);
 }
 
 html[data-theme='dark'] {
@@ -236,7 +236,7 @@ body {
 
 .app-shell__ui[data-app-mode='portfolio'] .game-hud,
 .app-shell__ui[data-app-mode='portfolio'] .game-rotate-overlay,
-.app-shell__ui[data-app-mode='portfolio'] .primatrie-portal {
+.app-shell__ui[data-app-mode='portfolio'] .primaterie-portal {
   visibility: hidden;
   pointer-events: none !important;
 }

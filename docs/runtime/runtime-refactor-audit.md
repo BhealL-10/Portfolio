@@ -36,7 +36,7 @@
 ## Découpage engagé sur cette passe
 - `src/core/appModePredicates.ts`
   - prédicats de modes extraits depuis `AppController`
-  - verrouille le gating intro / portfolio / primatrie / game
+  - verrouille le gating intro / portfolio / primaterie / game
 - `src/game/GradeAnimationController.ts`
   - logique de tempo des grades
 - `src/game/GradeSpriteResolver.ts`
@@ -57,8 +57,8 @@
   - ouverture/fermeture du panneau settings
 - `src/game/TopRightUiCluster.ts`
   - cluster top-right dédié au panneau settings
-- `src/game/PrimatriePortal.ts`
-  - portail d’entrée `/primatrie`
+- `src/game/primateriePortal.ts`
+  - portail d’entrée `/primaterie`
   - ancré sur la shard centrale au lieu d’un panneau overlay générique
 - `src/core/AppEntryRoute.ts`
   - résolution simple du point d’entrée
@@ -72,7 +72,7 @@
 - Le rendu des grades n’est plus codé directement dans le contrôleur HUD.
 - La logique de boutons mobile n’est plus codée en dur dans `GameHUDSystem`.
 - Le choix des assets theme light/dark n’est plus mélangé au reste du HUD.
-- Le portail `/primatrie` est isolé dans son propre composant UI.
+- Le portail `/primaterie` est isolé dans son propre composant UI.
 - Le gating des modes app n’est plus dispersé uniquement dans `AppController`.
 - Le markup du résumé de fin de run n’est plus directement construit dans `GameHUDSystem`.
 - Le portail mini-jeu n’utilise plus le path runtime du run pour son layout de boot.
@@ -114,11 +114,11 @@ Raison:
     - light theme => panneau foncé / texte clair
 - Game over:
   - le bouton retour ne pointe plus vers le portfolio
-  - il renvoie maintenant vers le menu principal interne du mini-jeu (`/primatrie`)
+  - il renvoie maintenant vers le menu principal interne du mini-jeu (`/primaterie`)
 - Routing input:
   - désactivation explicite de la couche portfolio pendant le mini-jeu
   - navigation portfolio masquée pendant le mini-jeu
-- Entrée `/primatrie`:
+- Entrée `/primaterie`:
   - vrai état racine dédié
   - bypass complet du miroir / intro / hidden slots
   - une seule shard visible
@@ -127,7 +127,7 @@ Raison:
   - 3v3 et 10v10 visibles mais inactifs
   - bouton portfolio sans reload complet
 - Boot normal:
-  - le chemin miroir -> cassure -> portfolio n’est plus contaminé par la preview primatrie
+  - le chemin miroir -> cassure -> portfolio n’est plus contaminé par la preview primaterie
 - Path safety:
   - `GamePathSystem` se réinitialise défensivement si demandé alors qu’il est vide
   - `instantiatePattern()` ne peut plus tomber sur `previous.index` undefined
@@ -144,7 +144,7 @@ Raison:
   - toutes les shards ont maintenant un slot caché côté portfolio
   - les règles spéciales de drag/orbite sur `presentation` ont été retirées
   - le picking mobile est plus tolérant pour éviter les faux drag / faux miss-click
-  - le portail `/primatrie` est maintenant explicitement `hidden` hors affichage pour couper tout conflit de clics
+  - le portail `/primaterie` est maintenant explicitement `hidden` hors affichage pour couper tout conflit de clics
   - les mini-shards utilisent désormais 3 plans de logo autour du coeur, comme les shards projet
   - chaque shard projet possède maintenant exactement 4 mini-shards en mode portfolio
   - chaque groupe de 4 mini-shards reçoit les 4 couleurs fixes une seule fois
@@ -176,13 +176,13 @@ Raison:
 - `src/core/AppController.ts`
   - le boot route maintenant vers deux racines:
     - route normale portfolio
-    - route `/primatrie`
+    - route `/primaterie`
   - ajout des modes:
-    - `primatrie_portal`
-    - `primatrie_transition`
-  - `/primatrie` ne force plus artificiellement les modes intro/orbit/constellation
-  - la couche portfolio est coupée tant que la racine primatrie est active
-  - le retour `Portfolio` depuis `/primatrie` repasse vers le flow portfolio sans recharger l’app
+    - `primaterie_portal`
+    - `primaterie_transition`
+  - `/primaterie` ne force plus artificiellement les modes intro/orbit/constellation
+  - la couche portfolio est coupée tant que la racine primaterie est active
+  - le retour `Portfolio` depuis `/primaterie` repasse vers le flow portfolio sans recharger l’app
 - `src/portfolio/OrbitWorldSystem.ts`
   - ajout d’une API de layout mono-shard:
     - `setSingleNodeExternalLayout()`
@@ -210,13 +210,13 @@ Raison:
 ## Cause Racine Corrigée
 - Le crash ne venait pas du warning Three.js.
 - Le crash venait de `AppController.update()`:
-  - la pose caméra primatrie était calculée même hors mode primatrie
+  - la pose caméra primaterie était calculée même hors mode primaterie
   - cela appelait `getPortalPreviewLayout()`
   - la preview portail utilisait alors `getResolvedNode()`
   - `GamePathSystem` pouvait être vide à ce moment-là
   - `instantiatePattern()` lisait alors `previous.index` sur `undefined`
 - Correction appliquée:
-  - `AppController` ne calcule la pose primatrie que si la racine primatrie est réellement active
+  - `AppController` ne calcule la pose primaterie que si la racine primaterie est réellement active
   - le portail mini-jeu utilise désormais `src/game/MiniGamePortalLayout.ts`
   - `GamePathSystem` a reçu des guards défensifs pour éviter tout crash sur état vide
 
@@ -225,7 +225,7 @@ Raison:
 - Selon le mode:
   - `PortfolioIntro`
   - `PortfolioOrbit`
-  - `PrimatriePortal`
+  - `primateriePortal`
   - `MiniGame`
   elles sont seulement repositionnées / masquées / réutilisées.
 - Le portail mini-jeu:
