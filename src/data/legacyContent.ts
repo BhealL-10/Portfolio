@@ -13,8 +13,8 @@ import { projectTranslations } from '../../assets/js/data/translations.js';
 import { SHARD_LOGOS_CONFIG } from '../../assets/js/config/shardLogosConfig.js';
 
 const defaultLogo = {
-  dark: '/assets/images/Logo/logomodedark.svg',
-  light: '/assets/images/Logo/logomodelight.svg',
+  dark: '/assets/images/shared/branding/ape-prod-mark-dark.svg',
+  light: '/assets/images/shared/branding/ape-prod-mark-light.svg',
   scale: 0.7,
   opacity: 1
 };

@@ -1,17 +1,17 @@
 import type { GameHudState, GamePlayerMotionState } from './gameSessionTypes';
 
 export const MOBILE_CONTROL_ASSETS = {
-  grapple: new URL('../../assets/images/spritesheet/hud_grappinsvg.svg', import.meta.url).href,
-  boost: new URL('../../assets/images/spritesheet/hud_boostsvg.svg', import.meta.url).href,
-  jump: new URL('../../assets/images/spritesheet/hud_jumpsvg.svg', import.meta.url).href
+  grapple: new URL('../../assets/images/game/ui/mobile-controls/grapple.svg', import.meta.url).href,
+  boost: new URL('../../assets/images/game/ui/mobile-controls/boost.svg', import.meta.url).href,
+  jump: new URL('../../assets/images/game/ui/mobile-controls/jump.svg', import.meta.url).href
 } as const;
 
 export const MOBILE_CHARGE_ASSETS = [
-  new URL('../../assets/images/spritesheet/hud_1chargesvg.svg', import.meta.url).href,
-  new URL('../../assets/images/spritesheet/hud_2chargesvg.svg', import.meta.url).href,
-  new URL('../../assets/images/spritesheet/hud_3chargesvg.svg', import.meta.url).href,
-  new URL('../../assets/images/spritesheet/hud_4chargesvg.svg', import.meta.url).href,
-  new URL('../../assets/images/spritesheet/hud_5chargesvg.svg', import.meta.url).href
+  new URL('../../assets/images/game/ui/mobile-controls/charge-1.svg', import.meta.url).href,
+  new URL('../../assets/images/game/ui/mobile-controls/charge-2.svg', import.meta.url).href,
+  new URL('../../assets/images/game/ui/mobile-controls/charge-3.svg', import.meta.url).href,
+  new URL('../../assets/images/game/ui/mobile-controls/charge-4.svg', import.meta.url).href,
+  new URL('../../assets/images/game/ui/mobile-controls/charge-5.svg', import.meta.url).href
 ] as const;
 
 export type MobileControlAction = 'hidden' | 'tap_jump' | 'tap_grapple' | 'tap_airborne_charge' | 'hold_charge' | 'hold_boost';

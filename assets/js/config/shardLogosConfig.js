@@ -16,80 +16,80 @@
 export const SHARD_LOGOS_CONFIG = {
   // Shard 1 - Présentation
   "1": {
-    dark: "assets/images/Logo/logomodedark.svg",
-    light: "assets/images/Logo/logomodelight.svg",
+    dark: "assets/images/shared/branding/ape-prod-mark-dark.svg",
+    light: "assets/images/shared/branding/ape-prod-mark-light.svg",
     scale: 0.7,
     opacity: 1
   },
   
   // Shard 2 - Tono Discord Bot (création d'un api (un jeu complet qui peu etre jouer via un discord bot))
   "2": {
-    dark: "assets/images/Logo/logomodedark.svg",
-    light: "assets/images/Logo/logomodelight.svg",
+    dark: "assets/images/shared/branding/ape-prod-mark-dark.svg",
+    light: "assets/images/shared/branding/ape-prod-mark-light.svg",
     scale: 0.7,
     opacity: 1
   },
   
   // Shard 3 - parler de ma maitrise sur davinci resolve et particulierment sur fusion 
   "3": {
-    dark: "assets/images/Logo/DavinciLogoDark.svg",
-    light: "assets/images/Logo/DavinciLogoLight.svg",
+    dark: "assets/images/shared/branding/davinci-dark.svg",
+    light: "assets/images/shared/branding/davinci-light.svg",
     scale: 0.7,
     opacity: 1
   },
   
   // Shard 4 - réalisation de mon premier Court-métrage en ayant organisé tout de A a Z (scénario, découpage technique, casting, lieu de tournage, dérush, montage)
   "4": {
-    dark: "assets/images/Logo/MovieLogoDark.svg",
-    light: "assets/images/Logo/MovieLogoLight.svg",
+    dark: "assets/images/shared/branding/movie-dark.svg",
+    light: "assets/images/shared/branding/movie-light.svg",
     scale: 0.7,
     opacity: 1
   },
   
   // Shard 5 - parler de ma capacité a creer tout type de projet via Ia avec une gestion des ia generative avancer (localIa, Claude Soneete)
   "5": {
-    dark: "assets/images/Logo/IALogoDark.svg",
-    light: "assets/images/Logo/IALogoLight.svg",
+    dark: "assets/images/shared/branding/ia-dark.svg",
+    light: "assets/images/shared/branding/ia-light.svg",
     scale: 0.7,
     opacity: 1
   },
   
   // Shard 6 - Création complete et personnalisé de bot discord
   "6": {
-    dark: "assets/images/Logo/DiscordLogoDark.svg",
-    light: "assets/images/Logo/DiscordLogoLight.svg",
+    dark: "assets/images/shared/branding/discord-dark.svg",
+    light: "assets/images/shared/branding/discord-light.svg",
     scale: 0.7,
     opacity: 1
   },
   
   // Shard 7 - création de logo et d'identité visuel
   "7": {
-    dark: "assets/images/Logo/AffinityLogoDark.svg",
-    light: "assets/images/Logo/AffinityLogoLight.svg",
+    dark: "assets/images/shared/branding/affinity-dark.svg",
+    light: "assets/images/shared/branding/affinity-light.svg",
     scale: 0.7,
     opacity: 1
   },
   
   // Shard 8 - création d'avatar et animations 
   "8": {
-    dark: "assets/images/Logo/SpineLogoDark.svg",
-    light: "assets/images/Logo/SpineLogoLight.svg",
+    dark: "assets/images/shared/branding/spine-dark.svg",
+    light: "assets/images/shared/branding/spine-light.svg",
     scale: 0.7,
     opacity: 1
   },
   
   // Shard 9 - Création de gamedesign complet
   "9": {
-    dark: "assets/images/Logo/logomodedark.svg",
-    light: "assets/images/Logo/logomodelight.svg",
+    dark: "assets/images/shared/branding/ape-prod-mark-dark.svg",
+    light: "assets/images/shared/branding/ape-prod-mark-light.svg",
     scale: 0.7,
     opacity: 1
   },
   
   // Shard 10 - Approche commercial et innovante garanti
   "10": {
-    dark: "assets/images/Logo/logomodedark.svg",
-    light: "assets/images/Logo/logomodelight.svg",
+    dark: "assets/images/shared/branding/ape-prod-mark-dark.svg",
+    light: "assets/images/shared/branding/ape-prod-mark-light.svg",
     scale: 0.7,
     opacity: 1
   }

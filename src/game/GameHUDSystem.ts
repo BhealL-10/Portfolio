@@ -6,39 +6,43 @@ import { LandingGradeDisplay } from './LandingGradeDisplay';
 import { GRADE_SPRITE_ASSET_URLS } from './GradeSpriteResolver';
 import { MobileControlsHud } from './MobileControlsHud';
 import { MOBILE_CHARGE_ASSETS, MOBILE_CONTROL_ASSETS } from './MobileControlLayoutResolver';
-import { RestartButton, RESTART_BUTTON_ASSETS } from './RestartButton';
 import { RewardBranchLabelLayoutResolver } from './RewardBranchLabelLayoutResolver';
+import { getUIButtonAsset, HELP_ICON_ASSETS, SECONDARY_NAV_ASSETS, SOUND_BUTTON_ASSETS, THEME_TOGGLE_ASSETS } from './GameUiAssetResolver';
 import { SETTINGS_BUTTON_ASSETS } from './SettingsButton';
 import { observeThemeChanges, resolveDocumentTheme } from './ThemeAssetResolver';
 import { TopRightUiCluster } from './TopRightUiCluster';
 import { buildGameOverSummaryMarkup } from './buildGameOverSummaryMarkup';
 
 const MOMENTUM_BAR_ASSETS = {
-  bg: new URL('../../assets/images/spritesheet/hud-momentum-bar-background.png', import.meta.url).href,
-  fill: new URL('../../assets/images/spritesheet/hud-momentum-bar-fill-spritesheet.png', import.meta.url).href,
-  top: new URL('../../assets/images/spritesheet/hud-momentum-bar-overlay.png', import.meta.url).href
+  bg: new URL('../../assets/images/game/ui/meters/momentum-background.png', import.meta.url).href,
+  fill: new URL('../../assets/images/game/ui/meters/fill-strip.png', import.meta.url).href,
+  top: new URL('../../assets/images/game/ui/meters/momentum-overlay.png', import.meta.url).href
 };
-const COIN_ICON_URL = new URL('../../assets/images/spritesheet/pickup-coin-spritesheet.png', import.meta.url).href;
+const COIN_ICON_URL = new URL('../../assets/images/game/sprites/pickups/coin-sheet.png', import.meta.url).href;
 const LANGUAGE_BUTTON_ASSETS = {
-  fr: new URL('../../assets/images/Langue/FR.svg', import.meta.url).href,
-  en: new URL('../../assets/images/Langue/EN.svg', import.meta.url).href
+  fr: new URL('../../assets/images/shared/localization/fr.svg', import.meta.url).href,
+  en: new URL('../../assets/images/shared/localization/en.svg', import.meta.url).href
+} as const;
+const GAME_OVER_HEADER_ASSETS = {
+  dark: new URL('../../assets/images/game/ui/headers/game-over-title-dark.svg', import.meta.url).href,
+  light: new URL('../../assets/images/game/ui/headers/game-over-title-light.svg', import.meta.url).href
 } as const;
 const EQUIPMENT_UI_ASSETS = {
-  bgBoat: new URL('../../assets/images/itemhud/ui-equipment-dock.svg', import.meta.url).href,
+  bgBoat: new URL('../../assets/images/game/ui/equipment/dock.svg', import.meta.url).href,
   charges: {
-    plane: new URL('../../assets/images/itemhud/hud-charge-plane.svg', import.meta.url).href,
-    wings: new URL('../../assets/images/itemhud/hud-charge-wings.svg', import.meta.url).href,
-    propulseur: new URL('../../assets/images/itemhud/hud-charge-thruster.svg', import.meta.url).href,
-    reacteur_front: new URL('../../assets/images/itemhud/hud-charge-front-reactor.svg', import.meta.url).href,
-    reacteur_back: new URL('../../assets/images/itemhud/hud-charge-rear-reactor.svg', import.meta.url).href,
-    shield: new URL('../../assets/images/itemhud/hud-charge-shield.svg', import.meta.url).href,
-    souffleur_primary: new URL('../../assets/images/itemhud/hud-charge-blower-primary.svg', import.meta.url).href,
-    souffleur_recharge: new URL('../../assets/images/itemhud/hud-charge-blower-recharge.svg', import.meta.url).href,
-    wrapper: new URL('../../assets/images/itemhud/hud-charge-wrapper.svg', import.meta.url).href,
-    magnet: new URL('../../assets/images/itemhud/hud-charge-magnet.svg', import.meta.url).href,
-    big_canon: new URL('../../assets/images/itemhud/hud-charge-big-cannon.svg', import.meta.url).href,
-    front_canon: new URL('../../assets/images/itemhud/hud-charge-front-cannon.svg', import.meta.url).href,
-    grappin: new URL('../../assets/images/itemhud/hud-charge-grappling-hook.svg', import.meta.url).href
+    plane: new URL('../../assets/images/game/ui/equipment/charges/plane.svg', import.meta.url).href,
+    wings: new URL('../../assets/images/game/ui/equipment/charges/wings.svg', import.meta.url).href,
+    propulseur: new URL('../../assets/images/game/ui/equipment/charges/thruster.svg', import.meta.url).href,
+    reacteur_front: new URL('../../assets/images/game/ui/equipment/charges/front-reactor.svg', import.meta.url).href,
+    reacteur_back: new URL('../../assets/images/game/ui/equipment/charges/rear-reactor.svg', import.meta.url).href,
+    shield: new URL('../../assets/images/game/ui/equipment/charges/shield.svg', import.meta.url).href,
+    souffleur_primary: new URL('../../assets/images/game/ui/equipment/charges/blower-primary.svg', import.meta.url).href,
+    souffleur_recharge: new URL('../../assets/images/game/ui/equipment/charges/blower-recharge.svg', import.meta.url).href,
+    wrapper: new URL('../../assets/images/game/ui/equipment/charges/wrapper.svg', import.meta.url).href,
+    magnet: new URL('../../assets/images/game/ui/equipment/charges/magnet.svg', import.meta.url).href,
+    big_canon: new URL('../../assets/images/game/ui/equipment/charges/big-cannon.svg', import.meta.url).href,
+    front_canon: new URL('../../assets/images/game/ui/equipment/charges/front-cannon.svg', import.meta.url).href,
+    grappin: new URL('../../assets/images/game/ui/equipment/charges/grappling-hook.svg', import.meta.url).href
   }
 } as const;
 const RARITY_COLORS: Record<RogueliteRarity, string> = {
@@ -159,6 +163,13 @@ interface LeaderboardEntry {
   name: string;
   score: number;
   recordedAt: number;
+  details?: {
+    distanceMeters: number;
+    shardsLanded: number;
+    coinsCollected: number;
+    enemiesKilled: number;
+    longestMomentumSeconds: number;
+  };
 }
 
 interface EquipmentSvgBounds {
@@ -187,6 +198,33 @@ interface EquipmentShapeTemplate {
 
 const LEADERBOARD_KEY = 'portfolio-game-global-highscores-v1';
 const PLAYER_NAME_KEY = 'portfolio-game-player-name';
+const GAME_HELP_SEEN_KEY = 'portfolio-game-help-seen-v1';
+const HELP_IMAGE_MODULES = import.meta.glob('../../assets/images/game/ui/help/**/*.{png,jpg,jpeg,webp,avif}', {
+  eager: true,
+  import: 'default'
+}) as Record<string, string>;
+
+function resolveHelpImageSets() {
+  const sets: Record<'fr' | 'en', string[]> = { fr: [], en: [] };
+  const entries = Object.entries(HELP_IMAGE_MODULES)
+    .map(([path, src]) => ({ path, src, name: path.split('/').pop() ?? '' }))
+    .filter((entry) => /^(en|fr)-rules-\d+\./i.test(entry.name))
+    .sort((a, b) => {
+      const aIndex = Number(a.name.match(/rules-(\d+)/i)?.[1] ?? 0);
+      const bIndex = Number(b.name.match(/rules-(\d+)/i)?.[1] ?? 0);
+      return aIndex - bIndex;
+    });
+
+  entries.forEach((entry) => {
+    if (entry.name.toLowerCase().startsWith('fr-')) {
+      sets.fr.push(entry.src);
+    } else {
+      sets.en.push(entry.src);
+    }
+  });
+
+  return sets;
+}
 
 export class GameHUDSystem {
   readonly element: HTMLDivElement;
@@ -224,9 +262,12 @@ export class GameHUDSystem {
   private settingsThemeButton: HTMLButtonElement;
   private settingsLanguageButton: HTMLButtonElement;
   private settingsMuteButton: HTMLButtonElement;
+  private settingsHelpButton: HTMLButtonElement;
   private settingsVolumeLabel: HTMLSpanElement;
   private settingsVolumeValue: HTMLSpanElement;
-  private settingsVolumeInput: HTMLInputElement;
+  private settingsVolumeButton: HTMLButtonElement;
+  private settingsVolumeMeter: HTMLSpanElement;
+  private settingsVolumeMeterFill: HTMLSpanElement;
   private branchLayer: HTMLDivElement;
   private stashBar: HTMLDivElement;
   private inventoryBar: HTMLDivElement;
@@ -242,22 +283,32 @@ export class GameHUDSystem {
   private toastName: HTMLElement;
   private toastIcon: HTMLImageElement;
   private gameOverOverlay: HTMLDivElement;
+  private gameOverHeaderOverlay: HTMLDivElement;
+  private gameOverHeaderImage: HTMLImageElement;
   private gameOverTitle: HTMLHeadingElement;
   private gameOverBody: HTMLParagraphElement;
   private gameOverStats: HTMLDivElement;
   private gameOverEquipment: HTMLDivElement;
   private leaderboardPanel: HTMLDivElement;
-  private leaderboardSummary: HTMLDivElement;
   private leaderboardList: HTMLDivElement;
   private leaderboardNameInput: HTMLInputElement;
   private leaderboardSaveButton: HTMLButtonElement;
   private restartButton: HTMLButtonElement;
-  private restartVisualButton: RestartButton;
   private returnButton: HTMLButtonElement;
   private highscoresButton: HTMLButtonElement;
+  private helpOverlay: HTMLDivElement;
+  private helpStage: HTMLDivElement;
+  private helpTrack: HTMLDivElement;
+  private helpCounter: HTMLSpanElement;
+  private helpPrevButton: HTMLButtonElement;
+  private helpNextButton: HTMLButtonElement;
+  private helpCloseButton: HTMLButtonElement;
+  private gameOverRule: HTMLDivElement;
+  private gameOverRuleImage: HTMLImageElement;
   private topRightCluster: TopRightUiCluster;
   private mobileControls: MobileControlsHud;
   private currentGameOverSignature = '';
+  private currentGameOverRuleSrc = '';
   private lastSavedGameOverSignature = '';
   private leaderboardVisible = false;
   private currentRunSummary: GameHUDPayload['runSummary'] | null = null;
@@ -267,6 +318,13 @@ export class GameHUDSystem {
   private readonly rewardBranchLayout = new RewardBranchLabelLayoutResolver();
   private audioMuted = false;
   private audioVolume = 0.86;
+  private readonly helpImageSets = resolveHelpImageSets();
+  private helpLocale: 'fr' | 'en' = 'en';
+  private helpPageIndex = 0;
+  private helpOpen = false;
+  private helpPointerStartX: number | null = null;
+  private helpAutoOpenedThisSession = false;
+  private volumeDragPointerId: number | null = null;
 
   constructor(host: HTMLElement, private readonly i18n: I18nService, callbacks: GameHUDCallbacks) {
     this.preloadUiAssets();
@@ -302,14 +360,17 @@ export class GameHUDSystem {
           <button type="button" data-exit></button>
         </div>
         <div class="game-hud__settings-grid">
+          <button type="button" data-settings-help></button>
           <button type="button" data-settings-theme></button>
           <button type="button" data-settings-language></button>
           <button type="button" data-settings-mute></button>
-          <label class="game-hud__settings-volume">
+          <button type="button" class="game-hud__settings-volume" data-settings-volume>
             <span class="game-hud__settings-volume-copy" data-settings-volume-label></span>
-            <input type="range" min="0" max="1" step="0.01" data-settings-volume />
+            <span class="game-hud__settings-volume-meter" data-settings-volume-meter aria-hidden="true">
+              <span class="game-hud__settings-volume-meter-fill"></span>
+            </span>
             <strong class="game-hud__settings-volume-value" data-settings-volume-value>86%</strong>
-          </label>
+          </button>
         </div>
       </div>
       <div class="game-hud__momentum-dock">
@@ -358,14 +419,32 @@ export class GameHUDSystem {
         <strong data-toast-name></strong>
       </div>
       <div class="game-hud__mobile-controls-anchor"></div>
+      <div class="game-hud__help" hidden>
+        <div class="game-hud__help-stage" data-help-stage>
+          <button type="button" class="game-hud__help-nav game-hud__help-nav--prev" data-help-prev aria-label="Previous help page"></button>
+          <div class="game-hud__help-track" data-help-track></div>
+          <button type="button" class="game-hud__help-nav game-hud__help-nav--next" data-help-next aria-label="Next help page"></button>
+        </div>
+        <div class="game-hud__help-footer">
+          <span data-help-counter>1 / 1</span>
+          <button type="button" class="game-hud__help-close" data-help-close aria-label="Close help"></button>
+        </div>
+      </div>
       <div class="game-hud__game-over">
+        <div class="game-hud__game-over-header-overlay" data-game-over-header-overlay hidden>
+          <img data-game-over-header-image alt="" class="game-hud__game-over-header-image" />
+        </div>
+        <div class="game-hud__game-over-rule" data-game-over-rule hidden>
+          <img data-game-over-rule-image alt="" class="game-hud__game-over-rule-image" />
+        </div>
         <div class="game-hud__game-over-panel">
-          <h2 data-game-over-title></h2>
-          <p data-game-over-body></p>
+          <div class="game-hud__game-over-header">
+            <h2 data-game-over-title></h2>
+            <p data-game-over-body></p>
+          </div>
           <div class="game-hud__game-over-stats" data-game-over-stats></div>
           <div class="game-hud__game-over-gear" data-game-over-gear></div>
           <div class="game-hud__leaderboard" data-leaderboard-panel hidden>
-            <div class="game-hud__leaderboard-summary" data-leaderboard-summary></div>
             <div class="game-hud__leaderboard-controls">
               <input type="text" maxlength="18" data-leaderboard-name />
               <button type="button" data-leaderboard-save></button>
@@ -412,12 +491,15 @@ export class GameHUDSystem {
     this.statusValue = this.element.querySelector<HTMLParagraphElement>('.game-hud__status')!;
     this.metaValue = this.element.querySelector<HTMLParagraphElement>('.game-hud__meta')!;
     this.exitButton = this.element.querySelector<HTMLButtonElement>('[data-exit]')!;
+    this.settingsHelpButton = this.element.querySelector<HTMLButtonElement>('[data-settings-help]')!;
     this.settingsThemeButton = this.element.querySelector<HTMLButtonElement>('[data-settings-theme]')!;
     this.settingsLanguageButton = this.element.querySelector<HTMLButtonElement>('[data-settings-language]')!;
     this.settingsMuteButton = this.element.querySelector<HTMLButtonElement>('[data-settings-mute]')!;
     this.settingsVolumeLabel = this.element.querySelector<HTMLSpanElement>('[data-settings-volume-label]')!;
     this.settingsVolumeValue = this.element.querySelector<HTMLSpanElement>('[data-settings-volume-value]')!;
-    this.settingsVolumeInput = this.element.querySelector<HTMLInputElement>('[data-settings-volume]')!;
+    this.settingsVolumeButton = this.element.querySelector<HTMLButtonElement>('[data-settings-volume]')!;
+    this.settingsVolumeMeter = this.element.querySelector<HTMLSpanElement>('[data-settings-volume-meter]')!;
+    this.settingsVolumeMeterFill = this.element.querySelector<HTMLSpanElement>('.game-hud__settings-volume-meter-fill')!;
     this.branchLayer = this.element.querySelector<HTMLDivElement>('.game-hud__branch-layer')!;
     this.stashBar = this.element.querySelector<HTMLDivElement>('.game-hud__stash')!;
     this.inventoryBar = this.element.querySelector<HTMLDivElement>('.game-hud__inventory')!;
@@ -432,19 +514,28 @@ export class GameHUDSystem {
     this.toastLabel = this.element.querySelector<HTMLSpanElement>('[data-toast-label]')!;
     this.toastName = this.element.querySelector<HTMLElement>('[data-toast-name]')!;
     this.gameOverOverlay = this.element.querySelector<HTMLDivElement>('.game-hud__game-over')!;
+    this.gameOverHeaderOverlay = this.element.querySelector<HTMLDivElement>('[data-game-over-header-overlay]')!;
+    this.gameOverHeaderImage = this.element.querySelector<HTMLImageElement>('[data-game-over-header-image]')!;
     this.gameOverTitle = this.element.querySelector<HTMLHeadingElement>('[data-game-over-title]')!;
     this.gameOverBody = this.element.querySelector<HTMLParagraphElement>('[data-game-over-body]')!;
     this.gameOverStats = this.element.querySelector<HTMLDivElement>('[data-game-over-stats]')!;
     this.gameOverEquipment = this.element.querySelector<HTMLDivElement>('[data-game-over-gear]')!;
+    this.helpOverlay = this.element.querySelector<HTMLDivElement>('.game-hud__help')!;
+    this.helpStage = this.element.querySelector<HTMLDivElement>('[data-help-stage]')!;
+    this.helpTrack = this.element.querySelector<HTMLDivElement>('[data-help-track]')!;
+    this.helpCounter = this.element.querySelector<HTMLSpanElement>('[data-help-counter]')!;
+    this.helpPrevButton = this.element.querySelector<HTMLButtonElement>('[data-help-prev]')!;
+    this.helpNextButton = this.element.querySelector<HTMLButtonElement>('[data-help-next]')!;
+    this.helpCloseButton = this.element.querySelector<HTMLButtonElement>('[data-help-close]')!;
+    this.gameOverRule = this.element.querySelector<HTMLDivElement>('[data-game-over-rule]')!;
+    this.gameOverRuleImage = this.element.querySelector<HTMLImageElement>('[data-game-over-rule-image]')!;
     this.leaderboardPanel = this.element.querySelector<HTMLDivElement>('[data-leaderboard-panel]')!;
-    this.leaderboardSummary = this.element.querySelector<HTMLDivElement>('[data-leaderboard-summary]')!;
     this.leaderboardList = this.element.querySelector<HTMLDivElement>('[data-leaderboard-list]')!;
     this.leaderboardNameInput = this.element.querySelector<HTMLInputElement>('[data-leaderboard-name]')!;
     this.leaderboardSaveButton = this.element.querySelector<HTMLButtonElement>('[data-leaderboard-save]')!;
     this.restartButton = this.element.querySelector<HTMLButtonElement>('[data-restart]')!;
     this.returnButton = this.element.querySelector<HTMLButtonElement>('[data-return]')!;
     this.highscoresButton = this.element.querySelector<HTMLButtonElement>('[data-highscores]')!;
-    this.restartVisualButton = new RestartButton(this.restartButton, this.i18n.t('gameRestart'));
     this.landingFeedbackDisplay = new LandingGradeDisplay();
     this.element.appendChild(this.landingFeedbackDisplay.element);
     this.topRightCluster = new TopRightUiCluster(
@@ -479,6 +570,23 @@ export class GameHUDSystem {
       this.renderLeaderboard();
     });
     this.leaderboardSaveButton.addEventListener('click', () => this.saveLeaderboardEntry());
+    this.leaderboardList.addEventListener('click', (event) => {
+      const trigger = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-leaderboard-name-trigger]');
+      if (!trigger) {
+        return;
+      }
+      const row = trigger.closest<HTMLElement>('[data-leaderboard-row]');
+      if (!row) {
+        return;
+      }
+      const rows = Array.from(this.leaderboardList.querySelectorAll<HTMLElement>('[data-leaderboard-row]'));
+      rows.forEach((row) => {
+        if (row !== trigger.closest('[data-leaderboard-row]')) {
+          row.classList.remove('is-open');
+        }
+      });
+      row.classList.toggle('is-open');
+    });
     this.leaderboardNameInput.value = window.localStorage.getItem(PLAYER_NAME_KEY) ?? '';
     this.leaderboardNameInput.addEventListener('input', () => this.renderLeaderboard());
     this.leaderboardNameInput.addEventListener('keydown', (event) => {
@@ -491,16 +599,80 @@ export class GameHUDSystem {
       button.addEventListener('click', () => callbacks.onSelectUpgrade(index));
     });
     this.shopCloseButton.addEventListener('click', callbacks.onCloseShop);
+    this.settingsHelpButton.addEventListener('click', () => {
+      this.openHelp(this.i18n.current);
+    });
     this.settingsThemeButton.addEventListener('click', callbacks.onThemeToggle);
     this.settingsLanguageButton.addEventListener('click', callbacks.onLanguageToggle);
     this.settingsMuteButton.addEventListener('click', callbacks.onAudioMuteToggle);
-    this.settingsVolumeInput.addEventListener('input', () => {
-      callbacks.onAudioVolumeChange(Number(this.settingsVolumeInput.value));
+    const updateVolumeFromPointer = (clientX: number) => {
+      const rect = this.settingsVolumeMeter.getBoundingClientRect();
+      if (rect.width <= 0) {
+        return;
+      }
+      const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+      this.audioVolume = ratio;
+      callbacks.onAudioVolumeChange(ratio);
+      this.renderAudioControls();
+    };
+    this.settingsVolumeButton.addEventListener('pointerdown', (event) => {
+      this.volumeDragPointerId = event.pointerId;
+      this.settingsVolumeButton.setPointerCapture(event.pointerId);
+      updateVolumeFromPointer(event.clientX);
     });
-    this.stopObservingTheme = observeThemeChanges(() => this.renderSettingsButtons());
+    this.settingsVolumeButton.addEventListener('pointermove', (event) => {
+      if (this.volumeDragPointerId !== event.pointerId) {
+        return;
+      }
+      updateVolumeFromPointer(event.clientX);
+    });
+    const releaseVolumePointer = (event: PointerEvent) => {
+      if (this.volumeDragPointerId !== event.pointerId) {
+        return;
+      }
+      this.settingsVolumeButton.releasePointerCapture(event.pointerId);
+      this.volumeDragPointerId = null;
+    };
+    this.settingsVolumeButton.addEventListener('pointerup', releaseVolumePointer);
+    this.settingsVolumeButton.addEventListener('pointercancel', releaseVolumePointer);
+    this.helpPrevButton.addEventListener('click', () => this.setHelpPage(this.helpPageIndex - 1));
+    this.helpNextButton.addEventListener('click', () => this.setHelpPage(this.helpPageIndex + 1));
+    this.helpCloseButton.addEventListener('click', () => this.closeHelp());
+    this.helpOverlay.addEventListener('click', (event) => {
+      if (event.target === this.helpOverlay) {
+        this.closeHelp();
+      }
+    });
+    this.helpStage.addEventListener('pointerdown', (event) => {
+      this.helpPointerStartX = event.clientX;
+    });
+    this.helpStage.addEventListener('pointerup', (event) => {
+      if (this.helpPointerStartX === null) {
+        return;
+      }
+      const deltaX = event.clientX - this.helpPointerStartX;
+      this.helpPointerStartX = null;
+      if (Math.abs(deltaX) < 36) {
+        return;
+      }
+      if (deltaX < 0) {
+        this.setHelpPage(this.helpPageIndex + 1);
+      } else {
+        this.setHelpPage(this.helpPageIndex - 1);
+      }
+    });
+    this.helpStage.addEventListener('pointercancel', () => {
+      this.helpPointerStartX = null;
+    });
+    this.stopObservingTheme = observeThemeChanges(() => {
+      this.renderSettingsButtons();
+      this.renderAudioControls();
+      this.renderGameOverButtons();
+    });
     host.appendChild(this.element);
 
     this.i18n.onChange(() => this.renderStatic());
+    this.closeHelp();
     this.renderStatic();
   }
 
@@ -512,6 +684,7 @@ export class GameHUDSystem {
     this.element.style.pointerEvents = visible ? '' : 'none';
     document.body.classList.toggle('game-runtime-ui-active', visible);
     if (!visible) {
+      this.closeHelp();
       this.topRightCluster.toggle(false);
       this.landingFeedbackDisplay.clear();
       this.branchLayer.hidden = true;
@@ -557,6 +730,7 @@ export class GameHUDSystem {
     const fillIntervalMs = 120;
     const fillPhase = Math.floor(performance.now() / fillIntervalMs) % 4;
     this.momentumShell.style.setProperty('--momentum-frame', String(fillPhase));
+    this.settingsVolumeMeterFill.style.setProperty('--sound-ui-frame', String(this.audioMuted ? 0 : fillPhase));
     this.chargeFill.style.setProperty('--charge-ratio', payload.chargeRatio.toFixed(3));
     this.orbitGraceIndicator.classList.toggle('is-visible', payload.orbitGraceActive);
     this.orbitGraceIndicator.style.setProperty('--orbit-grace-progress', payload.orbitGraceProgress.toFixed(3));
@@ -588,7 +762,7 @@ export class GameHUDSystem {
     this.gameOverOverlay.inert = payload.state !== 'game_over';
     this.toast.inert = !payload.acquisition;
     this.stashBar.hidden = payload.state === 'upgrade_choice' || payload.state === 'game_over';
-    this.panel.classList.toggle('is-hidden', payload.state === 'game_over');
+    this.panel.classList.toggle('is-hidden', false);
     this.runStrip.hidden = payload.state === 'game_over';
     this.branchLayer.classList.toggle('is-visible', payload.state === 'upgrade_choice' && showingShop);
     this.shopBar.classList.toggle('is-visible', payload.state === 'upgrade_choice' && showingShop);
@@ -596,6 +770,17 @@ export class GameHUDSystem {
     this.momentumDock.classList.toggle('is-hidden', payload.state === 'upgrade_choice' || payload.state === 'game_over');
     this.gameOverOverlay.classList.toggle('is-visible', payload.state === 'game_over');
     this.toast.classList.toggle('is-visible', Boolean(payload.acquisition));
+    if (
+      payload.state === 'running' &&
+      !this.helpOpen &&
+      !this.helpAutoOpenedThisSession &&
+      this.helpImageSets.en.length > 0 &&
+      window.localStorage.getItem(GAME_HELP_SEEN_KEY) !== '1'
+    ) {
+      this.helpAutoOpenedThisSession = true;
+      window.localStorage.setItem(GAME_HELP_SEEN_KEY, '1');
+      this.openHelp('en');
+    }
     if (payload.acquisition) {
       this.toast.style.setProperty('--toast-progress', payload.acquisition.progress.toFixed(3));
       this.toastIcon.src = payload.acquisition.offer.item.hudIconSrc;
@@ -621,11 +806,11 @@ export class GameHUDSystem {
       mobile: payload.mobile
     });
     if (payload.state === 'game_over') {
-      this.topRightCluster.toggle(false);
       this.renderGameOverSummary(payload);
     } else {
       this.currentRunSummary = null;
       this.currentGameOverSignature = '';
+      this.currentGameOverRuleSrc = '';
       this.lastSavedGameOverSignature = '';
       this.leaderboardVisible = false;
       this.leaderboardPanel.hidden = true;
@@ -660,9 +845,33 @@ export class GameHUDSystem {
     this.toastLabel.textContent = this.i18n.t('gameAcquired');
     this.gameOverTitle.textContent = this.i18n.t('gameOverTitle');
     this.gameOverBody.textContent = this.i18n.t('gameOverBody');
-    this.restartVisualButton.setLabel(this.i18n.t('gameRestart'));
-    this.returnButton.textContent = this.i18n.t('gameMainMenu');
-    this.highscoresButton.textContent = this.i18n.t('gameHighscores');
+    this.helpPrevButton.setAttribute('aria-label', this.i18n.current === 'fr' ? 'Page précédente' : 'Previous page');
+    this.helpNextButton.setAttribute('aria-label', this.i18n.current === 'fr' ? 'Page suivante' : 'Next page');
+    const theme = resolveDocumentTheme();
+    const hoverTheme = theme === 'dark' ? 'light' : 'dark';
+    this.applySvgButton(
+      this.helpPrevButton,
+      SECONDARY_NAV_ASSETS.left[theme],
+      this.i18n.current === 'fr' ? 'Page précédente' : 'Previous page',
+      'game-hud__help-nav game-hud__help-nav--prev',
+      SECONDARY_NAV_ASSETS.left[hoverTheme]
+    );
+    this.applySvgButton(
+      this.helpNextButton,
+      SECONDARY_NAV_ASSETS.right[theme],
+      this.i18n.current === 'fr' ? 'Page suivante' : 'Next page',
+      'game-hud__help-nav game-hud__help-nav--next',
+      SECONDARY_NAV_ASSETS.right[hoverTheme]
+    );
+    this.renderGameOverButtons();
+    this.helpCloseButton.setAttribute('aria-label', this.i18n.current === 'fr' ? "Fermer l'aide" : 'Close help');
+    this.applySvgButton(
+      this.helpCloseButton,
+      SECONDARY_NAV_ASSETS.close[theme],
+      this.i18n.current === 'fr' ? "Fermer l'aide" : 'Close help',
+      'game-hud__help-close',
+      SECONDARY_NAV_ASSETS.close[hoverTheme]
+    );
     this.leaderboardNameInput.placeholder = this.i18n.t('gamePlayerName');
     this.leaderboardSaveButton.textContent = this.i18n.t('gameSaveScore');
     this.bestDistanceLabel.textContent = this.i18n.t('gameBestDistance');
@@ -913,6 +1122,10 @@ export class GameHUDSystem {
     coins = 0
   ) {
     const shopHints = hints.filter((hint) => hint.mode === 'shop_orbit');
+    const theme = resolveDocumentTheme();
+    const hoverTheme = theme === 'dark' ? 'light' : 'dark';
+    const buyButtonSrc = getUIButtonAsset('buy', this.i18n.current, theme);
+    const backButtonSrc = getUIButtonAsset('back', this.i18n.current, theme);
     this.shopButtons.forEach((button, index) => {
       const hint = shopHints[index];
       button.hidden = !hint;
@@ -929,17 +1142,27 @@ export class GameHUDSystem {
       });
       button.style.left = `${layout.left}px`;
       button.style.top = `${layout.top}px`;
+      button.className = 'game-hud__shop-buy-button';
+      button.setAttribute('aria-label', this.i18n.current === 'fr' ? 'Acheter' : 'Buy');
       button.innerHTML = `
-        <span class="game-hud__shop-offer-media">
-          <img src="${hint.offer.item.hudIconSrc}" alt="" class="game-hud__shop-offer-icon" />
-          ${showRarity ? `<img src="${hint.offer.item.rarityIconSrc}" alt="" class="game-hud__shop-offer-rarity" />` : ''}
+        <img src="${buyButtonSrc}" alt="" class="game-hud__shop-buy-button-bg" />
+        <span class="game-hud__shop-buy-button-content">
+          <span class="game-hud__shop-offer-media">
+            <img src="${hint.offer.item.hudIconSrc}" alt="" class="game-hud__shop-offer-icon" />
+            ${showRarity ? `<img src="${hint.offer.item.rarityIconSrc}" alt="" class="game-hud__shop-offer-rarity" />` : ''}
+          </span>
+          <em class="game-hud__shop-price"><span class="game-hud__coin-inline" aria-hidden="true" style="--wallet-coin-url:url('${COIN_ICON_URL}')"></span> × ${hint.price ?? 0}</em>
         </span>
-        <em class="game-hud__shop-price"><span class="game-hud__coin-inline" aria-hidden="true" style="--wallet-coin-url:url('${COIN_ICON_URL}')"></span> × ${hint.price ?? 0}</em>
       `;
       button.classList.toggle('is-disabled', !affordable);
     });
-    this.shopCloseButton.className = 'game-hud__shop-close';
-    this.shopCloseButton.textContent = this.i18n.t('gameShopClose');
+    this.applySvgButton(
+      this.shopCloseButton,
+      backButtonSrc,
+      this.i18n.t('gameShopClose'),
+      'game-hud__shop-close',
+      getUIButtonAsset('back', this.i18n.current, hoverTheme)
+    );
     const centerHint = shopHints[1] ?? shopHints[0] ?? null;
     if (centerHint) {
       this.shopCloseButton.style.left = `${Math.round(centerHint.screenX)}px`;
@@ -973,22 +1196,45 @@ export class GameHUDSystem {
       locale: this.i18n.current,
       t: (key) => this.i18n.t(key)
     });
+    const hasChanged = this.currentGameOverSignature !== markup.signature;
+    if (hasChanged) {
+      const helpPages = this.getHelpPages(this.i18n.current);
+      this.currentGameOverRuleSrc = helpPages.length > 0 ? helpPages[Math.floor(Math.random() * helpPages.length)]! : '';
+      this.gameOverStats.innerHTML = markup.statsMarkup;
+      this.gameOverStats.querySelectorAll<HTMLElement>('.game-hud__game-over-stat').forEach((element, index) => {
+        element.style.setProperty('--game-over-stat-index', String(index));
+      });
+      this.gameOverEquipment.innerHTML = markup.equipmentMarkup;
+      if (this.currentGameOverRuleSrc) {
+        this.gameOverRuleImage.src = this.currentGameOverRuleSrc;
+      }
+      if (this.leaderboardVisible) {
+        this.renderLeaderboard();
+      }
+    }
     this.currentGameOverSignature = markup.signature;
-    this.gameOverStats.innerHTML = markup.statsMarkup;
-    this.gameOverEquipment.innerHTML = markup.equipmentMarkup;
+    this.gameOverRule.hidden = !this.currentGameOverRuleSrc;
     this.updateLeaderboardSaveVisibility();
-    this.renderLeaderboard();
   }
 
   private renderGameOverMode(cause: GameOverCause) {
     const leaderboardMode = this.leaderboardVisible;
+    const theme = resolveDocumentTheme();
+    this.gameOverRule.hidden = leaderboardMode || !this.currentGameOverRuleSrc;
     this.gameOverStats.hidden = leaderboardMode;
     this.gameOverEquipment.hidden = leaderboardMode;
     this.leaderboardPanel.hidden = !leaderboardMode;
     this.highscoresButton.hidden = leaderboardMode;
     this.highscoresButton.disabled = leaderboardMode;
-    this.gameOverTitle.textContent = leaderboardMode ? this.getHighscoresTitle() : this.i18n.t('gameOverTitle');
-    this.gameOverBody.textContent = leaderboardMode ? this.getHighscoresBody() : this.getGameOverBody(cause);
+    this.gameOverHeaderImage.src = leaderboardMode
+      ? getUIButtonAsset('highscore', this.i18n.current, theme)
+      : GAME_OVER_HEADER_ASSETS[theme];
+    this.gameOverHeaderOverlay.hidden = false;
+    this.gameOverTitle.textContent = '';
+    this.gameOverBody.textContent = '';
+    this.gameOverTitle.hidden = true;
+    this.gameOverBody.hidden = true;
+    this.renderGameOverButtons();
   }
 
   private renderLandingFeedback(
@@ -1031,6 +1277,11 @@ export class GameHUDSystem {
     const theme = resolveDocumentTheme();
     const themeLabel = theme === 'dark' ? (this.i18n.current === 'fr' ? 'Mode sombre' : 'Dark theme') : (this.i18n.current === 'fr' ? 'Mode clair' : 'Light theme');
     const languageLabel = this.i18n.current === 'fr' ? 'Changer la langue' : 'Change language';
+    const helpLabel = this.i18n.current === 'fr' ? 'Ouvrir l’aide' : 'Open help';
+
+    this.settingsHelpButton.className = 'game-hud__settings-chip game-hud__settings-chip--help';
+    this.settingsHelpButton.setAttribute('aria-label', helpLabel);
+    this.settingsHelpButton.innerHTML = `<img class="game-hud__settings-theme-icon" src="${HELP_ICON_ASSETS[theme]}" alt="" />`;
 
     this.settingsLanguageButton.className = 'game-hud__settings-chip game-hud__settings-chip--language';
     this.settingsLanguageButton.setAttribute('aria-label', languageLabel);
@@ -1040,50 +1291,121 @@ export class GameHUDSystem {
 
     this.settingsThemeButton.className = `game-hud__settings-chip game-hud__settings-chip--theme is-${theme}-theme`;
     this.settingsThemeButton.setAttribute('aria-label', themeLabel);
-    this.settingsThemeButton.innerHTML = `
-      <span class="game-hud__settings-theme-icon" aria-hidden="true">${theme === 'dark' ? '🌙' : '☀️'}</span>
-    `;
+    this.settingsThemeButton.innerHTML = `<img class="game-hud__settings-theme-icon" src="${THEME_TOGGLE_ASSETS[theme]}" alt="" />`;
   }
 
   private renderAudioControls() {
     const muteLabel = this.audioMuted ? this.i18n.t('gameUnmute') : this.i18n.t('gameMute');
+    const theme = resolveDocumentTheme();
     this.settingsMuteButton.className = `game-hud__settings-chip game-hud__settings-chip--mute${this.audioMuted ? ' is-muted' : ''}`;
     this.settingsMuteButton.setAttribute('aria-label', muteLabel);
-    this.settingsMuteButton.innerHTML = `
-      <span class="game-hud__settings-theme-icon" aria-hidden="true">${this.audioMuted ? '🔇' : '🔊'}</span>
-    `;
-    this.settingsVolumeLabel.textContent = this.i18n.t('gameVolume');
-    this.settingsVolumeValue.textContent = `${Math.round(this.audioVolume * 100)}%`;
-    this.settingsVolumeInput.value = this.audioVolume.toFixed(2);
-    this.settingsVolumeInput.setAttribute('aria-label', this.i18n.t('gameAudio'));
+    this.settingsMuteButton.innerHTML = this.audioMuted
+      ? `<img class="game-hud__settings-sound-off-icon" src="${SOUND_BUTTON_ASSETS.off[theme]}" alt="" />`
+      : `<img class="game-hud__settings-sound-on-icon" src="${SOUND_BUTTON_ASSETS.on[theme]}" alt="" />`;
+    this.settingsVolumeLabel.textContent = '';
+    this.settingsVolumeValue.textContent = '';
+    this.settingsVolumeButton.setAttribute('aria-label', this.i18n.t('gameAudio'));
+    this.settingsVolumeButton.style.setProperty('--sound-volume-ratio', this.audioVolume.toFixed(3));
+    this.settingsVolumeMeter.style.setProperty('--sound-ui-sprite', `url('${SOUND_BUTTON_ASSETS.sprite}')`);
+    this.settingsVolumeMeterFill.style.setProperty('--sound-ui-sprite', `url('${SOUND_BUTTON_ASSETS.sprite}')`);
+    this.settingsVolumeMeter.classList.toggle('is-muted', this.audioMuted);
   }
 
-  private getSunIconMarkup() {
-    return `
-      <svg viewBox="0 0 24 24" class="game-hud__settings-theme-svg">
-        <circle cx="12" cy="12" r="4.25" fill="currentColor"></circle>
-        <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8">
-          <path d="M12 1.8v3.1"></path>
-          <path d="M12 19.1v3.1"></path>
-          <path d="M1.8 12h3.1"></path>
-          <path d="M19.1 12h3.1"></path>
-          <path d="M4.6 4.6l2.2 2.2"></path>
-          <path d="M17.2 17.2l2.2 2.2"></path>
-          <path d="M17.2 6.8l2.2-2.2"></path>
-          <path d="M4.6 19.4l2.2-2.2"></path>
-        </g>
-      </svg>
-    `;
+  private openHelp(locale: 'fr' | 'en') {
+    const pages = this.getHelpPages(locale);
+    if (pages.length === 0) {
+      return;
+    }
+    this.helpLocale = locale;
+    this.helpOpen = true;
+    this.helpPageIndex = 0;
+    this.helpOverlay.hidden = false;
+    this.helpOverlay.classList.add('is-visible');
+    this.helpOverlay.inert = false;
+    this.helpOverlay.setAttribute('aria-hidden', 'false');
+    this.topRightCluster.toggle(false);
+    this.renderHelpPages();
+    this.setHelpPage(0);
   }
 
-  private getMoonIconMarkup() {
+  private closeHelp() {
+    this.helpOpen = false;
+    this.helpOverlay.hidden = true;
+    this.helpOverlay.classList.remove('is-visible');
+    this.helpOverlay.inert = true;
+    this.helpOverlay.setAttribute('aria-hidden', 'true');
+    this.helpPointerStartX = null;
+  }
+
+  private getHelpPages(locale: 'fr' | 'en') {
+    const localized = this.helpImageSets[locale];
+    return localized.length > 0 ? localized : this.helpImageSets.en;
+  }
+
+  private renderHelpPages() {
+    const pages = this.getHelpPages(this.helpLocale);
+    this.helpTrack.innerHTML = pages
+      .map(
+        (src, index) => `
+          <div class="game-hud__help-page" data-help-page="${index}">
+            <img src="${src}" alt="" class="game-hud__help-image" />
+          </div>
+        `
+      )
+      .join('');
+  }
+
+  private setHelpPage(index: number) {
+    const pages = this.getHelpPages(this.helpLocale);
+    if (pages.length === 0) {
+      this.helpPageIndex = 0;
+      this.helpCounter.textContent = '0 / 0';
+      return;
+    }
+    this.helpPageIndex = Math.max(0, Math.min(index, pages.length - 1));
+    this.helpTrack.style.transform = `translate3d(${-this.helpPageIndex * 100}%, 0, 0)`;
+    this.helpCounter.textContent = `${this.helpPageIndex + 1} / ${pages.length}`;
+    this.helpPrevButton.disabled = this.helpPageIndex <= 0;
+    this.helpNextButton.disabled = this.helpPageIndex >= pages.length - 1;
+  }
+
+  private renderGameOverButtons() {
+    const theme = resolveDocumentTheme();
+    const hoverTheme = theme === 'dark' ? 'light' : 'dark';
+    this.applySvgButton(
+      this.restartButton,
+      getUIButtonAsset('restart', this.i18n.current, theme),
+      this.i18n.t('gameRestart'),
+      '',
+      getUIButtonAsset('restart', this.i18n.current, hoverTheme)
+    );
+    this.applySvgButton(
+      this.returnButton,
+      getUIButtonAsset('hub', this.i18n.current, theme),
+      this.i18n.t('gameMainMenu'),
+      '',
+      getUIButtonAsset('hub', this.i18n.current, hoverTheme)
+    );
+    this.applySvgButton(
+      this.highscoresButton,
+      getUIButtonAsset('highscore', this.i18n.current, theme),
+      this.i18n.t('gameHighscores'),
+      '',
+      getUIButtonAsset('highscore', this.i18n.current, hoverTheme)
+    );
+  }
+
+  private applySvgButton(button: HTMLButtonElement, src: string, label: string, extraClass = '', hoverSrc?: string) {
+    button.className = `game-hud__svg-button ${extraClass}`.trim();
+    button.setAttribute('aria-label', label);
+    button.innerHTML = this.renderSwapIconMarkup(src, hoverSrc ?? src, 'game-hud__svg-button-image');
+  }
+
+  private renderSwapIconMarkup(src: string, hoverSrc: string, className: string) {
+    const rootClass = className.split(/\s+/)[0] ?? className;
     return `
-      <svg viewBox="0 0 24 24" class="game-hud__settings-theme-svg">
-        <path
-          d="M15.9 2.8c-3.6 1.2-6.1 4.6-6.1 8.5 0 4.9 4 8.8 8.9 8.8 1.1 0 2.1-.2 3.1-.5-1.5 1.9-3.9 3.1-6.6 3.1-4.9 0-8.9-4-8.9-8.9 0-4.8 3.8-8.7 8.6-8.9.3 0 .6 0 1 .1z"
-          fill="currentColor"
-        ></path>
-      </svg>
+      <span class="${className} ${rootClass}--base" aria-hidden="true"><img src="${src}" alt="" /></span>
+      <span class="${className} ${rootClass}--hover" aria-hidden="true"><img src="${hoverSrc}" alt="" /></span>
     `;
   }
 
@@ -1612,7 +1934,14 @@ export class GameHUDSystem {
     const entry: LeaderboardEntry = {
       name,
       score: this.currentRunSummary.score,
-      recordedAt: Date.now()
+      recordedAt: Date.now(),
+      details: {
+        distanceMeters: this.currentRunSummary.distanceMeters,
+        shardsLanded: this.currentRunSummary.shardsLanded,
+        coinsCollected: this.currentRunSummary.coinsCollected,
+        enemiesKilled: this.currentRunSummary.enemiesKilled,
+        longestMomentumSeconds: this.currentRunSummary.longestMomentumSeconds
+      }
     };
     filteredEntries.push(entry);
     filteredEntries.sort((a, b) => b.score - a.score || a.recordedAt - b.recordedAt);
@@ -1631,10 +1960,28 @@ export class GameHUDSystem {
       const parsed = JSON.parse(raw) as LeaderboardEntry[];
       const uniqueEntries = new Map<string, LeaderboardEntry>();
       parsed.forEach((entry) => {
-        const normalizedName = this.normalizeLeaderboardName(entry.name);
+        const sanitizedEntry: LeaderboardEntry = {
+          name: entry.name,
+          score: Number(entry.score) || 0,
+          recordedAt: Number(entry.recordedAt) || Date.now(),
+          details: entry.details
+            ? {
+                distanceMeters: Number(entry.details.distanceMeters) || 0,
+                shardsLanded: Number(entry.details.shardsLanded) || 0,
+                coinsCollected: Number(entry.details.coinsCollected) || 0,
+                enemiesKilled: Number(entry.details.enemiesKilled) || 0,
+                longestMomentumSeconds: Number(entry.details.longestMomentumSeconds) || 0
+              }
+            : undefined
+        };
+        const normalizedName = this.normalizeLeaderboardName(sanitizedEntry.name);
         const existing = uniqueEntries.get(normalizedName);
-        if (!existing || entry.score > existing.score || (entry.score === existing.score && entry.recordedAt < existing.recordedAt)) {
-          uniqueEntries.set(normalizedName, entry);
+        if (
+          !existing ||
+          sanitizedEntry.score > existing.score ||
+          (sanitizedEntry.score === existing.score && sanitizedEntry.recordedAt < existing.recordedAt)
+        ) {
+          uniqueEntries.set(normalizedName, sanitizedEntry);
         }
       });
       return Array.from(uniqueEntries.values()).sort((a, b) => b.score - a.score || a.recordedAt - b.recordedAt);
@@ -1649,20 +1996,41 @@ export class GameHUDSystem {
     if (!this.leaderboardVisible) {
       return;
     }
-    this.leaderboardSummary.innerHTML = this.renderLeaderboardSummary();
     const entries = this.readLeaderboard();
-    this.leaderboardList.innerHTML = entries.length
-      ? entries
-          .map(
-            (entry, index) => `
-              <div class="game-hud__leaderboard-row">
-                <strong>#${index + 1} ${entry.name}</strong>
-                <span>${entry.score}</span>
-              </div>
-            `
-          )
-          .join('')
-      : `<p class="game-hud__game-over-empty">${this.i18n.t('gameLeaderboardEmpty')}</p>`;
+    const filledEntries = entries.length >= 5 ? entries : entries.concat(Array.from({ length: 5 - entries.length }, () => null));
+    this.leaderboardList.innerHTML = filledEntries
+      .map((entry, index) =>
+        entry
+          ? `
+            <div class="game-hud__leaderboard-row" data-leaderboard-row data-rank-tier="${this.getLeaderboardRankTier(index)}" style="--leaderboard-row-index:${index}">
+              <span class="game-hud__leaderboard-rank">#${index + 1}</span>
+              <span class="game-hud__leaderboard-main">
+                <button type="button" class="game-hud__leaderboard-name" data-leaderboard-name-trigger aria-label="${entry.name}">
+                  <span>${entry.name}</span>
+                </button>
+                <span class="game-hud__leaderboard-score">${entry.score}</span>
+              </span>
+              ${this.renderLeaderboardDetail(entry)}
+            </div>
+          `
+          : `
+            <div class="game-hud__leaderboard-row is-placeholder" aria-hidden="true" style="--leaderboard-row-index:${index}">
+              <span class="game-hud__leaderboard-rank">#${index + 1}</span>
+              <span class="game-hud__leaderboard-main">
+                <span class="game-hud__leaderboard-name"><span>...</span></span>
+                <span class="game-hud__leaderboard-score">-</span>
+              </span>
+            </div>
+          `
+      )
+      .join('');
+  }
+
+  private getLeaderboardRankTier(index: number) {
+    if (index === 0) return 'first';
+    if (index === 1) return 'second';
+    if (index === 2) return 'third';
+    return 'other';
   }
 
   private getLeaderboardPlayerName() {
@@ -1686,40 +2054,25 @@ export class GameHUDSystem {
     this.leaderboardSaveButton.disabled = !canSave || this.currentGameOverSignature === this.lastSavedGameOverSignature;
   }
 
-  private renderLeaderboardSummary() {
-    if (!this.currentRunSummary) {
+  private renderLeaderboardDetail(entry: LeaderboardEntry) {
+    if (!entry.details) {
       return '';
     }
-    const bests = [
-      { label: this.i18n.t('gameScore'), value: String(this.currentRunSummary.score), isBest: this.currentRunSummary.personalBests.score },
-      { label: this.i18n.t('gameBestDistance'), value: `${Math.round(this.currentRunSummary.distanceMeters)}m`, isBest: this.currentRunSummary.personalBests.distanceMeters },
-      { label: this.i18n.t('gameCoins'), value: String(this.currentRunSummary.coinsCollected), isBest: this.currentRunSummary.personalBests.coinsCollected },
-      { label: this.i18n.current === 'fr' ? 'Ennemis' : 'Enemies', value: String(this.currentRunSummary.enemiesKilled), isBest: this.currentRunSummary.personalBests.enemiesKilled }
-    ];
+    const killsLabel = this.i18n.current === 'fr' ? 'Ennemis' : 'Enemies';
+    const momentumLabel = this.i18n.current === 'fr' ? 'Momentum' : 'Momentum';
     return `
-      <div class="game-hud__leaderboard-personal">
-        ${bests
-          .map(
-            (entry) => `
-              <div class="game-hud__leaderboard-personal-row">
-                <span>${entry.label}</span>
-                <strong>${entry.value}${entry.isBest ? ` <em>${this.i18n.current === 'fr' ? 'PB' : 'PB'}</em>` : ''}</strong>
-              </div>
-            `
-          )
-          .join('')}
-      </div>
+      <span class="game-hud__leaderboard-detail" aria-hidden="true">
+        <span>${this.i18n.t('gameDistance')}: <strong>${Math.round(entry.details.distanceMeters)}m</strong></span>
+        <span>${this.i18n.t('gameRunShards')}: <strong>${entry.details.shardsLanded}</strong></span>
+        <span>${this.i18n.t('gameCoins')}: <strong>${entry.details.coinsCollected}</strong></span>
+        <span>${killsLabel}: <strong>${entry.details.enemiesKilled}</strong></span>
+        <span>${momentumLabel}: <strong>${entry.details.longestMomentumSeconds.toFixed(1)}s</strong></span>
+      </span>
     `;
   }
 
   private getHighscoresTitle() {
-    return this.i18n.current === 'fr' ? 'Highscores' : 'Highscores';
-  }
-
-  private getHighscoresBody() {
-    return this.i18n.current === 'fr'
-      ? 'Classement détaillé et records personnels de la run.'
-      : 'Detailed leaderboard and personal run records.';
+    return this.i18n.current === 'fr' ? 'High Score' : 'High Score';
   }
 
   private canSaveLeaderboardEntry(name = this.getLeaderboardPlayerName()) {
@@ -1732,6 +2085,43 @@ export class GameHUDSystem {
 
   private preloadUiAssets() {
     const itemAssets = rogueliteItems.flatMap((item) => [item.hudIconSrc, item.rarityIconSrc]);
+    const buttonAssets = [
+      getUIButtonAsset('restart', 'fr', 'dark'),
+      getUIButtonAsset('restart', 'fr', 'light'),
+      getUIButtonAsset('restart', 'en', 'dark'),
+      getUIButtonAsset('restart', 'en', 'light'),
+      getUIButtonAsset('back', 'fr', 'dark'),
+      getUIButtonAsset('back', 'fr', 'light'),
+      getUIButtonAsset('back', 'en', 'dark'),
+      getUIButtonAsset('back', 'en', 'light'),
+      getUIButtonAsset('highscore', 'fr', 'dark'),
+      getUIButtonAsset('highscore', 'fr', 'light'),
+      getUIButtonAsset('highscore', 'en', 'dark'),
+      getUIButtonAsset('highscore', 'en', 'light'),
+      getUIButtonAsset('buy', 'fr', 'dark'),
+      getUIButtonAsset('buy', 'fr', 'light'),
+      getUIButtonAsset('buy', 'en', 'dark'),
+      getUIButtonAsset('buy', 'en', 'light'),
+      getUIButtonAsset('hub', 'fr', 'dark'),
+      getUIButtonAsset('hub', 'fr', 'light'),
+      getUIButtonAsset('hub', 'en', 'dark'),
+      getUIButtonAsset('hub', 'en', 'light'),
+      THEME_TOGGLE_ASSETS.dark,
+      THEME_TOGGLE_ASSETS.light,
+      HELP_ICON_ASSETS.dark,
+      HELP_ICON_ASSETS.light,
+      SECONDARY_NAV_ASSETS.left.dark,
+      SECONDARY_NAV_ASSETS.left.light,
+      SECONDARY_NAV_ASSETS.right.dark,
+      SECONDARY_NAV_ASSETS.right.light,
+      SECONDARY_NAV_ASSETS.close.dark,
+      SECONDARY_NAV_ASSETS.close.light,
+      SOUND_BUTTON_ASSETS.on.dark,
+      SOUND_BUTTON_ASSETS.on.light,
+      SOUND_BUTTON_ASSETS.off.dark,
+      SOUND_BUTTON_ASSETS.off.light,
+      SOUND_BUTTON_ASSETS.sprite
+    ];
     Object.values(GRADE_SPRITE_ASSET_URLS)
       .concat(
         Object.values(MOMENTUM_BAR_ASSETS),
@@ -1740,7 +2130,7 @@ export class GameHUDSystem {
         Object.values(EQUIPMENT_UI_ASSETS.charges),
         Object.values(MOBILE_CONTROL_ASSETS),
         MOBILE_CHARGE_ASSETS,
-        Object.values(RESTART_BUTTON_ASSETS),
+        buttonAssets,
         Object.values(SETTINGS_BUTTON_ASSETS)
       )
       .forEach((src) => {

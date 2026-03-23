@@ -3,8 +3,8 @@ import type { ContentService } from '../data/ContentService';
 import { I18nService } from './I18nService';
 
 const LANGUAGE_BUTTON_ASSETS = {
-  fr: new URL('../../assets/images/Langue/FR.svg', import.meta.url).href,
-  en: new URL('../../assets/images/Langue/EN.svg', import.meta.url).href
+  fr: new URL('../../assets/images/shared/localization/fr.svg', import.meta.url).href,
+  en: new URL('../../assets/images/shared/localization/en.svg', import.meta.url).href
 } as const;
 
 interface NavigationHUDCallbacks {

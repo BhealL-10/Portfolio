@@ -43,7 +43,7 @@ export class NavigationBar {
     
     const currentLang = this.languageManager ? this.languageManager.getCurrentLanguage() : 'fr';
     const flagImg = document.createElement('img');
-    flagImg.src = currentLang === 'fr' ? 'assets/images/Langue/FR.svg' : 'assets/images/Langue/EN.svg';
+    flagImg.src = currentLang === 'fr' ? 'assets/images/shared/localization/fr.svg' : 'assets/images/shared/localization/en.svg';
     flagImg.alt = currentLang === 'fr' ? 'Français' : 'English';
     flagImg.style.width = '24px';
     flagImg.style.height = '24px';
@@ -53,7 +53,7 @@ export class NavigationBar {
       if (this.languageManager) {
         this.languageManager.toggleLanguage();
         const newLang = this.languageManager.getCurrentLanguage();
-        flagImg.src = newLang === 'fr' ? 'assets/images/Langue/FR.svg' : 'assets/images/Langue/EN.svg';
+        flagImg.src = newLang === 'fr' ? 'assets/images/shared/localization/fr.svg' : 'assets/images/shared/localization/en.svg';
         flagImg.alt = newLang === 'fr' ? 'Français' : 'English';
       }
     });

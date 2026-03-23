@@ -77,7 +77,7 @@ interface GameFieldEntity {
 const ORBIT_CAMERA_POSITION = new THREE.Vector3(0, 0.88, 28.8);
 const MINI_SHARDS_PER_SLOT = 4;
 const MINI_SHARD_PALETTE = ['#75AF80', '#FF4545', '#49BCFF', '#8AEBEF'] as const;
-const DEFAULT_MINI_LOGO_TEXTURE = new URL('../../assets/images/Logo/logomodedark.svg', import.meta.url).href;
+const DEFAULT_MINI_LOGO_TEXTURE = new URL('../../assets/images/shared/branding/ape-prod-mark-dark.svg', import.meta.url).href;
 const MINI_SHARD_ACCENT_SWAP_SECONDS = 1;
 const MINI_SHARD_ACCENT_BLEND_SECONDS = 0.32;
 const MINI_IDLE_FRAGMENT_OFFSETS = [

@@ -1,0 +1,1319 @@
+{
+  "generatedAt": "2026-03-23T13:13:18.723Z",
+  "summary": {
+    "moved": 250,
+    "mergedDuplicates": 2,
+    "archivedUnreferenced": 6,
+    "retainedUnreferenced": 12
+  },
+  "moved": [
+    {
+      "from": "assets/images/Logo/logomodedark.svg",
+      "to": "assets/images/shared/branding/ape-prod-mark-dark.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/logomodelight.svg",
+      "to": "assets/images/shared/branding/ape-prod-mark-light.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/LogoApeProdDark.png",
+      "to": "assets/images/shared/branding/ape-prod-intro-dark.png",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/LogoApeProdLight.png",
+      "to": "assets/images/shared/branding/ape-prod-intro-light.png",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/AffinityLogoDark.svg",
+      "to": "assets/images/shared/branding/affinity-dark.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/AffinityLogoLight.svg",
+      "to": "assets/images/shared/branding/affinity-light.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/DavinciLogoDark.svg",
+      "to": "assets/images/shared/branding/davinci-dark.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/DavinciLogoLight.svg",
+      "to": "assets/images/shared/branding/davinci-light.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/DiscordLogoDark.svg",
+      "to": "assets/images/shared/branding/discord-dark.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/DiscordLogoLight.svg",
+      "to": "assets/images/shared/branding/discord-light.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/IALogoDark.svg",
+      "to": "assets/images/shared/branding/ia-dark.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/IALogoLight.svg",
+      "to": "assets/images/shared/branding/ia-light.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/MovieLogoDark.svg",
+      "to": "assets/images/shared/branding/movie-dark.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/MovieLogoLight.svg",
+      "to": "assets/images/shared/branding/movie-light.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/SpineLogoDark.svg",
+      "to": "assets/images/shared/branding/spine-dark.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/SpineLogoLight.svg",
+      "to": "assets/images/shared/branding/spine-light.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/LOGO-HUB_dark.svg",
+      "to": "assets/images/shared/branding/variants/logo-hub-dark.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/LOGO-HUB_light.svg",
+      "to": "assets/images/shared/branding/variants/logo-hub-light.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/LogoV2Dark.svg",
+      "to": "assets/images/shared/branding/variants/logo-v2-dark.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/LogoV2light.svg",
+      "to": "assets/images/shared/branding/variants/logo-v2-light.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/Moontheme.svg",
+      "to": "assets/images/shared/theme-icons/moon.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/sunTheme.svg",
+      "to": "assets/images/shared/theme-icons/sun.svg",
+      "reason": "branding reorganization"
+    },
+    {
+      "from": "assets/images/Logo/3D Objects/desktop.ini",
+      "to": "assets/archive/unreferenced/system/desktop.ini",
+      "reason": "os-generated file not consumed by the project"
+    },
+    {
+      "from": "assets/images/Langue/FR.svg",
+      "to": "assets/images/shared/localization/fr.svg",
+      "reason": "shared localization assets"
+    },
+    {
+      "from": "assets/images/Langue/EN.svg",
+      "to": "assets/images/shared/localization/en.svg",
+      "reason": "shared localization assets"
+    },
+    {
+      "from": "assets/images/btn/FR_RESTART_dark.svg",
+      "to": "assets/images/game/ui/buttons/labels/fr-restart-dark.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/FR_RESTART_light.svg",
+      "to": "assets/images/game/ui/buttons/labels/fr-restart-light.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/FR_BACK_dark.svg",
+      "to": "assets/images/game/ui/buttons/labels/fr-back-dark.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/FR_BACK_light.svg",
+      "to": "assets/images/game/ui/buttons/labels/fr-back-light.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/FR_HIGHSCORE_dark.svg",
+      "to": "assets/images/game/ui/buttons/labels/fr-highscore-dark.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/FR_HIGHSCORE_light.svg",
+      "to": "assets/images/game/ui/buttons/labels/fr-highscore-light.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/FR_BUY_dark.svg",
+      "to": "assets/images/game/ui/buttons/labels/fr-buy-dark.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/FR_BUY_light.svg",
+      "to": "assets/images/game/ui/buttons/labels/fr-buy-light.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/FR_HUB_dark.svg",
+      "to": "assets/images/game/ui/buttons/labels/fr-hub-dark.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/FR_HUB_light.svg",
+      "to": "assets/images/game/ui/buttons/labels/fr-hub-light.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/EN_RESTART_dark.svg",
+      "to": "assets/images/game/ui/buttons/labels/en-restart-dark.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/EN_RESTART_light.svg",
+      "to": "assets/images/game/ui/buttons/labels/en-restart-light.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/EN_BACK_dark.svg",
+      "to": "assets/images/game/ui/buttons/labels/en-back-dark.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/EN_BACK_light.svg",
+      "to": "assets/images/game/ui/buttons/labels/en-back-light.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/EN_HIGHSCORE_dark.svg",
+      "to": "assets/images/game/ui/buttons/labels/en-highscore-dark.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/EN_HIGHSCORE_light.svg",
+      "to": "assets/images/game/ui/buttons/labels/en-highscore-light.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/EN_BUY_dark.svg",
+      "to": "assets/images/game/ui/buttons/labels/en-buy-dark.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/EN_BUY_light.svg",
+      "to": "assets/images/game/ui/buttons/labels/en-buy-light.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/EN_HUB_dark.svg",
+      "to": "assets/images/game/ui/buttons/labels/en-hub-dark.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/EN_HUB_light.svg",
+      "to": "assets/images/game/ui/buttons/labels/en-hub-light.svg",
+      "reason": "game ui button labels"
+    },
+    {
+      "from": "assets/images/btn/LEFT_dark.svg",
+      "to": "assets/images/game/ui/buttons/icons/arrow-left-dark.svg",
+      "reason": "game ui icons and headers"
+    },
+    {
+      "from": "assets/images/btn/LEFT_light.svg",
+      "to": "assets/images/game/ui/buttons/icons/arrow-left-light.svg",
+      "reason": "game ui icons and headers"
+    },
+    {
+      "from": "assets/images/btn/RIGHT_dark.svg",
+      "to": "assets/images/game/ui/buttons/icons/arrow-right-dark.svg",
+      "reason": "game ui icons and headers"
+    },
+    {
+      "from": "assets/images/btn/RIGHT_left.svg",
+      "to": "assets/images/game/ui/buttons/icons/arrow-right-light.svg",
+      "reason": "game ui icons and headers"
+    },
+    {
+      "from": "assets/images/btn/CLOSE_right.svg",
+      "to": "assets/images/game/ui/buttons/icons/close-dark.svg",
+      "reason": "game ui icons and headers"
+    },
+    {
+      "from": "assets/images/btn/CLOSE_light.svg",
+      "to": "assets/images/game/ui/buttons/icons/close-light.svg",
+      "reason": "game ui icons and headers"
+    },
+    {
+      "from": "assets/images/btn/help-reward_dark.svg",
+      "to": "assets/images/game/ui/buttons/icons/help-dark.svg",
+      "reason": "game ui icons and headers"
+    },
+    {
+      "from": "assets/images/btn/help-reward_light.svg",
+      "to": "assets/images/game/ui/buttons/icons/help-light.svg",
+      "reason": "game ui icons and headers"
+    },
+    {
+      "from": "assets/images/btn/Sound_Dark.svg",
+      "to": "assets/images/game/ui/buttons/icons/sound-on-dark.svg",
+      "reason": "game ui icons and headers"
+    },
+    {
+      "from": "assets/images/btn/Sound_Light.svg",
+      "to": "assets/images/game/ui/buttons/icons/sound-on-light.svg",
+      "reason": "game ui icons and headers"
+    },
+    {
+      "from": "assets/images/btn/Sound-OFF_Dark.svg",
+      "to": "assets/images/game/ui/buttons/icons/sound-off-dark.svg",
+      "reason": "game ui icons and headers"
+    },
+    {
+      "from": "assets/images/btn/Sound-OFF_light.svg",
+      "to": "assets/images/game/ui/buttons/icons/sound-off-light.svg",
+      "reason": "game ui icons and headers"
+    },
+    {
+      "from": "assets/images/btn/GAMEOVER_dark.svg",
+      "to": "assets/images/game/ui/headers/game-over-title-dark.svg",
+      "reason": "game ui icons and headers"
+    },
+    {
+      "from": "assets/images/btn/GAMEOVER_light.svg",
+      "to": "assets/images/game/ui/headers/game-over-title-light.svg",
+      "reason": "game ui icons and headers"
+    },
+    {
+      "from": "assets/images/btn/BG_Gameover_dark.svg",
+      "to": "assets/images/game/ui/backgrounds/game-over-background-dark.svg",
+      "reason": "game ui icons and headers"
+    },
+    {
+      "from": "assets/images/btn/BG_Gameover_light.svg",
+      "to": "assets/images/game/ui/backgrounds/game-over-background-light.svg",
+      "reason": "game ui icons and headers"
+    },
+    {
+      "from": "assets/images/btn/BG_dark_1.svg",
+      "to": "assets/images/game/ui/backgrounds/hud-dark-1.svg",
+      "reason": "game ui backgrounds"
+    },
+    {
+      "from": "assets/images/btn/BG_Light_1.svg",
+      "to": "assets/images/game/ui/backgrounds/hud-light-1.svg",
+      "reason": "game ui backgrounds"
+    },
+    {
+      "from": "assets/images/btn/BG_dark_2.svg",
+      "to": "assets/images/game/ui/backgrounds/hud-dark-2.svg",
+      "reason": "game ui backgrounds"
+    },
+    {
+      "from": "assets/images/btn/BG_Light_2.svg",
+      "to": "assets/images/game/ui/backgrounds/hud-light-2.svg",
+      "reason": "game ui backgrounds"
+    },
+    {
+      "from": "assets/images/btn/BG_dark_3.svg",
+      "to": "assets/images/game/ui/backgrounds/hud-dark-3.svg",
+      "reason": "game ui backgrounds"
+    },
+    {
+      "from": "assets/images/btn/BG_Light_3.svg",
+      "to": "assets/images/game/ui/backgrounds/hud-light-3.svg",
+      "reason": "game ui backgrounds"
+    },
+    {
+      "from": "assets/images/btn/BG_dark_4.svg",
+      "to": "assets/images/game/ui/backgrounds/hud-dark-4.svg",
+      "reason": "game ui backgrounds"
+    },
+    {
+      "from": "assets/images/btn/BG_Light_4.svg",
+      "to": "assets/images/game/ui/backgrounds/hud-light-4.svg",
+      "reason": "game ui backgrounds"
+    },
+    {
+      "from": "assets/images/btn/BG_dark_5.svg",
+      "to": "assets/images/game/ui/backgrounds/hud-dark-5.svg",
+      "reason": "game ui backgrounds"
+    },
+    {
+      "from": "assets/images/btn/BG_Light_5.svg",
+      "to": "assets/images/game/ui/backgrounds/hud-light-5.svg",
+      "reason": "game ui backgrounds"
+    },
+    {
+      "from": "assets/images/help/EN-Rules0.png",
+      "to": "assets/images/game/ui/help/en/en-rules-0.png",
+      "reason": "game help image sets"
+    },
+    {
+      "from": "assets/images/help/EN-Rules1.png",
+      "to": "assets/images/game/ui/help/en/en-rules-1.png",
+      "reason": "game help image sets"
+    },
+    {
+      "from": "assets/images/help/EN-Rules2.png",
+      "to": "assets/images/game/ui/help/en/en-rules-2.png",
+      "reason": "game help image sets"
+    },
+    {
+      "from": "assets/images/help/EN-Rules3.png",
+      "to": "assets/images/game/ui/help/en/en-rules-3.png",
+      "reason": "game help image sets"
+    },
+    {
+      "from": "assets/images/help/EN-Rules4.png",
+      "to": "assets/images/game/ui/help/en/en-rules-4.png",
+      "reason": "game help image sets"
+    },
+    {
+      "from": "assets/images/help/EN-Rules5.png",
+      "to": "assets/images/game/ui/help/en/en-rules-5.png",
+      "reason": "game help image sets"
+    },
+    {
+      "from": "assets/images/help/EN-Rules6.png",
+      "to": "assets/images/game/ui/help/en/en-rules-6.png",
+      "reason": "game help image sets"
+    },
+    {
+      "from": "assets/images/help/FR-Rules0.png",
+      "to": "assets/images/game/ui/help/fr/fr-rules-0.png",
+      "reason": "game help image sets"
+    },
+    {
+      "from": "assets/images/help/FR-Rules1.png",
+      "to": "assets/images/game/ui/help/fr/fr-rules-1.png",
+      "reason": "game help image sets"
+    },
+    {
+      "from": "assets/images/help/FR-Rules2.png",
+      "to": "assets/images/game/ui/help/fr/fr-rules-2.png",
+      "reason": "game help image sets"
+    },
+    {
+      "from": "assets/images/help/FR-Rules3.png",
+      "to": "assets/images/game/ui/help/fr/fr-rules-3.png",
+      "reason": "game help image sets"
+    },
+    {
+      "from": "assets/images/help/FR-Rules4.png",
+      "to": "assets/images/game/ui/help/fr/fr-rules-4.png",
+      "reason": "game help image sets"
+    },
+    {
+      "from": "assets/images/help/FR-Rules5.png",
+      "to": "assets/images/game/ui/help/fr/fr-rules-5.png",
+      "reason": "game help image sets"
+    },
+    {
+      "from": "assets/images/help/FR-Rules6.png",
+      "to": "assets/images/game/ui/help/fr/fr-rules-6.png",
+      "reason": "game help image sets"
+    },
+    {
+      "from": "assets/images/itemhud/ui-equipment-dock.svg",
+      "to": "assets/images/game/ui/equipment/dock.svg",
+      "reason": "game equipment dock"
+    },
+    {
+      "from": "assets/images/itemhud/hud-charge-big-cannon.svg",
+      "to": "assets/images/game/ui/equipment/charges/big-cannon.svg",
+      "reason": "game equipment charge icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-charge-blower-primary.svg",
+      "to": "assets/images/game/ui/equipment/charges/blower-primary.svg",
+      "reason": "game equipment charge icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-charge-blower-recharge.svg",
+      "to": "assets/images/game/ui/equipment/charges/blower-recharge.svg",
+      "reason": "game equipment charge icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-charge-front-cannon.svg",
+      "to": "assets/images/game/ui/equipment/charges/front-cannon.svg",
+      "reason": "game equipment charge icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-charge-front-reactor.svg",
+      "to": "assets/images/game/ui/equipment/charges/front-reactor.svg",
+      "reason": "game equipment charge icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-charge-grappling-hook.svg",
+      "to": "assets/images/game/ui/equipment/charges/grappling-hook.svg",
+      "reason": "game equipment charge icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-charge-magnet.svg",
+      "to": "assets/images/game/ui/equipment/charges/magnet.svg",
+      "reason": "game equipment charge icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-charge-plane.svg",
+      "to": "assets/images/game/ui/equipment/charges/plane.svg",
+      "reason": "game equipment charge icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-charge-rear-reactor.svg",
+      "to": "assets/images/game/ui/equipment/charges/rear-reactor.svg",
+      "reason": "game equipment charge icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-charge-shield.svg",
+      "to": "assets/images/game/ui/equipment/charges/shield.svg",
+      "reason": "game equipment charge icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-charge-thruster.svg",
+      "to": "assets/images/game/ui/equipment/charges/thruster.svg",
+      "reason": "game equipment charge icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-charge-wings.svg",
+      "to": "assets/images/game/ui/equipment/charges/wings.svg",
+      "reason": "game equipment charge icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-charge-wrapper.svg",
+      "to": "assets/images/game/ui/equipment/charges/wrapper.svg",
+      "reason": "game equipment charge icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-module-big-cannon.png",
+      "to": "assets/images/game/ui/equipment/modules/big-cannon.png",
+      "reason": "game equipment module icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-module-blower.png",
+      "to": "assets/images/game/ui/equipment/modules/blower.png",
+      "reason": "game equipment module icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-module-front-cannon.png",
+      "to": "assets/images/game/ui/equipment/modules/front-cannon.png",
+      "reason": "game equipment module icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-module-front-reactor.png",
+      "to": "assets/images/game/ui/equipment/modules/front-reactor.png",
+      "reason": "game equipment module icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-module-grappling-hook.png",
+      "to": "assets/images/game/ui/equipment/modules/grappling-hook.png",
+      "reason": "game equipment module icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-module-magnet.png",
+      "to": "assets/images/game/ui/equipment/modules/magnet.png",
+      "reason": "game equipment module icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-module-plane.png",
+      "to": "assets/images/game/ui/equipment/modules/plane.png",
+      "reason": "game equipment module icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-module-rear-reactor.png",
+      "to": "assets/images/game/ui/equipment/modules/rear-reactor.png",
+      "reason": "game equipment module icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-module-shield.png",
+      "to": "assets/images/game/ui/equipment/modules/shield.png",
+      "reason": "game equipment module icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-module-thruster.png",
+      "to": "assets/images/game/ui/equipment/modules/thruster.png",
+      "reason": "game equipment module icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-module-wings.png",
+      "to": "assets/images/game/ui/equipment/modules/wings.png",
+      "reason": "game equipment module icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-module-wrapper.png",
+      "to": "assets/images/game/ui/equipment/modules/wrapper.png",
+      "reason": "game equipment module icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-passive-belt.png",
+      "to": "assets/images/game/ui/equipment/passives/belt.png",
+      "reason": "game equipment passive icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-passive-compass.png",
+      "to": "assets/images/game/ui/equipment/passives/compass.png",
+      "reason": "game equipment passive icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-passive-map.png",
+      "to": "assets/images/game/ui/equipment/passives/map.png",
+      "reason": "game equipment passive icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-passive-parrot.png",
+      "to": "assets/images/game/ui/equipment/passives/parrot.png",
+      "reason": "game equipment passive icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-passive-purse.png",
+      "to": "assets/images/game/ui/equipment/passives/purse.png",
+      "reason": "game equipment passive icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-passive-rudder.png",
+      "to": "assets/images/game/ui/equipment/passives/rudder.png",
+      "reason": "game equipment passive icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-passive-shock-absorbers.png",
+      "to": "assets/images/game/ui/equipment/passives/shock-absorbers.png",
+      "reason": "game equipment passive icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-passive-spyglass.png",
+      "to": "assets/images/game/ui/equipment/passives/spyglass.png",
+      "reason": "game equipment passive icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-passive-tail.png",
+      "to": "assets/images/game/ui/equipment/passives/tail.png",
+      "reason": "game equipment passive icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-passive-totem.png",
+      "to": "assets/images/game/ui/equipment/passives/totem.png",
+      "reason": "game equipment passive icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-rarity-common.png",
+      "to": "assets/images/game/ui/equipment/rarities/common.png",
+      "reason": "game equipment rarity icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-rarity-epic.png",
+      "to": "assets/images/game/ui/equipment/rarities/epic.png",
+      "reason": "game equipment rarity icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-rarity-legendary.png",
+      "to": "assets/images/game/ui/equipment/rarities/legendary.png",
+      "reason": "game equipment rarity icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-rarity-rare.png",
+      "to": "assets/images/game/ui/equipment/rarities/rare.png",
+      "reason": "game equipment rarity icons"
+    },
+    {
+      "from": "assets/images/itemhud/hud-rarity-uncommon.png",
+      "to": "assets/images/game/ui/equipment/rarities/uncommon.png",
+      "reason": "game equipment rarity icons"
+    },
+    {
+      "from": "assets/images/projects/intro.png",
+      "to": "assets/images/portfolio/projects/ape-prod/cover.png",
+      "reason": "portfolio project organization"
+    },
+    {
+      "from": "assets/images/projects/Imageprofile.png",
+      "to": "assets/images/portfolio/projects/ape-prod/profile.png",
+      "reason": "portfolio project organization"
+    },
+    {
+      "from": "assets/images/projects/AcceuilPortfolio.svg",
+      "to": "assets/images/portfolio/projects/ape-prod/home-screen.svg",
+      "reason": "portfolio project organization"
+    },
+    {
+      "from": "assets/images/projects/Vpropreterportofolio.png",
+      "to": "assets/images/portfolio/projects/ape-prod/value-proposition.png",
+      "reason": "portfolio project organization"
+    },
+    {
+      "from": "assets/images/projects/TonoIntro.png",
+      "to": "assets/images/portfolio/projects/tono-discord-bot/cover.png",
+      "reason": "portfolio project organization"
+    },
+    {
+      "from": "assets/images/projects/Davinciintro.png",
+      "to": "assets/images/portfolio/projects/davinci-resolve/cover.png",
+      "reason": "portfolio project organization"
+    },
+    {
+      "from": "assets/images/projects/Davinci1.webp",
+      "to": "assets/images/portfolio/projects/davinci-resolve/gallery-01.webp",
+      "reason": "portfolio project organization"
+    },
+    {
+      "from": "assets/images/projects/Davinci2.webp",
+      "to": "assets/images/portfolio/projects/davinci-resolve/gallery-02.webp",
+      "reason": "portfolio project organization"
+    },
+    {
+      "from": "assets/images/projects/Davinci3.webp",
+      "to": "assets/images/portfolio/projects/davinci-resolve/gallery-03.webp",
+      "reason": "portfolio project organization"
+    },
+    {
+      "from": "assets/images/projects/Davinci4.webp",
+      "to": "assets/images/portfolio/projects/davinci-resolve/gallery-04.webp",
+      "reason": "portfolio project organization"
+    },
+    {
+      "from": "assets/images/projects/Davinci5.webp",
+      "to": "assets/images/portfolio/projects/davinci-resolve/gallery-05.webp",
+      "reason": "portfolio project organization"
+    },
+    {
+      "from": "assets/images/projects/Davinci6.webp",
+      "to": "assets/images/portfolio/projects/davinci-resolve/gallery-06.webp",
+      "reason": "portfolio project organization"
+    },
+    {
+      "from": "assets/images/projects/Introia.png",
+      "to": "assets/images/portfolio/projects/generative-ai/cover.png",
+      "reason": "portfolio project organization"
+    },
+    {
+      "from": "assets/images/projects/Discordintro.png",
+      "to": "assets/images/portfolio/projects/discord-bots/cover.png",
+      "reason": "portfolio project organization"
+    },
+    {
+      "from": "assets/images/projects/placeholder.svg",
+      "to": "assets/images/portfolio/projects/shared/placeholder.svg",
+      "reason": "portfolio project organization"
+    },
+    {
+      "from": "assets/images/projects/Spine.png",
+      "to": "assets/images/portfolio/projects/avatars-and-animation/cover.png",
+      "reason": "portfolio project organization"
+    },
+    {
+      "from": "assets/images/projects/Conception.png",
+      "to": "assets/images/portfolio/projects/game-design/cover.png",
+      "reason": "portfolio project organization"
+    },
+    {
+      "from": "assets/images/spritesheet/Grade-Echecsheet.png",
+      "to": "assets/images/game/sprites/grades/miss-sheet.png",
+      "reason": "game grade sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/Grade-Greatsheet.png",
+      "to": "assets/images/game/sprites/grades/good-sheet.png",
+      "reason": "game grade sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/Grade-supersheet.png",
+      "to": "assets/images/game/sprites/grades/super-sheet.png",
+      "reason": "game grade sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/Grade-Perfectsheet.png",
+      "to": "assets/images/game/sprites/grades/perfect-sheet.png",
+      "reason": "game grade sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/Grade-Twistsheet.png",
+      "to": "assets/images/game/sprites/grades/twist-sheet.png",
+      "reason": "game grade sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/player-boat-airborne-spritesheet.png",
+      "to": "assets/images/game/sprites/characters/player/boat-airborne-sheet.png",
+      "reason": "game character and pickup sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/player-boat-boost-spritesheet.png",
+      "to": "assets/images/game/sprites/characters/player/boat-boost-sheet.png",
+      "reason": "game character and pickup sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/character-stick-monkey-airborne-spritesheet.png",
+      "to": "assets/images/game/sprites/characters/companion/stick-monkey-airborne-sheet.png",
+      "reason": "game character and pickup sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/character-stick-monkey-glide-spritesheet.png",
+      "to": "assets/images/game/sprites/characters/companion/stick-monkey-glide-sheet.png",
+      "reason": "game character and pickup sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/enemy-basic-spritesheet.png",
+      "to": "assets/images/game/sprites/characters/enemies/basic-sheet.png",
+      "reason": "game character and pickup sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/pickup-coin-spritesheet.png",
+      "to": "assets/images/game/sprites/pickups/coin-sheet.png",
+      "reason": "game character and pickup sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/fx-projectile-big-cannon.svg",
+      "to": "assets/images/game/sprites/effects/big-cannon-projectile.svg",
+      "reason": "game effect sprites"
+    },
+    {
+      "from": "assets/images/spritesheet/fx-projectile-front-cannon.svg",
+      "to": "assets/images/game/sprites/effects/front-cannon-projectile.svg",
+      "reason": "game effect sprites"
+    },
+    {
+      "from": "assets/images/spritesheet/fx-radius-big-cannon.svg",
+      "to": "assets/images/game/sprites/effects/big-cannon-radius.svg",
+      "reason": "game effect sprites"
+    },
+    {
+      "from": "assets/images/spritesheet/fx-radius-grappling-hook.svg",
+      "to": "assets/images/game/sprites/effects/grappling-hook-radius.svg",
+      "reason": "game effect sprites"
+    },
+    {
+      "from": "assets/images/spritesheet/fx-radius-magnet.svg",
+      "to": "assets/images/game/sprites/effects/magnet-radius.svg",
+      "reason": "game effect sprites"
+    },
+    {
+      "from": "assets/images/spritesheet/fx-grappling-rope.svg",
+      "to": "assets/archive/unreferenced/game/effects/grappling-rope.svg",
+      "reason": "unused grappling rope effect variant"
+    },
+    {
+      "from": "assets/images/spritesheet/module-big-cannon-spritesheet.png",
+      "to": "assets/images/game/sprites/modules/big-cannon/sheet.png",
+      "reason": "game module sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/module-blower-spritesheet.png",
+      "to": "assets/images/game/sprites/modules/blower/sheet.png",
+      "reason": "game module sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/module-front-cannon-spritesheet.png",
+      "to": "assets/images/game/sprites/modules/front-cannon/sheet.png",
+      "reason": "game module sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/module-front-reactor-spritesheet.png",
+      "to": "assets/images/game/sprites/modules/front-reactor/sheet.png",
+      "reason": "game module sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/module-grappling-hook-spritesheet.png",
+      "to": "assets/images/game/sprites/modules/grappling-hook/sheet.png",
+      "reason": "game module sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/module-magnet-spritesheet.png",
+      "to": "assets/images/game/sprites/modules/magnet/sheet.png",
+      "reason": "game module sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/module-plane-spritesheet.png",
+      "to": "assets/images/game/sprites/modules/plane/sheet.png",
+      "reason": "game module sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/module-rear-reactor-spritesheet.png",
+      "to": "assets/images/game/sprites/modules/rear-reactor/sheet.png",
+      "reason": "game module sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/module-shield-spritesheet.png",
+      "to": "assets/images/game/sprites/modules/shield/sheet.png",
+      "reason": "game module sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/module-thruster-spritesheet.png",
+      "to": "assets/images/game/sprites/modules/thruster/sheet.png",
+      "reason": "game module sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/module-wings-spritesheet.png",
+      "to": "assets/images/game/sprites/modules/wings/sheet.png",
+      "reason": "game module sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/module-wrapper-spritesheet.png",
+      "to": "assets/images/game/sprites/modules/wrapper/sheet.png",
+      "reason": "game module sprite sheets"
+    },
+    {
+      "from": "assets/images/spritesheet/module-front-reactor-legacy-spritesheet.png",
+      "to": "assets/archive/unreferenced/game/modules/front-reactor-legacy-sheet.png",
+      "reason": "legacy front reactor sprite sheet is not referenced"
+    },
+    {
+      "from": "assets/images/spritesheet/hud-momentum-bar-background.png",
+      "to": "assets/images/game/ui/meters/momentum-background.png",
+      "reason": "game ui overlays and settings assets"
+    },
+    {
+      "from": "assets/images/spritesheet/hud-momentum-bar-fill-spritesheet.png",
+      "to": "assets/images/game/ui/meters/fill-strip.png",
+      "reason": "game ui overlays and settings assets"
+    },
+    {
+      "from": "assets/images/spritesheet/hud-momentum-bar-overlay.png",
+      "to": "assets/images/game/ui/meters/momentum-overlay.png",
+      "reason": "game ui overlays and settings assets"
+    },
+    {
+      "from": "assets/images/spritesheet/hud_boostsvg.svg",
+      "to": "assets/images/game/ui/mobile-controls/boost.svg",
+      "reason": "game ui overlays and settings assets"
+    },
+    {
+      "from": "assets/images/spritesheet/hud_grappinsvg.svg",
+      "to": "assets/images/game/ui/mobile-controls/grapple.svg",
+      "reason": "game ui overlays and settings assets"
+    },
+    {
+      "from": "assets/images/spritesheet/hud_jumpsvg.svg",
+      "to": "assets/images/game/ui/mobile-controls/jump.svg",
+      "reason": "game ui overlays and settings assets"
+    },
+    {
+      "from": "assets/images/spritesheet/hud_parametredarksvg.svg",
+      "to": "assets/images/game/ui/settings/settings-dark.svg",
+      "reason": "game ui overlays and settings assets"
+    },
+    {
+      "from": "assets/images/spritesheet/hud_parametrelightsvg.svg",
+      "to": "assets/images/game/ui/settings/settings-light.svg",
+      "reason": "game ui overlays and settings assets"
+    },
+    {
+      "from": "assets/images/spritesheet/hud_restartbtndark.svg",
+      "to": "assets/images/game/ui/settings/restart-dark.svg",
+      "reason": "game ui overlays and settings assets"
+    },
+    {
+      "from": "assets/images/spritesheet/hud_restartbtnlight.svg",
+      "to": "assets/images/game/ui/settings/restart-light.svg",
+      "reason": "game ui overlays and settings assets"
+    },
+    {
+      "from": "assets/images/spritesheet/hud_1chargesvg.svg",
+      "to": "assets/images/game/ui/mobile-controls/charge-1.svg",
+      "reason": "game mobile control charge assets"
+    },
+    {
+      "from": "assets/images/spritesheet/hud_2chargesvg.svg",
+      "to": "assets/images/game/ui/mobile-controls/charge-2.svg",
+      "reason": "game mobile control charge assets"
+    },
+    {
+      "from": "assets/images/spritesheet/hud_3chargesvg.svg",
+      "to": "assets/images/game/ui/mobile-controls/charge-3.svg",
+      "reason": "game mobile control charge assets"
+    },
+    {
+      "from": "assets/images/spritesheet/hud_4chargesvg.svg",
+      "to": "assets/images/game/ui/mobile-controls/charge-4.svg",
+      "reason": "game mobile control charge assets"
+    },
+    {
+      "from": "assets/images/spritesheet/hud_5chargesvg.svg",
+      "to": "assets/images/game/ui/mobile-controls/charge-5.svg",
+      "reason": "game mobile control charge assets"
+    },
+    {
+      "from": "assets/fonts/text-me-one.regular.ttf",
+      "to": "assets/fonts/text-me-one-regular.ttf",
+      "reason": "font naming normalization"
+    },
+    {
+      "from": "assets/fonts/quicksand.boldoblique-regular.otf",
+      "to": "assets/fonts/archive/quicksand-bold-oblique-regular.otf",
+      "reason": "unused secondary font retained in archive"
+    },
+    {
+      "from": "assets/sound/soundtrackloopstereo/music-intro-stereo-left.wav",
+      "to": "assets/audio/music/intro/left.wav",
+      "reason": "music organization"
+    },
+    {
+      "from": "assets/sound/soundtrackloopstereo/music-intro-stereo-right.wav",
+      "to": "assets/audio/music/intro/right.wav",
+      "reason": "music organization"
+    },
+    {
+      "from": "assets/sound/soundtrackloopstereo/music-loop-01-stereo-left.wav",
+      "to": "assets/audio/music/loops/loop-01/left.wav",
+      "reason": "music organization"
+    },
+    {
+      "from": "assets/sound/soundtrackloopstereo/music-loop-01-stereo-right.wav",
+      "to": "assets/audio/music/loops/loop-01/right.wav",
+      "reason": "music organization"
+    },
+    {
+      "from": "assets/sound/soundtrackloopstereo/music-loop-02-stereo-left.wav",
+      "to": "assets/audio/music/loops/loop-02/left.wav",
+      "reason": "music organization"
+    },
+    {
+      "from": "assets/sound/soundtrackloopstereo/music-loop-02-stereo-right.wav",
+      "to": "assets/audio/music/loops/loop-02/right.wav",
+      "reason": "music organization"
+    },
+    {
+      "from": "assets/sound/soundtrackloopstereo/music-loop-03-stereo-left.wav",
+      "to": "assets/audio/music/loops/loop-03/left.wav",
+      "reason": "music organization"
+    },
+    {
+      "from": "assets/sound/soundtrackloopstereo/music-loop-03-stereo-right.wav",
+      "to": "assets/audio/music/loops/loop-03/right.wav",
+      "reason": "music organization"
+    },
+    {
+      "from": "assets/sound/soundtrackloopstereo/music-loop-04-stereo-left.wav",
+      "to": "assets/audio/music/loops/loop-04/left.wav",
+      "reason": "music organization"
+    },
+    {
+      "from": "assets/sound/soundtrackloopstereo/music-loop-04-stereo-right.wav",
+      "to": "assets/audio/music/loops/loop-04/right.wav",
+      "reason": "music organization"
+    },
+    {
+      "from": "assets/sound/sfx-blower-on.wav",
+      "to": "assets/audio/sfx/modules/blower/on.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-blower-off.wav",
+      "to": "assets/audio/sfx/modules/blower/off.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-boat-boost.wav",
+      "to": "assets/audio/sfx/player/boat/boost.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-boat-land-01.wav",
+      "to": "assets/audio/sfx/player/boat/land-01.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-boat-land-02.wav",
+      "to": "assets/audio/sfx/player/boat/land-02.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-boat-land-03.wav",
+      "to": "assets/audio/sfx/player/boat/land-03.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-cannon-big-shot-01.wav",
+      "to": "assets/audio/sfx/modules/cannons/big-shot-01.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-cannon-big-shot-02.wav",
+      "to": "assets/audio/sfx/modules/cannons/big-shot-02.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-cannon-front-shot-01.wav",
+      "to": "assets/audio/sfx/modules/cannons/front-shot-01.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-cannon-front-shot-02.wav",
+      "to": "assets/audio/sfx/modules/cannons/front-shot-02.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-coin-pickup-01.wav",
+      "to": "assets/audio/sfx/ui/coin-pickup-01.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-coin-pickup-02.wav",
+      "to": "assets/audio/sfx/ui/coin-pickup-02.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-enemy-die-01.wav",
+      "to": "assets/audio/sfx/enemies/die-01.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-enemy-die-02.wav",
+      "to": "assets/audio/sfx/enemies/die-02.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-enemy-die-03.wav",
+      "to": "assets/audio/sfx/enemies/die-03.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-enemy-hit-player.wav",
+      "to": "assets/audio/sfx/enemies/hit-player.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-game-over.wav",
+      "to": "assets/audio/sfx/ui/game-over.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-grade-fail.wav",
+      "to": "assets/audio/sfx/ui/grade/fail.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-grade-great.wav",
+      "to": "assets/audio/sfx/ui/grade/great.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-grade-perfect.wav",
+      "to": "assets/audio/sfx/ui/grade/perfect.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-grade-super.wav",
+      "to": "assets/audio/sfx/ui/grade/super.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-grappling-hook-cast-return.wav",
+      "to": "assets/audio/sfx/modules/grappling-hook/cast-return.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-grappling-hook-impact.wav",
+      "to": "assets/audio/sfx/modules/grappling-hook/impact.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-magnet-coin-01.wav",
+      "to": "assets/audio/sfx/modules/magnet/coin-01.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-magnet-coin-02.wav",
+      "to": "assets/audio/sfx/modules/magnet/coin-02.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-momentum-loss-start.wav",
+      "to": "assets/audio/sfx/gameplay/momentum-loss-start.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-plane-glide.wav",
+      "to": "assets/audio/sfx/environment/plane-glide.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-player-jump-02.wav",
+      "to": "assets/audio/sfx/player/jump/jump-02.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-player-jump-03.wav",
+      "to": "assets/audio/sfx/player/jump/jump-03.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-player-jump-04.wav",
+      "to": "assets/audio/sfx/player/jump/jump-04.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-player-jump-05.wav",
+      "to": "assets/audio/sfx/player/jump/jump-05.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-player-jump-06.wav",
+      "to": "assets/audio/sfx/player/jump/jump-06.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-player-jump-07.wav",
+      "to": "assets/audio/sfx/player/jump/jump-07.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-playeronshard.wav",
+      "to": "assets/audio/sfx/player/on-shard.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-reactor-charge-01.wav",
+      "to": "assets/audio/sfx/modules/reactor/charge-01.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-reactor-charge-02.wav",
+      "to": "assets/audio/sfx/modules/reactor/charge-02.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-reward-shard-land.wav",
+      "to": "assets/audio/sfx/gameplay/reward-shard-land.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-sail-flap-01.wav",
+      "to": "assets/audio/sfx/environment/sail-flap-01.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-sail-flap-02.wav",
+      "to": "assets/audio/sfx/environment/sail-flap-02.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-shield-protect-01.wav",
+      "to": "assets/audio/sfx/modules/shield/protect-01.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-shield-protect-02.wav",
+      "to": "assets/audio/sfx/modules/shield/protect-02.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-shop-land.wav",
+      "to": "assets/audio/sfx/ui/shop-land.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-thruster-charge.wav",
+      "to": "assets/audio/sfx/modules/thruster/charge.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-twist-land.wav",
+      "to": "assets/audio/sfx/gameplay/twist-land.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-wings-charge-01.wav",
+      "to": "assets/audio/sfx/modules/wings/charge-01.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-wings-charge-02.wav",
+      "to": "assets/audio/sfx/modules/wings/charge-02.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-wings-charge-03.wav",
+      "to": "assets/audio/sfx/modules/wings/charge-03.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-wrapper-activate.wav",
+      "to": "assets/audio/sfx/modules/wrapper/activate.wav",
+      "reason": "sfx organization"
+    },
+    {
+      "from": "assets/sound/sfx-boat-jump.wav",
+      "to": "assets/archive/unreferenced/audio/player/boat-jump.wav",
+      "reason": "unreferenced alternate player boat jump"
+    },
+    {
+      "from": "assets/sound/sfx-player-unkownshard.wav",
+      "to": "assets/archive/unreferenced/audio/player/unknown-shard.wav",
+      "reason": "unreferenced player shard audio with inconsistent name"
+    }
+  ],
+  "mergedDuplicates": [
+    {
+      "removed": "assets/images/favicon.svg",
+      "canonical": "assets/images/shared/branding/ape-prod-mark-light.svg",
+      "reason": "favicon duplicated the light Ape Prod mark"
+    },
+    {
+      "removed": "assets/images/btn/Soundspritesheet.png",
+      "canonical": "assets/images/game/ui/meters/fill-strip.png",
+      "reason": "sound meter sprite duplicated the momentum meter fill strip"
+    }
+  ],
+  "archivedUnreferenced": [
+    {
+      "from": "assets/images/Logo/3D Objects/desktop.ini",
+      "to": "assets/archive/unreferenced/system/desktop.ini",
+      "reason": "os-generated file not consumed by the project"
+    },
+    {
+      "from": "assets/images/spritesheet/fx-grappling-rope.svg",
+      "to": "assets/archive/unreferenced/game/effects/grappling-rope.svg",
+      "reason": "unused grappling rope effect variant"
+    },
+    {
+      "from": "assets/images/spritesheet/module-front-reactor-legacy-spritesheet.png",
+      "to": "assets/archive/unreferenced/game/modules/front-reactor-legacy-sheet.png",
+      "reason": "legacy front reactor sprite sheet is not referenced"
+    },
+    {
+      "from": "assets/fonts/quicksand.boldoblique-regular.otf",
+      "to": "assets/fonts/archive/quicksand-bold-oblique-regular.otf",
+      "reason": "unused secondary font retained in archive"
+    },
+    {
+      "from": "assets/sound/sfx-boat-jump.wav",
+      "to": "assets/archive/unreferenced/audio/player/boat-jump.wav",
+      "reason": "unreferenced alternate player boat jump"
+    },
+    {
+      "from": "assets/sound/sfx-player-unkownshard.wav",
+      "to": "assets/archive/unreferenced/audio/player/unknown-shard.wav",
+      "reason": "unreferenced player shard audio with inconsistent name"
+    }
+  ],
+  "retainedUnreferenced": [
+    "assets/images/shared/branding/variants/logo-hub-dark.svg",
+    "assets/images/shared/branding/variants/logo-hub-light.svg",
+    "assets/images/shared/branding/variants/logo-v2-dark.svg",
+    "assets/images/shared/branding/variants/logo-v2-light.svg",
+    "assets/images/portfolio/projects/ape-prod/home-screen.svg",
+    "assets/images/portfolio/projects/ape-prod/value-proposition.png",
+    "assets/images/portfolio/projects/davinci-resolve/gallery-01.webp",
+    "assets/images/portfolio/projects/davinci-resolve/gallery-02.webp",
+    "assets/images/portfolio/projects/davinci-resolve/gallery-03.webp",
+    "assets/images/portfolio/projects/davinci-resolve/gallery-04.webp",
+    "assets/images/portfolio/projects/davinci-resolve/gallery-05.webp",
+    "assets/images/portfolio/projects/davinci-resolve/gallery-06.webp"
+  ]
+}

@@ -1,8 +1,8 @@
 import { observeThemeChanges, resolveThemeAsset } from './ThemeAssetResolver';
 
 export const RESTART_BUTTON_ASSETS = {
-  dark: new URL('../../assets/images/spritesheet/hud_restartbtnlight.svg', import.meta.url).href,
-  light: new URL('../../assets/images/spritesheet/hud_restartbtndark.svg', import.meta.url).href
+  dark: new URL('../../assets/images/game/ui/settings/restart-light.svg', import.meta.url).href,
+  light: new URL('../../assets/images/game/ui/settings/restart-dark.svg', import.meta.url).href
 } as const;
 
 export class RestartButton {

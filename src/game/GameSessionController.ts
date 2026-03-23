@@ -53,16 +53,16 @@ interface WorldHudBillboard {
 }
 
 const DANGER_ACCENT = '#F06A5A';
-const ITEM_PLACEHOLDER_ICON = '/assets/images/Logo/logomodedark.svg';
-const PLAYER_MAIN_SPRITE_URL = new URL('../../assets/images/spritesheet/player-boat-airborne-spritesheet.png', import.meta.url).href;
-const PLAYER_BOOST_SPRITE_URL = new URL('../../assets/images/spritesheet/player-boat-boost-spritesheet.png', import.meta.url).href;
-const STICK_MONKEY_AIR_URL = new URL('../../assets/images/spritesheet/character-stick-monkey-airborne-spritesheet.png', import.meta.url).href;
-const STICK_MONKEY_GLIDE_URL = new URL('../../assets/images/spritesheet/character-stick-monkey-glide-spritesheet.png', import.meta.url).href;
-const BIG_CANON_PROJECTILE_URL = new URL('../../assets/images/spritesheet/fx-projectile-big-cannon.svg', import.meta.url).href;
-const FRONT_CANON_PROJECTILE_URL = new URL('../../assets/images/spritesheet/fx-projectile-front-cannon.svg', import.meta.url).href;
-const MAGNET_RADIUS_URL = new URL('../../assets/images/spritesheet/fx-radius-magnet.svg', import.meta.url).href;
-const BIG_CANON_RADIUS_URL = new URL('../../assets/images/spritesheet/fx-radius-big-cannon.svg', import.meta.url).href;
-const GRAP_RADIUS_URL = new URL('../../assets/images/spritesheet/fx-radius-grappling-hook.svg', import.meta.url).href;
+const ITEM_PLACEHOLDER_ICON = '/assets/images/shared/branding/ape-prod-mark-dark.svg';
+const PLAYER_MAIN_SPRITE_URL = new URL('../../assets/images/game/sprites/characters/player/boat-airborne-sheet.png', import.meta.url).href;
+const PLAYER_BOOST_SPRITE_URL = new URL('../../assets/images/game/sprites/characters/player/boat-boost-sheet.png', import.meta.url).href;
+const STICK_MONKEY_AIR_URL = new URL('../../assets/images/game/sprites/characters/companion/stick-monkey-airborne-sheet.png', import.meta.url).href;
+const STICK_MONKEY_GLIDE_URL = new URL('../../assets/images/game/sprites/characters/companion/stick-monkey-glide-sheet.png', import.meta.url).href;
+const BIG_CANON_PROJECTILE_URL = new URL('../../assets/images/game/sprites/effects/big-cannon-projectile.svg', import.meta.url).href;
+const FRONT_CANON_PROJECTILE_URL = new URL('../../assets/images/game/sprites/effects/front-cannon-projectile.svg', import.meta.url).href;
+const MAGNET_RADIUS_URL = new URL('../../assets/images/game/sprites/effects/magnet-radius.svg', import.meta.url).href;
+const BIG_CANON_RADIUS_URL = new URL('../../assets/images/game/sprites/effects/big-cannon-radius.svg', import.meta.url).href;
+const GRAP_RADIUS_URL = new URL('../../assets/images/game/sprites/effects/grappling-hook-radius.svg', import.meta.url).href;
 const RARITY_COLORS: Record<RogueliteRarity, string> = {
   common: '#F2DDB8',
   uncommon: '#75AF80',
@@ -1071,6 +1071,11 @@ export class GameSessionController {
     return this.camera.getPose();
   }
 
+  getPlayerFocusPoint() {
+    const source = this.player.visible ? this.player.position : this.playerPosition;
+    return source.clone().add(new THREE.Vector3(0, 0.42, 0.04));
+  }
+
   getHudState(): GameHudSnapshot {
     const normalizedGauge = clamp(this.momentum.gauge / Math.max(1, this.runUpgrades.modifiers.momentumCap), 0, 1);
     this.stats.fillHud(this.hudSnapshot);
@@ -1586,7 +1591,15 @@ export class GameSessionController {
       const reservedEnd = Math.max(...rewardNodes.map((node) => node.resolvedX), milestoneNode.resolvedX) + DEFAULT_COLUMN_DISTANCE;
       const nodes = this.displayWindowIndices
         .map((index) => this.getResolvedNode(index))
-        .filter((node) => node.index === milestoneNode.index || node.resolvedX < reservedStart || node.resolvedX > reservedEnd);
+        .filter((node) => {
+          if (node.index === milestoneNode.index) {
+            return true;
+          }
+          if (node.resolvedX >= reservedStart && node.resolvedX <= reservedEnd) {
+            return false;
+          }
+          return !rewardNodes.some((rewardNode) => this.doNodesOverlapForDisplay(node, rewardNode));
+        });
       nodes.push(milestoneNode, ...rewardNodes);
       nodes.sort((a, b) => a.resolvedX - b.resolvedX);
       const deduped: ResolvedGamePathNode[] = [];
@@ -1694,17 +1707,21 @@ export class GameSessionController {
       const otherIndex = this.displayWindowIndices[slot];
       if (otherIndex === undefined || otherIndex === candidate.index) continue;
       const other = this.getResolvedNode(otherIndex);
-      const minDistance =
-        this.getPhysicalRadius(candidate) +
-        this.getPhysicalRadius(other) +
-        Math.max(0.8, Math.min(2.2, (candidate.visualScale + other.visualScale) * 0.12));
-      const dx = candidate.resolvedX - other.resolvedX;
-      const dy = candidate.resolvedY - other.resolvedY;
-      if (dx * dx + dy * dy < minDistance * minDistance) {
+      if (this.doNodesOverlapForDisplay(candidate, other)) {
         return true;
       }
     }
     return false;
+  }
+
+  private doNodesOverlapForDisplay(a: ResolvedGamePathNode, b: ResolvedGamePathNode) {
+    const minDistance =
+      this.getPhysicalRadius(a) +
+      this.getPhysicalRadius(b) +
+      Math.max(0.8, Math.min(2.2, (a.visualScale + b.visualScale) * 0.12));
+    const dx = a.resolvedX - b.resolvedX;
+    const dy = a.resolvedY - b.resolvedY;
+    return dx * dx + dy * dy < minDistance * minDistance;
   }
 
   private updateMomentum(deltaTime: number) {
@@ -2864,10 +2881,10 @@ export class GameSessionController {
     this.activeChoices.slice(0, 3).forEach((choice, index) => {
       const billboard = this.rewardCardBillboards[index];
       const preview = choice.previewNodes[0] ?? choice.entry;
-      const cardScale = mobileLike ? 1.12 : 1;
+      const cardScale = mobileLike ? 1.28 : 1.16;
       const slotOffsetY = index === 0 ? 0.28 : index === 2 ? -0.28 : 0;
-      billboard.sprite.scale.set(14.8 * cardScale, 7 * cardScale, 1);
-      billboard.sprite.position.set(preview.x - 11.6, preview.y + slotOffsetY, preview.z + 0.06);
+      billboard.sprite.scale.set(16.8 * cardScale, 7.8 * cardScale, 1);
+      billboard.sprite.position.set(preview.x - 12.7, preview.y + slotOffsetY, preview.z + 0.06);
     });
   }
 
@@ -2885,13 +2902,13 @@ export class GameSessionController {
       return;
     }
     context.clearRect(0, 0, canvas.width, canvas.height);
-    this.fillRoundedRect(context, 0, 0, canvas.width, canvas.height, 42, this.getThemeContrastColor(), 0.9);
-    this.fillRoundedRect(context, 6, 6, canvas.width - 12, canvas.height - 12, 38, this.getThemeShardColor(), 0.08);
+    this.fillRoundedRect(context, 0, 0, canvas.width, canvas.height, 42, this.getThemeContrastColor(), 0.94);
+    this.strokeRoundedRect(context, 0, 0, canvas.width, canvas.height, 42, this.getThemeShardColor(), 0.14, 12);
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     context.fillStyle = this.getThemeShardColor();
     context.font = "600 132px 'Text Me One', sans-serif";
-    context.fillText(this.locale === 'fr' ? 'Choisissez une amélioration' : 'Choose an upgrade', canvas.width * 0.5, 132);
+    context.fillText(this.locale === 'fr' ? 'Choisissez une amélioration' : 'Choose an upgrade', canvas.width * 0.5, 124);
     context.fillStyle = this.getThemeShardColor();
     context.globalAlpha = 0.76;
     context.font = "400 58px 'Text Me One', sans-serif";
@@ -2900,7 +2917,7 @@ export class GameSessionController {
         ? 'Sautez vers une branche. 1, 2, 3 restent disponibles.'
         : 'Jump to a branch. 1, 2, 3 remain available.',
       canvas.width * 0.5,
-      252
+      238
     );
     context.globalAlpha = 1;
     texture.needsUpdate = true;
@@ -2932,31 +2949,32 @@ export class GameSessionController {
     context.clearRect(0, 0, canvas.width, canvas.height);
     context.textAlign = 'left';
     context.textBaseline = 'alphabetic';
-    this.fillRoundedRect(context, 0, 0, canvas.width, canvas.height, 54, bg, 0.98);
-    this.fillRoundedRect(context, 0, 0, 42, canvas.height, 28, rarityColor, 0.96);
-    this.fillRoundedRect(context, 54, 36, canvas.width - 96, canvas.height - 72, 42, fg, 0.08);
+    this.fillRoundedRect(context, 0, 0, canvas.width, canvas.height, 54, fg, 0.96);
+    this.strokeRoundedRect(context, 0, 0, canvas.width, canvas.height, 54, rarityColor, 0.96, 18);
+    this.fillRoundedRect(context, 46, 44, 332, canvas.height - 88, 34, rarityColor, 0.12);
+    this.fillRoundedRect(context, 70, 72, 16, canvas.height - 144, 10, rarityColor, 0.94);
     if (hudImage.complete) {
-      context.drawImage(hudImage, 68, 66, 228, 228);
+      context.drawImage(hudImage, 118, 82, 252, 252);
     }
     if (rarityImage && rarityImage.complete) {
-      context.drawImage(rarityImage, 232, 228, 96, 96);
+      context.drawImage(rarityImage, 286, 270, 120, 120);
     }
-    context.fillStyle = fg;
+    context.fillStyle = bg;
     context.globalAlpha = 0.72;
-    context.font = "400 82px 'Text Me One', sans-serif";
-    context.fillText(pathLabel, 360, 124);
+    context.font = "400 88px 'Text Me One', sans-serif";
+    context.fillText(pathLabel, 460, 128);
     context.globalAlpha = 1;
     if (offer.item.kind === 'module') {
       context.globalAlpha = 0.72;
-      context.font = "400 70px 'Text Me One', sans-serif";
-      context.fillText(this.locale === 'fr' ? this.getRarityLabelFr(offer.item.rarity) : this.getRarityLabelEn(offer.item.rarity), 360, 220);
+      context.font = "400 76px 'Text Me One', sans-serif";
+      context.fillText(this.locale === 'fr' ? this.getRarityLabelFr(offer.item.rarity) : this.getRarityLabelEn(offer.item.rarity), 460, 228);
       context.globalAlpha = 1;
     }
-    context.font = "600 128px 'Text Me One', sans-serif";
-    this.drawWrappedText(context, offer.item.name[this.locale], 360, 342, canvas.width - 448, 126, 2, fg);
+    context.font = "600 136px 'Text Me One', sans-serif";
+    this.drawWrappedText(context, offer.item.name[this.locale], 460, 366, canvas.width - 554, 130, 2, bg);
     context.globalAlpha = 0.78;
-    context.font = "400 74px 'Text Me One', sans-serif";
-    this.drawWrappedText(context, offer.item.description[this.locale], 360, 536, canvas.width - 448, 82, 3, fg);
+    context.font = "400 82px 'Text Me One', sans-serif";
+    this.drawWrappedText(context, offer.item.description[this.locale], 460, 536, canvas.width - 554, 90, 3, bg);
     context.globalAlpha = 1;
     texture.needsUpdate = true;
   }
@@ -2986,6 +3004,36 @@ export class GameSessionController {
     context.quadraticCurveTo(x, y, x + radius, y);
     context.closePath();
     context.fill();
+    context.restore();
+  }
+
+  private strokeRoundedRect(
+    context: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number,
+    color: string,
+    alpha: number,
+    lineWidth: number
+  ) {
+    context.save();
+    context.globalAlpha = alpha;
+    context.strokeStyle = color;
+    context.lineWidth = lineWidth;
+    context.beginPath();
+    context.moveTo(x + radius, y);
+    context.lineTo(x + width - radius, y);
+    context.quadraticCurveTo(x + width, y, x + width, y + radius);
+    context.lineTo(x + width, y + height - radius);
+    context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    context.lineTo(x + radius, y + height);
+    context.quadraticCurveTo(x, y + height, x, y + height - radius);
+    context.lineTo(x, y + radius);
+    context.quadraticCurveTo(x, y, x + radius, y);
+    context.closePath();
+    context.stroke();
     context.restore();
   }
 

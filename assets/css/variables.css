@@ -124,7 +124,7 @@ html {
  */
 @font-face {
   font-family: 'Text Me One'; /* Nom de la police - utilisé dans --font-body */
-  src: url('../fonts/text-me-one.regular.ttf') format('truetype');
+  src: url('../fonts/text-me-one-regular.ttf') format('truetype');
   font-weight: 400; /* Poids normal */
   font-style: normal; /* Style normal (pas italique) */
   font-display: swap; /* Améliore les performances de chargement */

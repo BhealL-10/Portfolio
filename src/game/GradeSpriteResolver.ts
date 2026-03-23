@@ -3,11 +3,11 @@ import type { LandingGrade } from './gameSessionTypes';
 export type GradeSpriteKey = LandingGrade | 'twist';
 
 export const GRADE_SPRITE_ASSET_URLS: Record<GradeSpriteKey, string> = {
-  miss: new URL('../../assets/images/spritesheet/Grade-Echecsheet.png', import.meta.url).href,
-  good: new URL('../../assets/images/spritesheet/Grade-Greatsheet.png', import.meta.url).href,
-  super: new URL('../../assets/images/spritesheet/Grade-supersheet.png', import.meta.url).href,
-  perfect: new URL('../../assets/images/spritesheet/Grade-Perfectsheet.png', import.meta.url).href,
-  twist: new URL('../../assets/images/spritesheet/Grade-Twistsheet.png', import.meta.url).href
+  miss: new URL('../../assets/images/game/sprites/grades/miss-sheet.png', import.meta.url).href,
+  good: new URL('../../assets/images/game/sprites/grades/good-sheet.png', import.meta.url).href,
+  super: new URL('../../assets/images/game/sprites/grades/super-sheet.png', import.meta.url).href,
+  perfect: new URL('../../assets/images/game/sprites/grades/perfect-sheet.png', import.meta.url).href,
+  twist: new URL('../../assets/images/game/sprites/grades/twist-sheet.png', import.meta.url).href
 };
 
 const FRAME_POSITIONS = [

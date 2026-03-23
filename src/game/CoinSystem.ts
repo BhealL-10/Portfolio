@@ -11,7 +11,7 @@ export interface CoinMarker {
   targetPosition?: THREE.Vector3 | null;
 }
 
-const COIN_SPRITE_URL = new URL('../../assets/images/spritesheet/pickup-coin-spritesheet.png', import.meta.url).href;
+const COIN_SPRITE_URL = new URL('../../assets/images/game/sprites/pickups/coin-sheet.png', import.meta.url).href;
 
 export class CoinSystem {
   private readonly group = new THREE.Group();

@@ -1,8 +1,8 @@
 import { observeThemeChanges, resolveThemeAsset } from './ThemeAssetResolver';
 
 export const SETTINGS_BUTTON_ASSETS = {
-  dark: new URL('../../assets/images/spritesheet/hud_parametredarksvg.svg', import.meta.url).href,
-  light: new URL('../../assets/images/spritesheet/hud_parametrelightsvg.svg', import.meta.url).href
+  dark: new URL('../../assets/images/game/ui/settings/settings-dark.svg', import.meta.url).href,
+  light: new URL('../../assets/images/game/ui/settings/settings-light.svg', import.meta.url).href
 } as const;
 
 export class SettingsButton {

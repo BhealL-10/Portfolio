@@ -50,98 +50,98 @@ export interface MusicReactiveState {
 
 const MUSIC_TRACKS: Record<MusicTrackId, StereoTrackUrls> = {
   intro: {
-    left: new URL('../../assets/sound/soundtrackloopstereo/music-intro-stereo-left.wav', import.meta.url).href,
-    right: new URL('../../assets/sound/soundtrackloopstereo/music-intro-stereo-right.wav', import.meta.url).href
+    left: new URL('../../assets/audio/music/intro/left.wav', import.meta.url).href,
+    right: new URL('../../assets/audio/music/intro/right.wav', import.meta.url).href
   },
   loop1: {
-    left: new URL('../../assets/sound/soundtrackloopstereo/music-loop-01-stereo-left.wav', import.meta.url).href,
-    right: new URL('../../assets/sound/soundtrackloopstereo/music-loop-01-stereo-right.wav', import.meta.url).href
+    left: new URL('../../assets/audio/music/loops/loop-01/left.wav', import.meta.url).href,
+    right: new URL('../../assets/audio/music/loops/loop-01/right.wav', import.meta.url).href
   },
   loop2: {
-    left: new URL('../../assets/sound/soundtrackloopstereo/music-loop-02-stereo-left.wav', import.meta.url).href,
-    right: new URL('../../assets/sound/soundtrackloopstereo/music-loop-02-stereo-right.wav', import.meta.url).href
+    left: new URL('../../assets/audio/music/loops/loop-02/left.wav', import.meta.url).href,
+    right: new URL('../../assets/audio/music/loops/loop-02/right.wav', import.meta.url).href
   },
   loop3: {
-    left: new URL('../../assets/sound/soundtrackloopstereo/music-loop-03-stereo-left.wav', import.meta.url).href,
-    right: new URL('../../assets/sound/soundtrackloopstereo/music-loop-03-stereo-right.wav', import.meta.url).href
+    left: new URL('../../assets/audio/music/loops/loop-03/left.wav', import.meta.url).href,
+    right: new URL('../../assets/audio/music/loops/loop-03/right.wav', import.meta.url).href
   },
   loop4: {
-    left: new URL('../../assets/sound/soundtrackloopstereo/music-loop-04-stereo-left.wav', import.meta.url).href,
-    right: new URL('../../assets/sound/soundtrackloopstereo/music-loop-04-stereo-right.wav', import.meta.url).href
+    left: new URL('../../assets/audio/music/loops/loop-04/left.wav', import.meta.url).href,
+    right: new URL('../../assets/audio/music/loops/loop-04/right.wav', import.meta.url).href
   }
 };
 
 const SFX = {
-  blowerOn: [new URL('../../assets/sound/sfx-blower-on.wav', import.meta.url).href],
-  blowerOff: [new URL('../../assets/sound/sfx-blower-off.wav', import.meta.url).href],
-  boatBoost: [new URL('../../assets/sound/sfx-boat-boost.wav', import.meta.url).href],
+  blowerOn: [new URL('../../assets/audio/sfx/modules/blower/on.wav', import.meta.url).href],
+  blowerOff: [new URL('../../assets/audio/sfx/modules/blower/off.wav', import.meta.url).href],
+  boatBoost: [new URL('../../assets/audio/sfx/player/boat/boost.wav', import.meta.url).href],
   playerJump: [
-    new URL('../../assets/sound/sfx-player-jump-02.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-player-jump-03.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-player-jump-04.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-player-jump-05.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-player-jump-06.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-player-jump-07.wav', import.meta.url).href
+    new URL('../../assets/audio/sfx/player/jump/jump-02.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/player/jump/jump-03.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/player/jump/jump-04.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/player/jump/jump-05.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/player/jump/jump-06.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/player/jump/jump-07.wav', import.meta.url).href
   ],
   land: [
-    new URL('../../assets/sound/sfx-boat-land-01.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-boat-land-02.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-boat-land-03.wav', import.meta.url).href
+    new URL('../../assets/audio/sfx/player/boat/land-01.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/player/boat/land-02.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/player/boat/land-03.wav', import.meta.url).href
   ],
-  rewardLand: [new URL('../../assets/sound/sfx-reward-shard-land.wav', import.meta.url).href],
+  rewardLand: [new URL('../../assets/audio/sfx/gameplay/reward-shard-land.wav', import.meta.url).href],
   sail: [
-    new URL('../../assets/sound/sfx-sail-flap-01.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-sail-flap-02.wav', import.meta.url).href
+    new URL('../../assets/audio/sfx/environment/sail-flap-01.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/environment/sail-flap-02.wav', import.meta.url).href
   ],
-  planeGlide: [new URL('../../assets/sound/sfx-plane-glide.wav', import.meta.url).href],
-  playerOnShard: [new URL('../../assets/sound/sfx-playeronshard.wav', import.meta.url).href],
+  planeGlide: [new URL('../../assets/audio/sfx/environment/plane-glide.wav', import.meta.url).href],
+  playerOnShard: [new URL('../../assets/audio/sfx/player/on-shard.wav', import.meta.url).href],
   bigCannon: [
-    new URL('../../assets/sound/sfx-cannon-big-shot-01.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-cannon-big-shot-02.wav', import.meta.url).href
+    new URL('../../assets/audio/sfx/modules/cannons/big-shot-01.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/modules/cannons/big-shot-02.wav', import.meta.url).href
   ],
   frontCannon: [
-    new URL('../../assets/sound/sfx-cannon-front-shot-01.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-cannon-front-shot-02.wav', import.meta.url).href
+    new URL('../../assets/audio/sfx/modules/cannons/front-shot-01.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/modules/cannons/front-shot-02.wav', import.meta.url).href
   ],
-  grappleCastReturn: [new URL('../../assets/sound/sfx-grappling-hook-cast-return.wav', import.meta.url).href],
-  grappleImpact: [new URL('../../assets/sound/sfx-grappling-hook-impact.wav', import.meta.url).href],
+  grappleCastReturn: [new URL('../../assets/audio/sfx/modules/grappling-hook/cast-return.wav', import.meta.url).href],
+  grappleImpact: [new URL('../../assets/audio/sfx/modules/grappling-hook/impact.wav', import.meta.url).href],
   shieldProtect: [
-    new URL('../../assets/sound/sfx-shield-protect-01.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-shield-protect-02.wav', import.meta.url).href
+    new URL('../../assets/audio/sfx/modules/shield/protect-01.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/modules/shield/protect-02.wav', import.meta.url).href
   ],
   reactorCharge: [
-    new URL('../../assets/sound/sfx-reactor-charge-01.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-reactor-charge-02.wav', import.meta.url).href
+    new URL('../../assets/audio/sfx/modules/reactor/charge-01.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/modules/reactor/charge-02.wav', import.meta.url).href
   ],
-  thrusterCharge: [new URL('../../assets/sound/sfx-thruster-charge.wav', import.meta.url).href],
+  thrusterCharge: [new URL('../../assets/audio/sfx/modules/thruster/charge.wav', import.meta.url).href],
   wingsCharge: [
-    new URL('../../assets/sound/sfx-wings-charge-01.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-wings-charge-02.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-wings-charge-03.wav', import.meta.url).href
+    new URL('../../assets/audio/sfx/modules/wings/charge-01.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/modules/wings/charge-02.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/modules/wings/charge-03.wav', import.meta.url).href
   ],
-  wrapperActivate: [new URL('../../assets/sound/sfx-wrapper-activate.wav', import.meta.url).href],
+  wrapperActivate: [new URL('../../assets/audio/sfx/modules/wrapper/activate.wav', import.meta.url).href],
   coinPickup: [
-    new URL('../../assets/sound/sfx-coin-pickup-01.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-coin-pickup-02.wav', import.meta.url).href
+    new URL('../../assets/audio/sfx/ui/coin-pickup-01.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/ui/coin-pickup-02.wav', import.meta.url).href
   ],
   magnetCoin: [
-    new URL('../../assets/sound/sfx-magnet-coin-01.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-magnet-coin-02.wav', import.meta.url).href
+    new URL('../../assets/audio/sfx/modules/magnet/coin-01.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/modules/magnet/coin-02.wav', import.meta.url).href
   ],
-  shopLand: [new URL('../../assets/sound/sfx-shop-land.wav', import.meta.url).href],
+  shopLand: [new URL('../../assets/audio/sfx/ui/shop-land.wav', import.meta.url).href],
   enemyDie: [
-    new URL('../../assets/sound/sfx-enemy-die-01.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-enemy-die-02.wav', import.meta.url).href,
-    new URL('../../assets/sound/sfx-enemy-die-03.wav', import.meta.url).href
+    new URL('../../assets/audio/sfx/enemies/die-01.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/enemies/die-02.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/enemies/die-03.wav', import.meta.url).href
   ],
-  enemyHitPlayer: [new URL('../../assets/sound/sfx-enemy-hit-player.wav', import.meta.url).href],
-  gameOver: [new URL('../../assets/sound/sfx-game-over.wav', import.meta.url).href],
-  gradeFail: [new URL('../../assets/sound/sfx-grade-fail.wav', import.meta.url).href],
-  gradeGreat: [new URL('../../assets/sound/sfx-grade-great.wav', import.meta.url).href],
-  gradePerfect: [new URL('../../assets/sound/sfx-grade-perfect.wav', import.meta.url).href],
-  gradeSuper: [new URL('../../assets/sound/sfx-grade-super.wav', import.meta.url).href],
-  twistLand: [new URL('../../assets/sound/sfx-twist-land.wav', import.meta.url).href],
-  momentumLossStart: [new URL('../../assets/sound/sfx-momentum-loss-start.wav', import.meta.url).href]
+  enemyHitPlayer: [new URL('../../assets/audio/sfx/enemies/hit-player.wav', import.meta.url).href],
+  gameOver: [new URL('../../assets/audio/sfx/ui/game-over.wav', import.meta.url).href],
+  gradeFail: [new URL('../../assets/audio/sfx/ui/grade/fail.wav', import.meta.url).href],
+  gradeGreat: [new URL('../../assets/audio/sfx/ui/grade/great.wav', import.meta.url).href],
+  gradePerfect: [new URL('../../assets/audio/sfx/ui/grade/perfect.wav', import.meta.url).href],
+  gradeSuper: [new URL('../../assets/audio/sfx/ui/grade/super.wav', import.meta.url).href],
+  twistLand: [new URL('../../assets/audio/sfx/gameplay/twist-land.wav', import.meta.url).href],
+  momentumLossStart: [new URL('../../assets/audio/sfx/gameplay/momentum-loss-start.wav', import.meta.url).href]
 } as const;
 
 export class GameAudioSystem {

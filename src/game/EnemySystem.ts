@@ -11,7 +11,7 @@ export interface EnemyMarker {
   pole: 'north' | 'south';
 }
 
-const ENEMY_SPRITE_URL = new URL('../../assets/images/spritesheet/enemy-basic-spritesheet.png', import.meta.url).href;
+const ENEMY_SPRITE_URL = new URL('../../assets/images/game/sprites/characters/enemies/basic-sheet.png', import.meta.url).href;
 
 export class EnemySystem {
   private readonly group = new THREE.Group();

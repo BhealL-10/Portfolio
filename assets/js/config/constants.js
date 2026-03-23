@@ -96,8 +96,8 @@ export const TYPOGRAPHY = {
  */
 export const INTRO = {
   LOGO: {
-    DARK: "assets/images/Logo/LogoApeProdLight.svg",
-    LIGHT: "assets/images/Logo/LogoApeProdDark.svg",
+    DARK: "assets/images/shared/branding/ape-prod-intro-light.png",
+    LIGHT: "assets/images/shared/branding/ape-prod-intro-dark.png",
     WIDTH: 400, HEIGHT: 400, MARGIN_BOTTOM: 30,
     RESPONSIVE: {
       MOBILE: { WIDTH: 250, HEIGHT: 250, MARGIN_BOTTOM: 20 },
@@ -530,8 +530,8 @@ export const TITLE = {
 // ==========================================
 export const SHARD_LOGO = {
   // Logos par défaut (utilisés si pas de config personnalisée dans shardLogosConfig.js)
-  DARK: "assets/images/Logo/logomodedark.svg",
-  LIGHT: "assets/images/Logo/logomodelight.svg",
+  DARK: "assets/images/shared/branding/ape-prod-mark-dark.svg",
+  LIGHT: "assets/images/shared/branding/ape-prod-mark-light.svg",
   
   // Taille de base des logos (sprites attachés à la shard)
   BASE_SCALE: 1.8,

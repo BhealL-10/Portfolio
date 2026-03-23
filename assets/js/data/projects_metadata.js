@@ -12,7 +12,7 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/projects/intro.png"],
+        images: ["assets/images/portfolio/projects/ape-prod/cover.png"],
         links: { github: null, demo: null, video: null },
         featured: true
       },
@@ -24,7 +24,7 @@ export const projectsMetadata = [
       },
       { 
         id: 3,
-        images: ["assets/images/projects/Imageprofile.png"],
+        images: ["assets/images/portfolio/projects/ape-prod/profile.png"],
         links: { github: null, demo: null, video: null },
         featured: false
       }
@@ -38,7 +38,7 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/projects/TonoIntro.png"],
+        images: ["assets/images/portfolio/projects/tono-discord-bot/cover.png"],
         links: { github: "https://github.com/bheall/Tono_Discord_Bot", demo: null, video: null },
         featured: true
       },
@@ -64,7 +64,7 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/projects/Davinciintro.png"],
+        images: ["assets/images/portfolio/projects/davinci-resolve/cover.png"],
         links: { github: null, demo: null, video: null },
         featured: true
       },
@@ -116,7 +116,7 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/projects/Introia.png"],
+        images: ["assets/images/portfolio/projects/generative-ai/cover.png"],
         links: { github: null, demo: null, video: null },
         featured: true
       },
@@ -142,7 +142,7 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/projects/Discordintro.png"],
+        images: ["assets/images/portfolio/projects/discord-bots/cover.png"],
         links: { github: null, demo: null, video: null },
         featured: true
       },
@@ -168,19 +168,19 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: ["assets/images/portfolio/projects/shared/placeholder.svg"],
         links: { github: null, demo: null, video: null },
         featured: true
       },
       { 
         id: 2,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: ["assets/images/portfolio/projects/shared/placeholder.svg"],
         links: { github: null, demo: null, video: null },
         featured: false
       },
       { 
         id: 3,
-        images: ["assets/images/projects/placeholder.svg"],
+        images: ["assets/images/portfolio/projects/shared/placeholder.svg"],
         links: { github: null, demo: null, video: null },
         featured: false
       }
@@ -194,7 +194,7 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/projects/Spine.png"],
+        images: ["assets/images/portfolio/projects/avatars-and-animation/cover.png"],
         links: { github: null, demo: null, video: null },
         featured: true
       },
@@ -220,7 +220,7 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/projects/Conception.png"],
+        images: ["assets/images/portfolio/projects/game-design/cover.png"],
         links: { github: null, demo: null, video: null },
         featured: true
       },

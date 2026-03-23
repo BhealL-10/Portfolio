@@ -17,7 +17,7 @@ describe('legacyContent adapter', () => {
     const firstProject = portfolioProjects[0];
     expect(firstProject.title.fr.length).toBeGreaterThan(0);
     expect(firstProject.title.en.length).toBeGreaterThan(0);
-    expect(firstProject.logo.dark).toContain('/assets/images/Logo/');
-    expect(firstProject.logo.light).toContain('/assets/images/Logo/');
+    expect(firstProject.logo.dark).toContain('/assets/images/shared/branding/');
+    expect(firstProject.logo.light).toContain('/assets/images/shared/branding/');
   });
 });
