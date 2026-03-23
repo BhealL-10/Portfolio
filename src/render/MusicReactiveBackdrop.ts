@@ -18,11 +18,23 @@ const MOMENTUM_COLORS = {
 } as const;
 
 const SHARD_COUNT = 144;
+const WAVE_COUNT = 28;
+const WAVE_SEGMENTS = 24;
 const ORB_CENTER = new THREE.Vector3(0, 0, -43);
 const ORB_RADIUS = 13.8;
+const WAVE_BASE_LENGTH = 22;
 const UNIT_Z = new THREE.Vector3(0, 0, 1);
 const UNIT_Y = new THREE.Vector3(0, 1, 0);
 const UNIT_X = new THREE.Vector3(1, 0, 0);
+
+interface WaveLine {
+  angle: number;
+  phase: number;
+  drift: number;
+  amplitudeSeed: number;
+  geometry: THREE.BufferGeometry;
+  line: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
+}
 
 interface OrbShard {
   normal: THREE.Vector3;
@@ -44,6 +56,8 @@ export class MusicReactiveBackdrop {
   private readonly hazeInner: THREE.Sprite;
   private readonly hazeOuter: THREE.Sprite;
   private readonly shards: OrbShard[];
+  private readonly waves: WaveLine[];
+  private readonly waveGroup: THREE.Group;
   private readonly dummy = new THREE.Object3D();
   private readonly tempPosition = new THREE.Vector3();
   private readonly tempQuaternion = new THREE.Quaternion();
@@ -73,10 +87,17 @@ export class MusicReactiveBackdrop {
     this.hazeOuter.position.set(ORB_CENTER.x, ORB_CENTER.y, ORB_CENTER.z - 1.7);
     this.hazeInner.renderOrder = -5;
     this.hazeOuter.renderOrder = -6;
+
+    this.waveGroup = new THREE.Group();
+    this.waveGroup.renderOrder = -3;
+    this.waves = this.createWaveLines(theme);
+    this.waves.forEach((wave) => this.waveGroup.add(wave.line));
+
     this.root.renderOrder = -4;
     this.root.visible = false;
     this.root.add(this.hazeOuter, this.hazeInner);
     this.root.add(this.mesh);
+    this.root.add(this.waveGroup);
     scene.add(this.root);
 
     this.applyMatrices(0, { active: false, bassIntensity: 0, midIntensity: 0, melodyIntensity: 0, overallEnergy: 0, momentumRatio: 0, difficultyRatio: 0 });
@@ -89,6 +110,9 @@ export class MusicReactiveBackdrop {
     this.material.color.copy(this.currentColor);
     this.hazeInner.material.color.copy(this.currentColor);
     this.hazeOuter.material.color.copy(this.currentColor);
+    this.waves.forEach((wave) => {
+      wave.line.material.color.copy(this.currentColor);
+    });
   }
 
   setVisible(visible: boolean) {
@@ -139,6 +163,35 @@ export class MusicReactiveBackdrop {
       });
     }
     return shards;
+  }
+
+  private createWaveLines(theme: ThemeMode) {
+    const waves: WaveLine[] = [];
+    for (let index = 0; index < WAVE_COUNT; index += 1) {
+      const geometry = new THREE.BufferGeometry();
+      const positions = new Float32Array((WAVE_SEGMENTS + 1) * 3);
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const material = new THREE.LineBasicMaterial({
+        color: THEME_FOREGROUND[theme],
+        transparent: true,
+        opacity: 0.38,
+        depthWrite: false,
+        toneMapped: false
+      });
+      const line = new THREE.Line(geometry, material);
+      line.frustumCulled = false;
+      line.renderOrder = -3;
+
+      waves.push({
+        angle: (index / WAVE_COUNT) * Math.PI * 2,
+        phase: Math.random() * Math.PI * 2,
+        drift: THREE.MathUtils.lerp(0.75, 1.45, Math.random()),
+        amplitudeSeed: Math.random(),
+        geometry,
+        line
+      });
+    }
+    return waves;
   }
 
   private applyMatrices(elapsedTime: number, reactive: MusicReactiveState) {
@@ -192,6 +245,45 @@ export class MusicReactiveBackdrop {
       );
       this.dummy.updateMatrix();
       this.mesh.setMatrixAt(index, this.dummy.matrix);
+    }
+
+    const audioDrive = (bass * 0.42 + mid * 0.55 + melody * 0.75) * 1.5;
+    const lineBaseLength = WAVE_BASE_LENGTH + momentum * 12 + energy * 18 + difficulty * 8;
+    const lineOpacity = THREE.MathUtils.clamp(0.18 + momentum * 0.38 + energy * 0.12 + (bass + mid + melody) * 0.22, 0.18, 0.97);
+
+    for (let index = 0; index < this.waves.length; index += 1) {
+      const wave = this.waves[index]!;
+      const pulsate = 0.6 + Math.sin(elapsedTime * (1.6 * wave.drift) + wave.phase) * 0.32;
+      const waveLength = lineBaseLength * pulsate + audioDrive * 14 + wave.amplitudeSeed * 5;
+      const waveThickness = 0.02 + 0.03 * (1 + momentum + audioDrive * 0.45) * (0.55 + wave.amplitudeSeed * 0.45);
+      const curvatureBase = (2.6 + momentum * 1.8) * (0.18 + audioDrive * 0.38) * (0.35 + wave.amplitudeSeed * 0.5);
+      const radial = new THREE.Vector3(Math.cos(wave.angle), Math.sin(wave.angle), 0);
+      const perp = new THREE.Vector3(-radial.y, radial.x, 0);
+
+      wave.line.material.opacity = lineOpacity;
+      (wave.line.material as THREE.LineBasicMaterial).linewidth = waveThickness * 30;
+      wave.line.material.color.copy(this.currentColor);
+
+      const positions = (wave.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array;
+
+      for (let segment = 0; segment <= WAVE_SEGMENTS; segment += 1) {
+        const t = segment / WAVE_SEGMENTS;
+        const localLength = t * waveLength;
+        const waveMotion = Math.sin(t * Math.PI * 3 + elapsedTime * 5 * wave.drift + wave.phase) * curvatureBase * (0.5 + 0.5 * t);
+        const taper = (1 - Math.abs(2 * t - 1)) * 0.8;
+        const offset = waveMotion * taper;
+
+        const position = ORB_CENTER.clone();
+        position.addScaledVector(radial, localLength + ORB_RADIUS * 0.25);
+        position.addScaledVector(perp, offset);
+
+        positions[segment * 3] = position.x;
+        positions[segment * 3 + 1] = position.y;
+        positions[segment * 3 + 2] = position.z;
+      }
+
+      wave.geometry.attributes.position.needsUpdate = true;
+      wave.geometry.computeBoundingSphere();
     }
 
     this.mesh.instanceMatrix.needsUpdate = true;

@@ -287,6 +287,10 @@ body {
   color: rgb(var(--color-fg-rgb) / 0.96);
 }
 
+.navigation-hud__chip--status {
+  pointer-events: none;
+}
+
 .navigation-hud__button {
   cursor: pointer;
   transition: transform 180ms ease, background 180ms ease;

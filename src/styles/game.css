@@ -1770,7 +1770,7 @@ html[data-theme='dark'] .game-hud__game-over-stat[data-shape='4'] {
   margin: calc(var(--game-gameover-panel-overlap-top) * 0.32) 0 0;
   padding: 8px;
   border-radius: 18px;
-  background: rgb(var(--overlay-fg-rgb) / 0.04);
+  background: transparent;
   flex: 0 0 var(--game-over-rule-width);
 }
 
@@ -1904,7 +1904,7 @@ html[data-theme='dark'] .game-hud__game-over-stat[data-shape='4'] {
   padding: 6px 12px 7px;
   justify-items: stretch;
   border-radius: 2px;
-  background: var(--color-bg);
+  background: rgb(var(--color-bg-rgb) / 0.26);
   border: 1px solid rgb(var(--overlay-bg-rgb) / 0.12);
 }
 
@@ -1951,6 +1951,7 @@ html[data-theme='dark'] .game-hud__leaderboard-rank {
 }
 
 .game-hud__leaderboard-score {
+  color: var(--color-bg);
   font-size: 0.94rem;
   justify-self: end;
 }

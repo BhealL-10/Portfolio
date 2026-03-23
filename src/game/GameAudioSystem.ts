@@ -341,7 +341,7 @@ export class GameAudioSystem {
         this.playOneShot(
           this.pickRandom(event.magnet ? SFX.magnetCoin : SFX.coinPickup),
           'ambient',
-          event.magnet ? 1.12 : 0.94,
+          event.magnet ? 11 : 0.94,
           event.magnet ? 'magnet-coin' : 'coin',
           70
         );
@@ -353,14 +353,14 @@ export class GameAudioSystem {
         this.playOneShot(this.pickRandom(SFX.enemyDie), 'combat', 0.36, 'enemy-die', 90);
         break;
       case 'enemy_hit_player':
-        this.playOneShot(SFX.enemyHitPlayer[0], 'feedback', 0.4, 'enemy-hit-player', 120);
+        this.playOneShot(SFX.enemyHitPlayer[0], 'feedback', 1, 'enemy-hit-player', 120);
         break;
       case 'game_over':
         this.stopAllLoops(false);
         this.playOneShot(SFX.gameOver[0], 'feedback', 0.58, 'game-over', 320);
         break;
       case 'momentum_loss_start':
-        this.playOneShot(SFX.momentumLossStart[0], 'ambient', 0.2, 'momentum-loss', 280);
+        this.playOneShot(SFX.momentumLossStart[0], 'ambient', 1, 'momentum-loss', 280);
         break;
     }
   }
