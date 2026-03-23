@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
-<svg width="100%" height="100%" viewBox="0 0 250 193" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
-    <g transform="matrix(1,0,0,1,-107.5943,-24.447335)">
-        <g transform="matrix(1,0,0,1,28.820745,37.4149)">
+<svg width="100%" height="100%" viewBox="0 0 248 248" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <g transform="matrix(1,0,0,1,-132.153218,-4.153218)">
+        <g transform="matrix(1,0,0,1,61.284777,37.4149)">
             <path d="M124.063,117.862L92.412,117.862C84.885,117.862 78.774,111.751 78.774,104.223L78.774,76.947C78.774,69.419 84.885,63.308 92.412,63.308L124.063,63.308L124.063,49.624L210.526,8.662L210.526,172.508L124.063,131.546L124.063,117.862Z" style="fill:rgb(173,158,132);"/>
         </g>
-        <g transform="matrix(0,0.759326,-1.184132,0,374.960178,-11.677802)">
+        <g transform="matrix(1,0,0,1,35.629131,-27.832965)">
+            <rect x="96.524" y="31.986" width="247.694" height="247.694" style="fill:none;"/>
+        </g>
+        <g transform="matrix(0,0.80122,-0.799926,0,368.915142,-11.738005)">
             <path d="M171.599,66.615C109.191,69.619 54.64,105.267 50.456,114.526C41.314,94.229 74.039,75.163 133.094,61.505C80.158,49.391 47.575,32.906 47.575,14.752C54.156,21.976 112.967,54.617 168.46,57.422C155.871,39.068 109.597,24.032 96.611,22.76C128.262,19.671 157.996,30.728 179.294,50.681C198.185,32.796 223.893,21.787 252.203,21.787C242.026,23.796 199.501,40.206 188.155,57.182C245.033,53.163 294.353,22.31 301.238,14.752C301.238,32.833 268.916,49.259 216.356,61.359C262.867,71.938 294.131,85.926 301.238,101.704C293.048,95.804 237.654,68.737 185.439,66.571C187.721,86.911 239.866,105.057 252.203,107.492C224.007,107.492 198.392,96.571 179.522,78.813C163.024,94.527 141.211,105.09 116.607,107.492C126.112,104.633 170.854,84.749 171.599,66.615Z" style="fill:rgb(173,158,132);"/>
         </g>
     </g>

@@ -1,0 +1,322 @@
+@media (orientation: landscape) and (max-width: 900px), (pointer: coarse) and (orientation: landscape), (max-height: 540px) and (orientation: landscape) {
+  :root {
+    --game-settings-toggle-size: clamp(40px, 10vw, 48px);
+    --game-settings-panel-width: min(172px, calc(100vw - 68px));
+    --game-svg-button-width: min(104px, 24vw);
+    --game-help-button-size: clamp(96px, 22dvh, 124px);
+    --game-help-nav-offset: -8px;
+    --game-help-close-offset: -6px;
+    --game-help-stage-width: min(92vw, 960px);
+    --game-help-stage-height: calc(100dvh - 56px);
+    --game-help-stage-min-height: 0px;
+    --game-help-stage-max-height: calc(100dvh - 56px);
+    --game-help-page-padding: 0 44px;
+    --game-help-image-max-height: calc(100dvh - 72px);
+    --game-landing-feedback-width: clamp(64px, 15vw, 82px);
+    --game-landing-feedback-twist-width: clamp(58px, 14vw, 74px);
+    --game-landing-feedback-grade-twist-width: clamp(60px, 14vw, 78px);
+    --game-mobile-control-size: clamp(72px, 17dvh, 84px);
+    --game-mobile-control-side-size: clamp(68px, 16dvh, 80px);
+    --game-mobile-control-jump-size: clamp(70px, 16.5dvh, 82px);
+    --game-mobile-control-charge-size: clamp(72px, 17dvh, 84px);
+    --game-mobile-control-padding: clamp(8px, 2dvh, 12px);
+    --game-mobile-control-icon-width: clamp(42px, 10.5dvh, 54px);
+    --game-mobile-control-side-icon-width: clamp(38px, 9.5dvh, 50px);
+    --game-mobile-control-jump-icon-width: clamp(40px, 10dvh, 52px);
+    --game-mobile-control-charge-icon-width: clamp(44px, 10.8dvh, 56px);
+    --game-gameover-shell-gap: 4px;
+    --game-gameover-rule-width-size: min(178px, 44vw);
+    --game-gameover-panel-width: min(286px, calc(100vw - 14px));
+    --game-gameover-panel-min-height: min(280px, calc(100dvh - 86px));
+    --game-gameover-panel-overlap-top: 28px;
+    --game-gameover-panel-padding-top: 54px;
+    --game-gameover-panel-padding-right: 14px;
+    --game-gameover-panel-padding-bottom: 12px;
+    --game-gameover-panel-padding-left: 14px;
+    --game-gameover-content-width: min(100%, 224px);
+    --game-gameover-header-overlay-width: min(170px, 44vw);
+    --game-gameover-header-overlay-shift: -28%;
+    --game-gameover-action-button-width: min(96px, 24vw);
+    --game-gameover-rule-image-max-height: min(18dvh, 106px);
+    --game-gameover-stats-gap: 2px;
+    --game-gameover-stat-min-height: 46px;
+    --game-gameover-gear-gap: 2px;
+    --game-gameover-item-size: 24px;
+    --game-gameover-item-icon-size: 19px;
+    --game-gameover-item-rarity-size: 8px;
+    --game-run-strip-label-size: clamp(0.38rem, 1.6vh, 0.48rem);
+    --game-run-strip-value-size: clamp(0.54rem, 2.1vh, 0.68rem);
+    --game-upgrade-name-size: clamp(0.68rem, 2.3vh, 0.8rem);
+    --game-upgrade-desc-size: clamp(0.54rem, 1.9vh, 0.64rem);
+    --game-gameover-label-size: clamp(0.38rem, 1.5vh, 0.46rem);
+    --game-gameover-value-size: clamp(0.52rem, 2vh, 0.64rem);
+    --game-help-footer-copy-size: clamp(0.54rem, 1.9vh, 0.62rem);
+    --game-primatrie-logo-width: min(100px, 12vw);
+    --game-primatrie-logo-padding-bottom: min(20px, 4dvh);
+    --game-primatrie-anchor-width: min(156px, calc(100vw - 18px));
+    --game-primatrie-anchor-max-height: min(38dvh, 220px);
+    --game-primatrie-anchor-padding: 10px 6px 7px;
+  }
+
+  .game-hud__run-strip {
+    top: calc(var(--safe-top) + 8px);
+    left: calc(var(--safe-left) + 10px);
+    gap: 4px;
+  }
+
+  .game-hud__run-strip div {
+    min-width: clamp(82px, 18vw, 96px);
+    min-height: clamp(46px, 11dvh, 56px);
+    padding: 8px 10px;
+    background-size: 100% 100%;
+  }
+
+  .game-hud__top-right-anchor {
+    top: calc(var(--safe-top) + 8px);
+    right: calc(var(--safe-right) + 10px);
+  }
+
+  .game-hud__panel {
+    top: calc(var(--safe-top) + 6px);
+    right: calc(var(--safe-right) + 50px);
+    padding: 8px;
+  }
+
+  .game-hud__stash {
+    top: calc(var(--safe-top) + 56px);
+    left: calc(var(--safe-left) + 10px);
+    gap: 6px;
+    max-width: min(284px, 34vw);
+  }
+
+  .game-hud__wallet strong {
+    font-size: 0.72rem;
+  }
+
+  .game-hud__inventory {
+    gap: 4px;
+  }
+
+  .game-hud__inventory-item {
+    gap: 8px;
+    min-height: 44px;
+    padding: 2px 0;
+  }
+
+  .game-hud__inventory-media,
+  .game-hud__inventory-icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .game-hud__inventory-copy {
+    gap: 2px;
+  }
+
+  .game-hud__inventory-name {
+    font-size: 0.68rem;
+  }
+
+  .game-hud__inventory-desc,
+  .game-hud__inventory-meta {
+    font-size: 0.56rem;
+    line-height: 1.18;
+  }
+
+  .game-hud__momentum-dock {
+    left: calc(var(--safe-left) + 10px);
+    bottom: calc(var(--safe-bottom) + 6px);
+    width: min(300px, 46vw);
+    padding-top: 6px;
+  }
+
+  .game-hud__equipment-dock {
+    width: min(100%, 248px);
+    margin-bottom: -38px;
+  }
+
+  .game-hud__help {
+    gap: 6px;
+    padding: calc(var(--safe-top) + 6px) calc(var(--safe-right) + 8px) calc(var(--safe-bottom) + 6px) calc(var(--safe-left) + 8px);
+  }
+
+  .game-hud__help-footer {
+    gap: 2px;
+  }
+
+  .game-hud__branch-header {
+    top: calc(var(--safe-top) + 6px);
+    width: min(260px, calc(100vw - 20px));
+    padding: 8px 10px;
+  }
+
+  .game-hud__branch-header h3 {
+    font-size: 0.7rem;
+  }
+
+  .game-hud__branch-header p {
+    font-size: 0.54rem;
+    line-height: 1.18;
+  }
+
+  .game-hud__branch-card {
+    width: min(var(--branch-card-width, 144px), calc(100vw - 14px));
+    gap: 3px;
+    padding: 8px 9px 9px;
+    border-radius: 14px;
+  }
+
+  .game-hud__upgrade-media,
+  .game-hud__shop-offer-media {
+    width: 30px;
+    height: 30px;
+  }
+
+  .game-hud__upgrade-rarity,
+  .game-hud__upgrade-path-label,
+  .game-hud__upgrade-price,
+  .game-hud__shop-bar button em {
+    font-size: 0.52rem;
+  }
+
+  .game-hud__shop-bar button {
+    min-width: 64px;
+    min-height: 64px;
+    padding: 6px 8px;
+  }
+
+  .game-hud__game-over {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    align-content: center;
+    row-gap: 4px;
+    padding: calc(var(--safe-top) + 4px) calc(var(--safe-right) + 4px) calc(var(--safe-bottom) + 4px) calc(var(--safe-left) + 4px);
+  }
+
+  .game-hud__game-over-stack {
+    grid-column: 1;
+  }
+
+  .game-hud__game-over-panel {
+    min-height: 0;
+    gap: 6px;
+  }
+
+  .game-hud__game-over-stats {
+    margin-top: 0;
+    padding: 0;
+  }
+
+  .game-hud__game-over-stat[data-shape='1'],
+  .game-hud__game-over-stat[data-shape='2'],
+  .game-hud__game-over-stat[data-shape='3'],
+  .game-hud__game-over-stat[data-shape='4'] {
+    --game-over-shape-inset-left: 8px;
+    --game-over-shape-inset-right: 8px;
+    --game-over-shape-inset-top: 6px;
+    --game-over-shape-inset-bottom: 7px;
+  }
+
+  .game-hud__game-over-gear {
+    min-height: 20px;
+  }
+
+  .game-hud__game-over-rule {
+    grid-column: 1;
+    justify-self: center;
+    align-self: end;
+    width: min(100%, var(--game-over-rule-width));
+    margin: 0;
+    padding: 3px 6px;
+    border-radius: 10px;
+  }
+
+  .game-hud__leaderboard {
+    gap: 3px;
+    margin-top: 4px;
+  }
+
+  .game-hud__leaderboard-controls {
+    flex-direction: column;
+  }
+
+  .game-hud__leaderboard-list {
+    max-height: 164px;
+    padding: 0 2px 0 1px;
+  }
+
+  .game-hud__leaderboard-row {
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .game-hud__leaderboard-rank,
+  .game-hud__leaderboard-main {
+    min-height: 32px;
+  }
+
+  .game-hud__leaderboard-rank {
+    padding: 4px 6px;
+    font-size: 0.52rem;
+  }
+
+  .game-hud__leaderboard-main {
+    padding: 4px 6px;
+    gap: 3px;
+  }
+
+  .game-hud__leaderboard-name span,
+  .game-hud__leaderboard-score {
+    font-size: 0.54rem;
+  }
+
+  .game-hud__leaderboard-detail span {
+    font-size: 0.48rem;
+  }
+
+  .game-hud__leaderboard-detail strong {
+    font-size: 0.52rem;
+  }
+
+  .game-hud__leaderboard-controls {
+    gap: 4px;
+  }
+
+  .game-hud__leaderboard-controls input,
+  .game-hud__leaderboard-controls button {
+    padding: 5px 6px;
+    font-size: 0.6rem;
+  }
+
+  .game-hud__mobile-controls {
+    right: calc(var(--safe-right) + 8px);
+    bottom: calc(var(--safe-bottom) + 6px);
+    gap: 4px;
+  }
+
+  .primatrie-portal__logo-wrap {
+    transform: translate3d(var(--primatrie-anchor-x, 50vw), calc(var(--primatrie-anchor-y, 25vh) - 62px), 0) translateX(-50%);
+  }
+
+  .primatrie-portal__chrome {
+    top: calc(var(--safe-top) + 8px);
+    left: calc(var(--safe-left) + 8px);
+    gap: 6px;
+  }
+
+  .primatrie-portal__chrome-button {
+    width: 24px;
+    height: 24px;
+  }
+
+  .primatrie-portal__actions {
+    gap: 4px;
+    margin-top: 10px;
+  }
+
+  .primatrie-portal__actions button {
+    min-height: 24px;
+    font-size: 0.95rem;
+    padding: 4px 5px;
+  }
+}

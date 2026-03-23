@@ -146,6 +146,7 @@ const SFX = {
 
 export class GameAudioSystem {
   private context: AudioContext | null = null;
+  private hasInteractiveAudioAuthorization = false;
   private readonly bufferCache = new Map<string, Promise<AudioBuffer>>();
   private readonly musicAnalysis = new Map<MusicTrackId, MusicTrackAnalysis>();
   private readonly settingsListeners = new Set<(settings: AudioSettings) => void>();
@@ -185,9 +186,32 @@ export class GameAudioSystem {
     };
   }
 
-  prime() {
+  registerUserGesture() {
+    if (this.hasInteractiveAudioAuthorization) {
+      return;
+    }
+    this.hasInteractiveAudioAuthorization = true;
     const context = this.ensureContext();
-    void context.resume();
+    void context.resume().catch(() => {
+      // Not fatal, audio may remain suspended until a later gesture.
+    });
+    if (!this.preloaded) {
+      this.preloaded = true;
+      void this.preloadCoreAssets();
+    }
+  }
+
+  prime() {
+    if (!this.hasInteractiveAudioAuthorization) {
+      return;
+    }
+    const context = this.ensureContext();
+    if (context.state === 'suspended') {
+      void context.resume().catch(() => {
+        // Not fatal. Deadlock if no user gesture yet.
+      });
+    }
+
     if (!this.preloaded) {
       this.preloaded = true;
       void this.preloadCoreAssets();
@@ -234,6 +258,10 @@ export class GameAudioSystem {
 
   update(state: GameAudioRuntimeState, deltaTime: number) {
     this.lastState = state;
+    if (!this.hasInteractiveAudioAuthorization) {
+      this.updateReactiveMusic(deltaTime);
+      return;
+    }
     if (!this.enabled) {
       this.updateReactiveMusic(deltaTime);
       return;
@@ -341,6 +369,17 @@ export class GameAudioSystem {
     if (this.context) {
       return this.context;
     }
+    if (!this.hasInteractiveAudioAuthorization) {
+      throw new Error('AudioContext is locked until user gesture.');
+    }
+    this.createAudioContext();
+    return this.context!;
+  }
+
+  private createAudioContext() {
+    if (this.context) {
+      return;
+    }
     this.context = new AudioContext();
     this.masterGain = this.context.createGain();
     this.musicBusGain = this.context.createGain();
@@ -357,7 +396,6 @@ export class GameAudioSystem {
     this.ambientBusGain.connect(this.masterGain);
     this.masterGain.connect(this.context.destination);
     this.applyMasterGain();
-    return this.context;
   }
 
   private async preloadCoreAssets() {
@@ -403,11 +441,19 @@ export class GameAudioSystem {
   }
 
   private async loadBuffer(url: string) {
+    if (!this.hasInteractiveAudioAuthorization) {
+      return Promise.reject(new Error('AudioContext is locked until user gesture.'));
+    }
     const cached = this.bufferCache.get(url);
     if (cached) {
       return cached;
     }
-    const context = this.ensureContext();
+    let context: AudioContext;
+    try {
+      context = this.ensureContext();
+    } catch (error) {
+      return Promise.reject(error);
+    }
     const request = fetch(url)
       .then((response) => {
         if (!response.ok) {
@@ -686,6 +732,9 @@ export class GameAudioSystem {
   }
 
   private async ensureLoop(key: LoopKey, url: string, bus: BusKey, gainScale: number) {
+    if (!this.hasInteractiveAudioAuthorization) {
+      return;
+    }
     if (this.activeLoops.has(key)) {
       return;
     }
@@ -693,7 +742,11 @@ export class GameAudioSystem {
       console.warn(`[GameAudioSystem] Missing loop url for: ${key}`);
       return;
     }
-    const [context, busGain] = this.getContextAndBus(bus);
+    const contextAndBus = this.getContextAndBus(bus);
+    if (!contextAndBus) {
+      return;
+    }
+    const [context, busGain] = contextAndBus;
     let buffer: AudioBuffer;
     try {
       buffer = await this.loadBuffer(url);
@@ -784,11 +837,18 @@ export class GameAudioSystem {
     if (!this.canPlayDebounced(debounceKey, debounceMs)) {
       return;
     }
+    if (!this.hasInteractiveAudioAuthorization) {
+      return;
+    }
     if (!url) {
       console.warn(`[GameAudioSystem] Missing one-shot url for: ${debounceKey}`);
       return;
     }
-    const [context, busGain] = this.getContextAndBus(bus);
+    const contextAndBus = this.getContextAndBus(bus);
+    if (!contextAndBus) {
+      return;
+    }
+    const [context, busGain] = contextAndBus;
     let buffer: AudioBuffer;
     try {
       buffer = await this.loadBuffer(url);
@@ -808,8 +868,10 @@ export class GameAudioSystem {
     source.start();
   }
 
-  private getContextAndBus(bus: BusKey) {
-    const context = this.ensureContext();
+  private getContextAndBus(bus: BusKey): [AudioContext, GainNode] | null {
+    if (!this.hasInteractiveAudioAuthorization || !this.context) {
+      return null;
+    }
     const busGain =
       bus === 'music'
         ? this.musicBusGain
@@ -819,9 +881,9 @@ export class GameAudioSystem {
             ? this.combatBusGain
             : this.ambientBusGain;
     if (!busGain) {
-      throw new Error('Audio bus is not initialized.');
+      return null;
     }
-    return [context, busGain] as const;
+    return [this.context, busGain] as const;
   }
 
   private canPlayDebounced(key: string, debounceMs: number) {

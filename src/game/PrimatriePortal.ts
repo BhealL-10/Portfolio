@@ -7,8 +7,8 @@ const LANGUAGE_BUTTON_ASSETS = {
 } as const;
 
 const HUB_LOGO_ASSETS = {
-  dark: new URL('../../assets/images/shared/branding/ape-prod-mark-dark.svg', import.meta.url).href,
-  light: new URL('../../assets/images/shared/branding/ape-prod-mark-light.svg', import.meta.url).href
+  dark: new URL('../../assets/images/shared/branding/primaterie-mark-light.svg', import.meta.url).href,
+  light: new URL('../../assets/images/shared/branding/primaterie-mark-dark.svg', import.meta.url).href
 } as const;
 
 export class PrimatriePortal {

@@ -387,6 +387,7 @@ export class AppController {
     });
 
     const primeAudio = () => {
+      this.audio.registerUserGesture();
       this.audio.prime();
     };
     window.addEventListener('pointerdown', primeAudio, { passive: true });

@@ -431,30 +431,32 @@ export class GameHUDSystem {
         </div>
       </div>
       <div class="game-hud__game-over">
-        <div class="game-hud__game-over-header-overlay" data-game-over-header-overlay hidden>
-          <img data-game-over-header-image alt="" class="game-hud__game-over-header-image" />
-        </div>
         <div class="game-hud__game-over-rule" data-game-over-rule hidden>
           <img data-game-over-rule-image alt="" class="game-hud__game-over-rule-image" />
         </div>
-        <div class="game-hud__game-over-panel">
-          <div class="game-hud__game-over-header">
-            <h2 data-game-over-title></h2>
-            <p data-game-over-body></p>
+        <div class="game-hud__game-over-stack">
+          <div class="game-hud__game-over-header-overlay" data-game-over-header-overlay hidden>
+            <img data-game-over-header-image alt="" class="game-hud__game-over-header-image" />
           </div>
-          <div class="game-hud__game-over-stats" data-game-over-stats></div>
-          <div class="game-hud__game-over-gear" data-game-over-gear></div>
-          <div class="game-hud__leaderboard" data-leaderboard-panel hidden>
-            <div class="game-hud__leaderboard-controls">
-              <input type="text" maxlength="18" data-leaderboard-name />
-              <button type="button" data-leaderboard-save></button>
+          <div class="game-hud__game-over-panel">
+            <div class="game-hud__game-over-header">
+              <h2 data-game-over-title></h2>
+              <p data-game-over-body></p>
             </div>
-            <div class="game-hud__leaderboard-list" data-leaderboard-list></div>
-          </div>
-          <div class="game-hud__game-over-actions">
-            <button type="button" data-restart></button>
-            <button type="button" data-return></button>
-            <button type="button" data-highscores></button>
+            <div class="game-hud__game-over-stats" data-game-over-stats></div>
+            <div class="game-hud__game-over-gear" data-game-over-gear></div>
+            <div class="game-hud__leaderboard" data-leaderboard-panel hidden>
+              <div class="game-hud__leaderboard-controls">
+                <input type="text" maxlength="18" data-leaderboard-name />
+                <button type="button" data-leaderboard-save></button>
+              </div>
+              <div class="game-hud__leaderboard-list" data-leaderboard-list></div>
+            </div>
+            <div class="game-hud__game-over-actions">
+              <button type="button" data-restart></button>
+              <button type="button" data-return></button>
+              <button type="button" data-highscores></button>
+            </div>
           </div>
         </div>
       </div>
