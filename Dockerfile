@@ -13,17 +13,22 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json ./
+# Install pnpm globally
+RUN npm install -g pnpm@latest
 
-# Install dependencies
-RUN npm ci
+# Copy package.json (and pnpm-lock.yaml if it exists)
+COPY package.json ./
+COPY pnpm-lock.yaml* ./
+
+# Install dependencies using pnpm
+# The -r flag is for monorepo support (safe to use even for single packages)
+RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 
 # Copy source code
 COPY . .
 
 # Build the Vite bundle
-RUN npm run build
+RUN pnpm run build
 
 # Stage 2: Serve with Nginx
 # =============================================================================

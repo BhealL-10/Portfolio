@@ -2,18 +2,21 @@
 # =============================================================================
 # Script de Redéploiement Portfolio
 # =============================================================================
-# Ce script utilise un Dockerfile multi-stage:
-#   Stage 1: Node.js - npm install + npm run build → dist/
+# Ce script utilise un Dockerfile multi-stage avec pnpm:
+#   Stage 1: Node.js - pnpm install + pnpm run build → dist/
 #   Stage 2: Nginx Alpine - Copy dist/ → /usr/share/nginx/html
 # 
 # IMPORTANT: Ne pas modifier docker-compose.yml pour ajouter des volumes
 # qui monteraient la source (./) - cela exposerait les fichiers source!
 # Seul le bundle compilé dist/ doit être servi par Nginx.
+# 
+# Note: pnpm-lock.yaml n'est pas requis en repo si .pnpm-store/ existe.
+#       Docker installera les dépendances une première fois.
 # =============================================================================
 
 set -e
 
-echo "🚀 Redéploiement du Portfolio 3D"
+echo "🚀 Redéploiement du Portfolio 3D (pnpm)"
 echo ""
 
 # Arrêter le conteneur existant
@@ -24,8 +27,8 @@ docker compose down 2>/dev/null || true
 echo "🗑️  Suppression de l'ancienne image..."
 docker rmi portfolio-3d:latest 2>/dev/null || true
 
-# Rebuild l'image (y compris npm install + npm run build dans le stage builder)
-echo "🔨 Build de la nouvelle image (compilation Vite incluse)..."
+# Rebuild l'image (y compris pnpm install + pnpm run build dans le stage builder)
+echo "🔨 Build de la nouvelle image (compilation Vite avec pnpm incluse)..."
 docker compose build --no-cache
 
 # Démarrer le conteneur
