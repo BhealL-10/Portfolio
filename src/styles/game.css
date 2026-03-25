@@ -1401,7 +1401,7 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
 }
 
 .game-hud__branch-card[data-mode='reward_branch'] {
-  transform: translate(-100%, -50%);
+  transform: translate(0, -50%);
 }
 
 .game-hud__branch-card[data-mode='shop_orbit'] {

@@ -6,6 +6,7 @@ import { CoinSystem, type CoinMarker } from './CoinSystem';
 import { EnemySystem, type EnemyMarker } from './EnemySystem';
 import { createMiniGamePortalNode } from './MiniGamePortalLayout';
 import { DEFAULT_COLUMN_DISTANCE } from './difficultyScaler';
+import { HELP_ICON_ASSETS } from './GameUiAssetResolver';
 import { GamePathSystem } from './GamePathSystem';
 import type {
   AcquisitionFeedback,
@@ -891,9 +892,14 @@ export class GameSessionController {
       deformStrength: isCurrent ? activeStrength : Math.max(passiveStrength, visualWave?.strength ?? 0) + (node.isMilestone ? 0 : fragmentAmount * 0.16),
       deformDensity: liveDensity,
       fragmentAmount,
-      iconSrc: node.colorHint === 'reward' && rewardItem ? rewardItem.hudIconSrc : null,
-      iconText: isQuestionShard ? '?' : null,
-      iconTint: isQuestionShard ? this.getThemeContrastColor() : null,
+      iconSrc:
+        node.colorHint === 'reward' && rewardItem
+          ? rewardItem.hudIconSrc
+          : isQuestionShard
+            ? HELP_ICON_ASSETS[this.theme]
+            : null,
+      iconText: null,
+      iconTint: null,
       iconScale:
         node.colorHint === 'reward' && rewardItem
           ? clamp(1.76 + Math.max(node.gameplayRadius, node.visualScale) * 0.36, 2.36, 4.2)
@@ -2884,7 +2890,8 @@ export class GameSessionController {
       const cardScale = mobileLike ? 1.28 : 1.16;
       const slotOffsetY = index === 0 ? 0.28 : index === 2 ? -0.28 : 0;
       billboard.sprite.scale.set(16.8 * cardScale, 7.8 * cardScale, 1);
-      billboard.sprite.position.set(preview.x - 12.7, preview.y + slotOffsetY, preview.z + 0.06);
+      // Décalage vers la droite pour l’affichage des descriptions (mirror de l’ancien comportement)
+      billboard.sprite.position.set(preview.x + 12.7, preview.y + slotOffsetY, preview.z + 0.06);
     });
   }
 
@@ -3825,8 +3832,9 @@ export class GameSessionController {
         return {
           slot: index as 0 | 1 | 2,
           offer: choice.offer,
+          // Basculer la référence de position vers la droite de la branche/milestone
           worldPosition: new THREE.Vector3(
-            preview.x - (index === 1 ? 3.6 : 3.2),
+            preview.x + (index === 1 ? 3.6 : 3.2),
             preview.y + (index === 0 ? 0.28 : index === 2 ? -0.28 : 0),
             preview.z
           ),

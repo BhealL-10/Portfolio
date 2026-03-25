@@ -71,10 +71,12 @@ export class RewardBranchLabelLayoutResolver {
     if (input.mode !== 'shop_orbit') {
       const anchorGap = compact ? 26 : 34;
       const slotVerticalOffset = input.slot === 0 ? (compact ? -10 : -12) : input.slot === 2 ? (compact ? 10 : 12) : 0;
+      // Pour les branches/récompenses, aligner le panneau à droite (description à droite de la shard)
+      const targetX = input.screenX + anchorGap;
       const left = Math.round(
         Math.max(
-          sidePadding + width,
-          Math.min(window.innerWidth - sidePadding, input.screenX - anchorGap)
+          sidePadding,
+          Math.min(window.innerWidth - sidePadding - width, targetX)
         )
       );
       const top = Math.round(
