@@ -1,4 +1,4 @@
-@media (orientation: landscape) and (max-width: 900px), (pointer: coarse) and (orientation: landscape), (max-height: 540px) and (orientation: landscape) {
+@media (hover: none) and (pointer: coarse) and (orientation: landscape) {
   :root {
     --game-settings-toggle-size: clamp(40px, 10vw, 48px);
     --game-settings-panel-width: min(172px, calc(100vw - 68px));
@@ -199,6 +199,10 @@
     justify-self: center;
   }
 
+  .game-hud__game-over-side {
+    min-height: calc(var(--game-gameover-panel-min-height) - 8px);
+  }
+
   .game-hud__game-over-panel {
     min-height: 0;
     gap: 6px;
@@ -224,9 +228,6 @@
   }
 
   .game-hud__game-over-rule {
-    grid-column: 1;
-    justify-self: end;
-    align-self: center;
     width: var(--game-over-rule-width);
     max-height: 88%;
     margin: 0;
@@ -242,42 +243,36 @@
   }
 
   .game-hud__leaderboard {
-    gap: 3px;
-    margin-top: 4px;
-  }
-
-  .game-hud__leaderboard-controls {
-    flex-direction: column;
+    min-height: min(236px, calc(100dvh - 30px));
+    gap: 6px;
+    padding: 14px 10px 10px;
   }
 
   .game-hud__leaderboard-list {
-    max-height: 164px;
+    max-height: 132px;
     padding: 0 2px 0 1px;
   }
 
   .game-hud__leaderboard-row {
-    grid-template-columns: 46px minmax(0, 1fr);
-    gap: 2px;
-  }
-
-  .game-hud__leaderboard-rank,
-  .game-hud__leaderboard-main {
-    min-height: 32px;
+    grid-template-columns: 38px 34px;
+    gap: 5px;
   }
 
   .game-hud__leaderboard-rank {
+    min-height: 32px;
     padding: 4px 6px;
     font-size: 0.52rem;
   }
 
-  .game-hud__leaderboard-main {
-    padding: 4px 6px;
-    gap: 3px;
+  .game-hud__leaderboard-avatar {
+    width: 34px;
+    height: 34px;
+    padding: 3px;
   }
 
-  .game-hud__leaderboard-name span,
-  .game-hud__leaderboard-score {
-    font-size: 0.54rem;
+  .game-hud__leaderboard-preview-card {
+    grid-template-columns: 38px 34px minmax(0, 1fr);
+    gap: 5px;
   }
 
   .game-hud__leaderboard-detail span {
@@ -296,6 +291,43 @@
   .game-hud__leaderboard-controls button {
     padding: 5px 6px;
     font-size: 0.6rem;
+  }
+
+  .game-hud__avatar-editor {
+    min-height: min(224px, calc(100dvh - 22px));
+    padding: 12px 10px 10px;
+    gap: 10px;
+  }
+
+  .game-hud__avatar-editor-stage {
+    grid-template-columns: 32px minmax(0, 1fr) 32px;
+    gap: 4px;
+  }
+
+  .game-hud__avatar-editor-nav-column {
+    width: 32px;
+    gap: 4px;
+  }
+
+  .game-hud__avatar-editor-preview {
+    width: min(100%, 104px);
+  }
+
+  .game-hud__avatar-editor-step {
+    width: 32px;
+    min-width: 32px;
+    min-height: 32px;
+  }
+
+  .game-hud__avatar-editor-layers {
+    gap: 4px;
+  }
+
+  .game-hud__avatar-editor-save {
+    min-width: 92px;
+    min-height: 30px;
+    font-size: 0.56rem;
+    padding: 6px 10px;
   }
 
   .game-hud__mobile-controls {

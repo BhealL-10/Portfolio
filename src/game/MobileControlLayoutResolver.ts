@@ -1,4 +1,5 @@
 import type { GameHudState, GamePlayerMotionState } from './gameSessionTypes';
+import { isMobileLandscapeRuntime } from '../core/device';
 import { resolveDocumentTheme } from './ThemeAssetResolver';
 
 export const MOBILE_CONTROL_ASSETS = {
@@ -82,10 +83,7 @@ export function getMobileChargeAsset(level: number, theme = resolveDocumentTheme
 export class MobileControlLayoutResolver {
   resolve(input: MobileControlLayoutInput): MobileControlLayout {
     const theme = resolveDocumentTheme();
-    const visible =
-      (window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900) &&
-      window.innerWidth >= window.innerHeight &&
-      input.state !== 'game_over';
+    const visible = isMobileLandscapeRuntime() && input.state !== 'game_over';
     const grounded = input.playerMotionState === 'attached' || input.playerMotionState === 'charging';
     const airborne = input.playerMotionState === 'airborne';
     const airChargeLevel = Math.max(1, Math.min(5, input.mobile.airborneChargeDisplayCount || input.mobile.airborneChargeCount || 1));

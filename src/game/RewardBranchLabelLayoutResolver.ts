@@ -1,3 +1,5 @@
+import { isMobileRuntime } from '../core/device';
+
 export interface RewardBranchLabelLayoutInput {
   screenX: number;
   screenY: number;
@@ -62,7 +64,7 @@ export class RewardBranchLabelLayoutResolver {
   }
 
   private resolveSingle(input: RewardBranchLabelLayoutInput): RewardBranchLabelLayout {
-    const compact = window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 760;
+    const compact = isMobileRuntime();
     const sidePadding = compact ? 10 : 20;
     const topPadding = compact ? 10 : 18;
     const bottomPadding = compact ? 14 : 22;

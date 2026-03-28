@@ -55,22 +55,22 @@
   --game-mobile-control-side-icon-width: 66px;
   --game-mobile-control-jump-icon-width: 70px;
   --game-mobile-control-charge-icon-width: 74px;
-  --game-gameover-shell-gap: clamp(14px, 1.4vw, 22px);
-  --game-gameover-rule-width-size: clamp(232px, 20vw, 320px);
-  --game-gameover-panel-width: min(840px, calc(100vw - (2 * var(--game-gameover-rule-width-size)) - 72px));
-  --game-gameover-panel-min-height: clamp(440px, 56vh, 592px);
-  --game-gameover-panel-overlap-top: clamp(54px, 6vw, 78px);
-  --game-gameover-panel-padding-top: clamp(96px, 10vw, 118px);
-  --game-gameover-panel-padding-right: clamp(64px, 6.5vw, 88px);
-  --game-gameover-panel-padding-bottom: clamp(34px, 4vw, 54px);
-  --game-gameover-panel-padding-left: clamp(64px, 6.5vw, 88px);
-  --game-gameover-content-width: min(100%, 632px);
-  --game-gameover-header-overlay-width: min(424px, 44vw);
+  --game-gameover-shell-gap: clamp(10px, 1vw, 18px);
+  --game-gameover-rule-width-size: clamp(212px, 16vw, 272px);
+  --game-gameover-panel-width: min(736px, calc(100vw - (2 * var(--game-gameover-rule-width-size)) - 60px));
+  --game-gameover-panel-min-height: clamp(400px, 50vh, 524px);
+  --game-gameover-panel-overlap-top: clamp(42px, 4.8vw, 62px);
+  --game-gameover-panel-padding-top: clamp(82px, 8vw, 102px);
+  --game-gameover-panel-padding-right: clamp(42px, 4.2vw, 58px);
+  --game-gameover-panel-padding-bottom: clamp(26px, 3vw, 38px);
+  --game-gameover-panel-padding-left: clamp(42px, 4.2vw, 58px);
+  --game-gameover-content-width: min(100%, 548px);
+  --game-gameover-header-overlay-width: min(360px, 34vw);
   --game-gameover-header-overlay-shift: -36%;
   --game-gameover-action-button-width: min(108px, 20vw);
   --game-gameover-rule-image-max-height: min(50dvh, 472px);
-  --game-gameover-stats-gap: clamp(6px, 0.8vw, 10px);
-  --game-gameover-stat-min-height: clamp(88px, 10vw, 102px);
+  --game-gameover-stats-gap: clamp(4px, 0.55vw, 8px);
+  --game-gameover-stat-min-height: clamp(74px, 8vw, 88px);
   --game-gameover-gear-gap: 5px;
   --game-gameover-item-size: 44px;
   --game-gameover-item-icon-size: 36px;
@@ -267,6 +267,7 @@ body {
 .navigation-hud__chip,
 .navigation-hud__button,
 .navigation-hud__dot,
+.focus-layer__panel,
 .guide-bubble,
 .about-layer__panel,
 .intro-layer__progress {

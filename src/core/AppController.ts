@@ -29,6 +29,7 @@ import {
   isPortfolioInteractionMode,
   isprimaterieMode
 } from './appModePredicates';
+import { applyRuntimeDeviceAttributes, getRuntimeDeviceState, isMobilePortraitRuntime, isMobileRuntime } from './device';
 import { damp, wrapIndex } from './math';
 import { RenderLoop } from './RenderLoop';
 import { TransitionSystem } from './TransitionSystem';
@@ -94,6 +95,12 @@ export class AppController {
   private gameTransitionReturningToHub = false;
   private gameTransitionAnchor: THREE.Vector3 | null = null;
 
+  private syncRuntimeDeviceState = () => {
+    applyRuntimeDeviceAttributes(document.documentElement);
+    applyRuntimeDeviceAttributes(this.root);
+    applyRuntimeDeviceAttributes(this.uiHost);
+  };
+
   constructor(host: HTMLElement, options: { entryRoute: AppEntryRoute }) {
     this.entryRoute = options.entryRoute;
     this.root = document.createElement('div');
@@ -154,6 +161,12 @@ export class AppController {
       },
       onMobileAirborneCharge: () => {
         this.game.triggerMobileAirborneChargeAction();
+      },
+      onGameOverStatReveal: (record) => {
+        this.audio.handleEvent({ type: 'land', kind: 'reward' });
+        if (record) {
+          this.audio.handleEvent({ type: 'coin', magnet: false });
+        }
       },
       onCloseShop: () => {
         if (this.game.closeShopChoice()) {
@@ -257,6 +270,7 @@ export class AppController {
     this.loop = new RenderLoop((deltaTime, elapsedTime) => this.update(deltaTime, elapsedTime));
 
     this.bindEvents();
+    this.syncRuntimeDeviceState();
     this.audio.onSettingsChange((settings) => {
       this.gameHud.setAudioControls(settings);
     });
@@ -352,8 +366,10 @@ export class AppController {
     const preview = this.game.getPortalPreviewLayout();
     this.world.setSingleNodeExternalLayout(preview.position, preview.visual);
     const projected = this.renderer.projectWorldToScreen(preview.position);
-    const mobileBias = window.innerWidth <= 820 ? 0.84 : 1;
-    const viewportScale = THREE.MathUtils.clamp((window.innerWidth / 1440) * mobileBias, 0.64, 1);
+    const device = getRuntimeDeviceState();
+    const viewportScale = device.isMobile
+      ? THREE.MathUtils.clamp(window.innerWidth / 1160, 0.74, 0.94)
+      : THREE.MathUtils.clamp(window.innerWidth / 2240, 0.6, 0.8);
     this.primateriePortal.setAnchor(projected.x, projected.y, viewportScale);
   }
 
@@ -458,8 +474,12 @@ export class AppController {
     window.addEventListener('wheel', this.onWheel, { passive: false });
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
-    window.addEventListener('resize', this.refreshRotateOverlayCopy);
-    window.addEventListener('orientationchange', this.refreshRotateOverlayCopy);
+    const handleViewportStateChange = () => {
+      this.syncRuntimeDeviceState();
+      this.refreshRotateOverlayCopy();
+    };
+    window.addEventListener('resize', handleViewportStateChange);
+    window.addEventListener('orientationchange', handleViewportStateChange);
 
     const canvas = this.renderer.renderer.domElement;
     canvas.addEventListener('pointerdown', this.onGamePointerDown);
@@ -1264,6 +1284,7 @@ export class AppController {
   }
 
   private refreshUI() {
+    this.syncRuntimeDeviceState();
     const focusedProject = this.world.getFocusedProject();
     const focusIndex = focusedProject ? this.content.getProjectIndex(focusedProject.id) : this.activeIndex;
     const isGameMode = isGameRuntimeMode(this.mode.current);
@@ -1344,16 +1365,16 @@ export class AppController {
   }
 
   private isMobileDeviceLike() {
-    return window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900;
+    return isMobileRuntime();
   }
 
   private isMiniGameOrientationBlocked() {
     const isGameMode = this.mode.is('game_transition') || this.mode.is('game') || this.mode.is('game_over');
-    return isGameMode && this.isMobileDeviceLike() && window.innerHeight > window.innerWidth;
+    return isGameMode && getRuntimeDeviceState().isMobilePortrait;
   }
 
   private isPortfolioOrientationBlocked() {
-    return !isGameRuntimeMode(this.mode.current) && !isprimaterieMode(this.mode.current) && this.isMobileDeviceLike() && window.innerWidth > window.innerHeight;
+    return !isGameRuntimeMode(this.mode.current) && !isprimaterieMode(this.mode.current) && isMobileRuntime() && !isMobilePortraitRuntime();
   }
 
   private refreshRotateOverlayCopy = () => {

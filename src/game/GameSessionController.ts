@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isMobileRuntime } from '../core/device';
 import { clamp, damp } from '../core/math';
 import type { ThemeMode } from '../types/content';
 import { CameraRailController } from './CameraRailController';
@@ -2490,7 +2491,7 @@ export class GameSessionController {
   }
 
   private updateCamera(deltaTime: number, currentNode: ResolvedGamePathNode, nextNode: ResolvedGamePathNode) {
-    const mobileLike = window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900;
+    const mobileLike = isMobileRuntime();
     const milestoneAirborne = this.airborneFromMilestone && this.playerState === 'airborne';
     const cameraCurrentNode = milestoneAirborne ? nextNode : currentNode;
     const cameraNextNode =
@@ -2880,7 +2881,7 @@ export class GameSessionController {
       });
     }
 
-    const mobileLike = window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900;
+    const mobileLike = isMobileRuntime();
     const headerScale = mobileLike ? 1.08 : 1;
     this.rewardHeaderBillboard.sprite.scale.set(14.2 * headerScale, 3.2 * headerScale, 1);
     this.rewardHeaderBillboard.sprite.position.set(currentNode.resolvedX, currentNode.resolvedY + 11.2, currentNode.resolvedZ + 0.06);

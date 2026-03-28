@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isMobilePortraitRuntime, isMobileRuntime } from '../core/device';
 import { damp, wrapIndex } from '../core/math';
 import type { AppMode } from '../core/ModeController';
 import type { PortfolioProject, ThemeMode } from '../types/content';
@@ -376,7 +377,7 @@ export class OrbitWorldSystem {
     camera: THREE.Camera
   ): { shardId: string; point: THREE.Vector3; distance: number } | null {
     const rect = canvas.getBoundingClientRect();
-    const coarsePointer = window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900;
+    const coarsePointer = isMobileRuntime();
     let best: { shardId: string; point: THREE.Vector3; distance: number } | null = null;
     const worldPosition = new THREE.Vector3();
     const projected = new THREE.Vector3();
@@ -453,7 +454,7 @@ export class OrbitWorldSystem {
   private applyCameraFacingRotation(entity: ShardEntity, deltaTime: number, damping: number, rotateForPortrait = false) {
     this.cameraFacingAnchor.position.copy(entity.group.position);
     this.cameraFacingAnchor.lookAt(this.focusCameraPosition);
-    if (rotateForPortrait && window.innerWidth <= 900 && window.innerHeight > window.innerWidth) {
+    if (rotateForPortrait && isMobilePortraitRuntime()) {
       this.cameraFacingAnchor.rotateZ(Math.PI * 0.5);
     }
     entity.group.quaternion.slerp(

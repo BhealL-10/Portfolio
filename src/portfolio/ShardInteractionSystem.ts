@@ -1,4 +1,5 @@
 import type * as THREE from 'three';
+import { isMobileRuntime } from '../core/device';
 import type { AppMode } from '../core/ModeController';
 import { OrbitWorldSystem } from './OrbitWorldSystem';
 
@@ -29,7 +30,7 @@ export class ShardInteractionSystem {
   private focusGesture = false;
 
   private isCoarsePointer() {
-    return window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900;
+    return isMobileRuntime();
   }
 
   constructor(
