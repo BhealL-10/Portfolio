@@ -341,7 +341,7 @@ export class GameSessionController {
     this.grapRangeIndicator.visible = false;
     this.grapRangeIndicator.renderOrder = 28;
     this.milestonePlayerIndicator = new THREE.Mesh(
-      new THREE.ConeGeometry(0.92, 1.78, 3),
+      new THREE.ConeGeometry(1.0, 1.95, 3),
       new THREE.MeshBasicMaterial({
         color: theme === 'dark' ? '#A5977F' : '#2E3644',
         transparent: true,
@@ -2573,7 +2573,7 @@ export class GameSessionController {
         this.playerPosition.y + localUpY * hoverOffset,
         this.playerPosition.z + 0.02
       );
-      this.milestonePlayerIndicator.rotation.z = heading - Math.PI * 0.5 + (orientationFlip < 0 ? Math.PI : 0);
+      this.milestonePlayerIndicator.rotation.z = heading - Math.PI * 0.5 + (orientationFlip < 0 ? Math.PI : 0) + (this.orbitDirection < 0 ? Math.PI : 0) + Math.PI;
     }
 
     const visualState = this.resolvePlayerVisualState();

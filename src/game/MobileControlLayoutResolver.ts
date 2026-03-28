@@ -1,17 +1,42 @@
 import type { GameHudState, GamePlayerMotionState } from './gameSessionTypes';
+import { resolveDocumentTheme } from './ThemeAssetResolver';
 
 export const MOBILE_CONTROL_ASSETS = {
-  grapple: new URL('../../assets/images/game/ui/mobile-controls/grapple.svg', import.meta.url).href,
-  boost: new URL('../../assets/images/game/ui/mobile-controls/boost.svg', import.meta.url).href,
-  jump: new URL('../../assets/images/game/ui/mobile-controls/jump.svg', import.meta.url).href
+  grapple: {
+    dark: new URL('../../assets/images/game/ui/mobile-controls/dark/grapple.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/mobile-controls/light/grapple.svg', import.meta.url).href
+  },
+  boost: {
+    dark: new URL('../../assets/images/game/ui/mobile-controls/dark/boost.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/mobile-controls/light/boost.svg', import.meta.url).href
+  },
+  jump: {
+    dark: new URL('../../assets/images/game/ui/mobile-controls/dark/jump.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/mobile-controls/light/jump.svg', import.meta.url).href
+  }
 } as const;
 
 export const MOBILE_CHARGE_ASSETS = [
-  new URL('../../assets/images/game/ui/mobile-controls/charge-1.svg', import.meta.url).href,
-  new URL('../../assets/images/game/ui/mobile-controls/charge-2.svg', import.meta.url).href,
-  new URL('../../assets/images/game/ui/mobile-controls/charge-3.svg', import.meta.url).href,
-  new URL('../../assets/images/game/ui/mobile-controls/charge-4.svg', import.meta.url).href,
-  new URL('../../assets/images/game/ui/mobile-controls/charge-5.svg', import.meta.url).href
+  {
+    dark: new URL('../../assets/images/game/ui/mobile-controls/dark/charge-1.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/mobile-controls/light/charge-1.svg', import.meta.url).href
+  },
+  {
+    dark: new URL('../../assets/images/game/ui/mobile-controls/dark/charge-2.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/mobile-controls/light/charge-2.svg', import.meta.url).href
+  },
+  {
+    dark: new URL('../../assets/images/game/ui/mobile-controls/dark/charge-3.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/mobile-controls/light/charge-3.svg', import.meta.url).href
+  },
+  {
+    dark: new URL('../../assets/images/game/ui/mobile-controls/dark/charge-4.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/mobile-controls/light/charge-4.svg', import.meta.url).href
+  },
+  {
+    dark: new URL('../../assets/images/game/ui/mobile-controls/dark/charge-5.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/mobile-controls/light/charge-5.svg', import.meta.url).href
+  }
 ] as const;
 
 export type MobileControlAction = 'hidden' | 'tap_jump' | 'tap_grapple' | 'tap_airborne_charge' | 'hold_charge' | 'hold_boost';
@@ -46,12 +71,17 @@ export interface MobileControlLayout {
   secondary: MobileControlDescriptor;
 }
 
-function getChargeAsset(level: number) {
-  return MOBILE_CHARGE_ASSETS[Math.max(0, Math.min(MOBILE_CHARGE_ASSETS.length - 1, level - 1))];
+export function getMobileControlAsset(kind: keyof typeof MOBILE_CONTROL_ASSETS, theme = resolveDocumentTheme()) {
+  return MOBILE_CONTROL_ASSETS[kind][theme];
+}
+
+export function getMobileChargeAsset(level: number, theme = resolveDocumentTheme()) {
+  return MOBILE_CHARGE_ASSETS[Math.max(0, Math.min(MOBILE_CHARGE_ASSETS.length - 1, level - 1))][theme];
 }
 
 export class MobileControlLayoutResolver {
   resolve(input: MobileControlLayoutInput): MobileControlLayout {
+    const theme = resolveDocumentTheme();
     const visible =
       (window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900) &&
       window.innerWidth >= window.innerHeight &&
@@ -67,7 +97,7 @@ export class MobileControlLayoutResolver {
           ? {
               visible: true,
               kind: 'grapple',
-              iconSrc: MOBILE_CONTROL_ASSETS.grapple,
+              iconSrc: getMobileControlAsset('grapple', theme),
               labelKey: 'grapple',
               action: 'tap_grapple',
               dimmed: input.mobile.grappleBlocked
@@ -75,7 +105,7 @@ export class MobileControlLayoutResolver {
           : {
               visible: false,
               kind: 'jump',
-              iconSrc: MOBILE_CONTROL_ASSETS.jump,
+              iconSrc: getMobileControlAsset('jump', theme),
               labelKey: 'jump',
               action: 'hidden',
               dimmed: false
@@ -84,7 +114,7 @@ export class MobileControlLayoutResolver {
           ? {
               visible: true,
               kind: 'charge',
-              iconSrc: getChargeAsset(airChargeLevel),
+              iconSrc: getMobileChargeAsset(airChargeLevel, theme),
               labelKey: 'charge',
               action: 'tap_airborne_charge',
               dimmed: false
@@ -93,7 +123,7 @@ export class MobileControlLayoutResolver {
             ? {
                 visible: true,
                 kind: 'boost',
-                iconSrc: MOBILE_CONTROL_ASSETS.boost,
+                iconSrc: getMobileControlAsset('boost', theme),
                 labelKey: 'boost',
                 action: 'hold_boost',
                 dimmed: false
@@ -101,7 +131,7 @@ export class MobileControlLayoutResolver {
             : {
                 visible: false,
                 kind: 'charge',
-                iconSrc: getChargeAsset(1),
+                iconSrc: getMobileChargeAsset(1, theme),
                 labelKey: 'charge',
                 action: 'hidden',
                 dimmed: false
@@ -115,7 +145,7 @@ export class MobileControlLayoutResolver {
         primary: {
           visible: true,
           kind: 'jump',
-          iconSrc: MOBILE_CONTROL_ASSETS.jump,
+          iconSrc: getMobileControlAsset('jump', theme),
           labelKey: 'jump',
           action: 'tap_jump',
           dimmed: false
@@ -123,7 +153,7 @@ export class MobileControlLayoutResolver {
         secondary: {
           visible: true,
           kind: 'boost',
-          iconSrc: MOBILE_CONTROL_ASSETS.boost,
+          iconSrc: getMobileControlAsset('boost', theme),
           labelKey: 'boost',
           action: 'hold_boost',
           dimmed: input.chargeRatio <= 0.02
@@ -136,7 +166,7 @@ export class MobileControlLayoutResolver {
       primary: {
         visible: false,
         kind: 'jump',
-        iconSrc: MOBILE_CONTROL_ASSETS.jump,
+        iconSrc: getMobileControlAsset('jump', theme),
         labelKey: 'jump',
         action: 'hidden',
         dimmed: false
@@ -144,7 +174,7 @@ export class MobileControlLayoutResolver {
       secondary: {
         visible: false,
         kind: 'charge',
-        iconSrc: getChargeAsset(1),
+        iconSrc: getMobileChargeAsset(1, theme),
         labelKey: 'charge',
         action: 'hidden',
         dimmed: false

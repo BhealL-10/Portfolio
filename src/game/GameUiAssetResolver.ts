@@ -93,6 +93,17 @@ export const SOUND_BUTTON_ASSETS = {
   sprite: new URL('../../assets/images/game/ui/meters/fill-strip.png', import.meta.url).href
 } as const;
 
+export const FULLSCREEN_BUTTON_ASSETS = {
+  on: {
+    dark: new URL('../../assets/images/game/ui/buttons/icons/fullscreen-on-dark.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/buttons/icons/fullscreen-on-light.svg', import.meta.url).href
+  },
+  off: {
+    dark: new URL('../../assets/images/game/ui/buttons/icons/fullscreen-off-dark.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/buttons/icons/fullscreen-off-light.svg', import.meta.url).href
+  }
+} as const;
+
 export function getUIButtonAsset(type: GameUiButtonAsset, language: Language, theme: ThemeAsset) {
   return BUTTON_ASSETS[type][language][theme];
 }

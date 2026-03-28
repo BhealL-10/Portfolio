@@ -7,7 +7,7 @@ import { GRADE_SPRITE_ASSET_URLS } from './GradeSpriteResolver';
 import { MobileControlsHud } from './MobileControlsHud';
 import { MOBILE_CHARGE_ASSETS, MOBILE_CONTROL_ASSETS } from './MobileControlLayoutResolver';
 import { RewardBranchLabelLayoutResolver } from './RewardBranchLabelLayoutResolver';
-import { getUIButtonAsset, HELP_ICON_ASSETS, SECONDARY_NAV_ASSETS, SOUND_BUTTON_ASSETS, THEME_TOGGLE_ASSETS } from './GameUiAssetResolver';
+import { FULLSCREEN_BUTTON_ASSETS, getUIButtonAsset, HELP_ICON_ASSETS, SECONDARY_NAV_ASSETS, SOUND_BUTTON_ASSETS, THEME_TOGGLE_ASSETS } from './GameUiAssetResolver';
 import { SETTINGS_BUTTON_ASSETS } from './SettingsButton';
 import { observeThemeChanges, resolveDocumentTheme } from './ThemeAssetResolver';
 import { TopRightUiCluster } from './TopRightUiCluster';
@@ -204,22 +204,34 @@ const HELP_IMAGE_MODULES = import.meta.glob('../../assets/images/game/ui/help/**
   import: 'default'
 }) as Record<string, string>;
 
+type HelpTheme = 'dark' | 'light';
+
 function resolveHelpImageSets() {
-  const sets: Record<'fr' | 'en', string[]> = { fr: [], en: [] };
+  const sets: Record<'fr' | 'en', Record<HelpTheme, string[]> & { fallback: string[] }> = {
+    fr: { dark: [], light: [], fallback: [] },
+    en: { dark: [], light: [], fallback: [] }
+  };
   const entries = Object.entries(HELP_IMAGE_MODULES)
     .map(([path, src]) => ({ path, src, name: path.split('/').pop() ?? '' }))
-    .filter((entry) => /^(en|fr)-rules-\d+\./i.test(entry.name))
     .sort((a, b) => {
-      const aIndex = Number(a.name.match(/rules-(\d+)/i)?.[1] ?? 0);
-      const bIndex = Number(b.name.match(/rules-(\d+)/i)?.[1] ?? 0);
+      const aIndex = Number((a.name.match(/rules(\d+)|rules-(\d+)/i)?.slice(1).find(Boolean)) ?? 0);
+      const bIndex = Number((b.name.match(/rules(\d+)|rules-(\d+)/i)?.slice(1).find(Boolean)) ?? 0);
       return aIndex - bIndex;
     });
 
   entries.forEach((entry) => {
-    if (entry.name.toLowerCase().startsWith('fr-')) {
-      sets.fr.push(entry.src);
-    } else {
-      sets.en.push(entry.src);
+    const path = entry.path.toLowerCase();
+    const themedMatch = path.match(/\/(fr|en)\/(dark|light)\//);
+    if (themedMatch && /rules\d+-(dark|light)\./i.test(entry.name)) {
+      const locale = themedMatch[1] as 'fr' | 'en';
+      const theme = themedMatch[2] as HelpTheme;
+      sets[locale][theme].push(entry.src);
+      return;
+    }
+
+    if (/^(en|fr)-rules-\d+\./i.test(entry.name)) {
+      const locale = entry.name.toLowerCase().startsWith('fr-') ? 'fr' : 'en';
+      sets[locale].fallback.push(entry.src);
     }
   });
 
@@ -268,6 +280,7 @@ export class GameHUDSystem {
   private settingsVolumeButton: HTMLButtonElement;
   private settingsVolumeMeter: HTMLSpanElement;
   private settingsVolumeMeterFill: HTMLSpanElement;
+  private settingsFullscreenButton: HTMLButtonElement;
   private branchLayer: HTMLDivElement;
   private stashBar: HTMLDivElement;
   private inventoryBar: HTMLDivElement;
@@ -360,9 +373,10 @@ export class GameHUDSystem {
           <button type="button" data-exit></button>
         </div>
         <div class="game-hud__settings-grid">
-          <button type="button" data-settings-help></button>
-          <button type="button" data-settings-theme></button>
+          <button type="button" data-settings-help class="game-hud__settings-help-button"></button>
           <button type="button" data-settings-language></button>
+          <button type="button" data-settings-theme></button>
+          <button type="button" data-settings-fullscreen class="mobile-only"></button>
           <button type="button" data-settings-mute></button>
           <button type="button" class="game-hud__settings-volume" data-settings-volume>
             <span class="game-hud__settings-volume-copy" data-settings-volume-label></span>
@@ -502,6 +516,7 @@ export class GameHUDSystem {
     this.settingsVolumeButton = this.element.querySelector<HTMLButtonElement>('[data-settings-volume]')!;
     this.settingsVolumeMeter = this.element.querySelector<HTMLSpanElement>('[data-settings-volume-meter]')!;
     this.settingsVolumeMeterFill = this.element.querySelector<HTMLSpanElement>('.game-hud__settings-volume-meter-fill')!;
+    this.settingsFullscreenButton = this.element.querySelector<HTMLButtonElement>('[data-settings-fullscreen]')!;
     this.branchLayer = this.element.querySelector<HTMLDivElement>('.game-hud__branch-layer')!;
     this.stashBar = this.element.querySelector<HTMLDivElement>('.game-hud__stash')!;
     this.inventoryBar = this.element.querySelector<HTMLDivElement>('.game-hud__inventory')!;
@@ -607,6 +622,15 @@ export class GameHUDSystem {
     this.settingsThemeButton.addEventListener('click', callbacks.onThemeToggle);
     this.settingsLanguageButton.addEventListener('click', callbacks.onLanguageToggle);
     this.settingsMuteButton.addEventListener('click', callbacks.onAudioMuteToggle);
+    this.settingsFullscreenButton.addEventListener('click', () => {
+      if (document.documentElement.requestFullscreen) {
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        } else {
+          document.documentElement.requestFullscreen();
+        }
+      }
+    });
     const updateVolumeFromPointer = (clientX: number) => {
       const rect = this.settingsVolumeMeter.getBoundingClientRect();
       if (rect.width <= 0) {
@@ -636,6 +660,7 @@ export class GameHUDSystem {
       this.volumeDragPointerId = null;
     };
     this.settingsVolumeButton.addEventListener('pointerup', releaseVolumePointer);
+    document.addEventListener('fullscreenchange', () => this.renderSettingsButtons());
     this.settingsVolumeButton.addEventListener('pointercancel', releaseVolumePointer);
     this.helpPrevButton.addEventListener('click', () => this.setHelpPage(this.helpPageIndex - 1));
     this.helpNextButton.addEventListener('click', () => this.setHelpPage(this.helpPageIndex + 1));
@@ -670,6 +695,10 @@ export class GameHUDSystem {
       this.renderSettingsButtons();
       this.renderAudioControls();
       this.renderGameOverButtons();
+      if (this.helpOpen) {
+        this.renderHelpPages();
+        this.setHelpPage(this.helpPageIndex);
+      }
     });
     host.appendChild(this.element);
 
@@ -1287,13 +1316,17 @@ export class GameHUDSystem {
 
     this.settingsLanguageButton.className = 'game-hud__settings-chip game-hud__settings-chip--language';
     this.settingsLanguageButton.setAttribute('aria-label', languageLabel);
-    this.settingsLanguageButton.innerHTML = `
-      <img class="game-hud__settings-language-icon" src="${languageAsset}" alt="" />
-    `;
+    this.settingsLanguageButton.innerHTML = `<img class="game-hud__settings-language-icon" src="${languageAsset}" alt="" />`;
 
     this.settingsThemeButton.className = `game-hud__settings-chip game-hud__settings-chip--theme is-${theme}-theme`;
     this.settingsThemeButton.setAttribute('aria-label', themeLabel);
     this.settingsThemeButton.innerHTML = `<img class="game-hud__settings-theme-icon" src="${THEME_TOGGLE_ASSETS[theme]}" alt="" />`;
+
+    const fullscreenLabel = document.fullscreenElement ? (this.i18n.current === 'fr' ? 'Quitter plein écran' : 'Exit fullscreen') : (this.i18n.current === 'fr' ? 'Plein écran' : 'Fullscreen');
+    const fullscreenSrc = document.fullscreenElement ? FULLSCREEN_BUTTON_ASSETS.on[theme] : FULLSCREEN_BUTTON_ASSETS.off[theme];
+    this.settingsFullscreenButton.className = 'game-hud__settings-chip game-hud__settings-chip--fullscreen';
+    this.settingsFullscreenButton.setAttribute('aria-label', fullscreenLabel);
+    this.settingsFullscreenButton.innerHTML = `<img class="game-hud__settings-fullscreen-icon" src="${fullscreenSrc}" alt="" />`;
   }
 
   private renderAudioControls() {
@@ -1340,8 +1373,23 @@ export class GameHUDSystem {
   }
 
   private getHelpPages(locale: 'fr' | 'en') {
-    const localized = this.helpImageSets[locale];
-    return localized.length > 0 ? localized : this.helpImageSets.en;
+    const theme = resolveDocumentTheme();
+    const localized = this.helpImageSets[locale][theme];
+    if (localized.length > 0) {
+      return localized;
+    }
+
+    const fallback = this.helpImageSets[locale].fallback;
+    if (fallback.length > 0) {
+      return fallback;
+    }
+
+    const englishLocalized = this.helpImageSets.en[theme];
+    if (englishLocalized.length > 0) {
+      return englishLocalized;
+    }
+
+    return this.helpImageSets.en.fallback;
   }
 
   private renderHelpPages() {
@@ -2130,8 +2178,8 @@ export class GameHUDSystem {
         [COIN_ICON_URL, EQUIPMENT_UI_ASSETS.bgBoat],
         itemAssets,
         Object.values(EQUIPMENT_UI_ASSETS.charges),
-        Object.values(MOBILE_CONTROL_ASSETS),
-        MOBILE_CHARGE_ASSETS,
+        Object.values(MOBILE_CONTROL_ASSETS).flatMap((assetSet) => Object.values(assetSet)),
+        MOBILE_CHARGE_ASSETS.flatMap((assetSet) => Object.values(assetSet)),
         buttonAssets,
         Object.values(SETTINGS_BUTTON_ASSETS)
       )

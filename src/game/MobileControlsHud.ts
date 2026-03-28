@@ -1,6 +1,6 @@
 import type { GameHudState, GamePlayerMotionState } from './gameSessionTypes';
 import { MobileControlButton } from './MobileControlButton';
-import { MOBILE_CONTROL_ASSETS, MobileControlAction, MobileControlLayoutResolver } from './MobileControlLayoutResolver';
+import { getMobileControlAsset, MobileControlAction, MobileControlLayoutResolver } from './MobileControlLayoutResolver';
 
 interface MobileControlsHudCallbacks {
   onChargeChange: (active: boolean) => void;
@@ -36,9 +36,9 @@ export class MobileControlsHud {
     this.element = document.createElement('div');
     this.element.className = 'game-hud__mobile-controls';
 
-    this.primaryButton = new MobileControlButton('jump', labels.jump, MOBILE_CONTROL_ASSETS.jump);
+    this.primaryButton = new MobileControlButton('jump', labels.jump, getMobileControlAsset('jump'));
     this.primaryButton.element.dataset.slot = 'primary';
-    this.secondaryButton = new MobileControlButton('charge', labels.charge, MOBILE_CONTROL_ASSETS.jump);
+    this.secondaryButton = new MobileControlButton('charge', labels.charge, getMobileControlAsset('jump'));
     this.secondaryButton.element.dataset.slot = 'secondary';
 
     this.bindPrimary();

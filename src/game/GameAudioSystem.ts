@@ -5,7 +5,7 @@ import { damp } from '../core/math';
 
 const AUDIO_VOLUME_KEY = 'portfolio-game-audio-volume-v1';
 const AUDIO_MUTE_KEY = 'portfolio-game-audio-muted-v1';
-const DEFAULT_VOLUME = 0.86;
+const DEFAULT_VOLUME = 1.0;
 
 type MusicTrackId = 'intro' | 'loop1' | 'loop2' | 'loop3' | 'loop4';
 type BusKey = 'music' | 'feedback' | 'combat' | 'ambient';

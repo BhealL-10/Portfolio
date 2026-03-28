@@ -198,7 +198,7 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
   transition-delay: 260ms;
 }
 
-.game-hud__panel.is-settings-open .game-hud__settings-grid > button:nth-child(5) {
+.game-hud__panel.is-settings-open .game-hud__settings-grid > .game-hud__settings-volume {
   transition-delay: 300ms;
 }
 
@@ -592,27 +592,21 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
 
 .game-hud__settings-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
   margin-top: 0;
 }
 
-.game-hud__settings-grid > button:nth-child(1),
-.game-hud__settings-grid > button:nth-child(2),
-.game-hud__settings-grid > button:nth-child(3) {
-  grid-column: span 2;
-}
-
 .game-hud__settings-volume {
-  grid-column: span 4;
-  min-height: 38px;
+  grid-column: 1 / -1;
+  min-height: 32px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 0;
   width: 100%;
-  padding: 8px 10px;
-  border-radius: 16px;
+  padding: 6px 8px;
+  border-radius: 12px;
   border: 1px solid rgb(var(--overlay-fg-rgb) / 0.14);
   background: rgb(var(--overlay-fg-rgb) / 0.08);
   color: var(--overlay-copy-strong);
@@ -640,22 +634,26 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
   box-shadow: none;
 }
 
+.game-hud__settings-grid button {
+  pointer-events: auto;
+}
+
 .game-hud__game-over-actions button:hover {
   transform: translateY(-1px) scale(1.01);
   filter: brightness(1.03);
 }
 
 .game-hud__settings-chip {
-  min-height: 38px;
+  min-height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
-  border-radius: 16px;
+  border-radius: 12px;
   border: 1px solid rgb(var(--overlay-fg-rgb) / 0.14);
   background: rgb(var(--overlay-fg-rgb) / 0.08);
-  padding: 8px;
+  padding: 6px;
 }
 
 .game-hud__settings-chip--help {
@@ -663,15 +661,14 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
   line-height: 1;
 }
 
-.game-hud__settings-grid > button:nth-child(4) {
-  grid-column: span 2;
-}
-
-.game-hud__settings-chip-copy {
-  display: none;
-}
-
 .game-hud__settings-language-icon {
+  width: 100%;
+  max-width: 32px;
+  height: auto;
+  object-fit: contain;
+}
+
+.game-hud__settings-fullscreen-icon {
   width: 100%;
   max-width: 32px;
   height: auto;

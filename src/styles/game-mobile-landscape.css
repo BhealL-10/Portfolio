@@ -11,7 +11,7 @@
     --game-help-stage-min-height: 0px;
     --game-help-stage-max-height: calc(100dvh - 56px);
     --game-help-page-padding: 0 44px;
-    --game-help-image-max-height: calc(100dvh - 72px);
+    --game-help-image-max-height: calc(100dvh - 120px);
     --game-landing-feedback-width: clamp(64px, 15vw, 82px);
     --game-landing-feedback-twist-width: clamp(58px, 14vw, 74px);
     --game-landing-feedback-grade-twist-width: clamp(60px, 14vw, 78px);
@@ -328,5 +328,23 @@
     min-height: 24px;
     font-size: 0.95rem;
     padding: 4px 5px;
+  }
+
+  .game-hud {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .game-hud * {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
   }
 }
