@@ -586,6 +586,7 @@ export class OrbitWorldSystem {
     visuals?: VisiblePlatformVisual[],
     options?: { staggerVisibleIndex?: number | null; reverseStagger?: boolean }
   ) {
+    const previousExternalPositions = this.externalLayoutPositions?.map((position) => position.clone()) ?? null;
     this.externalLayoutActive = true;
     this.externalLayoutPositions = null;
     this.externalLayoutScales = scales ? [...scales] : null;
@@ -611,10 +612,7 @@ export class OrbitWorldSystem {
       iconTint: visual.iconTint,
       iconScale: visual.iconScale
     })) : null;
-    this.externalTransitionFrom =
-      this.externalLayoutActive && this.externalLayoutPositions
-        ? this.externalLayoutPositions.map((position) => position.clone())
-        : this.getCurrentShardPositions();
+    this.externalTransitionFrom = previousExternalPositions ?? this.getCurrentShardPositions();
     this.externalTransitionTo = targets.map((target) => target.clone());
     this.externalTransitionProgress = 0;
     this.externalTransitionDelays = this.buildExternalTransitionDelays(

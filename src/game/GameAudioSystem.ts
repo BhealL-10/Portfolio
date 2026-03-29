@@ -2,10 +2,14 @@ import type { GameAudioEvent, GameAudioRuntimeState } from './gameAudioTypes';
 import type { LandingGrade } from './gameSessionTypes';
 import type { RogueliteModuleSlot } from './roguelite';
 import { damp } from '../core/math';
-
-const AUDIO_VOLUME_KEY = 'portfolio-game-audio-volume-v1';
-const AUDIO_MUTE_KEY = 'portfolio-game-audio-muted-v1';
-const DEFAULT_VOLUME = 1.0;
+import {
+  AUDIO_DEBOUNCE_MS,
+  AUDIO_EVENT_CONFIG,
+  AUDIO_GLOBAL_CONFIG,
+  AUDIO_LOOP_CONFIG,
+  AUDIO_STORAGE_KEYS,
+  resolveAudioBusGain
+} from './audioConstants';
 
 type MusicTrackId = 'intro' | 'loop1' | 'loop2' | 'loop3' | 'loop4';
 type BusKey = 'music' | 'feedback' | 'combat' | 'ambient';
@@ -240,7 +244,7 @@ export class GameAudioSystem {
 
   setVolume(nextVolume: number) {
     this.volume = clamp(nextVolume, 0, 1);
-    window.localStorage.setItem(AUDIO_VOLUME_KEY, this.volume.toFixed(3));
+    window.localStorage.setItem(AUDIO_STORAGE_KEYS.volume, this.volume.toFixed(3));
     this.applyMasterGain();
     this.emitSettingsChange();
   }
@@ -251,7 +255,7 @@ export class GameAudioSystem {
 
   setMuted(muted: boolean) {
     this.muted = muted;
-    window.localStorage.setItem(AUDIO_MUTE_KEY, muted ? '1' : '0');
+    window.localStorage.setItem(AUDIO_STORAGE_KEYS.muted, muted ? '1' : '0');
     this.applyMasterGain();
     this.emitSettingsChange();
   }
@@ -302,65 +306,161 @@ export class GameAudioSystem {
 
     switch (event.type) {
       case 'jump':
-        this.playOneShot(this.pickRandom(SFX.playerJump), 'feedback', 0.58, 'jump', 90);
+        this.playOneShot(
+          this.pickRandom(SFX.playerJump),
+          'feedback',
+          AUDIO_EVENT_CONFIG.jump,
+          'jump',
+          AUDIO_DEBOUNCE_MS.jump
+        );
         if (event.maxBoost) {
-          this.playOneShot(SFX.boatBoost[0], 'feedback', 0.54, 'boost', 140);
+          this.playOneShot(
+            SFX.boatBoost[0],
+            'feedback',
+            AUDIO_EVENT_CONFIG.jumpBoost,
+            'boost',
+            AUDIO_DEBOUNCE_MS.boost
+          );
         }
         break;
       case 'sail':
-        this.playOneShot(event.fast ? SFX.sail[1] : SFX.sail[0], 'ambient', 0.22, 'sail', 110);
+        this.playOneShot(
+          event.fast ? SFX.sail[1] : SFX.sail[0],
+          'ambient',
+          AUDIO_EVENT_CONFIG.sail,
+          'sail',
+          AUDIO_DEBOUNCE_MS.sail
+        );
         break;
       case 'land':
         if (event.kind === 'shop') {
-          this.playOneShot(SFX.shopLand[0], 'feedback', 0.48, 'shop-land', 180);
+          this.playOneShot(
+            SFX.shopLand[0],
+            'feedback',
+            AUDIO_EVENT_CONFIG.landShop,
+            'shop-land',
+            AUDIO_DEBOUNCE_MS.shopLand
+          );
         } else if (event.kind === 'reward') {
-          this.playOneShot(SFX.rewardLand[0], 'feedback', 0.42, 'reward-land', 180);
+          this.playOneShot(
+            SFX.rewardLand[0],
+            'feedback',
+            AUDIO_EVENT_CONFIG.landReward,
+            'reward-land',
+            AUDIO_DEBOUNCE_MS.shopLand
+          );
         } else {
-          this.playOneShot(this.pickRandom(SFX.land), 'feedback', event.kind === 'milestone' ? 0.24 : 0.18, 'land', 180);
+          this.playOneShot(
+            this.pickRandom(SFX.land),
+            'feedback',
+            event.kind === 'milestone' ? AUDIO_EVENT_CONFIG.landMilestone : AUDIO_EVENT_CONFIG.land,
+            'land',
+            AUDIO_DEBOUNCE_MS.land
+          );
         }
         break;
       case 'grade':
-        this.playOneShot(this.resolveGradeClip(event.grade), 'feedback', 0.42, `grade:${event.grade}`, 140);
+        this.playOneShot(
+          this.resolveGradeClip(event.grade),
+          'feedback',
+          AUDIO_EVENT_CONFIG.grade,
+          `grade:${event.grade}`,
+          AUDIO_DEBOUNCE_MS.grade
+        );
         break;
       case 'twist':
-        this.playOneShot(SFX.twistLand[0], 'feedback', 0.46, 'twist', 140);
+        this.playOneShot(
+          SFX.twistLand[0],
+          'feedback',
+          AUDIO_EVENT_CONFIG.twist,
+          'twist',
+          AUDIO_DEBOUNCE_MS.twist
+        );
         break;
       case 'module_activate':
         this.playModuleClip(event.slot);
         break;
       case 'grapple_cast':
-        this.playOneShot(SFX.grappleCastReturn[0], 'combat', 0.96, 'grapple-cast', 100);
+        this.playOneShot(
+          SFX.grappleCastReturn[0],
+          'combat',
+          AUDIO_EVENT_CONFIG.grappleCast,
+          'grapple-cast',
+          AUDIO_DEBOUNCE_MS.grappleCast
+        );
         break;
       case 'grapple_hit':
-        this.playOneShot(SFX.grappleImpact[0], 'combat', 1.04, 'grapple-hit', 90);
+        this.playOneShot(
+          SFX.grappleImpact[0],
+          'combat',
+          AUDIO_EVENT_CONFIG.grappleHit,
+          'grapple-hit',
+          AUDIO_DEBOUNCE_MS.grappleHit
+        );
         break;
       case 'grapple_recall':
-        this.playOneShot(SFX.grappleCastReturn[0], 'combat', 0.86, 'grapple-recall', 100);
+        this.playOneShot(
+          SFX.grappleCastReturn[0],
+          'combat',
+          AUDIO_EVENT_CONFIG.grappleRecall,
+          'grapple-recall',
+          AUDIO_DEBOUNCE_MS.grappleRecall
+        );
         break;
       case 'coin':
         this.playOneShot(
           this.pickRandom(event.magnet ? SFX.magnetCoin : SFX.coinPickup),
           'ambient',
-          event.magnet ? 11 : 0.94,
+          event.magnet ? AUDIO_EVENT_CONFIG.magnetCoin : AUDIO_EVENT_CONFIG.coinPickup,
           event.magnet ? 'magnet-coin' : 'coin',
-          70
+          AUDIO_DEBOUNCE_MS.coin
         );
         break;
       case 'shop_land':
-        this.playOneShot(SFX.shopLand[0], 'feedback', 0.48, 'shop-land', 180);
+        this.playOneShot(
+          SFX.shopLand[0],
+          'feedback',
+          AUDIO_EVENT_CONFIG.landShop,
+          'shop-land',
+          AUDIO_DEBOUNCE_MS.shopLand
+        );
         break;
       case 'enemy_die':
-        this.playOneShot(this.pickRandom(SFX.enemyDie), 'combat', 0.36, 'enemy-die', 90);
+        this.playOneShot(
+          this.pickRandom(SFX.enemyDie),
+          'combat',
+          AUDIO_EVENT_CONFIG.enemyDie,
+          'enemy-die',
+          AUDIO_DEBOUNCE_MS.enemyDie
+        );
         break;
       case 'enemy_hit_player':
-        this.playOneShot(SFX.enemyHitPlayer[0], 'feedback', 1, 'enemy-hit-player', 120);
+        this.playOneShot(
+          SFX.enemyHitPlayer[0],
+          'feedback',
+          AUDIO_EVENT_CONFIG.enemyHitPlayer,
+          'enemy-hit-player',
+          AUDIO_DEBOUNCE_MS.enemyHitPlayer
+        );
         break;
       case 'game_over':
         this.stopAllLoops(false);
-        this.playOneShot(SFX.gameOver[0], 'feedback', 0.58, 'game-over', 320);
+        this.playOneShot(
+          SFX.gameOver[0],
+          'feedback',
+          AUDIO_EVENT_CONFIG.gameOver,
+          'game-over',
+          AUDIO_DEBOUNCE_MS.gameOver
+        );
         break;
       case 'momentum_loss_start':
-        this.playOneShot(SFX.momentumLossStart[0], 'ambient', 1, 'momentum-loss', 280);
+        this.playOneShot(
+          SFX.momentumLossStart[0],
+          'ambient',
+          AUDIO_EVENT_CONFIG.momentumLossStart,
+          'momentum-loss',
+          AUDIO_DEBOUNCE_MS.momentumLoss
+        );
         break;
     }
   }
@@ -386,10 +486,10 @@ export class GameAudioSystem {
     this.feedbackBusGain = this.context.createGain();
     this.combatBusGain = this.context.createGain();
     this.ambientBusGain = this.context.createGain();
-    this.musicBusGain.gain.value = 0.92;
-    this.feedbackBusGain.gain.value = 0.26;
-    this.combatBusGain.gain.value = 0.22;
-    this.ambientBusGain.gain.value = 0.16;
+    this.musicBusGain.gain.value = resolveAudioBusGain('music');
+    this.feedbackBusGain.gain.value = resolveAudioBusGain('feedback');
+    this.combatBusGain.gain.value = resolveAudioBusGain('combat');
+    this.ambientBusGain.gain.value = resolveAudioBusGain('ambient');
     this.musicBusGain.connect(this.masterGain);
     this.feedbackBusGain.connect(this.masterGain);
     this.combatBusGain.connect(this.masterGain);
@@ -714,18 +814,24 @@ export class GameAudioSystem {
     const blowerShouldPlay = interactiveRun && state.blowerActive;
     const blowerWasPlaying = this.activeLoops.has('blower');
     if (blowerShouldPlay) {
-      this.ensureLoop('blower', SFX.blowerOn[0], 'ambient', 0.34);
+      this.ensureLoop('blower', SFX.blowerOn[0], 'ambient', AUDIO_LOOP_CONFIG.blower);
     } else if (blowerWasPlaying) {
       this.stopLoop('blower');
-      this.playOneShot(SFX.blowerOff[0], 'ambient', 0.16, 'blower-off', 80);
+      this.playOneShot(
+        SFX.blowerOff[0],
+        'ambient',
+        AUDIO_EVENT_CONFIG.blowerOff,
+        'blower-off',
+        AUDIO_DEBOUNCE_MS.blowerOff
+      );
     }
     if (interactiveRun && state.glideActive) {
-      this.ensureLoop('glide', SFX.planeGlide[0], 'ambient', 0.42);
+      this.ensureLoop('glide', SFX.planeGlide[0], 'ambient', AUDIO_LOOP_CONFIG.glide);
     } else {
       this.stopLoop('glide');
     }
     if (interactiveRun && state.onShardActive) {
-      this.ensureLoop('on_shard', SFX.playerOnShard[0], 'ambient', 0.1);
+      this.ensureLoop('on_shard', SFX.playerOnShard[0], 'ambient', AUDIO_LOOP_CONFIG.onShard);
     } else {
       this.stopLoop('on_shard');
     }
@@ -793,33 +899,81 @@ export class GameAudioSystem {
     const blowerWasPlaying = playReleaseFx && this.activeLoops.has('blower');
     (Array.from(this.activeLoops.keys()) as LoopKey[]).forEach((key) => this.stopLoop(key));
     if (blowerWasPlaying) {
-      this.playOneShot(SFX.blowerOff[0], 'ambient', 0.16, 'blower-off', 80);
+      this.playOneShot(
+        SFX.blowerOff[0],
+        'ambient',
+        AUDIO_EVENT_CONFIG.blowerOff,
+        'blower-off',
+        AUDIO_DEBOUNCE_MS.blowerOff
+      );
     }
   }
 
   private playModuleClip(slot: RogueliteModuleSlot) {
     switch (slot) {
       case 'shield':
-        this.playOneShot(this.pickRandom(SFX.shieldProtect), 'feedback', 0.46, 'shield', 120);
+        this.playOneShot(
+          this.pickRandom(SFX.shieldProtect),
+          'feedback',
+          AUDIO_EVENT_CONFIG.shield,
+          'shield',
+          AUDIO_DEBOUNCE_MS.shield
+        );
         break;
       case 'reacteur_front':
       case 'reacteur_back':
-        this.playOneShot(this.pickRandom(SFX.reactorCharge), 'feedback', 0.42, `reactor:${slot}`, 90);
+        this.playOneShot(
+          this.pickRandom(SFX.reactorCharge),
+          'feedback',
+          AUDIO_EVENT_CONFIG.reactor,
+          `reactor:${slot}`,
+          AUDIO_DEBOUNCE_MS.reactor
+        );
         break;
       case 'propulseur':
-        this.playOneShot(SFX.thrusterCharge[0], 'feedback', 0.4, 'thruster', 90);
+        this.playOneShot(
+          SFX.thrusterCharge[0],
+          'feedback',
+          AUDIO_EVENT_CONFIG.thruster,
+          'thruster',
+          AUDIO_DEBOUNCE_MS.thruster
+        );
         break;
       case 'wings':
-        this.playOneShot(this.pickRandom(SFX.wingsCharge), 'feedback', 0.4, 'wings', 90);
+        this.playOneShot(
+          this.pickRandom(SFX.wingsCharge),
+          'feedback',
+          AUDIO_EVENT_CONFIG.wings,
+          'wings',
+          AUDIO_DEBOUNCE_MS.wings
+        );
         break;
       case 'wrapper':
-        this.playOneShot(SFX.wrapperActivate[0], 'feedback', 0.98, 'wrapper', 140);
+        this.playOneShot(
+          SFX.wrapperActivate[0],
+          'feedback',
+          AUDIO_EVENT_CONFIG.wrapper,
+          'wrapper',
+          AUDIO_DEBOUNCE_MS.wrapper
+        );
         break;
       case 'big_canon':
-        this.playOneShot(this.pickRandom(SFX.bigCannon), 'combat', 0.46, 'big-cannon', 70);
+        this.playOneShot(
+          this.pickRandom(SFX.bigCannon),
+          'combat',
+          AUDIO_EVENT_CONFIG.bigCanon,
+          'big-cannon',
+          AUDIO_DEBOUNCE_MS.bigCanon
+        );
         break;
       case 'front_canon':
-        this.playOneShot(this.pickRandom(SFX.frontCannon), 'combat', 0.38, 'front-cannon', 60);
+        this.playOneShot(
+          this.pickRandom(SFX.frontCannon),
+          'combat',
+          AUDIO_EVENT_CONFIG.frontCanon,
+          'front-cannon',
+          AUDIO_DEBOUNCE_MS.frontCanon
+        );
         break;
       default:
         break;
@@ -904,12 +1058,12 @@ export class GameAudioSystem {
   }
 
   private readStoredVolume() {
-    const stored = Number(window.localStorage.getItem(AUDIO_VOLUME_KEY));
-    return Number.isFinite(stored) ? clamp(stored, 0, 1) : DEFAULT_VOLUME;
+    const stored = Number(window.localStorage.getItem(AUDIO_STORAGE_KEYS.volume));
+    return Number.isFinite(stored) ? clamp(stored, 0, 1) : AUDIO_GLOBAL_CONFIG.defaultMasterVolume;
   }
 
   private readStoredMuted() {
-    return window.localStorage.getItem(AUDIO_MUTE_KEY) === '1';
+    return window.localStorage.getItem(AUDIO_STORAGE_KEYS.muted) === '1';
   }
 }
 

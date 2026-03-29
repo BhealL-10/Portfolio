@@ -1032,7 +1032,7 @@ export class AppController {
         initialPositions,
         this.game.getInitialPlatformScales(projectCount),
         initialVisuals,
-        { staggerVisibleIndex: transitionIndex }
+        { staggerVisibleIndex: transitionIndex, reverseStagger: true }
       );
     } else if (transitionVisual) {
       this.world.beginSingleNodeExternalLayoutTransition(transitionAnchor, transitionVisual, transitionIndex);
@@ -1053,7 +1053,11 @@ export class AppController {
       onUpdate: (value) => {
         this.gameTransitionProgress = value;
         this.game.setTransitionProgress(value);
-        this.world.setExternalLayoutProgress(this.getPortfolioToGameShardTransitionProgress(value));
+        this.world.setExternalLayoutProgress(
+          this.gameTransitionFromprimaterie
+            ? this.getprimaterieToGameShardTransitionProgress(value)
+            : this.getPortfolioToGameShardTransitionProgress(value)
+        );
       },
       onComplete: () => {
         this.gameTransitionTweenId = null;
@@ -1548,6 +1552,23 @@ export class AppController {
     return THREE.MathUtils.smoothstep(
       THREE.MathUtils.clamp(
         (progress - PORTFOLIO_TO_GAME_HOLD_PHASE_END) / Math.max(0.0001, 1 - PORTFOLIO_TO_GAME_HOLD_PHASE_END),
+        0,
+        1
+      ),
+      0,
+      1
+    );
+  }
+
+  private getprimaterieToGameShardTransitionProgress(progress: number) {
+    if (progress <= primaterie_TO_GAME_CINEMATIC_FOCUS_END) {
+      return 0;
+    }
+
+    return THREE.MathUtils.smoothstep(
+      THREE.MathUtils.clamp(
+        (progress - primaterie_TO_GAME_CINEMATIC_FOCUS_END) /
+          Math.max(0.0001, 1 - primaterie_TO_GAME_CINEMATIC_FOCUS_END),
         0,
         1
       ),

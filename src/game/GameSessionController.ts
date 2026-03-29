@@ -245,6 +245,9 @@ export class GameSessionController {
   private attachedIndex = 0;
   private displayWindowIndices: number[] = [];
   private displayNextIndex = 0;
+  private displayNodesCacheTime = Number.NaN;
+  private readonly displayNodesCache = new Map<number, ResolvedGamePathNode[]>();
+  private interactableVisibleNodesCache: ResolvedGamePathNode[] | null = null;
   private score = 0;
   private awaitingFirstJump = false;
   private orbitGraceActive = false;
@@ -1610,9 +1613,30 @@ export class GameSessionController {
     this.moduleFlashUntil[slot] = this.currentTime + duration;
   }
 
+  private clearWorldItemEffects() {
+    this.magnetRangeIndicator.visible = false;
+    this.bigCanonRangeIndicator.visible = false;
+    this.bigCanonRadarSweep.visible = false;
+    this.grapRangeIndicator.visible = false;
+    this.frontCanonLaser.visible = false;
+    this.frontCanonProjectile.visible = false;
+    this.bigCanonProjectile.visible = false;
+    this.grapRope.visible = false;
+  }
+
+  private invalidateVisibleNodeCachesIfNeeded(elapsedTime: number) {
+    if (this.displayNodesCacheTime === elapsedTime) {
+      return;
+    }
+    this.displayNodesCacheTime = elapsedTime;
+    this.displayNodesCache.clear();
+    this.interactableVisibleNodesCache = null;
+  }
+
   update(deltaTime: number, elapsedTime: number) {
     if (this.state === 'idle') return;
     this.currentTime = elapsedTime;
+    this.invalidateVisibleNodeCachesIfNeeded(elapsedTime);
     const shopLocked = this.isShopInteractionLocked() && this.playerState !== 'airborne';
     const simulationDelta = deltaTime;
 
@@ -1642,7 +1666,22 @@ export class GameSessionController {
         new THREE.Vector3(1, this.orbitDirection > 0 ? -1 : 1, 1),
         this.transitionProgress
       );
+      }
+      return;
     }
+
+    if (this.state === 'game_over') {
+      const currentNode = this.getResolvedNode(this.attachedIndex);
+      const nextNode = this.getResolvedNode(this.attachedIndex + 1);
+      this.clearWorldItemEffects();
+      this.coins.setVisible(false);
+      this.enemies.setVisible(false);
+      this.updateTransientFeedbacks(elapsedTime);
+      this.updateCamera(deltaTime, currentNode, nextNode);
+      this.updateTrail(deltaTime);
+      this.syncPlayerVisual(elapsedTime, deltaTime);
+      this.syncShardHud(currentNode);
+      this.syncWorldRewardBranchHud(currentNode);
       return;
     }
 
@@ -1654,17 +1693,6 @@ export class GameSessionController {
 
     let currentNode = this.getResolvedNode(this.attachedIndex);
     let nextNode = this.getResolvedNode(this.attachedIndex + 1);
-
-    if (this.state === 'game_over') {
-      this.updateTransientFeedbacks(elapsedTime);
-      this.updateCamera(deltaTime, currentNode, nextNode);
-      this.updateTrail(deltaTime);
-      this.syncPlayerVisual(elapsedTime, deltaTime);
-      this.syncShardHud(currentNode);
-      this.syncWorldRewardBranchHud(currentNode);
-      this.syncMarkers(elapsedTime);
-      return;
-    }
 
     const motionStartIndex = this.attachedIndex;
 
@@ -1849,6 +1877,10 @@ export class GameSessionController {
   }
 
   private getDisplayNodes(count: number) {
+    const cached = this.displayNodesCache.get(count);
+    if (cached) {
+      return cached;
+    }
     const rewardChoiceLayout = this.getActiveRewardChoiceLayout();
     if (rewardChoiceLayout) {
       this.initializeDisplayWindow(count);
@@ -1901,11 +1933,15 @@ export class GameSessionController {
           visualStretch: { x: 1, y: 1, z: 1 }
         });
       }
-      return deduped.slice(0, count);
+      const result = deduped.slice(0, count);
+      this.displayNodesCache.set(count, result);
+      return result;
     }
 
     this.initializeDisplayWindow(count);
-    return this.displayWindowIndices.slice(0, count).map((index) => this.getResolvedNode(index));
+    const result = this.displayWindowIndices.slice(0, count).map((index) => this.getResolvedNode(index));
+    this.displayNodesCache.set(count, result);
+    return result;
   }
 
   private getActiveRewardChoiceLayout() {
@@ -1949,13 +1985,18 @@ export class GameSessionController {
   }
 
   private getInteractableVisibleNodes() {
-    return this.getDisplayNodes(Math.min(28, this.getRecommendedVisibleCount())).filter((node) => {
+    if (this.interactableVisibleNodesCache) {
+      return this.interactableVisibleNodesCache;
+    }
+    const result = this.getDisplayNodes(Math.min(28, this.getRecommendedVisibleCount())).filter((node) => {
       if (node.index <= this.attachedIndex) {
         return false;
       }
       const radius = this.getPhysicalRadius(node);
       return node.resolvedX + radius >= this.camera.getSafeLeft() - 1.2 && node.resolvedX - radius <= this.camera.getSafeRight() + 1.6;
     });
+    this.interactableVisibleNodesCache = result;
+    return result;
   }
 
   private getGrappleConeHalfAngle() {
@@ -3056,7 +3097,7 @@ export class GameSessionController {
       this.playerMainSprite.setFrame(3);
       this.stickMonkeyAirSprite.setFrame(3);
       Object.values(this.moduleSprites).forEach((sprite) => sprite?.setVisible(false));
-      this.syncWorldModuleIndicators(heading, deltaTime);
+      this.clearWorldItemEffects();
       return;
     }
 
@@ -4206,8 +4247,7 @@ export class GameSessionController {
     this.landingFeedbackNodeIndex = null;
     this.resetPendingEnemyShot(this.frontCanonShot);
     this.resetPendingEnemyShot(this.bigCanonShot);
-    this.frontCanonProjectile.visible = false;
-    this.bigCanonProjectile.visible = false;
+    this.clearWorldItemEffects();
     this.shop.reset();
     this.emitAudioEvent({ type: 'game_over' });
     this.emitScore();
