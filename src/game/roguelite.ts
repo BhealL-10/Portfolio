@@ -366,7 +366,7 @@ const PASSIVE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     category: 'utility',
     unlockScore: 0,
     name: loc('Ceinture d’orbite', 'Orbit Belt'),
-    description: loc('Ramène progressivement la trajectoire du joueur vers le centre quand l’orbite dérive trop vers le haut ou le bas.', 'Gradually pull the player trajectory back toward center when orbit drifts too far up or down.'),
+    description: loc('Dévie doucement la trajectoire près des shards, comme une petite gravité orbitale plus sensible à basse vitesse.', 'Gently bends your path near shards like a light orbital gravity, stronger at lower speed.'),
     hudIconSrc: HUD_ICON_URLS.ceinture,
     boatVisual: null,
     statsByRarity: passiveStats({ gravityCentering: 0.82 })
@@ -735,17 +735,11 @@ function allowedRaritiesForScore(score: number): RogueliteRarity[] {
 export function getNextUpgradeMilestone(distanceMeters: number) {
   if (distanceMeters < 10) return 10;
   if (distanceMeters < 100) return 100;
-  if (distanceMeters < 1000) return 1000;
-  return Math.floor(distanceMeters / 1000) * 1000 + 1000;
+  return Math.floor(distanceMeters / 100) * 100 + 100;
 }
 
 export function isUpgradeMilestone(distanceMeters: number) {
-  return (
-    distanceMeters === 10 ||
-    distanceMeters === 100 ||
-    distanceMeters === 1000 ||
-    (distanceMeters > 1000 && distanceMeters % 1000 === 0)
-  );
+  return distanceMeters === 10 || (distanceMeters >= 100 && distanceMeters % 100 === 0);
 }
 
 export function getCrossedUpgradeMilestone(previousDistanceMeters: number, currentDistanceMeters: number) {

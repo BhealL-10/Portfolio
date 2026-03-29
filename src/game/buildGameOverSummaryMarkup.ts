@@ -38,6 +38,11 @@ interface GameOverSummaryMarkupOptions {
 export function buildGameOverSummaryMarkup(options: GameOverSummaryMarkupOptions) {
   const { score, summary, locale, t } = options;
   const newBadge = `<em class="game-hud__game-over-badge">${t('gameNewBadge')}</em>`;
+  const renderLabel = (key: UIStringKey) => {
+    const label = t(key);
+    const className = label.length >= 14 ? 'game-hud__game-over-stat-label is-long' : 'game-hud__game-over-stat-label';
+    return `<span class="${className}">${label}</span>`;
+  };
   const signature = [
     score,
     Math.round(summary.distanceMeters),
@@ -50,42 +55,42 @@ export function buildGameOverSummaryMarkup(options: GameOverSummaryMarkupOptions
   const statsMarkup = `
     <div class="game-hud__game-over-stat" data-record="${summary.personalBests.score ? 'true' : 'false'}" data-shape="1" style="--game-over-stat-index:0">
       <div class="game-hud__game-over-stat-content">
-        <span class="game-hud__game-over-stat-label">${t('gameScore')}</span>
+        ${renderLabel('gameScore')}
         <strong class="game-hud__game-over-stat-value">${summary.score}</strong>
         ${summary.personalBests.score ? newBadge : ''}
       </div>
     </div>
     <div class="game-hud__game-over-stat" data-record="${summary.personalBests.distanceMeters ? 'true' : 'false'}" data-shape="2" style="--game-over-stat-index:1">
       <div class="game-hud__game-over-stat-content">
-        <span class="game-hud__game-over-stat-label">${t('gameDistance')}</span>
+        ${renderLabel('gameDistance')}
         <strong class="game-hud__game-over-stat-value">${Math.round(summary.distanceMeters)}m</strong>
         ${summary.personalBests.distanceMeters ? newBadge : ''}
       </div>
     </div>
     <div class="game-hud__game-over-stat" data-record="${summary.personalBests.shardsLanded ? 'true' : 'false'}" data-shape="3" style="--game-over-stat-index:2">
       <div class="game-hud__game-over-stat-content">
-        <span class="game-hud__game-over-stat-label">${t('gameRunShards')}</span>
+        ${renderLabel('gameRunShards')}
         <strong class="game-hud__game-over-stat-value">${summary.shardsLanded}</strong>
         ${summary.personalBests.shardsLanded ? newBadge : ''}
       </div>
     </div>
     <div class="game-hud__game-over-stat" data-record="${summary.personalBests.coinsCollected ? 'true' : 'false'}" data-shape="4" style="--game-over-stat-index:3">
       <div class="game-hud__game-over-stat-content">
-        <span class="game-hud__game-over-stat-label">${t('gameCoins')}</span>
+        ${renderLabel('gameCoins')}
         <strong class="game-hud__game-over-stat-value">${summary.coinsCollected}</strong>
         ${summary.personalBests.coinsCollected ? newBadge : ''}
       </div>
     </div>
     <div class="game-hud__game-over-stat" data-record="${summary.personalBests.enemiesKilled ? 'true' : 'false'}" data-shape="1" style="--game-over-stat-index:4">
       <div class="game-hud__game-over-stat-content">
-        <span class="game-hud__game-over-stat-label">${t('gameRunKills')}</span>
+        ${renderLabel('gameRunKills')}
         <strong class="game-hud__game-over-stat-value">${summary.enemiesKilled}</strong>
         ${summary.personalBests.enemiesKilled ? newBadge : ''}
       </div>
     </div>
     <div class="game-hud__game-over-stat" data-record="${summary.personalBests.longestMomentumSeconds ? 'true' : 'false'}" data-shape="2" style="--game-over-stat-index:5">
       <div class="game-hud__game-over-stat-content">
-        <span class="game-hud__game-over-stat-label">${t('gameRunMomentum')}</span>
+        ${renderLabel('gameRunMomentum')}
         <strong class="game-hud__game-over-stat-value">${summary.longestMomentumSeconds.toFixed(1)}s</strong>
         ${summary.personalBests.longestMomentumSeconds ? newBadge : ''}
       </div>

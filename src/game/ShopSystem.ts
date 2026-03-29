@@ -88,6 +88,28 @@ export class ShopSystem {
     }));
   }
 
+  purchaseByIndex(index: number, coins: number) {
+    if (!this.open) return null;
+    const visibleOffers = this.activeOffers.filter((candidate) => !candidate.purchased);
+    const offer = visibleOffers[index];
+    if (!offer || offer.purchased || coins < offer.price) {
+      return null;
+    }
+    offer.purchased = true;
+    const remaining = this.activeOffers.some((candidate) => !candidate.purchased);
+    this.open = remaining;
+    this.group.visible = remaining;
+    if (!remaining) {
+      this.pool.forEach((mesh) => {
+        mesh.visible = false;
+      });
+    }
+    return {
+      offer: offer.offer,
+      price: offer.price
+    };
+  }
+
   getHints(worldPositions: THREE.Vector3[]): BranchChoice[] {
     return this.activeOffers.map((activeOffer, index) => ({
       mode: 'shop_orbit',
@@ -129,16 +151,13 @@ export class ShopSystem {
   tryPurchase(currentAngle: number, coins: number) {
     if (!this.open) return null;
 
-    for (const offer of this.activeOffers) {
+    for (let index = 0; index < this.activeOffers.length; index += 1) {
+      const offer = this.activeOffers[index];
+      if (!offer) continue;
       if (offer.purchased) continue;
       const delta = shortestAngleDistance(currentAngle, offer.angle);
       if (delta < 0.22 && coins >= offer.price) {
-        offer.purchased = true;
-        this.close();
-        return {
-          offer: offer.offer,
-          price: offer.price
-        };
+        return this.purchaseByIndex(index, coins);
       }
     }
 
@@ -146,27 +165,16 @@ export class ShopSystem {
   }
 
   update(center: THREE.Vector3, radius: number, elapsedTime: number) {
+    void center;
+    void radius;
+    void elapsedTime;
     if (!this.open) {
       this.group.visible = false;
       return;
     }
-
-    this.group.visible = true;
-    this.pool.forEach((mesh, index) => {
-      const offer = this.activeOffers[index];
-      if (!offer || offer.purchased) {
-        mesh.visible = false;
-        return;
-      }
-
-      mesh.visible = true;
-      mesh.position.set(
-        center.x + Math.cos(offer.angle) * (radius + 1.6),
-        center.y + Math.sin(offer.angle) * (radius + 1.6),
-        0
-      );
-      mesh.material.rotation = elapsedTime * 0.12 * (index % 2 === 0 ? 1 : -1);
-      mesh.scale.setScalar(0.94 + Math.sin(elapsedTime * 3 + index) * 0.05);
+    this.group.visible = false;
+    this.pool.forEach((mesh) => {
+      mesh.visible = false;
     });
   }
 

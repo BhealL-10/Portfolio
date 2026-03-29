@@ -25,7 +25,7 @@
     --game-mobile-control-jump-icon-width: clamp(40px, 10dvh, 52px);
     --game-mobile-control-charge-icon-width: clamp(44px, 10.8dvh, 56px);
     --game-gameover-shell-gap: 4px;
-    --game-gameover-rule-width-size: min(290px, 44vw);
+    --game-gameover-rule-width-size: min(304px, 46vw);
     --game-gameover-panel-width: min(286px, calc(100vw - 14px));
     --game-gameover-panel-min-height: min(280px, calc(100dvh - 86px));
     --game-gameover-panel-overlap-top: 28px;
@@ -39,7 +39,7 @@
     --game-gameover-action-button-width: min(96px, 24vw);
     --game-gameover-rule-image-max-height: min(18dvh, 106px);
     --game-gameover-stats-gap: 2px;
-    --game-gameover-stat-min-height: 46px;
+    --game-gameover-stat-min-height: 48px;
     --game-gameover-gear-gap: 2px;
     --game-gameover-item-size: 24px;
     --game-gameover-item-icon-size: 19px;
@@ -228,7 +228,7 @@
   }
 
   .game-hud__game-over-rule {
-    width: var(--game-over-rule-width);
+    width: calc(var(--game-over-rule-width) * 1.05);
     max-height: 88%;
     margin: 0;
     padding: 3px 6px;
@@ -236,63 +236,91 @@
   }
 
   .game-hud__game-over-rule-image {
-    padding-right: 33px;
-    width: 100%;
+    padding-left: 30px;
+    width: 138%;
     max-height: min(310px, var(--game-over-rule-image-max-height) * 1.35);
     object-fit: contain;
   }
 
   .game-hud__leaderboard {
-    min-height: min(250px, calc(100dvh - 24px));
-    gap: 5px;
-    padding: 16px 10px 10px;
+    width: 106%;
+    min-height: min(258px, calc(100dvh - 20px));
+    gap: 4px;
+    margin-left: -3%;
+    padding: 100px 31px 20px;
+    }
   }
 
   .game-hud__leaderboard-list {
-    min-height: calc((3 * 42px) + (2 * 4px));
-    max-height: calc((3 * 42px) + (2 * 4px));
+    min-height: calc((3 * 40px) + (2 * 3px));
+    max-height: calc((3 * 40px) + (2 * 3px));
     padding: 0 1px;
-    gap: 4px;
+    gap: 3px;
   }
 
   .game-hud__leaderboard-row {
-    grid-template-columns: 34px 34px minmax(0, 1fr);
-    gap: 4px;
-    min-height: 42px;
+    grid-template-columns: 32px 32px minmax(0, 1fr) auto;
+    gap: 3px;
+    min-height: 40px;
   }
 
   .game-hud__leaderboard-rank {
-    width: 34px;
-    min-height: 30px;
-    padding: 4px 4px;
-    font-size: 0.52rem;
+    width: 32px;
+    min-height: 28px;
+    padding: 3px 4px;
+    font-size: 0.5rem;
   }
 
   .game-hud__leaderboard-avatar {
-    width: 34px;
-    height: 34px;
-    padding: 3px;
+    width: 32px;
+    height: 32px;
+    padding: 2px;
   }
 
   .game-hud__leaderboard-copy {
-    min-height: 30px;
+    min-height: 28px;
     gap: 0;
-    padding: 3px 6px;
+    padding: 2px 5px;
     border-radius: 10px;
   }
 
   .game-hud__leaderboard-name {
-    font-size: 0.48rem;
+    font-size: 0.46rem;
   }
 
-  .game-hud__leaderboard-metrics {
-    font-size: 0.4rem;
-    letter-spacing: 0.02em;
+  .game-hud__leaderboard-score {
+    min-height: 28px;
+    min-width: 50px;
+    padding: 0 5px;
+    border-radius: 10px;
+    font-size: 0.56rem;
   }
 
   .game-hud__leaderboard-preview-card {
-    grid-template-columns: 38px 34px minmax(0, 1fr);
-    gap: 5px;
+    grid-template-columns: 34px 32px minmax(0, 1fr) auto;
+    gap: 3px;
+    min-height: 38px;
+  }
+
+  .game-hud__leaderboard-preview-copy {
+    min-height: 28px;
+    padding: 0 5px;
+  }
+
+  .game-hud__leaderboard-preview-copy strong {
+    font-size: 0.5rem;
+  }
+
+  .game-hud__leaderboard-preview-copy span {
+    font-size: 0.5rem;
+  }
+
+  .game-hud__leaderboard-preview-score {
+    min-height: 28px;
+    min-width: 48px;
+    padding: 0 5px;
+    border-radius: 10px;
+    font-size: 0.54rem;
   }
 
   .game-hud__leaderboard-detail span {
@@ -304,13 +332,17 @@
   }
 
   .game-hud__leaderboard-controls {
-    gap: 4px;
+    gap: 3px;
   }
 
   .game-hud__leaderboard-controls input,
   .game-hud__leaderboard-controls button {
-    padding: 5px 6px;
-    font-size: 0.6rem;
+    padding: 4px 5px;
+    font-size: 0.56rem;
+  }
+
+  .game-hud__leaderboard-save-button .game-hud__svg-button-image img {
+    height: 28px;
   }
 
   .game-hud__avatar-editor {
@@ -343,11 +375,8 @@
     gap: 4px;
   }
 
-  .game-hud__avatar-editor-save {
-    min-width: 92px;
-    min-height: 30px;
-    font-size: 0.56rem;
-    padding: 6px 10px;
+  .game-hud__avatar-editor-save-button .game-hud__svg-button-image img {
+    height: 30px;
   }
 
   .game-hud__mobile-controls {
@@ -399,4 +428,3 @@
     -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
   }
-}

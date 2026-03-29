@@ -544,12 +544,21 @@ export class AppController {
 
         if (event.key === 'ArrowDown') {
           event.preventDefault();
+          const playerMotionState = this.game.getHudState().playerMotionState;
+          if (playerMotionState === 'airborne' && !event.repeat) {
+            this.game.triggerAirborneMobilityAction();
+          }
           this.game.setChargeActive(true);
         } else if (event.key === 'ArrowUp') {
           event.preventDefault();
           this.game.setUpActionActive(true);
           if (!event.repeat) {
-            this.game.triggerUpAction();
+            const playerMotionState = this.game.getHudState().playerMotionState;
+            if (playerMotionState === 'airborne') {
+              this.game.triggerMobileGrappleAction();
+            } else {
+              this.game.triggerJump();
+            }
           }
         }
         return;

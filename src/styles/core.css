@@ -4,6 +4,12 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: 'Tribal Garamond';
+  src: url('/assets/fonts/Tribal%20Garamond.ttf') format('truetype');
+  font-display: swap;
+}
+
 :root {
   --color-sand: #A5977F;
   --color-slate: #2E3644;
@@ -21,6 +27,7 @@
   --overlay-copy-strong: rgb(var(--overlay-fg-rgb) / 0.96);
   --overlay-copy-muted: rgb(var(--overlay-fg-rgb) / 0.72);
   --font-body: 'Text Me One', system-ui, sans-serif;
+  --font-game: 'Tribal Garamond', 'Text Me One', system-ui, sans-serif;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -33,7 +40,7 @@
   --hud-shape-5: url('../../assets/images/game/ui/backgrounds/hud-dark-5.svg');
   --game-settings-toggle-size: clamp(52px, 5.6vw, 70px);
   --game-settings-panel-width: clamp(188px, 18vw, 228px);
-  --game-svg-button-width: min(168px, 48vw);
+  --game-svg-button-width: min(182px, 50vw);
   --game-help-button-size: 176px;
   --game-help-nav-offset: -20px;
   --game-help-close-offset: -18px;
@@ -67,7 +74,7 @@
   --game-gameover-content-width: min(100%, 548px);
   --game-gameover-header-overlay-width: min(360px, 34vw);
   --game-gameover-header-overlay-shift: -36%;
-  --game-gameover-action-button-width: min(108px, 20vw);
+  --game-gameover-action-button-width: min(124px, 22vw);
   --game-gameover-rule-image-max-height: min(50dvh, 472px);
   --game-gameover-stats-gap: clamp(4px, 0.55vw, 8px);
   --game-gameover-stat-min-height: clamp(74px, 8vw, 88px);
@@ -75,13 +82,13 @@
   --game-gameover-item-size: 44px;
   --game-gameover-item-icon-size: 36px;
   --game-gameover-item-rarity-size: 14px;
-  --game-run-strip-label-size: clamp(0.48rem, 0.65vw, 0.56rem);
-  --game-run-strip-value-size: clamp(0.72rem, 1.02vw, 0.88rem);
-  --game-upgrade-name-size: clamp(0.86rem, 1.6vw, 0.98rem);
-  --game-upgrade-desc-size: clamp(0.68rem, 1.2vw, 0.78rem);
-  --game-gameover-label-size: clamp(0.54rem, 0.66vw, 0.64rem);
-  --game-gameover-value-size: clamp(0.8rem, 1vw, 0.94rem);
-  --game-help-footer-copy-size: 0.72rem;
+  --game-run-strip-label-size: clamp(0.52rem, 0.72vw, 0.62rem);
+  --game-run-strip-value-size: clamp(0.78rem, 1.08vw, 0.96rem);
+  --game-upgrade-name-size: clamp(0.92rem, 1.7vw, 1.06rem);
+  --game-upgrade-desc-size: clamp(0.74rem, 1.28vw, 0.84rem);
+  --game-gameover-label-size: clamp(0.58rem, 0.72vw, 0.7rem);
+  --game-gameover-value-size: clamp(0.86rem, 1.08vw, 1rem);
+  --game-help-footer-copy-size: 0.78rem;
   --game-primaterie-logo-width: min(150px, 14vw);
   --game-primaterie-anchor-width: min(224px, calc(100vw - 24px));
   --game-primaterie-anchor-max-height: min(48dvh, 340px);

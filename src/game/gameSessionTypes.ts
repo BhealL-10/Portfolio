@@ -18,6 +18,7 @@ export type GameShardShapeKind = 'round' | 'oval' | 'triangular';
 export type GameShardSpinDirection = 'cw' | 'ccw';
 export type GameShardMotionPattern = 'none' | 'vertical' | 'horizontal' | 'micro_orbit' | 'drift';
 export type GameEventType = 'none' | 'shop' | 'gift' | 'rare_item';
+export type GameEventVisualKind = 'default' | 'question' | 'shop';
 export type GameEnemyTier = 'light' | 'armored' | 'elite' | 'invincible';
 export type GameChoiceMode = 'reward_branch' | 'shop_orbit';
 export type GameColorHint = 'none' | 'accent' | 'danger' | 'reward';
@@ -69,6 +70,7 @@ export interface GamePathNode {
   spinSpeed: number;
   motionPattern: GameShardMotionPattern;
   eventType: GameEventType;
+  eventVisualKind?: GameEventVisualKind;
   colorHint: GameColorHint;
   gameplayOrbitPeriod: number;
   branchSlot: number | null;
@@ -181,6 +183,7 @@ export interface GameHudSnapshot {
   };
   offers: RogueliteItemOffer[];
   branchHints: BranchLabelHint[];
+  shopCenter: THREE.Vector3 | null;
   inventoryItems: Array<{
     id: string;
     name: string;

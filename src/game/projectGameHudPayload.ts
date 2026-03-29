@@ -48,6 +48,18 @@ export function projectGameHudPayload(
       }
       return acc;
     }, []),
+    shopCenter: hudState.shopCenter
+      ? (() => {
+          const projected = projectWorldToScreen(hudState.shopCenter);
+          if (!projected.visible) {
+            return null;
+          }
+          return {
+            screenX: projected.x,
+            screenY: projected.y
+          };
+        })()
+      : null,
     inventoryItems: hudState.inventoryItems,
     runSummary: hudState.runSummary,
     landingFeedback: hudState.landingFeedback

@@ -14,13 +14,14 @@ export class EventSystem {
 
   schedulePostMilestoneEvents(fromIndex: number, score: number, rng: () => number) {
     const profile = getDifficultyProfile(score);
-    const count = rng() < profile.eventChance ? (rng() < 0.42 ? 2 : 1) : 0;
+    const eventChance = Math.min(0.9, profile.eventChance + 0.08);
+    const count = rng() < eventChance ? (rng() < 0.5 ? 2 : 1) : 0;
 
     for (let offset = 0; offset < count; offset += 1) {
-      const triggerIndex = fromIndex + 10 + Math.floor(rng() * 11) + offset * 3;
+      const triggerIndex = fromIndex + 8 + Math.floor(rng() * 9) + offset * 3;
       if (this.queuedEvents.has(triggerIndex)) continue;
       const type =
-        !this.shopQueued && fromIndex >= 10
+        !this.shopQueued && fromIndex >= 100
           ? 'shop'
           : POST_MILESTONE_EVENTS[Math.floor(rng() * POST_MILESTONE_EVENTS.length)] ?? 'gift';
       this.queuedEvents.set(triggerIndex, type);
