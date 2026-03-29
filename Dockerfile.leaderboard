@@ -1,0 +1,12 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY server/leaderboard-server.mjs /app/server/leaderboard-server.mjs
+
+ENV PORT=8080
+ENV LEADERBOARD_DATA_DIR=/data
+
+EXPOSE 8080
+
+CMD ["node", "/app/server/leaderboard-server.mjs"]

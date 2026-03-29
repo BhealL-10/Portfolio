@@ -40,7 +40,31 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+    depends_on:
+      leaderboard:
+        condition: service_started
+
+  leaderboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.leaderboard
+    image: portfolio-leaderboard:${TAG:-latest}
+    container_name: portfolio-leaderboard
+    restart: unless-stopped
+    expose:
+      - "8080"
+    volumes:
+      - leaderboard-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
       
 networks:
   global_cloudflared:
     external: true
+
+volumes:
+  leaderboard-data:

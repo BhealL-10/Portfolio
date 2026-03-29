@@ -237,6 +237,7 @@ interface EquipmentShapeTemplate {
 }
 
 const LEADERBOARD_KEY = 'portfolio-game-global-highscores-v1';
+const LEADERBOARD_API_PATH = '/api/leaderboard';
 const PLAYER_ID_KEY = 'portfolio-game-player-id-v1';
 const PLAYER_NAME_KEY = 'portfolio-game-player-name';
 const PLAYER_AVATAR_KEY = 'portfolio-game-player-avatar-v1';
@@ -435,6 +436,9 @@ export class GameHUDSystem {
   private helpAutoOpenedThisSession = false;
   private volumeDragPointerId: number | null = null;
   private renderedLeaderboardEntries: Array<LeaderboardEntry | null> = [];
+  private leaderboardEntriesCache: LeaderboardEntry[] = [];
+  private leaderboardRequestSerial = 0;
+  private leaderboardSyncState: 'idle' | 'loading' | 'saving' | 'error' = 'idle';
 
   constructor(host: HTMLElement, private readonly i18n: I18nService, private readonly callbacks: GameHUDCallbacks) {
     this.preloadUiAssets();
@@ -828,7 +832,9 @@ export class GameHUDSystem {
 
     this.i18n.onChange(() => this.renderStatic());
     this.closeHelp();
+    this.leaderboardEntriesCache = this.readLocalLeaderboardCache();
     this.renderStatic();
+    void this.refreshLeaderboard({ rerender: true });
   }
 
   setVisible(visible: boolean) {
@@ -1439,6 +1445,7 @@ export class GameHUDSystem {
     }
     this.currentGameOverSignature = markup.signature;
     if (hasChanged) {
+      void this.refreshLeaderboard({ rerender: true });
       this.renderLeaderboard();
       if (this.avatarEditorOpen) {
         this.renderAvatarEditor();
@@ -2193,7 +2200,7 @@ export class GameHUDSystem {
     }
   }
 
-  private saveLeaderboardEntry() {
+  private async saveLeaderboardEntry() {
     if (!this.currentGameOverSignature || !this.currentRunSummary) {
       return;
     }
@@ -2210,53 +2217,129 @@ export class GameHUDSystem {
       this.renderLeaderboard();
       return;
     }
-    if (existingIndex >= 0) {
-      entries.splice(existingIndex, 1, { ...entry, recordedAt: Date.now() });
-    } else {
-      entries.push(entry);
-    }
-    entries.sort((a, b) => b.score - a.score || a.recordedAt - b.recordedAt);
-    window.localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(entries.slice(0, 100)));
-    this.lastSavedGameOverSignature = this.currentGameOverSignature;
+    this.leaderboardSyncState = 'saving';
     this.leaderboardSaveButton.disabled = true;
+    try {
+      const response = await fetch(LEADERBOARD_API_PATH, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ entry })
+      });
+      if (!response.ok) {
+        throw new Error(`Leaderboard save failed with status ${response.status}`);
+      }
+      const payload = (await response.json()) as { entries?: unknown[] };
+      const nextEntries = this.normalizeLeaderboardEntries(payload.entries);
+      this.leaderboardEntriesCache = nextEntries;
+      this.persistLeaderboardCache(nextEntries);
+    } catch (error) {
+      console.warn('[GameHUDSystem] Failed to save leaderboard entry remotely, falling back to local cache.', error);
+      if (existingIndex >= 0) {
+        entries.splice(existingIndex, 1, { ...entry, recordedAt: Date.now() });
+      } else {
+        entries.push(entry);
+      }
+      const fallbackEntries = this.normalizeLeaderboardEntries(entries);
+      this.leaderboardEntriesCache = fallbackEntries;
+      this.persistLeaderboardCache(fallbackEntries);
+      this.leaderboardSyncState = 'error';
+    }
+    this.lastSavedGameOverSignature = this.currentGameOverSignature;
+    this.leaderboardSyncState = 'idle';
     this.renderLeaderboard();
   }
 
   private readLeaderboard(): LeaderboardEntry[] {
+    return this.leaderboardEntriesCache;
+  }
+
+  private readLocalLeaderboardCache() {
     const raw = window.localStorage.getItem(LEADERBOARD_KEY);
     if (!raw) {
       return [];
     }
     try {
-      const parsed = JSON.parse(raw) as LeaderboardEntry[];
-      const deduped = new Map<string, LeaderboardEntry>();
-      parsed
-        .map((entry) => ({
-          playerId: typeof entry.playerId === 'string' && entry.playerId.trim() ? entry.playerId.trim() : undefined,
-          name: entry.name,
-          score: Number(entry.score) || 0,
-          recordedAt: Number(entry.recordedAt) || Date.now(),
-          avatar: this.normalizeAvatarSelection(entry.avatar, entry.name),
-          details: entry.details
-            ? {
-                distanceMeters: Number(entry.details.distanceMeters) || 0,
-                shardsLanded: Number(entry.details.shardsLanded) || 0,
-                coinsCollected: Number(entry.details.coinsCollected) || 0,
-                enemiesKilled: Number(entry.details.enemiesKilled) || 0,
-                longestMomentumSeconds: Number(entry.details.longestMomentumSeconds) || 0
-              }
-            : undefined
-        }))
-        .forEach((entry) => {
-          const key = this.getLeaderboardEntryIdentity(entry);
-          const existing = deduped.get(key);
-          if (!existing || entry.score > existing.score || (entry.score === existing.score && entry.recordedAt < existing.recordedAt)) {
-            deduped.set(key, entry);
-          }
-        });
-      return [...deduped.values()].sort((a, b) => b.score - a.score || a.recordedAt - b.recordedAt);
+      return this.normalizeLeaderboardEntries(JSON.parse(raw) as unknown[]);
     } catch {
       return [];
+    }
+  }
+
+  private persistLeaderboardCache(entries: LeaderboardEntry[]) {
+    window.localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(entries.slice(0, 100)));
+  }
+
+  private normalizeLeaderboardEntries(entries: unknown) {
+    if (!Array.isArray(entries)) {
+      return [];
+    }
+    const deduped = new Map<string, LeaderboardEntry>();
+    entries
+      .map((entry) => {
+        const value = entry as Partial<LeaderboardEntry>;
+        return {
+          playerId: typeof value.playerId === 'string' && value.playerId.trim() ? value.playerId.trim() : undefined,
+          name: typeof value.name === 'string' && value.name.trim() ? value.name.trim().slice(0, 18) : this.i18n.t('gameAnonymous'),
+          score: Number(value.score) || 0,
+          recordedAt: Number(value.recordedAt) || Date.now(),
+          avatar: this.normalizeAvatarSelection(value.avatar, typeof value.name === 'string' ? value.name : undefined),
+          details: value.details
+            ? {
+                distanceMeters: Number(value.details.distanceMeters) || 0,
+                shardsLanded: Number(value.details.shardsLanded) || 0,
+                coinsCollected: Number(value.details.coinsCollected) || 0,
+                enemiesKilled: Number(value.details.enemiesKilled) || 0,
+                longestMomentumSeconds: Number(value.details.longestMomentumSeconds) || 0
+              }
+            : undefined
+        } satisfies LeaderboardEntry;
+      })
+      .forEach((entry) => {
+        const key = this.getLeaderboardEntryIdentity(entry);
+        const existing = deduped.get(key);
+        if (!existing || entry.score > existing.score || (entry.score === existing.score && entry.recordedAt < existing.recordedAt)) {
+          deduped.set(key, entry);
+        }
+      });
+    return [...deduped.values()].sort((a, b) => b.score - a.score || a.recordedAt - b.recordedAt);
+  }
+
+  private async refreshLeaderboard(options?: { rerender?: boolean }) {
+    const requestSerial = ++this.leaderboardRequestSerial;
+    this.leaderboardSyncState = 'loading';
+    try {
+      const response = await fetch(LEADERBOARD_API_PATH, {
+        headers: {
+          Accept: 'application/json'
+        },
+        cache: 'no-store'
+      });
+      if (!response.ok) {
+        throw new Error(`Leaderboard fetch failed with status ${response.status}`);
+      }
+      const payload = (await response.json()) as { entries?: unknown[] };
+      if (requestSerial !== this.leaderboardRequestSerial) {
+        return;
+      }
+      const nextEntries = this.normalizeLeaderboardEntries(payload.entries);
+      this.leaderboardEntriesCache = nextEntries;
+      this.persistLeaderboardCache(nextEntries);
+      this.leaderboardSyncState = 'idle';
+      if (options?.rerender) {
+        this.renderLeaderboard();
+      }
+    } catch (error) {
+      console.warn('[GameHUDSystem] Failed to refresh leaderboard from shared API, using local cache.', error);
+      if (requestSerial !== this.leaderboardRequestSerial) {
+        return;
+      }
+      this.leaderboardEntriesCache = this.readLocalLeaderboardCache();
+      this.leaderboardSyncState = 'error';
+      if (options?.rerender) {
+        this.renderLeaderboard();
+      }
     }
   }
 
@@ -2372,6 +2455,7 @@ export class GameHUDSystem {
     const existingEntry = this.readLeaderboard().find((entry) => this.isCurrentPlayerEntry(entry, currentName));
     const blockedByExistingBetterScore = Boolean(existingEntry && this.currentRunSummary && existingEntry.score >= this.currentRunSummary.score);
     this.leaderboardSaveButton.disabled =
+      this.leaderboardSyncState === 'saving' ||
       !this.currentRunSummary ||
       this.currentGameOverSignature === this.lastSavedGameOverSignature ||
       blockedByExistingBetterScore;
@@ -2467,7 +2551,31 @@ export class GameHUDSystem {
           ? { ...entry, playerId: this.getLeaderboardPlayerId(), avatar: { ...this.playerAvatarSelection } }
           : entry
       );
-      window.localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(updatedEntries));
+      this.leaderboardEntriesCache = updatedEntries;
+      this.persistLeaderboardCache(updatedEntries);
+      const currentEntry = updatedEntries.find((entry) => this.isCurrentPlayerEntry(entry, currentName));
+      if (currentEntry) {
+        void fetch(LEADERBOARD_API_PATH, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ entry: currentEntry })
+        })
+          .then((response) => (response.ok ? response.json() : null))
+          .then((payload) => {
+            if (!payload || !Array.isArray(payload.entries)) {
+              return;
+            }
+            const nextEntries = this.normalizeLeaderboardEntries(payload.entries);
+            this.leaderboardEntriesCache = nextEntries;
+            this.persistLeaderboardCache(nextEntries);
+            this.renderLeaderboard();
+          })
+          .catch((error) => {
+            console.warn('[GameHUDSystem] Failed to sync avatar selection to shared leaderboard API.', error);
+          });
+      }
     }
     this.renderAvatarEditor();
     this.renderLeaderboard();
