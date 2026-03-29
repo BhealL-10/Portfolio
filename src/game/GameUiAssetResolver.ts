@@ -104,6 +104,11 @@ export const FULLSCREEN_BUTTON_ASSETS = {
   }
 } as const;
 
+export const SAVE_BUTTON_ASSETS = {
+  dark: new URL('../../assets/images/game/ui/buttons/labels/save-dark.svg', import.meta.url).href,
+  light: new URL('../../assets/images/game/ui/buttons/labels/save-light.svg', import.meta.url).href
+} as const;
+
 export function getUIButtonAsset(type: GameUiButtonAsset, language: Language, theme: ThemeAsset) {
   return BUTTON_ASSETS[type][language][theme];
 }

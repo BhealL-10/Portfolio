@@ -68,6 +68,10 @@
   padding: 0;
   display: flex;
   flex-direction: column;
+  backdrop-filter: none;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 
 .focus-layer__panel-scroll {
