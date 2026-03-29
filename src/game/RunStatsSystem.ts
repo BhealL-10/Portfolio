@@ -36,6 +36,13 @@ export class RunStatsSystem {
   private baselineBestCoinsCollected = this.bestCoinsCollected;
   private baselineBestEnemiesKilled = this.bestEnemiesKilled;
   private baselineBestLongestMomentumSeconds = this.bestLongestMomentumSeconds;
+  private scoreFeedSerial = 0;
+  private lastScoreFeedEvent: {
+    serial: number;
+    basePoints: number;
+    gained: number;
+    multiplier: number;
+  } | null = null;
 
   reset(startTime = performance.now()) {
     this.totalScore = 0;
@@ -54,6 +61,7 @@ export class RunStatsSystem {
     this.baselineBestCoinsCollected = this.bestCoinsCollected;
     this.baselineBestEnemiesKilled = this.bestEnemiesKilled;
     this.baselineBestLongestMomentumSeconds = this.bestLongestMomentumSeconds;
+    this.lastScoreFeedEvent = null;
   }
 
   recordLanding(shardsLanded: number, pathDistance: number, elapsedTime: number, momentumGauge: number) {
@@ -155,8 +163,9 @@ export class RunStatsSystem {
     };
   }
 
-  fillHud(snapshot: Pick<GameHudSnapshot, 'score' | 'highscore' | 'distanceMeters' | 'bestDistanceMeters' | 'coins' | 'splitTimes'>) {
+  fillHud(snapshot: Pick<GameHudSnapshot, 'score' | 'scoreFeed' | 'highscore' | 'distanceMeters' | 'bestDistanceMeters' | 'coins' | 'splitTimes'>) {
     snapshot.score = this.totalScore;
+    snapshot.scoreFeed = this.lastScoreFeedEvent;
     snapshot.highscore = this.bestScore;
     snapshot.distanceMeters = this.distanceMeters;
     snapshot.bestDistanceMeters = this.bestDistanceMeters;
@@ -187,6 +196,13 @@ export class RunStatsSystem {
   private awardScore(basePoints: number, momentumGauge: number) {
     const multiplier = 1 + clamp(momentumGauge, 0, 1);
     const gained = Math.max(1, Math.round(basePoints * multiplier));
+    this.scoreFeedSerial += 1;
+    this.lastScoreFeedEvent = {
+      serial: this.scoreFeedSerial,
+      basePoints,
+      gained,
+      multiplier
+    };
     this.totalScore += gained;
     if (this.totalScore > this.bestScore) {
       this.bestScore = this.totalScore;

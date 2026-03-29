@@ -89,6 +89,12 @@ interface GameHUDCallbacks {
 interface GameHUDPayload {
   playerMotionState: GamePlayerMotionState;
   score: number;
+  scoreFeed: {
+    serial: number;
+    basePoints: number;
+    gained: number;
+    multiplier: number;
+  } | null;
   highscore: number;
   distanceMeters: number;
   bestDistanceMeters: number;
@@ -315,6 +321,7 @@ export class GameHUDSystem {
   readonly element: HTMLDivElement;
   private panel: HTMLDivElement;
   private runStrip: HTMLDivElement;
+  private scoreFeed: HTMLDivElement;
   private runStripScoreLabel: HTMLSpanElement;
   private runStripBestLabel: HTMLSpanElement;
   private runStripDistanceLabel: HTMLSpanElement;
@@ -418,6 +425,8 @@ export class GameHUDSystem {
   private readonly rewardBranchLayout = new RewardBranchLabelLayoutResolver();
   private audioMuted = false;
   private audioVolume = 0.86;
+  private lastScoreFeedSerial = 0;
+  private readonly scoreFeedTimeouts = new Set<number>();
   private readonly helpImageSets = resolveHelpImageSets();
   private helpLocale: 'fr' | 'en' = 'en';
   private helpPageIndex = 0;
@@ -490,6 +499,7 @@ export class GameHUDSystem {
             <img src="${MOMENTUM_BAR_ASSETS.top}" alt="" class="game-hud__momentum-top" />
           </div>
         </div>
+        <div class="game-hud__score-feed" data-score-feed aria-hidden="true"></div>
       </div>
       <div class="game-hud__play-zone game-hud__play-zone--top"></div>
       <div class="game-hud__play-zone game-hud__play-zone--bottom"></div>
@@ -579,6 +589,7 @@ export class GameHUDSystem {
 
     this.panel = this.element.querySelector<HTMLDivElement>('.game-hud__panel')!;
     this.runStrip = this.element.querySelector<HTMLDivElement>('.game-hud__run-strip')!;
+    this.scoreFeed = this.element.querySelector<HTMLDivElement>('[data-score-feed]')!;
     this.runStripScoreLabel = this.element.querySelector<HTMLSpanElement>('[data-run-strip-score-label]')!;
     this.runStripBestLabel = this.element.querySelector<HTMLSpanElement>('[data-run-strip-best-label]')!;
     this.runStripDistanceLabel = this.element.querySelector<HTMLSpanElement>('[data-run-strip-distance-label]')!;
@@ -831,6 +842,7 @@ export class GameHUDSystem {
       this.closeHelp();
       this.topRightCluster.toggle(false);
       this.landingFeedbackDisplay.clear();
+      this.clearScoreFeed();
       this.clearGameOverRevealTimers();
       this.avatarEditorOpen = false;
       this.draftAvatarSelection = { ...this.playerAvatarSelection };
@@ -889,6 +901,10 @@ export class GameHUDSystem {
       distanceMeters: payload.distanceMeters,
       coins: payload.coins
     };
+    if (payload.state === 'running' && payload.scoreFeed && payload.scoreFeed.serial !== this.lastScoreFeedSerial) {
+      this.lastScoreFeedSerial = payload.scoreFeed.serial;
+      this.pushScoreFeedEvent(payload.scoreFeed);
+    }
     this.coinsValue.textContent = `× ${payload.coins}`;
     this.chainValue.textContent = `${Math.round(payload.momentumGauge * 100)}%`;
     this.chainValue.style.opacity = `${0.58 + payload.momentumGauge * 0.42}`;
@@ -929,6 +945,9 @@ export class GameHUDSystem {
     this.gameOverOverlay.inert = payload.state !== 'game_over';
     this.toast.inert = !payload.acquisition;
     this.stashBar.hidden = payload.state === 'upgrade_choice' || payload.state === 'game_over';
+    if (payload.state !== 'running' && this.scoreFeed.childElementCount > 0) {
+      this.clearScoreFeed();
+    }
     this.panel.classList.toggle('is-hidden', false);
     this.runStrip.hidden = payload.state === 'game_over';
     this.branchLayer.classList.toggle('is-visible', payload.state === 'upgrade_choice' && showingShop);
@@ -2453,6 +2472,32 @@ export class GameHUDSystem {
     this.renderAvatarEditor();
     this.renderLeaderboard();
     this.renderGameOverMode(null);
+  }
+
+  private clearScoreFeed() {
+    this.scoreFeed.replaceChildren();
+    this.scoreFeedTimeouts.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    this.scoreFeedTimeouts.clear();
+  }
+
+  private pushScoreFeedEvent(event: NonNullable<GameHUDPayload['scoreFeed']>) {
+    const entry = document.createElement('div');
+    entry.className = 'game-hud__score-feed-entry';
+    const roundedMultiplier = Math.round(event.multiplier * 10) / 10;
+    const showMultiplier = roundedMultiplier > 1.04 && event.basePoints > 0;
+    entry.innerHTML = `
+      <strong>${showMultiplier ? `+${event.basePoints}` : `+${event.gained}`}</strong>
+      ${showMultiplier ? `<span>x${Number.isInteger(roundedMultiplier) ? roundedMultiplier.toFixed(0) : roundedMultiplier.toFixed(1)}</span>` : ''}
+    `;
+    this.scoreFeed.prepend(entry);
+    while (this.scoreFeed.childElementCount > 4) {
+      this.scoreFeed.lastElementChild?.remove();
+    }
+    const timeoutId = window.setTimeout(() => {
+      entry.remove();
+      this.scoreFeedTimeouts.delete(timeoutId);
+    }, 760);
+    this.scoreFeedTimeouts.add(timeoutId);
   }
 
   private bumpHudMetric(element: Element | null) {

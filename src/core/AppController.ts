@@ -3,10 +3,11 @@ import type { AppEntryRoute } from './AppEntryRoute';
 import { ContentService } from '../data/ContentService';
 import { GameHUDSystem } from '../game/GameHUDSystem';
 import { GameAudioSystem } from '../game/GameAudioSystem';
-import { MINI_GAME_PORTAL_CAMERA_OFFSET } from '../game/MiniGamePortalLayout';
+import { getMiniGamePortalShardPosition, MINI_GAME_PORTAL_CAMERA_OFFSET } from '../game/MiniGamePortalLayout';
 import { projectGameHudPayload } from '../game/projectGameHudPayload';
-import { primateriePortal } from '../game/PrimatriePortal';
+import { primateriePortal, type primaterieModeId } from '../game/PrimatriePortal';
 import { GameSessionController } from '../game/GameSessionController';
+import type { VisiblePlatformVisual } from '../game/gameSessionTypes';
 import { DragCameraOrbitController } from '../portfolio/DragCameraOrbitController';
 import { IntroVoronoiSystem } from '../portfolio/IntroVoronoiSystem';
 import { OrbitWorldSystem } from '../portfolio/OrbitWorldSystem';
@@ -41,6 +42,7 @@ const PORTFOLIO_TO_GAME_ROTATE_PHASE_END = 0.08;
 const PORTFOLIO_TO_GAME_HOLD_PHASE_END = 0.16;
 const primaterie_TO_GAME_CINEMATIC_FOCUS_END = 0.12;
 const primaterie_TO_GAME_CINEMATIC_HOLD_END = 0.28;
+const PRIMATERIE_MODE_ORDER: primaterieModeId[] = ['adventure', '3v3', '10v10', 'portfolio'];
 
 export class AppController {
   private readonly content = new ContentService();
@@ -94,6 +96,14 @@ export class AppController {
   private gameTransitionFromprimaterie = false;
   private gameTransitionReturningToHub = false;
   private gameTransitionAnchor: THREE.Vector3 | null = null;
+  private primateriePendingAction: {
+    modeId: primaterieModeId;
+    target: 'left' | 'right' | 'forward';
+    execute: () => void;
+  } | null = null;
+  private primateriePendingNavigation: {
+    direction: -1 | 1;
+  } | null = null;
 
   private syncRuntimeDeviceState = () => {
     applyRuntimeDeviceAttributes(document.documentElement);
@@ -201,11 +211,11 @@ export class AppController {
     this.gameTransitionBlurOverlay.className = 'game-transition-blur-overlay';
     this.uiHost.appendChild(this.gameTransitionBlurOverlay);
     this.primateriePortal = new primateriePortal(this.uiHost, {
-      onPortfolio: () => {
-        this.returnToPortfolioFromprimateriePortal();
+      onActivate: (modeId) => {
+        this.activateprimaterieMode(modeId);
       },
-      onSinglePlayer: () => {
-        this.launchprimaterieSinglePlayer();
+      onNavigate: (direction) => {
+        this.navigateprimateriePortal(direction);
       },
       onThemeToggle: () => this.theme.toggle(),
       onLanguageToggle: () => this.i18n.toggle()
@@ -302,19 +312,43 @@ export class AppController {
     if (!this.mode.is('primaterie_portal')) {
       this.mode.setMode('primaterie_portal');
     }
+    this.primateriePendingAction = null;
+    this.primateriePendingNavigation = null;
     this.primaterieReturnProgress = 0;
     this.slotSystem.reset();
     this.interaction.reset();
     this.world.setHovered(null);
     this.game.beginPortalPreview();
+    this.game.clearPortalPreviewTransitionIntent();
     this.syncprimateriePortalLayout();
+    this.primateriePortal.setBusy(false);
     this.setprimateriePortalVisible(true);
     this.refreshUI();
   }
 
-  private launchprimaterieSinglePlayer() {
-    this.setprimateriePortalVisible(false);
-    this.startGameTransition(true);
+  private navigateprimateriePortal(direction: -1 | 1) {
+    if (!this.mode.is('primaterie_portal') || this.primateriePendingAction || this.primateriePendingNavigation) {
+      return;
+    }
+    this.primateriePendingNavigation = { direction };
+    this.primateriePortal.setBusy(true);
+  }
+
+  private activateprimaterieMode(modeId: primaterieModeId) {
+    if (!this.mode.is('primaterie_portal') || this.primateriePendingNavigation) {
+      return;
+    }
+    const target = modeId === 'portfolio' ? 'left' : modeId === 'adventure' ? 'right' : 'forward';
+    const execute =
+      modeId === 'portfolio'
+        ? () => this.returnToPortfolioFromprimateriePortal()
+        : () => this.startGameTransition(true);
+    this.primateriePendingAction = {
+      modeId,
+      target,
+      execute
+    };
+    this.primateriePortal.setBusy(true);
   }
 
   private returnToPortfolioFromprimateriePortal() {
@@ -364,13 +398,97 @@ export class AppController {
 
   private syncprimateriePortalLayout() {
     const preview = this.game.getPortalPreviewLayout();
-    this.world.setSingleNodeExternalLayout(preview.position, preview.visual);
-    const projected = this.renderer.projectWorldToScreen(preview.position);
+    const activeModeIndex = this.primateriePortal.getSelectedModeIndex();
+    const shardLayout = this.getprimaterieShardLayout(preview.position, activeModeIndex);
+    this.world.setExternalLayoutPositions(shardLayout.positions, shardLayout.scales, shardLayout.visuals);
+    const projected = this.renderer.projectWorldToScreen(shardLayout.center);
+    const projectedLeft = this.renderer.projectWorldToScreen(shardLayout.left);
+    const projectedRight = this.renderer.projectWorldToScreen(shardLayout.right);
     const device = getRuntimeDeviceState();
     const viewportScale = device.isMobile
       ? THREE.MathUtils.clamp(window.innerWidth / 1160, 0.74, 0.94)
       : THREE.MathUtils.clamp(window.innerWidth / 2240, 0.6, 0.8);
     this.primateriePortal.setAnchor(projected.x, projected.y, viewportScale);
+    this.primateriePortal.setShardAnchors({
+      left: { x: projectedLeft.x, y: projectedLeft.y, scale: viewportScale * 0.84 },
+      center: { x: projected.x, y: projected.y, scale: viewportScale },
+      right: { x: projectedRight.x, y: projectedRight.y, scale: viewportScale * 0.84 }
+    });
+  }
+
+  private getprimaterieShardLayout(center: THREE.Vector3, activeModeIndex: number) {
+    const shardCount = this.content.getProjectCount();
+    const hidden = getMiniGamePortalShardPosition('hidden', center);
+    const positions = Array.from({ length: shardCount }, (_, index) =>
+      hidden.clone().add(new THREE.Vector3(0, index * 0.18, -index * 0.42))
+    );
+    const scales = Array.from({ length: shardCount }, (_, index) => (index < PRIMATERIE_MODE_ORDER.length ? 0.22 : 0.14));
+    const visuals = positions.map((position, index) =>
+      this.buildprimaterieShardVisual(
+        PRIMATERIE_MODE_ORDER[index] ?? 'adventure',
+        index < PRIMATERIE_MODE_ORDER.length ? 'hidden' : 'stack',
+        position
+      )
+    );
+    const leftIndex = wrapIndex(activeModeIndex - 1, PRIMATERIE_MODE_ORDER.length);
+    const rightIndex = wrapIndex(activeModeIndex + 1, PRIMATERIE_MODE_ORDER.length);
+    const hiddenIndex = wrapIndex(activeModeIndex + 2, PRIMATERIE_MODE_ORDER.length);
+    const left = getMiniGamePortalShardPosition('left', center);
+    const right = getMiniGamePortalShardPosition('right', center);
+
+    const slotAssignments: Array<[number, THREE.Vector3, ReturnType<AppController['buildprimaterieShardVisual']>, number]> = [
+      [leftIndex, left, this.buildprimaterieShardVisual(PRIMATERIE_MODE_ORDER[leftIndex]!, 'side', left), 0.96],
+      [activeModeIndex, center.clone(), this.buildprimaterieShardVisual(PRIMATERIE_MODE_ORDER[activeModeIndex]!, 'center', center), 1.22],
+      [rightIndex, right, this.buildprimaterieShardVisual(PRIMATERIE_MODE_ORDER[rightIndex]!, 'side', right), 0.96],
+      [hiddenIndex, hidden.clone(), this.buildprimaterieShardVisual(PRIMATERIE_MODE_ORDER[hiddenIndex]!, 'hidden', hidden), 0.42]
+    ];
+
+    slotAssignments.forEach(([index, position, visual, scale]) => {
+      if (index >= positions.length) {
+        return;
+      }
+      positions[index] = position;
+      visuals[index] = visual;
+      scales[index] = scale;
+    });
+
+    return { positions, scales, visuals, left, center: center.clone(), right };
+  }
+
+  private buildprimaterieShardVisual(
+    modeId: primaterieModeId,
+    slot: 'center' | 'side' | 'hidden' | 'stack',
+    position: THREE.Vector3
+  ): VisiblePlatformVisual {
+    const theme = this.theme.current;
+    const enabled = modeId === 'adventure' || modeId === 'portfolio';
+    const activeColor = theme === 'dark' ? '#A5977F' : '#2E3644';
+    const inactiveColor = theme === 'dark' ? '#D8DDE8' : '#6C7587';
+    const tint = enabled ? activeColor : inactiveColor;
+    const scaleValue = slot === 'center' ? 1.18 : slot === 'side' ? 0.94 : slot === 'hidden' ? 0.34 : 0.14;
+    const pulse = slot === 'center' ? 0.08 + Math.sin(performance.now() / 520) * 0.02 : 0.02;
+    return {
+      scale: new THREE.Vector3(scaleValue, scaleValue, scaleValue),
+      shapeKind: 'round',
+      spinDirection: 'cw',
+      spinSpeed: slot === 'hidden' ? 0.06 : slot === 'center' ? 0.1 : 0.08,
+      spinPhase: performance.now() / 1600 + position.x * 0.02,
+      tint,
+      ringTint: null,
+      ringScale: 0,
+      stripeTint: tint,
+      stripeMix: enabled ? (slot === 'center' ? 0.08 : 0.05) : 0.04,
+      stripePhase: performance.now() / 1400,
+      pulse,
+      deformAngle: 0,
+      deformStrength: 0.02,
+      deformDensity: 0.44,
+      fragmentAmount: slot === 'center' ? 0.04 : 0.08,
+      iconSrc: null,
+      iconText: null,
+      iconTint: null,
+      iconScale: 0
+    };
   }
 
   private bindEvents() {
@@ -499,6 +617,24 @@ export class AppController {
   };
 
   private onKeyDown = (event: KeyboardEvent) => {
+    if (this.mode.is('primaterie_portal')) {
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        this.primateriePortal.stepSelection(-1);
+        return;
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        this.primateriePortal.stepSelection(1);
+        return;
+      }
+      if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        this.primateriePortal.activateSelection();
+        return;
+      }
+      return;
+    }
     if (isprimaterieMode(this.mode.current)) {
       return;
     }
@@ -547,8 +683,9 @@ export class AppController {
           const playerMotionState = this.game.getHudState().playerMotionState;
           if (playerMotionState === 'airborne' && !event.repeat) {
             this.game.triggerAirborneMobilityAction();
+          } else {
+            this.game.setChargeActive(true);
           }
-          this.game.setChargeActive(true);
         } else if (event.key === 'ArrowUp') {
           event.preventDefault();
           this.game.setUpActionActive(true);
@@ -622,7 +759,10 @@ export class AppController {
     }
     if (!this.mode.is('game')) return;
     if (event.key === 'ArrowDown') {
-      this.game.setChargeActive(false);
+      const playerMotionState = this.game.getHudState().playerMotionState;
+      if (playerMotionState !== 'airborne') {
+        this.game.setChargeActive(false);
+      }
       return;
     }
     if (event.key === 'ArrowUp') {
@@ -1189,6 +1329,22 @@ export class AppController {
     this.audio.update(this.game.getAudioState(), deltaTime);
 
     if (this.mode.is('primaterie_portal')) {
+      if (this.primateriePendingNavigation) {
+        const pendingNavigation = this.primateriePendingNavigation;
+        const target = pendingNavigation.direction < 0 ? 'left' : 'right';
+        if (this.game.preparePortalPreviewTransition(target)) {
+          this.primateriePendingNavigation = null;
+          this.primateriePortal.commitSelection(pendingNavigation.direction);
+          this.primateriePortal.setBusy(false);
+        }
+      }
+      if (this.primateriePendingAction) {
+        const pendingAction = this.primateriePendingAction;
+        if (this.game.preparePortalPreviewTransition(pendingAction.target)) {
+          this.primateriePendingAction = null;
+          pendingAction.execute();
+        }
+      }
       this.syncprimateriePortalLayout();
     }
 

@@ -5,7 +5,11 @@ import type { ThemeMode } from '../types/content';
 import { CameraRailController } from './CameraRailController';
 import { CoinSystem, type CoinMarker } from './CoinSystem';
 import { EnemySystem, type EnemyMarker } from './EnemySystem';
-import { createMiniGamePortalNode } from './MiniGamePortalLayout';
+import {
+  createMiniGamePortalNode,
+  getMiniGamePortalShardPosition,
+  MINI_GAME_PORTAL_LAUNCH_ANGLE
+} from './MiniGamePortalLayout';
 import { DEFAULT_COLUMN_DISTANCE } from './difficultyScaler';
 import { HELP_ICON_ASSETS, SHOP_ICON_ASSETS } from './GameUiAssetResolver';
 import { GamePathSystem } from './GamePathSystem';
@@ -62,8 +66,19 @@ const STICK_MONKEY_AIR_URL = new URL('../../assets/images/game/sprites/character
 const STICK_MONKEY_GLIDE_URL = new URL('../../assets/images/game/sprites/characters/companion/stick-monkey-glide-sheet.png', import.meta.url).href;
 const BIG_CANON_PROJECTILE_URL = new URL('../../assets/images/game/sprites/effects/big-cannon-projectile.svg', import.meta.url).href;
 const FRONT_CANON_PROJECTILE_URL = new URL('../../assets/images/game/sprites/effects/front-cannon-projectile.svg', import.meta.url).href;
+const SHARD_HUD_ANCHOR_LOAD_ASSETS = {
+  dark: new URL('../../assets/images/game/ui/buttons/icons/ancrageload-dark.svg', import.meta.url).href,
+  light: new URL('../../assets/images/game/ui/buttons/icons/ancrageload-light.svg', import.meta.url).href
+} as const;
+const SHARD_HUD_ANCHOR_FULL_ASSETS = {
+  dark: new URL('../../assets/images/game/ui/buttons/icons/ancragefull-dark.svg', import.meta.url).href,
+  light: new URL('../../assets/images/game/ui/buttons/icons/ancragefull-light.svg', import.meta.url).href
+} as const;
+const SHARD_HUD_BOOST_ASSETS = {
+  dark: new URL('../../assets/images/game/ui/buttons/icons/boostshard-dark.svg', import.meta.url).href,
+  light: new URL('../../assets/images/game/ui/buttons/icons/boostshard-light.svg', import.meta.url).href
+} as const;
 const MAGNET_RADIUS_URL = new URL('../../assets/images/game/sprites/effects/magnet-radius.svg', import.meta.url).href;
-const BIG_CANON_RADIUS_URL = new URL('../../assets/images/game/sprites/effects/big-cannon-radius.svg', import.meta.url).href;
 const GRAP_RADIUS_URL = new URL('../../assets/images/game/sprites/effects/grappling-hook-radius.svg', import.meta.url).href;
 const RARITY_COLORS: Record<RogueliteRarity, string> = {
   common: '#F2DDB8',
@@ -119,6 +134,17 @@ interface PendingMagnetCoin {
   duration: number;
 }
 
+type ShardHudImageKey = 'anchorLoad' | 'anchorFull' | 'boost';
+
+interface PortalPreviewJumpState {
+  direction: -1 | 1;
+  startedAt: number;
+  duration: number;
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  center: THREE.Vector3;
+}
+
 export class GameSessionController {
   private readonly root = new THREE.Group();
   private readonly player = new THREE.Group();
@@ -130,10 +156,12 @@ export class GameSessionController {
   private readonly shardHudCanvas = document.createElement('canvas');
   private readonly shardHudTexture: THREE.CanvasTexture;
   private readonly shardHudSprite: THREE.Sprite;
+  private readonly shardHudImages: Record<ShardHudImageKey, Record<'dark' | 'light', HTMLImageElement>>;
   private readonly rewardHeaderBillboard: WorldHudBillboard;
   private readonly rewardCardBillboards: [WorldHudBillboard, WorldHudBillboard, WorldHudBillboard];
   private readonly magnetRangeIndicator: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
   private readonly bigCanonRangeIndicator: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+  private readonly bigCanonRadarSweep: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   private readonly grapRangeIndicator: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
   private readonly milestonePlayerIndicator: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>;
   private readonly frontCanonLaser: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
@@ -163,6 +191,7 @@ export class GameSessionController {
   private readonly playerVelocityTarget = new THREE.Vector3();
   private readonly scratchVector = new THREE.Vector3();
   private readonly scratchVectorB = new THREE.Vector3();
+  private readonly scratchVectorC = new THREE.Vector3();
   private readonly scratchVector2 = new THREE.Vector2();
   private readonly impactWaves = new Map<number, ImpactWave[]>();
   private theme: ThemeMode;
@@ -170,6 +199,7 @@ export class GameSessionController {
     state: 'transition',
     playerMotionState: 'attached',
     score: 0,
+    scoreFeed: null,
     highscore: 0,
     distanceMeters: 0,
     bestDistanceMeters: 0,
@@ -292,9 +322,26 @@ export class GameSessionController {
   private airborneFromMilestone = false;
   private airborneStartedAt = 0;
   private momentumLossActive = false;
+  private readonly portalPreviewCenter = new THREE.Vector3(0, 0.8, 0);
+  private portalPreviewDesiredAngle: number | null = null;
+  private portalPreviewJump: PortalPreviewJumpState | null = null;
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
     this.theme = theme;
+    this.shardHudImages = {
+      anchorLoad: {
+        dark: this.createUiHudImage(SHARD_HUD_ANCHOR_LOAD_ASSETS.dark),
+        light: this.createUiHudImage(SHARD_HUD_ANCHOR_LOAD_ASSETS.light)
+      },
+      anchorFull: {
+        dark: this.createUiHudImage(SHARD_HUD_ANCHOR_FULL_ASSETS.dark),
+        light: this.createUiHudImage(SHARD_HUD_ANCHOR_FULL_ASSETS.light)
+      },
+      boost: {
+        dark: this.createUiHudImage(SHARD_HUD_BOOST_ASSETS.dark),
+        light: this.createUiHudImage(SHARD_HUD_BOOST_ASSETS.light)
+      }
+    };
     this.shardHudCanvas.width = 256;
     this.shardHudCanvas.height = 256;
     this.shardHudTexture = new THREE.CanvasTexture(this.shardHudCanvas);
@@ -357,7 +404,19 @@ export class GameSessionController {
       this.createWorldHudBillboard(1600, 760, 14.8, 7, 30, 0.995)
     ];
     this.magnetRangeIndicator = this.createSimpleRangeIndicator(this.getRarityColor('common'), 0.16);
-    this.bigCanonRangeIndicator = this.createRangeIndicator(BIG_CANON_RADIUS_URL, 0.1);
+    this.bigCanonRangeIndicator = this.createSimpleRangeIndicator(this.getRarityColor('common'), 0.055);
+    this.bigCanonRadarSweep = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 0.12),
+      new THREE.MeshBasicMaterial({
+        color: this.getRarityColor('common'),
+        transparent: true,
+        opacity: 0.16,
+        depthWrite: false,
+        depthTest: false
+      })
+    );
+    this.bigCanonRadarSweep.visible = false;
+    this.bigCanonRadarSweep.renderOrder = 29;
     this.grapRangeIndicator = new THREE.Mesh(
       new THREE.CircleGeometry(0.5, 28, -Math.PI / 8, Math.PI / 4),
       new THREE.MeshBasicMaterial({
@@ -391,7 +450,7 @@ export class GameSessionController {
     this.frontCanonLaser.visible = false;
     this.frontCanonLaser.renderOrder = 26;
     this.frontCanonProjectile = this.createBillboardPlane(FRONT_CANON_PROJECTILE_URL, 1.6, 0.28, 28);
-    this.bigCanonProjectile = this.createBillboardPlane(BIG_CANON_PROJECTILE_URL, 1.9, 0.34, 28);
+    this.bigCanonProjectile = this.createBillboardPlane(BIG_CANON_PROJECTILE_URL, 1.3, 0.24, 28);
     this.grapRope = new THREE.Mesh(
       new THREE.PlaneGeometry(0.03, 1),
       new THREE.MeshBasicMaterial({
@@ -410,6 +469,7 @@ export class GameSessionController {
       ...this.rewardCardBillboards.map((billboard) => billboard.sprite),
       this.magnetRangeIndicator,
       this.bigCanonRangeIndicator,
+      this.bigCanonRadarSweep,
       this.grapRangeIndicator,
       this.milestonePlayerIndicator,
       this.frontCanonLaser,
@@ -549,6 +609,13 @@ export class GameSessionController {
     return { canvas, texture, sprite };
   }
 
+  private createUiHudImage(url: string) {
+    const image = new Image();
+    image.decoding = 'async';
+    image.src = url;
+    return image;
+  }
+
   private createBillboardPlane(textureUrl: string, width: number, height: number, renderOrder: number) {
     const texture = new THREE.TextureLoader().load(textureUrl);
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -594,7 +661,8 @@ export class GameSessionController {
     this.grapRope.material.color.set(uiColor);
     this.frontCanonLaser.material.color.set(uiColor);
     this.milestonePlayerIndicator.material.color.set(uiColor);
-    this.bigCanonRangeIndicator.material.color.set('#ffffff');
+    this.bigCanonRangeIndicator.material.color.set(this.getRarityColor('common'));
+    this.bigCanonRadarSweep.material.color.set(this.getRarityColor('common'));
     this.rewardBillboardSignature = '';
   }
 
@@ -625,20 +693,22 @@ export class GameSessionController {
     this.attachedIndex = 0;
     this.playerState = 'attached';
     this.state = 'portal_preview';
-    this.orbitAngle = Math.PI * 0.18;
+    this.orbitAngle = MINI_GAME_PORTAL_LAUNCH_ANGLE;
     this.orbitDirection = -1;
+    this.portalPreviewCenter.set(0, 0.8, 0);
     const node = this.getPortalPreviewNode();
-    this.angularSpeed = (Math.PI * 2) / Math.max(1.6, node.gameplayOrbitPeriod);
+    this.angularSpeed = 0;
     const orbit = this.getOrbitSample(node, this.orbitAngle);
     this.playerPosition.copy(this.getPlayerOrbitWorldPosition(node, this.orbitAngle, orbit));
     this.playerVelocity.set(0, 0, 0);
     this.root.visible = true;
     this.player.visible = true;
-    this.playerTrail.visible = true;
+    this.playerTrail.visible = false;
     this.shardHudSprite.visible = false;
     this.frontCanonLaser.visible = false;
     this.frontCanonProjectile.visible = false;
     this.bigCanonProjectile.visible = false;
+    this.bigCanonRadarSweep.visible = false;
     this.grapRope.visible = false;
     this.coins.reset();
     this.enemies.reset();
@@ -649,6 +719,8 @@ export class GameSessionController {
     this.trailPoints.forEach((point) => point.copy(this.playerPosition));
     this.updateTrail(0);
     this.transitionProgress = 0;
+    this.portalPreviewDesiredAngle = null;
+    this.portalPreviewJump = null;
   }
 
   startTransition() {
@@ -751,6 +823,68 @@ export class GameSessionController {
     };
   }
 
+  getPortalPreviewNavigationProgress() {
+    if (!this.portalPreviewJump) {
+      return 0;
+    }
+    return clamp((this.currentTime - this.portalPreviewJump.startedAt) / this.portalPreviewJump.duration, 0, 1);
+  }
+
+  nudgePortalPreview(direction: -1 | 1) {
+    if (this.state !== 'portal_preview') {
+      return;
+    }
+    void direction;
+  }
+
+  preparePortalPreviewTransition(target: 'left' | 'right' | 'forward') {
+    if (this.state !== 'portal_preview') {
+      return true;
+    }
+    const desiredAngle = this.getPortalPreviewTargetAngle(target);
+    this.portalPreviewDesiredAngle = desiredAngle;
+    const aligned = Math.abs(shortestAngleDistance(this.orbitAngle, desiredAngle)) <= 0.1;
+    if (!aligned) {
+      return false;
+    }
+    if (target === 'forward') {
+      return this.portalPreviewJump === null;
+    }
+    if (!this.portalPreviewJump) {
+      const node = this.getPortalPreviewNode();
+      const landingCenter = getMiniGamePortalShardPosition(
+        target,
+        new THREE.Vector3(node.resolvedX, node.resolvedY, node.resolvedZ)
+      );
+      const landingNode = this.getPortalPreviewNodeAt(landingCenter);
+      const landingOrbit = this.getOrbitSample(landingNode, MINI_GAME_PORTAL_LAUNCH_ANGLE);
+      const landingTarget = this.getPlayerOrbitWorldPosition(landingNode, MINI_GAME_PORTAL_LAUNCH_ANGLE, landingOrbit);
+      this.portalPreviewJump = {
+        direction: target === 'left' ? -1 : 1,
+        startedAt: this.currentTime,
+        duration: 0.46,
+        from: this.playerPosition.clone(),
+        to: landingTarget,
+        center: landingCenter
+      };
+      this.playerState = 'airborne';
+      const launch = this.scratchVector
+        .copy(landingTarget)
+        .sub(this.playerPosition)
+        .setZ(0)
+        .normalize();
+      const lift = this.scratchVectorB.set(-launch.y, launch.x, 0);
+      this.playerVelocity.copy(launch.multiplyScalar(13.6)).addScaledVector(lift, 0.35 * (target === 'left' ? -1 : 1));
+      this.playerVelocity.y += 0.9;
+    }
+    return this.getPortalPreviewNavigationProgress() >= 0.999;
+  }
+
+  clearPortalPreviewTransitionIntent() {
+    this.portalPreviewDesiredAngle = null;
+    this.portalPreviewJump = null;
+  }
+
   resetRunState() {
     this.stats.reset(performance.now());
     this.score = 0;
@@ -844,6 +978,7 @@ export class GameSessionController {
     });
     this.magnetRangeIndicator.visible = false;
     this.bigCanonRangeIndicator.visible = false;
+    this.bigCanonRadarSweep.visible = false;
     this.grapRangeIndicator.visible = false;
     this.milestonePlayerIndicator.visible = false;
     this.frontCanonLaser.visible = false;
@@ -1392,7 +1527,8 @@ export class GameSessionController {
     if (!runtime || cooldownDuration <= 0) {
       return 0;
     }
-    return Math.min(1, runtime.cooldownRemaining / cooldownDuration);
+    const visualLeadTime = Math.min(0.16, cooldownDuration * 0.08);
+    return Math.min(1, Math.max(0, runtime.cooldownRemaining - visualLeadTime) / cooldownDuration);
   }
 
   private ensureModuleRuntime(slot: RogueliteModuleSlot) {
@@ -1637,23 +1773,39 @@ export class GameSessionController {
 
   private updatePortalPreview(deltaTime: number, elapsedTime: number) {
     const currentNode = this.getPortalPreviewNode();
-    const orbit = this.getOrbitSample(currentNode, this.orbitAngle);
-    const orbitRadius = Math.max(1, orbit.position.length());
-    const baselineAngular = (Math.PI * 2) / Math.max(1.6, currentNode.gameplayOrbitPeriod);
-    this.angularSpeed = damp(this.angularSpeed, baselineAngular * 0.94, 1.8, deltaTime);
-    this.orbitAngle = wrapAngle(this.orbitAngle + this.orbitDirection * this.angularSpeed * deltaTime);
-
-    const liveOrbit = this.getOrbitSample(currentNode, this.orbitAngle);
-    this.playerPosition.copy(this.getPlayerOrbitWorldPosition(currentNode, this.orbitAngle, liveOrbit));
-    this.playerVelocity.set(
-      liveOrbit.tangent.x * orbitRadius * this.angularSpeed * this.orbitDirection,
-      liveOrbit.tangent.y * orbitRadius * this.angularSpeed * this.orbitDirection,
-      0
-    );
+    if (this.portalPreviewJump) {
+      const progress = this.getPortalPreviewNavigationProgress();
+      const nextProgress = clamp(progress + Math.max(0.0001, deltaTime) / Math.max(0.001, this.portalPreviewJump.duration), 0, 1);
+      const arcHeight = 2.4;
+      const arcLift = Math.sin(progress * Math.PI) * arcHeight;
+      const nextArcLift = Math.sin(nextProgress * Math.PI) * arcHeight;
+      const position = this.scratchVector.copy(this.portalPreviewJump.from).lerp(this.portalPreviewJump.to, progress);
+      position.y += arcLift;
+      this.playerPosition.copy(position);
+      const nextPosition = this.scratchVectorB.copy(this.portalPreviewJump.from).lerp(this.portalPreviewJump.to, nextProgress);
+      nextPosition.y += nextArcLift;
+      this.playerVelocity.copy(nextPosition).sub(this.playerPosition).divideScalar(Math.max(0.0001, deltaTime));
+      if (progress >= 0.999) {
+        this.portalPreviewCenter.copy(this.portalPreviewJump.center);
+        this.portalPreviewJump = null;
+        this.playerState = 'attached';
+        this.orbitAngle = MINI_GAME_PORTAL_LAUNCH_ANGLE;
+        this.angularSpeed = 0;
+        this.portalPreviewDesiredAngle = null;
+      }
+    } else {
+      this.orbitAngle = this.portalPreviewDesiredAngle ?? MINI_GAME_PORTAL_LAUNCH_ANGLE;
+      this.angularSpeed = damp(this.angularSpeed, 0, 8.4, deltaTime);
+      const liveOrbit = this.getOrbitSample(currentNode, this.orbitAngle);
+      this.playerPosition.copy(this.getPlayerOrbitWorldPosition(currentNode, this.orbitAngle, liveOrbit));
+      this.playerVelocity.set(0, 0, 0);
+      this.playerState = 'attached';
+    }
 
     this.shardHudSprite.visible = false;
     this.magnetRangeIndicator.visible = false;
     this.bigCanonRangeIndicator.visible = false;
+    this.bigCanonRadarSweep.visible = false;
     this.grapRangeIndicator.visible = false;
     this.frontCanonLaser.visible = false;
     this.frontCanonProjectile.visible = false;
@@ -1661,35 +1813,50 @@ export class GameSessionController {
     this.grapRope.visible = false;
     this.coins.setVisible(false);
     this.enemies.setVisible(false);
-    this.updateTrail(deltaTime);
+    this.playerTrail.visible = false;
     this.syncPlayerVisual(elapsedTime, deltaTime);
   }
 
   private getPortalPreviewNode(): ResolvedGamePathNode {
+    return this.getPortalPreviewNodeAt(this.portalPreviewCenter);
+  }
+
+  private getPortalPreviewNodeAt(center: THREE.Vector3) {
     const node = createMiniGamePortalNode();
+    node.x = center.x;
+    node.y = center.y;
+    node.z = center.z;
+    node.resolvedX = center.x;
+    node.resolvedY = center.y;
+    node.resolvedZ = center.z;
     node.resolvedSpinPhase = this.currentTime * node.spinSpeed;
     return node;
   }
 
+  private getPortalPreviewTargetAngle(target: 'left' | 'right' | 'forward') {
+    void target;
+    return MINI_GAME_PORTAL_LAUNCH_ANGLE;
+  }
+
   private buildPortalPreviewVisual(node: ResolvedGamePathNode): VisiblePlatformVisual {
-    const pulse = 0.14 + Math.sin(this.currentTime * 1.8) * 0.04;
+    const pulse = 0.06 + Math.sin(this.currentTime * 1.2) * 0.015;
     return {
       scale: new THREE.Vector3(node.visualScale, node.visualScale, node.visualScale),
       shapeKind: node.shapeKind,
       spinDirection: node.spinDirection,
-      spinSpeed: node.spinSpeed,
+      spinSpeed: 0.06,
       spinPhase: node.resolvedSpinPhase,
       tint: null,
       ringTint: null,
       ringScale: 0,
       stripeTint: this.getThemeContrastColor(),
-      stripeMix: 0.16,
-      stripePhase: this.currentTime * 1.92,
+      stripeMix: 0.06,
+      stripePhase: this.currentTime * 1.12,
       pulse,
       deformAngle: this.orbitAngle,
-      deformStrength: 0.16 + pulse * 0.6,
-      deformDensity: 0.74,
-      fragmentAmount: 0.14,
+      deformStrength: 0.02,
+      deformDensity: 0.42,
+      fragmentAmount: 0.04,
       iconSrc: null,
       iconText: null,
       iconTint: null,
@@ -1726,19 +1893,23 @@ export class GameSessionController {
   }
 
   private getDisplayNodes(count: number) {
-    if (this.choiceMode === 'reward_branch' && this.activeChoices.length > 0) {
+    const rewardChoiceLayout = this.getActiveRewardChoiceLayout();
+    if (rewardChoiceLayout) {
       this.initializeDisplayWindow(count);
-      const milestoneNode = this.getResolvedNode(this.attachedIndex);
-      const rewardNodes = this.activeChoices.map((choice) => resolveRuntimeNode(choice.entry, this.currentTime, this.attachedIndex));
-      const reservedStart = milestoneNode.resolvedX - DEFAULT_COLUMN_DISTANCE * 3;
-      const reservedEnd = Math.max(...rewardNodes.map((node) => node.resolvedX), milestoneNode.resolvedX) + DEFAULT_COLUMN_DISTANCE;
+      const { milestoneNode, rewardNodes, reservedStart, reservedEnd } = rewardChoiceLayout;
       const nodes = this.displayWindowIndices
         .map((index) => this.getResolvedNode(index))
         .filter((node) => {
           if (node.index === milestoneNode.index) {
             return true;
           }
-          if (node.resolvedX >= reservedStart && node.resolvedX <= reservedEnd) {
+          const radius = this.getPhysicalRadius(node);
+          if (
+            node.resolvedX + radius >= reservedStart &&
+            node.resolvedX - radius <= reservedEnd &&
+            node.resolvedY + radius >= rewardChoiceLayout.reservedBottom &&
+            node.resolvedY - radius <= rewardChoiceLayout.reservedTop
+          ) {
             return false;
           }
           return !rewardNodes.some((rewardNode) => this.doNodesOverlapForDisplay(node, rewardNode));
@@ -1779,6 +1950,46 @@ export class GameSessionController {
 
     this.initializeDisplayWindow(count);
     return this.displayWindowIndices.slice(0, count).map((index) => this.getResolvedNode(index));
+  }
+
+  private getActiveRewardChoiceLayout() {
+    if (this.choiceMode !== 'reward_branch' || this.activeChoices.length === 0) {
+      return null;
+    }
+    const milestoneNode = this.getResolvedNode(this.attachedIndex);
+    const rewardNodes = this.activeChoices.map((choice) => resolveRuntimeNode(choice.entry, this.currentTime, this.attachedIndex));
+    const rewardYValues = rewardNodes.map((node) => node.resolvedY);
+    return {
+      milestoneNode,
+      rewardNodes,
+      reservedStart: milestoneNode.resolvedX - DEFAULT_COLUMN_DISTANCE * 4.2,
+      reservedEnd: Math.max(...rewardNodes.map((node) => node.resolvedX), milestoneNode.resolvedX) + DEFAULT_COLUMN_DISTANCE * 3.4,
+      reservedTop: Math.max(milestoneNode.resolvedY, ...rewardYValues) + DEFAULT_COLUMN_DISTANCE * 1.2,
+      reservedBottom: Math.min(milestoneNode.resolvedY, ...rewardYValues) - DEFAULT_COLUMN_DISTANCE * 1.2
+    };
+  }
+
+  private isNodeInsideActiveRewardReserve(
+    node: ResolvedGamePathNode,
+    rewardChoiceLayout: NonNullable<ReturnType<GameSessionController['getActiveRewardChoiceLayout']>>
+  ) {
+    if (node.index === rewardChoiceLayout.milestoneNode.index) {
+      return false;
+    }
+    const matchesRewardNode = rewardChoiceLayout.rewardNodes.some(
+      (rewardNode) =>
+        Math.abs(node.resolvedX - rewardNode.resolvedX) < 0.001 && Math.abs(node.resolvedY - rewardNode.resolvedY) < 0.001
+    );
+    if (matchesRewardNode) {
+      return false;
+    }
+    const radius = this.getPhysicalRadius(node);
+    return (
+      node.resolvedX + radius >= rewardChoiceLayout.reservedStart &&
+      node.resolvedX - radius <= rewardChoiceLayout.reservedEnd &&
+      node.resolvedY + radius >= rewardChoiceLayout.reservedBottom &&
+      node.resolvedY - radius <= rewardChoiceLayout.reservedTop
+    );
   }
 
   private getInteractableVisibleNodes() {
@@ -1838,16 +2049,16 @@ export class GameSessionController {
   private getFrontCanonSpreadWidth() {
     switch (this.getEquippedItem('front_canon')?.rarity) {
       case 'legendary':
-        return 1.52;
+        return 1.92;
       case 'epic':
-        return 1.16;
+        return 1.42;
       case 'rare':
-        return 0.9;
+        return 1.02;
       case 'uncommon':
-        return 0.72;
+        return 0.74;
       case 'common':
       default:
-        return 0.56;
+        return 0.48;
     }
   }
 
@@ -1958,6 +2169,7 @@ export class GameSessionController {
   }
 
   private updateMomentum(deltaTime: number) {
+    const momentumCap = Math.max(1, this.runUpgrades.modifiers.momentumCap);
     const normalizedGauge = this.getNormalizedMomentumGauge();
     const decayModifier = 1 - Math.min(0.72, this.runUpgrades.modifiers.momentumRetention);
     const decay = this.momentum.decayRate * decayModifier;
@@ -1967,7 +2179,7 @@ export class GameSessionController {
       this.airborneStartedAt > 0 &&
       this.currentTime - this.airborneStartedAt < 3;
     if (!(this.orbitGraceActive && this.playerState !== 'airborne') && !airborneGraceActive) {
-      this.momentum.gauge = clamp(this.momentum.gauge - decay * deltaTime, 0, 1);
+      this.momentum.gauge = clamp(this.momentum.gauge - decay * deltaTime, 0, momentumCap);
     }
     const losingMomentum = this.momentum.gauge < previousGauge - 0.002 && previousGauge > 0.08;
     if (losingMomentum && !this.momentumLossActive) {
@@ -1975,8 +2187,8 @@ export class GameSessionController {
     }
     this.momentumLossActive = losingMomentum;
 
-    const speedTarget = 1 + normalizedGauge * 0.6 + this.runUpgrades.modifiers.speedBonus;
-    const jumpTarget = 1 + normalizedGauge * 0.48 + this.runUpgrades.modifiers.chargedLeapBonus * 0.12;
+    const speedTarget = 1 + normalizedGauge * 0.8 + this.runUpgrades.modifiers.speedBonus;
+    const jumpTarget = 1 + normalizedGauge * 0.62 + this.runUpgrades.modifiers.chargedLeapBonus * 0.16;
     const cameraZoomTarget =
       normalizedGauge < 0.5
         ? normalizedGauge * 1.02
@@ -1997,18 +2209,18 @@ export class GameSessionController {
     const orbit = this.getOrbitSample(currentNode, this.orbitAngle);
     const orbitRadius = Math.max(1, orbit.position.length());
     const baselineAngular = (Math.PI * 2) / Math.max(1.6, currentNode.gameplayOrbitPeriod);
-    const chargeBoost = this.chargeActive ? 0.55 + this.chargeMeter * 0.45 : 0;
+    const chargeBoost = this.chargeActive ? 0.64 + this.chargeMeter * 0.52 : 0;
     const usingSouffleurAttached =
       this.chargeActive &&
       Boolean(this.getEquippedItem('souffleur')) &&
       this.consumeModuleGauge('souffleur', deltaTime, 0.28);
     this.souffleurActive = usingSouffleurAttached;
-    const souffleurAttachedBoost = usingSouffleurAttached ? 0.24 + this.runUpgrades.modifiers.souffleurBoost * 0.08 : 0;
+    const souffleurAttachedBoost = usingSouffleurAttached ? 0.32 + this.runUpgrades.modifiers.souffleurBoost * 0.1 : 0;
     const targetAngular =
       baselineAngular *
-      (1 + chargeBoost + souffleurAttachedBoost + this.momentum.gauge * 0.42) *
+      (1 + chargeBoost + souffleurAttachedBoost + this.momentum.gauge * 0.64) *
       this.momentum.speedMultiplier *
-      (1 + this.runUpgrades.modifiers.chargeRate * 0.06 + this.runUpgrades.modifiers.speedBonus * 0.3);
+      (1 + this.runUpgrades.modifiers.chargeRate * 0.08 + this.runUpgrades.modifiers.speedBonus * 0.36);
 
     const milestoneSlowdown = currentNode.isGigantic ? 0.58 : 1;
 
@@ -2060,10 +2272,10 @@ export class GameSessionController {
   }
 
   private updateAirborne(deltaTime: number) {
-    const previousPosition = this.scratchVector.set(this.playerPosition.x, this.playerPosition.y, this.playerPosition.z);
+    const previousPosition = this.scratchVectorC.set(this.playerPosition.x, this.playerPosition.y, this.playerPosition.z);
     const gravityScale = clamp(1 - this.runUpgrades.modifiers.planeGlide * 0.92, 0.12, 1);
     this.playerVelocity.y -= 6.8 * gravityScale * deltaTime;
-    this.playerVelocity.x += (this.runUpgrades.modifiers.airControl + this.runUpgrades.modifiers.planeStability * 0.7) * deltaTime * 0.52;
+    this.playerVelocity.x += (this.runUpgrades.modifiers.airControl + this.runUpgrades.modifiers.planeStability * 0.7) * deltaTime * 0.74;
 
     const usingSouffleur =
       this.chargeActive &&
@@ -2080,6 +2292,7 @@ export class GameSessionController {
     }
 
     void this.tryActivateWrapper(false);
+    const rewardChoiceLayout = this.getActiveRewardChoiceLayout();
 
     if (this.grapTargetIndex !== null) {
       const grapNode = this.getResolvedNode(this.grapTargetIndex);
@@ -2175,6 +2388,9 @@ export class GameSessionController {
       if (node.resolvedX - previousPosition.x > 64) {
         break;
       }
+      if (rewardChoiceLayout && this.isNodeInsideActiveRewardReserve(node, rewardChoiceLayout)) {
+        continue;
+      }
       if (!node.isGigantic) {
         continue;
       }
@@ -2190,6 +2406,9 @@ export class GameSessionController {
       const node = this.getResolvedNode(index);
       if (node.resolvedX - previousPosition.x > 64) {
         break;
+      }
+      if (rewardChoiceLayout && this.isNodeInsideActiveRewardReserve(node, rewardChoiceLayout)) {
+        continue;
       }
       if (this.canCaptureNode(node, previousPosition)) {
         if (this.grapTargetIndex === index) {
@@ -2261,7 +2480,7 @@ export class GameSessionController {
       .normalize();
     const orbitSpeed = Math.max(1, orbit.position.length()) * this.angularSpeed;
     const launchSpeed =
-      (orbitSpeed * 0.92 + 5.2 + this.chargeMeter * 8.5 * (1 + this.runUpgrades.modifiers.chargedLeapBonus)) *
+      (orbitSpeed * 1.08 + 6.2 + this.chargeMeter * 9.7 * (1 + this.runUpgrades.modifiers.chargedLeapBonus)) *
       this.momentum.jumpMultiplier *
       this.runUpgrades.modifiers.jumpPower *
       (1 + this.runUpgrades.modifiers.speedBonus * 0.35);
@@ -2715,8 +2934,9 @@ export class GameSessionController {
     if (!choice) return false;
 
     this.path.replaceFuture(this.attachedIndex, choice.pathNodes);
-    this.path.ensureAhead(this.attachedIndex + 1, 78, 72);
-    this.path.queuePostMilestoneEvents(this.attachedIndex + 1, this.attachedIndex + 1);
+    const branchTailIndex = this.attachedIndex + choice.pathNodes.length;
+    this.path.ensureAhead(branchTailIndex, 78, 72);
+    this.path.queuePostMilestoneEvents(branchTailIndex, branchTailIndex);
     this.reconcileDisplayWindowAfterPathChange();
     this.milestoneChoiceCache.delete(this.attachedIndex);
     this.applyOffer(choice.offer, viaFallback ? 'Quick choice' : 'Path chosen');
@@ -3037,14 +3257,25 @@ export class GameSessionController {
       deltaTime,
       0.34
     );
+    const bigCanonColor = this.getRarityColor(this.getEquippedItem('big_canon')?.rarity ?? 'common');
+    this.bigCanonRangeIndicator.material.color.set(bigCanonColor);
     this.syncRangeIndicator(
       this.bigCanonRangeIndicator,
       bigCanonVisible && bigCanonReady,
       this.getBigCanonEffectiveRange(),
-      bigCanonVisible && bigCanonReady ? 0.12 : 0,
+      bigCanonVisible && bigCanonReady ? 0.035 : 0,
       deltaTime,
       0
     );
+    this.bigCanonRadarSweep.visible = bigCanonVisible && bigCanonReady;
+    this.bigCanonRadarSweep.material.color.set(bigCanonColor);
+    this.bigCanonRadarSweep.material.opacity = bigCanonVisible && bigCanonReady ? 0.09 : 0;
+    if (this.bigCanonRadarSweep.visible) {
+      const bigCanonRadius = this.getBigCanonEffectiveRange();
+      this.bigCanonRadarSweep.position.set(this.playerPosition.x, this.playerPosition.y, this.playerPosition.z + 0.03);
+      this.bigCanonRadarSweep.rotation.z = this.currentTime * 1.92;
+      this.bigCanonRadarSweep.scale.set(bigCanonRadius * 2, 0.2 + bigCanonRadius * 0.03, 1);
+    }
     this.grapRangeIndicator.material.color.set(this.getRarityColor(grapItem?.rarity ?? 'common'));
     const grapHeading = this.getMovementHeadingVector(this.scratchVector2);
     const grappleOrigin = this.getGrappleOrigin(grapHeading);
@@ -3406,37 +3637,82 @@ export class GameSessionController {
     const chargeProgress = clamp(this.chargeMeter, 0, 1);
     const orbitProgress = this.orbitGraceActive ? clamp(this.orbitGraceProgress, 0, 1) : 1;
     const radius = this.getPhysicalRadius(currentNode);
-    const fg = this.theme === 'dark' ? '212,191,155' : '57,63,74';
-    const bg = this.theme === 'dark' ? '57,63,74' : '212,191,155';
+    const boostImage = this.getShardHudImage('boost');
+    const anchorLoadImage = this.getShardHudImage('anchorLoad');
+    const anchorFullImage = this.getShardHudImage('anchorFull');
+    const boostSize = 226;
+    const anchorSize = 128;
 
     ctx.clearRect(0, 0, 256, 256);
-    ctx.save();
-    ctx.translate(128, 128);
-    ctx.strokeStyle = `rgba(${fg},0.14)`;
-    ctx.lineWidth = 16;
-    ctx.beginPath();
-    ctx.arc(0, 0, 84, -Math.PI / 2, Math.PI * 1.5);
-    ctx.stroke();
-    ctx.strokeStyle = `rgba(${fg},0.92)`;
-    ctx.beginPath();
-    ctx.arc(0, 0, 84, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * chargeProgress);
-    ctx.stroke();
+    this.drawShardHudImage(ctx, boostImage, 128, 128, boostSize, 0.18);
+    this.drawShardHudRadialFill(ctx, boostImage, 128, 128, boostSize, chargeProgress, 1);
 
-    ctx.strokeStyle = `rgba(${bg},0.18)`;
-    ctx.lineWidth = 12;
-    ctx.beginPath();
-    ctx.arc(0, 0, 54, -Math.PI / 2, Math.PI * 1.5);
-    ctx.stroke();
-    ctx.strokeStyle = `rgba(${fg},0.96)`;
-    ctx.beginPath();
-    ctx.arc(0, 0, 54, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * orbitProgress);
-    ctx.stroke();
-    ctx.restore();
+    if (this.orbitGraceActive) {
+      this.drawShardHudImage(ctx, anchorLoadImage, 128, 128, anchorSize, 0.24);
+      this.drawShardHudRadialFill(ctx, anchorLoadImage, 128, 128, anchorSize, orbitProgress, 1);
+    } else {
+      this.drawShardHudImage(ctx, anchorFullImage, 128, 128, anchorSize, 1);
+    }
 
     this.shardHudTexture.needsUpdate = true;
     this.shardHudSprite.visible = true;
     this.shardHudSprite.position.set(currentNode.resolvedX, currentNode.resolvedY, currentNode.resolvedZ + 0.04);
-    this.shardHudSprite.scale.setScalar(Math.max(2.1, radius * 1.46));
+    this.shardHudSprite.scale.setScalar(Math.max(2.5, radius * 1.56));
+  }
+
+  private getShardHudImage(key: ShardHudImageKey) {
+    return this.shardHudImages[key][this.theme];
+  }
+
+  private drawShardHudImage(
+    ctx: CanvasRenderingContext2D,
+    image: HTMLImageElement,
+    centerX: number,
+    centerY: number,
+    size: number,
+    opacity: number
+  ) {
+    if (!image.complete || image.naturalWidth === 0 || image.naturalHeight === 0 || opacity <= 0) {
+      return;
+    }
+    ctx.save();
+    ctx.globalAlpha = opacity;
+    ctx.drawImage(image, centerX - size * 0.5, centerY - size * 0.5, size, size);
+    ctx.restore();
+  }
+
+  private drawShardHudRadialFill(
+    ctx: CanvasRenderingContext2D,
+    image: HTMLImageElement,
+    centerX: number,
+    centerY: number,
+    size: number,
+    progress: number,
+    opacity: number
+  ) {
+    if (!image.complete || image.naturalWidth === 0 || image.naturalHeight === 0 || opacity <= 0) {
+      return;
+    }
+    const clamped = clamp(progress, 0, 1);
+    if (clamped <= 0) {
+      return;
+    }
+    if (clamped >= 0.999) {
+      this.drawShardHudImage(ctx, image, centerX, centerY, size, opacity);
+      return;
+    }
+    const radius = size * 0.54;
+    const startAngle = -Math.PI * 0.5;
+    const endAngle = startAngle + Math.PI * 2 * clamped;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.arc(centerX, centerY, radius, startAngle, endAngle, false);
+    ctx.closePath();
+    ctx.clip();
+    ctx.globalAlpha = opacity;
+    ctx.drawImage(image, centerX - size * 0.5, centerY - size * 0.5, size, size);
+    ctx.restore();
   }
 
   private resolvePlayerVisualState(): PlayerVisualState {
@@ -3603,7 +3879,7 @@ export class GameSessionController {
     const toNode = this.scratchVector.set(bestNode.resolvedX, bestNode.resolvedY, bestNode.resolvedZ).sub(this.playerPosition);
     const distance = Math.max(0.001, toNode.length());
     const nodeRadius = this.getPhysicalRadius(bestNode);
-    const auraThickness = Math.max(0.18, nodeRadius * 0.1);
+    const auraThickness = Math.max(0.32, nodeRadius * 0.18);
     const influenceRadius = nodeRadius + auraThickness;
     if (distance > influenceRadius) {
       return;
@@ -3616,9 +3892,9 @@ export class GameSessionController {
     }
     toNode.normalize();
     const auraProgress = clamp(1 - (surfaceClearance - landingPriorityGap) / Math.max(0.0001, auraThickness - landingPriorityGap), 0, 1);
-    const lowSpeedBias = clamp(1.04 - speed / 14.5, 0.08, 0.72);
+    const lowSpeedBias = clamp(1.18 - speed / 13.2, 0.14, 0.84);
     const steerStrength =
-      (0.035 + this.runUpgrades.modifiers.gravityCentering * 0.032) *
+      (0.052 + this.runUpgrades.modifiers.gravityCentering * 0.042) *
       auraProgress *
       auraProgress *
       lowSpeedBias *
@@ -3863,7 +4139,7 @@ export class GameSessionController {
             'big_canon',
             bestTarget.node,
             bestTarget.node.enemySlot.pole,
-            this.scratchVector.set(this.playerPosition.x, this.playerPosition.y + 0.28, this.playerPosition.z + 0.02),
+            this.scratchVector.set(this.playerPosition.x, this.playerPosition.y + 0.18, this.playerPosition.z + 0.02),
             18.5,
             0.16
           );

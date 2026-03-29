@@ -163,6 +163,12 @@ export interface GameHudSnapshot {
   state: GameHudState;
   playerMotionState: GamePlayerMotionState;
   score: number;
+  scoreFeed: {
+    serial: number;
+    basePoints: number;
+    gained: number;
+    multiplier: number;
+  } | null;
   highscore: number;
   distanceMeters: number;
   bestDistanceMeters: number;

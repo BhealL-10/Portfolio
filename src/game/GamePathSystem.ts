@@ -216,12 +216,50 @@ export class GamePathSystem {
         enemySlot: null
       });
 
+      const exitSizeTier: GameShardSizeTier = 'medium_small';
+      const exitSizeConfig = SIZE_TIER_CONFIG[exitSizeTier];
+      const exitGameplayRadius =
+        exitSizeConfig.radius[0] + this.nextRandom() * (exitSizeConfig.radius[1] - exitSizeConfig.radius[0]);
+      const exitVisualScale =
+        exitSizeConfig.visual[0] + this.nextRandom() * (exitSizeConfig.visual[1] - exitSizeConfig.visual[0]);
+      const exitOrbitPeriod =
+        exitSizeConfig.orbitPeriod[0] + this.nextRandom() * (exitSizeConfig.orbitPeriod[1] - exitSizeConfig.orbitPeriod[0]);
+      const exit = this.buildNode({
+        previous: entry,
+        index: milestoneIndex + 2,
+        x: Math.max(
+          entry.x + DEFAULT_COLUMN_DISTANCE * 2.4,
+          milestone.x + MILESTONE_REWARD_OFFSET + MILESTONE_RESERVED_AFTER + MILESTONE_EXIT_BUFFER + DEFAULT_COLUMN_DISTANCE * 0.9
+        ),
+        y: entry.y,
+        direction: 'right',
+        sizeTier: exitSizeTier,
+        shapeKind: 'round',
+        motionPattern: 'none',
+        spinDirection: 'cw',
+        spinSpeed: 0.08 + this.nextRandom() * 0.05,
+        gameplayRadius: exitGameplayRadius,
+        visualScale: exitVisualScale,
+        gameplayOrbitPeriod: exitOrbitPeriod,
+        visualStretch: { x: 1, y: 1, z: 1 },
+        kind: 'normal',
+        branchSlot: null,
+        offerId: null,
+        onboarding: false,
+        eventType: 'none',
+        colorHint: 'none',
+        isMilestone: false,
+        isGigantic: false,
+        coinSlots: [],
+        enemySlot: null
+      });
+
       return {
         mode: 'reward_branch',
         offer,
         entry,
         previewNodes: [entry],
-        pathNodes: [entry]
+        pathNodes: [entry, exit]
       };
     });
   }
@@ -434,12 +472,12 @@ export class GamePathSystem {
     const gameplayOrbitPeriod = isGigantic ? 5.4 + this.nextRandom() * 0.8 : resolvedSizeConfig.orbitPeriod[0] + this.nextRandom() * (resolvedSizeConfig.orbitPeriod[1] - resolvedSizeConfig.orbitPeriod[0]);
     const direction = this.directionFrom(previous.x, previous.y, x, y);
     const { eventType, eventVisualKind } = this.resolveEventType(index, previousDistanceMeters, currentDistanceMeters, score, template);
-    const shapeKind = eventVisualKind === 'shop' ? 'round' : baseShapeKind;
+    const shapeKind = eventVisualKind === 'shop' ? 'triangular' : baseShapeKind;
     const motionPattern = isGigantic ? 'none' : this.pickMotionPattern(template.motionPattern, score, shapeKind, resolvedSizeTier);
     const spinDirection: GameShardSpinDirection = eventVisualKind === 'shop' ? 'cw' : this.nextRandom() < 0.5 ? 'cw' : 'ccw';
     const spinSpeed =
       eventVisualKind === 'shop'
-        ? 0.64 + this.nextRandom() * 0.22
+        ? 0.82 + this.nextRandom() * 0.24
         : shapeKind === 'triangular'
         ? 0.42 + this.nextRandom() * 0.22
         : shapeKind === 'oval'
@@ -447,7 +485,7 @@ export class GamePathSystem {
           : 0.08 + this.nextRandom() * 0.12;
     const visualStretch =
       eventVisualKind === 'shop'
-        ? { x: 1.02 + this.nextRandom() * 0.08, y: 1.02 + this.nextRandom() * 0.08, z: 0.88 + this.nextRandom() * 0.08 }
+        ? { x: 1.22 + this.nextRandom() * 0.14, y: 1.34 + this.nextRandom() * 0.16, z: 0.68 + this.nextRandom() * 0.1 }
         : shapeKind === 'oval'
         ? { x: 1.72 + this.nextRandom() * 0.38, y: 0.68 + this.nextRandom() * 0.12, z: 0.82 + this.nextRandom() * 0.1 }
         : shapeKind === 'triangular'
@@ -473,8 +511,12 @@ export class GamePathSystem {
       motionPattern,
       spinDirection,
       spinSpeed,
-      gameplayRadius,
-      visualScale: visibilityBoost ? visualScale * (eventVisualKind === 'shop' ? 1.18 : 1.08) : visualScale,
+      gameplayRadius: eventVisualKind === 'shop' ? Math.max(gameplayRadius * 1.28, 3.1) : gameplayRadius,
+      visualScale: visibilityBoost
+        ? eventVisualKind === 'shop'
+          ? Math.max(visualScale * 1.42, 4.6)
+          : visualScale * 1.08
+        : visualScale,
       gameplayOrbitPeriod,
       visualStretch,
       kind,
@@ -1069,7 +1111,7 @@ export class GamePathSystem {
       return { eventType: 'none' as GameEventType, eventVisualKind: 'default' as GameEventVisualKind };
     }
 
-    if (!this.guaranteedShopAt50Spawned && currentDistanceMeters >= 50 && template.sizeTier !== 'massive') {
+    if (!this.guaranteedShopAt50Spawned && currentDistanceMeters >= 50) {
       this.guaranteedShopAt50Spawned = true;
       this.lastShopDistanceMeters = currentDistanceMeters;
       return { eventType: 'shop' as GameEventType, eventVisualKind: 'shop' as GameEventVisualKind };

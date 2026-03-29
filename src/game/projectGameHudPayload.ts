@@ -14,6 +14,7 @@ export function projectGameHudPayload(
   return {
     playerMotionState: hudState.playerMotionState,
     score: hudState.score,
+    scoreFeed: hudState.scoreFeed,
     highscore: hudState.highscore,
     distanceMeters: hudState.distanceMeters,
     bestDistanceMeters: hudState.bestDistanceMeters,
