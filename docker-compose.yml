@@ -21,6 +21,7 @@ services:
     networks:
       global_cloudflared:
         ipv4_address: 10.25.10.6
+      backend:
     deploy:
       resources:
         limits:
@@ -53,6 +54,8 @@ services:
     restart: unless-stopped
     expose:
       - "8080"
+    networks:
+      - backend
     volumes:
       - leaderboard-data:/data
     healthcheck:
@@ -65,6 +68,8 @@ services:
 networks:
   global_cloudflared:
     external: true
+  backend:
+    driver: bridge
 
 volumes:
   leaderboard-data:
