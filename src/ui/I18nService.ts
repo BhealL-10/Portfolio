@@ -30,7 +30,7 @@ const uiStrings = {
     aboutTitle: 'About / Outro',
     home: 'Accueil',
     gameScore: 'Score',
-    gameBest: 'Meilleur score',
+    gameBest: 'Record',
     gameBestDistance: 'Meilleure distance',
     gameChain: 'Chaîne',
     gameMomentum: 'Momentum',

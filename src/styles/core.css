@@ -90,9 +90,9 @@
   --game-gameover-value-size: clamp(0.86rem, 1.08vw, 1rem);
   --game-help-footer-copy-size: 0.78rem;
   --game-primaterie-logo-width: min(150px, 14vw);
-  --game-primaterie-anchor-width: min(224px, calc(100vw - 24px));
-  --game-primaterie-anchor-max-height: min(48dvh, 340px);
-  --game-primaterie-anchor-padding: clamp(14px, 2vw, 20px) clamp(10px, 1.6vw, 14px) clamp(12px, 1.9vw, 18px);
+  --game-primaterie-anchor-width: min(248px, calc(100vw - 24px));
+  --game-primaterie-anchor-max-height: min(52dvh, 372px);
+  --game-primaterie-anchor-padding: clamp(16px, 2.2vw, 22px) clamp(12px, 1.8vw, 16px) clamp(14px, 2vw, 20px);
 }
 
 html[data-theme='dark'] {

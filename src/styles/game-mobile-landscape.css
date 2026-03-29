@@ -53,15 +53,16 @@
     --game-help-footer-copy-size: clamp(0.54rem, 1.9vh, 0.62rem);
     --game-primaterie-logo-width: min(100px, 12vw);
     --game-primaterie-logo-padding-bottom: min(20px, 4dvh);
-    --game-primaterie-anchor-width: min(156px, calc(100vw - 18px));
-    --game-primaterie-anchor-max-height: min(38dvh, 220px);
-    --game-primaterie-anchor-padding: 10px 6px 7px;
+    --game-primaterie-anchor-width: min(186px, calc(100vw - 18px));
+    --game-primaterie-anchor-max-height: min(45dvh, 256px);
+    --game-primaterie-anchor-padding: 12px 8px 9px;
   }
 
   .game-hud__run-strip {
-    top: auto;
-    bottom: calc(var(--safe-bottom) + 118px);
+    top: calc(var(--safe-top) + 8px);
     left: calc(var(--safe-left) + 10px);
+    right: auto;
+    bottom: auto;
     gap: 4px;
   }
 
@@ -83,11 +84,11 @@
   }
 
   .game-hud__score-feed-entry strong {
-    font-size: 0.84rem;
+    font-size: 0.98rem;
   }
 
   .game-hud__score-feed-entry span {
-    font-size: 0.62rem;
+    font-size: 0.74rem;
   }
 
   .game-hud__top-right-anchor {
@@ -419,21 +420,15 @@
     height: 24px;
   }
 
-  .primaterie-portal__mode {
-    font-size: 0.7rem;
+  .primaterie-portal__actions {
+    gap: 4px;
+    margin-top: 10px;
   }
 
-  .primaterie-portal__mode--center {
-    min-height: 42px;
-    width: min(168px, 28vw);
-    padding: 8px 7px;
-  }
-
-  .primaterie-portal__mode--left,
-  .primaterie-portal__mode--right {
-    min-height: 30px;
-    width: min(132px, 22vw);
-    padding: 7px 5px;
+  .primaterie-portal__actions button {
+    min-height: 24px;
+    font-size: 0.95rem;
+    padding: 4px 5px;
   }
 
   .game-hud {

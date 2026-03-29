@@ -5,11 +5,7 @@ import type { ThemeMode } from '../types/content';
 import { CameraRailController } from './CameraRailController';
 import { CoinSystem, type CoinMarker } from './CoinSystem';
 import { EnemySystem, type EnemyMarker } from './EnemySystem';
-import {
-  createMiniGamePortalNode,
-  getMiniGamePortalShardPosition,
-  MINI_GAME_PORTAL_LAUNCH_ANGLE
-} from './MiniGamePortalLayout';
+import { createMiniGamePortalNode, MINI_GAME_PORTAL_LAUNCH_ANGLE } from './MiniGamePortalLayout';
 import { DEFAULT_COLUMN_DISTANCE } from './difficultyScaler';
 import { HELP_ICON_ASSETS, SHOP_ICON_ASSETS } from './GameUiAssetResolver';
 import { GamePathSystem } from './GamePathSystem';
@@ -135,15 +131,6 @@ interface PendingMagnetCoin {
 }
 
 type ShardHudImageKey = 'anchorLoad' | 'anchorFull' | 'boost';
-
-interface PortalPreviewJumpState {
-  direction: -1 | 1;
-  startedAt: number;
-  duration: number;
-  from: THREE.Vector3;
-  to: THREE.Vector3;
-  center: THREE.Vector3;
-}
 
 export class GameSessionController {
   private readonly root = new THREE.Group();
@@ -324,7 +311,6 @@ export class GameSessionController {
   private momentumLossActive = false;
   private readonly portalPreviewCenter = new THREE.Vector3(0, 0.8, 0);
   private portalPreviewDesiredAngle: number | null = null;
-  private portalPreviewJump: PortalPreviewJumpState | null = null;
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
     this.theme = theme;
@@ -404,7 +390,7 @@ export class GameSessionController {
       this.createWorldHudBillboard(1600, 760, 14.8, 7, 30, 0.995)
     ];
     this.magnetRangeIndicator = this.createSimpleRangeIndicator(this.getRarityColor('common'), 0.16);
-    this.bigCanonRangeIndicator = this.createSimpleRangeIndicator(this.getRarityColor('common'), 0.055);
+    this.bigCanonRangeIndicator = this.createRadarRangeIndicator(this.getRarityColor('common'), 0.028);
     this.bigCanonRadarSweep = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 0.12),
       new THREE.MeshBasicMaterial({
@@ -580,6 +566,23 @@ export class GameSessionController {
     return mesh;
   }
 
+  private createRadarRangeIndicator(color: string, opacity: number) {
+    const mesh = new THREE.Mesh(
+      new THREE.RingGeometry(0.485, 0.5, 56),
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        depthTest: false
+      })
+    );
+    mesh.visible = false;
+    mesh.renderOrder = 28;
+    return mesh;
+  }
+
   private createWorldHudBillboard(
     canvasWidth: number,
     canvasHeight: number,
@@ -693,17 +696,17 @@ export class GameSessionController {
     this.attachedIndex = 0;
     this.playerState = 'attached';
     this.state = 'portal_preview';
-    this.orbitAngle = MINI_GAME_PORTAL_LAUNCH_ANGLE;
+    this.orbitAngle = Math.PI * 0.18;
     this.orbitDirection = -1;
     this.portalPreviewCenter.set(0, 0.8, 0);
     const node = this.getPortalPreviewNode();
-    this.angularSpeed = 0;
+    this.angularSpeed = (Math.PI * 2) / Math.max(1.6, node.gameplayOrbitPeriod);
     const orbit = this.getOrbitSample(node, this.orbitAngle);
     this.playerPosition.copy(this.getPlayerOrbitWorldPosition(node, this.orbitAngle, orbit));
     this.playerVelocity.set(0, 0, 0);
     this.root.visible = true;
     this.player.visible = true;
-    this.playerTrail.visible = false;
+    this.playerTrail.visible = true;
     this.shardHudSprite.visible = false;
     this.frontCanonLaser.visible = false;
     this.frontCanonProjectile.visible = false;
@@ -720,7 +723,6 @@ export class GameSessionController {
     this.updateTrail(0);
     this.transitionProgress = 0;
     this.portalPreviewDesiredAngle = null;
-    this.portalPreviewJump = null;
   }
 
   startTransition() {
@@ -824,16 +826,14 @@ export class GameSessionController {
   }
 
   getPortalPreviewNavigationProgress() {
-    if (!this.portalPreviewJump) {
+    if (this.portalPreviewDesiredAngle === null) {
       return 0;
     }
-    return clamp((this.currentTime - this.portalPreviewJump.startedAt) / this.portalPreviewJump.duration, 0, 1);
+    const remaining = wrapAngle(this.orbitAngle - this.portalPreviewDesiredAngle);
+    return clamp(1 - remaining / Math.PI, 0, 1);
   }
 
   nudgePortalPreview(direction: -1 | 1) {
-    if (this.state !== 'portal_preview') {
-      return;
-    }
     void direction;
   }
 
@@ -841,48 +841,12 @@ export class GameSessionController {
     if (this.state !== 'portal_preview') {
       return true;
     }
-    const desiredAngle = this.getPortalPreviewTargetAngle(target);
-    this.portalPreviewDesiredAngle = desiredAngle;
-    const aligned = Math.abs(shortestAngleDistance(this.orbitAngle, desiredAngle)) <= 0.1;
-    if (!aligned) {
-      return false;
-    }
-    if (target === 'forward') {
-      return this.portalPreviewJump === null;
-    }
-    if (!this.portalPreviewJump) {
-      const node = this.getPortalPreviewNode();
-      const landingCenter = getMiniGamePortalShardPosition(
-        target,
-        new THREE.Vector3(node.resolvedX, node.resolvedY, node.resolvedZ)
-      );
-      const landingNode = this.getPortalPreviewNodeAt(landingCenter);
-      const landingOrbit = this.getOrbitSample(landingNode, MINI_GAME_PORTAL_LAUNCH_ANGLE);
-      const landingTarget = this.getPlayerOrbitWorldPosition(landingNode, MINI_GAME_PORTAL_LAUNCH_ANGLE, landingOrbit);
-      this.portalPreviewJump = {
-        direction: target === 'left' ? -1 : 1,
-        startedAt: this.currentTime,
-        duration: 0.46,
-        from: this.playerPosition.clone(),
-        to: landingTarget,
-        center: landingCenter
-      };
-      this.playerState = 'airborne';
-      const launch = this.scratchVector
-        .copy(landingTarget)
-        .sub(this.playerPosition)
-        .setZ(0)
-        .normalize();
-      const lift = this.scratchVectorB.set(-launch.y, launch.x, 0);
-      this.playerVelocity.copy(launch.multiplyScalar(13.6)).addScaledVector(lift, 0.35 * (target === 'left' ? -1 : 1));
-      this.playerVelocity.y += 0.9;
-    }
-    return this.getPortalPreviewNavigationProgress() >= 0.999;
+    this.portalPreviewDesiredAngle = this.getPortalPreviewTargetAngle(target);
+    return Math.abs(shortestAngleDistance(this.orbitAngle, this.portalPreviewDesiredAngle)) <= 0.045;
   }
 
   clearPortalPreviewTransitionIntent() {
     this.portalPreviewDesiredAngle = null;
-    this.portalPreviewJump = null;
   }
 
   resetRunState() {
@@ -1773,34 +1737,25 @@ export class GameSessionController {
 
   private updatePortalPreview(deltaTime: number, elapsedTime: number) {
     const currentNode = this.getPortalPreviewNode();
-    if (this.portalPreviewJump) {
-      const progress = this.getPortalPreviewNavigationProgress();
-      const nextProgress = clamp(progress + Math.max(0.0001, deltaTime) / Math.max(0.001, this.portalPreviewJump.duration), 0, 1);
-      const arcHeight = 2.4;
-      const arcLift = Math.sin(progress * Math.PI) * arcHeight;
-      const nextArcLift = Math.sin(nextProgress * Math.PI) * arcHeight;
-      const position = this.scratchVector.copy(this.portalPreviewJump.from).lerp(this.portalPreviewJump.to, progress);
-      position.y += arcLift;
-      this.playerPosition.copy(position);
-      const nextPosition = this.scratchVectorB.copy(this.portalPreviewJump.from).lerp(this.portalPreviewJump.to, nextProgress);
-      nextPosition.y += nextArcLift;
-      this.playerVelocity.copy(nextPosition).sub(this.playerPosition).divideScalar(Math.max(0.0001, deltaTime));
-      if (progress >= 0.999) {
-        this.portalPreviewCenter.copy(this.portalPreviewJump.center);
-        this.portalPreviewJump = null;
-        this.playerState = 'attached';
-        this.orbitAngle = MINI_GAME_PORTAL_LAUNCH_ANGLE;
-        this.angularSpeed = 0;
-        this.portalPreviewDesiredAngle = null;
-      }
+    const baseAngularSpeed = (Math.PI * 2) / Math.max(1.6, currentNode.gameplayOrbitPeriod);
+    if (this.portalPreviewDesiredAngle !== null) {
+      const remaining = wrapAngle(this.orbitAngle - this.portalPreviewDesiredAngle);
+      const targetAngularSpeed = remaining > 0.045 ? baseAngularSpeed * 2.6 : baseAngularSpeed;
+      this.angularSpeed = damp(this.angularSpeed, targetAngularSpeed, 7.4, deltaTime);
+      const step = this.angularSpeed * deltaTime;
+      this.orbitAngle =
+        remaining <= step
+          ? this.portalPreviewDesiredAngle
+          : wrapAngle(this.orbitAngle + this.orbitDirection * step);
     } else {
-      this.orbitAngle = this.portalPreviewDesiredAngle ?? MINI_GAME_PORTAL_LAUNCH_ANGLE;
-      this.angularSpeed = damp(this.angularSpeed, 0, 8.4, deltaTime);
-      const liveOrbit = this.getOrbitSample(currentNode, this.orbitAngle);
-      this.playerPosition.copy(this.getPlayerOrbitWorldPosition(currentNode, this.orbitAngle, liveOrbit));
-      this.playerVelocity.set(0, 0, 0);
-      this.playerState = 'attached';
+      this.angularSpeed = damp(this.angularSpeed, baseAngularSpeed, 4.8, deltaTime);
+      this.orbitAngle = wrapAngle(this.orbitAngle + this.orbitDirection * this.angularSpeed * deltaTime);
     }
+
+    const liveOrbit = this.getOrbitSample(currentNode, this.orbitAngle);
+    this.playerPosition.copy(this.getPlayerOrbitWorldPosition(currentNode, this.orbitAngle, liveOrbit));
+    this.playerVelocity.set(0, 0, 0);
+    this.playerState = 'attached';
 
     this.shardHudSprite.visible = false;
     this.magnetRangeIndicator.visible = false;
@@ -1813,7 +1768,8 @@ export class GameSessionController {
     this.grapRope.visible = false;
     this.coins.setVisible(false);
     this.enemies.setVisible(false);
-    this.playerTrail.visible = false;
+    this.playerTrail.visible = true;
+    this.updateTrail(deltaTime);
     this.syncPlayerVisual(elapsedTime, deltaTime);
   }
 
@@ -2037,6 +1993,22 @@ export class GameSessionController {
 
   private getBigCanonEffectiveRange() {
     return Math.max(3.9, this.runUpgrades.modifiers.bigCanonRange);
+  }
+
+  private getBigCanonRadarSweepHalfAngle() {
+    switch (this.getEquippedItem('big_canon')?.rarity) {
+      case 'legendary':
+        return 0.34;
+      case 'epic':
+        return 0.29;
+      case 'rare':
+        return 0.24;
+      case 'uncommon':
+        return 0.19;
+      case 'common':
+      default:
+        return 0.145;
+    }
   }
 
   private getFrontCanonEffectiveRange() {
@@ -2798,11 +2770,11 @@ export class GameSessionController {
       grade = 'good';
     }
 
-    let momentumGain = twist ? 0.14 : 0.035;
-    if (!twist && this.momentum.gauge >= 0.5) {
+    let momentumGain = twist ? 0.1 : 0.024;
+    if (!twist && this.momentum.gauge >= 0.44) {
       momentumGain = 0;
-    } else if (!twist && this.momentum.gauge + momentumGain > 0.5) {
-      momentumGain = Math.max(0, 0.5 - this.momentum.gauge);
+    } else if (!twist && this.momentum.gauge + momentumGain > 0.44) {
+      momentumGain = Math.max(0, 0.44 - this.momentum.gauge);
     }
 
     let speedMultiplier = 1;
@@ -2811,10 +2783,10 @@ export class GameSessionController {
       momentumGain = -0.03 * penaltyScale;
       speedMultiplier = 1 - 0.16 * penaltyScale;
     } else if (grade === 'super') {
-      momentumGain += twist ? 0.032 : 0.012;
+      momentumGain += twist ? 0.022 : 0.009;
       speedMultiplier = twist ? 1.34 : 1.1;
     } else if (grade === 'perfect') {
-      momentumGain += twist ? 0.05 : 0.018;
+      momentumGain += twist ? 0.036 : 0.014;
       speedMultiplier = twist ? 1.48 : 1.16;
     } else if (twist) {
       speedMultiplier = 1.24;
@@ -3263,18 +3235,19 @@ export class GameSessionController {
       this.bigCanonRangeIndicator,
       bigCanonVisible && bigCanonReady,
       this.getBigCanonEffectiveRange(),
-      bigCanonVisible && bigCanonReady ? 0.035 : 0,
+      bigCanonVisible && bigCanonReady ? 0.024 : 0,
       deltaTime,
       0
     );
     this.bigCanonRadarSweep.visible = bigCanonVisible && bigCanonReady;
     this.bigCanonRadarSweep.material.color.set(bigCanonColor);
-    this.bigCanonRadarSweep.material.opacity = bigCanonVisible && bigCanonReady ? 0.09 : 0;
+    this.bigCanonRadarSweep.material.opacity = bigCanonVisible && bigCanonReady ? 0.11 : 0;
     if (this.bigCanonRadarSweep.visible) {
       const bigCanonRadius = this.getBigCanonEffectiveRange();
+      const sweepHalfAngle = this.getBigCanonRadarSweepHalfAngle();
       this.bigCanonRadarSweep.position.set(this.playerPosition.x, this.playerPosition.y, this.playerPosition.z + 0.03);
       this.bigCanonRadarSweep.rotation.z = this.currentTime * 1.92;
-      this.bigCanonRadarSweep.scale.set(bigCanonRadius * 2, 0.2 + bigCanonRadius * 0.03, 1);
+      this.bigCanonRadarSweep.scale.set(bigCanonRadius * 2, 0.1 + sweepHalfAngle * 0.9 + bigCanonRadius * 0.015, 1);
     }
     this.grapRangeIndicator.material.color.set(this.getRarityColor(grapItem?.rarity ?? 'common'));
     const grapHeading = this.getMovementHeadingVector(this.scratchVector2);
@@ -3640,8 +3613,14 @@ export class GameSessionController {
     const boostImage = this.getShardHudImage('boost');
     const anchorLoadImage = this.getShardHudImage('anchorLoad');
     const anchorFullImage = this.getShardHudImage('anchorFull');
-    const boostSize = 226;
-    const anchorSize = 128;
+    const hudScale =
+      currentNode.shapeKind === 'round'
+        ? 1
+        : currentNode.shapeKind === 'oval'
+          ? 0.84
+          : 0.78;
+    const boostSize = Math.round(226 * hudScale);
+    const anchorSize = Math.round(128 * hudScale);
 
     ctx.clearRect(0, 0, 256, 256);
     this.drawShardHudImage(ctx, boostImage, 128, 128, boostSize, 0.18);
@@ -3657,7 +3636,13 @@ export class GameSessionController {
     this.shardHudTexture.needsUpdate = true;
     this.shardHudSprite.visible = true;
     this.shardHudSprite.position.set(currentNode.resolvedX, currentNode.resolvedY, currentNode.resolvedZ + 0.04);
-    this.shardHudSprite.scale.setScalar(Math.max(2.5, radius * 1.56));
+    const spriteScale =
+      currentNode.shapeKind === 'round'
+        ? 1.56
+        : currentNode.shapeKind === 'oval'
+          ? 1.3
+          : 1.2;
+    this.shardHudSprite.scale.setScalar(Math.max(2.2, radius * spriteScale));
   }
 
   private getShardHudImage(key: ShardHudImageKey) {
@@ -4122,15 +4107,24 @@ export class GameSessionController {
       const runtime = this.ensureModuleRuntime('big_canon');
       if (runtime && runtime.cooldownRemaining <= 0 && !this.bigCanonShot.active) {
         const range = this.getBigCanonEffectiveRange();
-        let bestTarget: { node: ResolvedGamePathNode; distance: number } | null = null;
+        const sweepAngle = this.currentTime * 1.92;
+        const sweepHalfAngle = this.getBigCanonRadarSweepHalfAngle();
+        let bestTarget: { node: ResolvedGamePathNode; distance: number; angleDelta: number } | null = null;
         for (const node of this.getInteractableVisibleNodes()) {
           const enemy = node.enemySlot;
           if (!enemy || !enemy.alive || enemy.tier === 'invincible') continue;
           const position = this.getEnemyWorldPosition(node, enemy.pole);
           const distance = position.distanceTo(this.playerPosition);
           if (distance > range) continue;
-          if (!bestTarget || distance < bestTarget.distance) {
-            bestTarget = { node, distance };
+          const enemyAngle = Math.atan2(position.y - this.playerPosition.y, position.x - this.playerPosition.x);
+          const angleDelta = Math.abs(shortestAngleDistance(enemyAngle, sweepAngle));
+          if (angleDelta > sweepHalfAngle) continue;
+          if (
+            !bestTarget ||
+            angleDelta < bestTarget.angleDelta - 0.015 ||
+            (Math.abs(angleDelta - bestTarget.angleDelta) <= 0.015 && distance < bestTarget.distance)
+          ) {
+            bestTarget = { node, distance, angleDelta };
           }
         }
         if (bestTarget?.node.enemySlot) {

@@ -1,21 +1,8 @@
 import * as THREE from 'three';
 import type { ResolvedGamePathNode } from './gameSessionTypes';
 
-export const MINI_GAME_PORTAL_CAMERA_OFFSET = new THREE.Vector3(0, 0.06, 29.5);
-export const MINI_GAME_PORTAL_SHARD_OFFSETS = {
-  left: new THREE.Vector3(-8.8, 0, 0),
-  center: new THREE.Vector3(0, 0, 0),
-  right: new THREE.Vector3(8.8, 0, 0),
-  hidden: new THREE.Vector3(0, 5.2, -1.2)
-} as const;
+export const MINI_GAME_PORTAL_CAMERA_OFFSET = new THREE.Vector3(0, 0.35, 24.5);
 export const MINI_GAME_PORTAL_LAUNCH_ANGLE = Math.PI * 1.5;
-
-export function getMiniGamePortalShardPosition(
-  slot: keyof typeof MINI_GAME_PORTAL_SHARD_OFFSETS,
-  anchor: THREE.Vector3
-) {
-  return anchor.clone().add(MINI_GAME_PORTAL_SHARD_OFFSETS[slot]);
-}
 
 export function createMiniGamePortalNode(): ResolvedGamePathNode {
   return {

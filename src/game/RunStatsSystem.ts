@@ -42,6 +42,7 @@ export class RunStatsSystem {
     basePoints: number;
     gained: number;
     multiplier: number;
+    momentumRatio: number;
   } | null = null;
 
   reset(startTime = performance.now()) {
@@ -201,7 +202,8 @@ export class RunStatsSystem {
       serial: this.scoreFeedSerial,
       basePoints,
       gained,
-      multiplier
+      multiplier,
+      momentumRatio: clamp(momentumGauge, 0, 1)
     };
     this.totalScore += gained;
     if (this.totalScore > this.bestScore) {

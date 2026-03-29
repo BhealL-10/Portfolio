@@ -611,7 +611,10 @@ export class OrbitWorldSystem {
       iconTint: visual.iconTint,
       iconScale: visual.iconScale
     })) : null;
-    this.externalTransitionFrom = this.getCurrentShardPositions();
+    this.externalTransitionFrom =
+      this.externalLayoutActive && this.externalLayoutPositions
+        ? this.externalLayoutPositions.map((position) => position.clone())
+        : this.getCurrentShardPositions();
     this.externalTransitionTo = targets.map((target) => target.clone());
     this.externalTransitionProgress = 0;
     this.externalTransitionDelays = this.buildExternalTransitionDelays(

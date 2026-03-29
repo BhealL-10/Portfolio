@@ -168,6 +168,7 @@ export interface GameHudSnapshot {
     basePoints: number;
     gained: number;
     multiplier: number;
+    momentumRatio: number;
   } | null;
   highscore: number;
   distanceMeters: number;

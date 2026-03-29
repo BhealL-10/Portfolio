@@ -85,21 +85,21 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
     transform: translate3d(var(--primaterie-anchor-x, 50vw), calc(var(--primaterie-anchor-y, 30vh) - 72px), 0) translateX(-50%);
   }
 
-  html[data-runtime-device='desktop'] .primaterie-portal__mode {
+  html[data-runtime-device='desktop'] .primaterie-portal__actions {
+    gap: 5px;
+    margin-top: 12px;
+  }
+
+  html[data-runtime-device='desktop'] .primaterie-portal__actions button {
+    min-height: 31px;
+    padding: 5px 8px;
     font-size: clamp(0.64rem, 0.7vw, 0.82rem);
   }
 
-  html[data-runtime-device='desktop'] .primaterie-portal__mode--center {
-    min-height: 58px;
-    width: min(208px, 17vw);
-    padding-inline: 10px;
-  }
-
-  html[data-runtime-device='desktop'] .primaterie-portal__mode--left,
-  html[data-runtime-device='desktop'] .primaterie-portal__mode--right {
-    min-height: 40px;
-    width: min(168px, 13vw);
-    padding-inline: 8px;
+  html[data-runtime-device='desktop'] {
+    --game-primaterie-anchor-width: min(214px, 17vw);
+    --game-primaterie-anchor-max-height: min(38dvh, 286px);
+    --game-primaterie-anchor-padding: 12px 9px 9px;
   }
 
   html[data-runtime-device='desktop'] .game-hud__top-right-anchor {
@@ -108,9 +108,10 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   }
 
   html[data-runtime-device='desktop'] .game-hud__run-strip {
-    top: auto;
-    bottom: calc(var(--safe-bottom) + 178px);
+    top: calc(var(--safe-top) + 14px);
     left: calc(var(--safe-left) + 14px);
+    right: auto;
+    bottom: auto;
     gap: 8px;
   }
 
@@ -133,15 +134,15 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   html[data-runtime-device='desktop'] .game-hud__score-feed {
     gap: 5px;
     min-width: 88px;
-    padding-bottom: 12px;
+    padding-bottom: 10px;
   }
 
   html[data-runtime-device='desktop'] .game-hud__score-feed-entry strong {
-    font-size: clamp(0.9rem, 1vw, 1.08rem);
+    font-size: clamp(1.04rem, 1.2vw, 1.24rem);
   }
 
   html[data-runtime-device='desktop'] .game-hud__score-feed-entry span {
-    font-size: clamp(0.64rem, 0.7vw, 0.8rem);
+    font-size: clamp(0.74rem, 0.82vw, 0.9rem);
   }
 
   html[data-runtime-device='desktop'] .game-hud__momentum-dock {
@@ -742,21 +743,10 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
     width: min(118px, 30vw);
   }
 
-  .primaterie-portal__mode {
+  .primaterie-portal__actions button {
+    min-height: 28px;
+    padding: 5px 6px;
     font-size: 0.48rem;
-  }
-
-  .primaterie-portal__mode--center {
-    min-height: 48px;
-    width: min(184px, 34vw);
-    padding: 10px 8px;
-  }
-
-  .primaterie-portal__mode--left,
-  .primaterie-portal__mode--right {
-    min-height: 34px;
-    width: min(148px, 28vw);
-    padding: 8px 6px;
   }
 
   .primaterie-portal__logo-wrap {

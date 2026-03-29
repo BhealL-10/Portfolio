@@ -187,8 +187,18 @@ export class ShopSystem {
   }
 
   private getPriceForOffer(offer: RogueliteItemOffer, discount: number) {
-    const rarityPrice = offer.item.rarity === 'legendary' ? 11 : offer.item.rarity === 'epic' ? 8 : offer.item.rarity === 'rare' ? 5 : offer.item.rarity === 'uncommon' ? 3 : 2;
-    return Math.max(1, Math.round((rarityPrice + offer.stackCount) * (1 - discount)));
+    const rarityPrice =
+      offer.item.rarity === 'legendary'
+        ? 16
+        : offer.item.rarity === 'epic'
+          ? 11
+          : offer.item.rarity === 'rare'
+            ? 7
+            : offer.item.rarity === 'uncommon'
+              ? 4
+              : 2;
+    const stackPremium = Math.max(0, offer.stackCount - 1) * (offer.item.rarity === 'common' ? 1 : 2);
+    return Math.max(1, Math.round((rarityPrice + stackPremium) * (1 - discount)));
   }
 }
 

@@ -2485,6 +2485,16 @@ export class GameHUDSystem {
     entry.className = 'game-hud__score-feed-entry';
     const roundedMultiplier = Math.round(event.multiplier * 10) / 10;
     const showMultiplier = roundedMultiplier > 1.04 && event.basePoints > 0;
+    const momentumRatio = Math.max(0, Math.min(1, event.momentumRatio ?? 0));
+    const colorLow = { r: 242, g: 221, b: 184 };
+    const colorHigh = { r: 88, g: 240, b: 228 };
+    const accent = {
+      r: Math.round(colorLow.r + (colorHigh.r - colorLow.r) * momentumRatio),
+      g: Math.round(colorLow.g + (colorHigh.g - colorLow.g) * momentumRatio),
+      b: Math.round(colorLow.b + (colorHigh.b - colorLow.b) * momentumRatio)
+    };
+    entry.style.setProperty('--score-feed-rgb', `${accent.r} ${accent.g} ${accent.b}`);
+    entry.style.setProperty('--score-feed-scale', (1 + momentumRatio * 0.3).toFixed(3));
     entry.innerHTML = `
       <strong>${showMultiplier ? `+${event.basePoints}` : `+${event.gained}`}</strong>
       ${showMultiplier ? `<span>x${Number.isInteger(roundedMultiplier) ? roundedMultiplier.toFixed(0) : roundedMultiplier.toFixed(1)}</span>` : ''}
