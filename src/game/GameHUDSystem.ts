@@ -529,7 +529,6 @@ export class GameHUDSystem {
       <div class="game-hud__achievements" hidden>
         <div class="game-hud__achievements-shell">
           <div class="game-hud__achievements-panel">
-            <button type="button" class="game-hud__achievements-close" data-achievements-close aria-label="Close achievements"></button>
             <div class="game-hud__achievements-content">
               <div class="game-hud__achievements-header">
                 <div class="game-hud__achievements-title-block">
@@ -540,6 +539,9 @@ export class GameHUDSystem {
               <div class="game-hud__achievements-summary" data-achievements-summary></div>
               <div class="game-hud__achievements-controls" data-achievements-controls></div>
               <div class="game-hud__achievements-scroll" data-achievements-scroll></div>
+              <div class="game-hud__achievements-footer">
+                <button type="button" class="game-hud__achievements-close" data-achievements-close aria-label="Close achievements"></button>
+              </div>
             </div>
           </div>
         </div>
@@ -1380,6 +1382,7 @@ export class GameHUDSystem {
       card.style.top = `${layout.top}px`;
       card.style.setProperty('--branch-card-width', `${layout.width}px`);
       card.classList.toggle('is-compact', layout.compact);
+      card.classList.toggle('is-shop-card', offer.mode === 'shop_orbit');
       const showRarity = offer.offer.item.kind === 'module';
       card.innerHTML = `
         <span class="game-hud__upgrade-media">
@@ -1593,9 +1596,20 @@ export class GameHUDSystem {
         screenY: hint.screenY,
         mode: 'shop_orbit'
       });
-      const buttonOffsetY = layout.compact ? 92 : 106;
+      const relatedCard = this.branchCards.find(
+        (card) => card.dataset.slot === String(hint.slot) && card.dataset.mode === 'shop_orbit' && !card.hidden
+      );
+      const relatedCardRect = relatedCard?.getBoundingClientRect();
+      const buttonHalfHeight = layout.compact ? 26 : 30;
+      const buttonGap = layout.compact ? 12 : 16;
       const buttonCenterY = Math.round(
-        Math.max(42, Math.min(window.innerHeight - 42, layout.top + buttonOffsetY))
+        Math.max(
+          42,
+          Math.min(
+            window.innerHeight - 42,
+            relatedCardRect ? relatedCardRect.bottom + buttonGap + buttonHalfHeight : layout.top + (layout.compact ? 124 : 146)
+          )
+        )
       );
       button.style.left = `${Math.round(layout.left)}px`;
       button.style.top = `${buttonCenterY}px`;
@@ -1912,12 +1926,13 @@ export class GameHUDSystem {
   private renderAchievementsContent(snapshot: AchievementPanelSnapshot, force = false) {
     const theme = resolveDocumentTheme();
     const hoverTheme = theme === 'dark' ? 'light' : 'dark';
+    const contrastedTheme = hoverTheme;
     this.applySvgButton(
       this.achievementsCloseButton,
-      SECONDARY_NAV_ASSETS.close[theme],
+      SECONDARY_NAV_ASSETS.close[contrastedTheme],
       this.i18n.t('gameAchievementsClose'),
       'game-hud__achievements-close',
-      SECONDARY_NAV_ASSETS.close[hoverTheme]
+      SECONDARY_NAV_ASSETS.close[theme]
     );
     if (!force && snapshot.serial === this.renderedAchievementsSerial) {
       return;

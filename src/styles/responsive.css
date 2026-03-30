@@ -21,13 +21,15 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   html[data-runtime-device='desktop'] {
     --game-settings-toggle-size: clamp(42px, 2.5vw, 52px);
     --game-settings-panel-width: clamp(176px, 12vw, 204px);
-    --game-help-button-size: 148px;
-    --game-help-stage-width: min(76vw, 980px);
-    --game-help-stage-height: min(68dvh, 680px);
-    --game-help-stage-min-height: min(44dvh, 360px);
-    --game-help-stage-max-height: calc(100dvh - 96px);
-    --game-help-page-padding: 0 40px;
-    --game-help-image-max-height: calc(100dvh - 108px);
+    --game-help-button-size: 96px;
+    --game-help-nav-offset: 12px;
+    --game-help-close-offset: -30px;
+    --game-help-stage-width: min(88vw, 1120px);
+    --game-help-stage-height: min(80dvh, 780px);
+    --game-help-stage-min-height: min(52dvh, 480px);
+    --game-help-stage-max-height: calc(100dvh - 68px);
+    --game-help-page-padding: 0 18px;
+    --game-help-image-max-height: calc(100dvh - 86px);
     --game-gameover-shell-gap: clamp(10px, 0.9vw, 16px);
     --game-gameover-rule-width-size: clamp(420px, 14.4vw, 296px);
     --game-gameover-panel-width: min(780px, calc(100vw - (2 * var(--game-gameover-rule-width-size)) - 64px));
@@ -41,7 +43,7 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
     --game-gameover-header-overlay-width: min(344px, 28vw);
     --game-gameover-stat-min-height: clamp(68px, 5.4vw, 84px);
     --game-gameover-action-button-width: min(164px, 25vw);
-    --game-gameover-rule-image-max-height: min(58dvh, 580px);
+    --game-gameover-rule-image-max-height: min(70dvh, 700px);
     --game-gameover-item-size: 42px;
     --game-gameover-item-icon-size: 34px;
     --game-gameover-item-rarity-size: 13px;
@@ -368,15 +370,15 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   :root {
     --game-settings-toggle-size: clamp(46px, 14vw, 56px);
     --game-settings-panel-width: min(186px, calc(100vw - 80px));
-    --game-help-button-size: 144px;
-    --game-help-stage-width: min(90vw, 760px);
-    --game-help-stage-height: min(52dvh, 320px);
-    --game-help-stage-min-height: min(34dvh, 180px);
-    --game-help-stage-max-height: calc(100dvh - 98px);
-    --game-help-page-padding: 0 18px;
-    --game-help-image-max-height: calc(100dvh - 116px);
-    --game-help-nav-offset: -18px;
-    --game-help-close-offset: -12px;
+    --game-help-button-size: 88px;
+    --game-help-stage-width: min(96vw, 760px);
+    --game-help-stage-height: min(66dvh, 480px);
+    --game-help-stage-min-height: min(42dvh, 280px);
+    --game-help-stage-max-height: calc(100dvh - 76px);
+    --game-help-page-padding: 0 12px;
+    --game-help-image-max-height: calc(100dvh - 98px);
+    --game-help-nav-offset: 2px;
+    --game-help-close-offset: -22px;
     --game-gameover-shell-gap: 8px;
     --game-gameover-rule-width-size: min(188px, 52vw);
     --game-gameover-panel-width: min(320px, calc(100vw - 24px));
@@ -390,7 +392,7 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
     --game-gameover-header-overlay-width: min(196px, 56vw);
     --game-gameover-header-overlay-shift: -30%;
     --game-gameover-action-button-width: min(110px, 38vw);
-    --game-gameover-rule-image-max-height: min(16dvh, 112px);
+    --game-gameover-rule-image-max-height: min(28dvh, 220px);
     --game-gameover-stats-gap: 3px;
     --game-gameover-stat-min-height: 54px;
     --game-gameover-gear-gap: 3px;

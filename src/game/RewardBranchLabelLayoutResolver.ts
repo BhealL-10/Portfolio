@@ -22,10 +22,24 @@ export class RewardBranchLabelLayoutResolver {
     }
 
     const gap = layouts[0]?.compact ? 8 : 12;
-    const estimatedHeight = layouts[0]?.compact ? 108 : 122;
+    const allShopOrbit = inputs.every((input) => input.mode === 'shop_orbit');
+    const estimatedHeight = allShopOrbit ? (layouts[0]?.compact ? 132 : 150) : layouts[0]?.compact ? 108 : 122;
     const topPadding = layouts[0]?.compact ? 10 : 16;
     const bottomPadding = layouts[0]?.compact ? 14 : 22;
     const viewportBottom = window.innerHeight - bottomPadding - estimatedHeight * 0.5;
+
+    if (allShopOrbit) {
+      const sharedTop = Math.round(
+        Math.max(
+          topPadding + estimatedHeight * 0.5,
+          Math.min(viewportBottom, Math.min(...layouts.map((layout) => layout.top)))
+        )
+      );
+      layouts.forEach((layout) => {
+        layout.top = sharedTop;
+      });
+      return layouts;
+    }
 
     const ordered = layouts
       .map((layout, index) => ({ layout, index }))
@@ -95,7 +109,7 @@ export class RewardBranchLabelLayoutResolver {
       };
     }
 
-    const verticalOffset = compact ? 68 : 84;
+    const verticalOffset = compact ? 86 : 108;
     const left = Math.round(
       Math.max(
         sidePadding + width * 0.5,
