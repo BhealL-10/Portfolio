@@ -1234,33 +1234,34 @@ export class GameHUDSystem {
     this.helpNextButton.setAttribute('aria-label', this.i18n.current === 'fr' ? 'Page suivante' : 'Next page');
     const theme = resolveDocumentTheme();
     const hoverTheme = theme === 'dark' ? 'light' : 'dark';
+    const contrastedTheme = hoverTheme;
     this.applySvgButton(
       this.helpPrevButton,
-      SECONDARY_NAV_ASSETS.left[theme],
+      SECONDARY_NAV_ASSETS.left[contrastedTheme],
       this.i18n.current === 'fr' ? 'Page précédente' : 'Previous page',
       'game-hud__help-nav game-hud__help-nav--prev',
-      SECONDARY_NAV_ASSETS.left[hoverTheme]
+      SECONDARY_NAV_ASSETS.left[theme]
     );
     this.applySvgButton(
       this.helpNextButton,
-      SECONDARY_NAV_ASSETS.right[theme],
+      SECONDARY_NAV_ASSETS.right[contrastedTheme],
       this.i18n.current === 'fr' ? 'Page suivante' : 'Next page',
       'game-hud__help-nav game-hud__help-nav--next',
-      SECONDARY_NAV_ASSETS.right[hoverTheme]
+      SECONDARY_NAV_ASSETS.right[theme]
     );
     this.renderGameOverButtons();
     this.helpCloseButton.setAttribute('aria-label', this.i18n.current === 'fr' ? "Fermer l'aide" : 'Close help');
     this.applySvgButton(
       this.helpCloseButton,
-      SECONDARY_NAV_ASSETS.close[theme],
+      SECONDARY_NAV_ASSETS.close[contrastedTheme],
       this.i18n.current === 'fr' ? "Fermer l'aide" : 'Close help',
       'game-hud__help-close',
-      SECONDARY_NAV_ASSETS.close[hoverTheme]
+      SECONDARY_NAV_ASSETS.close[theme]
     );
     this.leaderboardNameInput.placeholder = this.i18n.t('gamePlayerName');
     this.applySvgButton(
       this.leaderboardSaveButton,
-      SAVE_BUTTON_ASSETS[theme],
+      SAVE_BUTTON_ASSETS[contrastedTheme],
       this.i18n.t('gameSaveScore'),
       'game-hud__leaderboard-save-button',
       SAVE_BUTTON_ASSETS[theme]
@@ -1268,7 +1269,7 @@ export class GameHUDSystem {
     this.leaderboardRegisterCopy.textContent = this.i18n.t('gameRegisterScore');
     this.applySvgButton(
       this.avatarEditorSaveButton,
-      SAVE_BUTTON_ASSETS[theme],
+      SAVE_BUTTON_ASSETS[contrastedTheme],
       this.i18n.t('gameSaveAvatar'),
       'game-hud__avatar-editor-save-button',
       SAVE_BUTTON_ASSETS[theme]
