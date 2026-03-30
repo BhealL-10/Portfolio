@@ -167,7 +167,6 @@ export class GameAudioSystem {
   private enabled = false;
   private preloaded = false;
   private lastState: GameAudioRuntimeState | null = null;
-  private musicTrackStartedAt = 0;
   private reactiveBass = 0;
   private reactiveMid = 0;
   private reactiveMelody = 0;
@@ -612,7 +611,6 @@ export class GameAudioSystem {
     };
     leftSource.onended = handleEnded;
     rightSource.onended = handleEnded;
-    this.musicTrackStartedAt = this.context.currentTime;
     this.musicTrackAnalysisElapsed = 0;
     leftSource.start();
     rightSource.start();
@@ -650,7 +648,6 @@ export class GameAudioSystem {
   private stopCurrentMusicTrack() {
     this.musicTrack?.stop();
     this.musicTrack = null;
-    this.musicTrackStartedAt = 0;
     this.musicTrackAnalysisElapsed = 0;
     this.musicPlaybackRate = 1;
   }

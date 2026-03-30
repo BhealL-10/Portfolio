@@ -1124,7 +1124,8 @@ export class GamePathSystem {
       }
       return {
         eventType: planned,
-        eventVisualKind: planned === 'shop' ? 'shop' : planned === 'gift' || planned === 'rare_item' ? 'question' : 'default'
+        eventVisualKind:
+          (planned === 'shop' ? 'shop' : planned === 'gift' || planned === 'rare_item' ? 'question' : 'default') as GameEventVisualKind
       };
     }
 

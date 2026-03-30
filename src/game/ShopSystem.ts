@@ -1,9 +1,8 @@
 import * as THREE from 'three';
 import type { ThemeMode } from '../types/content';
+import { getSharedTextureAsset } from '../core/browserAssetCache';
 import { buildUpgradeOffers, type RogueliteItemOffer, type RunUpgradeState } from './roguelite';
 import type { BranchChoice } from './gameSessionTypes';
-
-const ACCENT = '#D9624E';
 
 interface ActiveShopOffer {
   angle: number;
@@ -14,7 +13,6 @@ interface ActiveShopOffer {
 
 export class ShopSystem {
   private readonly group = new THREE.Group();
-  private readonly loader = new THREE.TextureLoader();
   private readonly pool: THREE.Sprite[] = [];
   private activeOffers: ActiveShopOffer[] = [];
   private open = false;
@@ -64,10 +62,9 @@ export class ShopSystem {
       const sprite = this.pool[index];
       if (!sprite) return;
       const material = sprite.material;
-      material.map = this.loader.load(activeOffer.offer.item.hudIconSrc);
-      if (material.map) {
-        material.map.colorSpace = THREE.SRGBColorSpace;
-      }
+      material.map = getSharedTextureAsset(activeOffer.offer.item.hudIconSrc, {
+        colorSpace: THREE.SRGBColorSpace
+      });
       material.needsUpdate = true;
     });
     this.open = this.activeOffers.length > 0;
@@ -177,15 +174,6 @@ export class ShopSystem {
       mesh.visible = false;
     });
   }
-
-  private close() {
-    this.open = false;
-    this.group.visible = false;
-    this.pool.forEach((mesh) => {
-      mesh.visible = false;
-    });
-  }
-
   private getPriceForOffer(offer: RogueliteItemOffer, discount: number) {
     const rarityPrice =
       offer.item.rarity === 'legendary'

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getSharedTextureAsset } from '../core/browserAssetCache';
 
 export interface SpriteSheetLayout {
   columns: number;
@@ -6,8 +7,6 @@ export interface SpriteSheetLayout {
 }
 
 export class SpriteSheetPlane {
-  private static readonly loader = new THREE.TextureLoader();
-  private static readonly textureCache = new Map<string, THREE.Texture>();
   readonly group = new THREE.Group();
   readonly mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   private texture: THREE.Texture;
@@ -87,20 +86,15 @@ export class SpriteSheetPlane {
   }
 
   private static getTexture(textureUrl: string, layout: SpriteSheetLayout) {
-    const cached = this.textureCache.get(textureUrl);
-    if (cached) {
-      return cached;
-    }
-
-    const texture = this.loader.load(textureUrl);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.wrapS = THREE.ClampToEdgeWrapping;
-    texture.wrapT = THREE.ClampToEdgeWrapping;
-    texture.repeat.set(1 / layout.columns, 1 / layout.rows);
-    texture.minFilter = THREE.LinearFilter;
-    texture.magFilter = THREE.LinearFilter;
-    texture.generateMipmaps = true;
-    this.textureCache.set(textureUrl, texture);
-    return texture;
+    return getSharedTextureAsset(textureUrl, {
+      colorSpace: THREE.SRGBColorSpace,
+      wrapS: THREE.ClampToEdgeWrapping,
+      wrapT: THREE.ClampToEdgeWrapping,
+      repeatX: 1 / layout.columns,
+      repeatY: 1 / layout.rows,
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      generateMipmaps: true
+    });
   }
 }

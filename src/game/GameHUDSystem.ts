@@ -1,5 +1,6 @@
 import type { RogueliteItemKind, RogueliteItemOffer, RogueliteRarity } from './roguelite';
 import { getItemById, rarityLabels, rogueliteItems } from './roguelite';
+import { preloadImageAsset } from '../core/browserAssetCache';
 import { I18nService } from '../ui/I18nService';
 import type { AcquisitionFeedback, GameOverCause, GamePlayerMotionState, LandingGrade } from './gameSessionTypes';
 import { LandingGradeDisplay } from './LandingGradeDisplay';
@@ -20,6 +21,7 @@ import { SETTINGS_BUTTON_ASSETS } from './SettingsButton';
 import { observeThemeChanges, resolveDocumentTheme } from './ThemeAssetResolver';
 import { TopRightUiCluster } from './TopRightUiCluster';
 import { buildGameOverSummaryMarkup } from './buildGameOverSummaryMarkup';
+import type { GameHudAvatarLayerSets } from './GameHudDeferredAssets';
 
 const MOMENTUM_BAR_ASSETS = {
   bg: new URL('../../assets/images/game/ui/meters/momentum-background.png', import.meta.url).href,
@@ -94,6 +96,7 @@ interface GameHUDPayload {
     basePoints: number;
     gained: number;
     multiplier: number;
+    momentumRatio?: number;
   } | null;
   highscore: number;
   distanceMeters: number;
@@ -242,80 +245,17 @@ const PLAYER_ID_KEY = 'portfolio-game-player-id-v1';
 const PLAYER_NAME_KEY = 'portfolio-game-player-name';
 const PLAYER_AVATAR_KEY = 'portfolio-game-player-avatar-v1';
 const GAME_HELP_SEEN_KEY = 'portfolio-game-help-seen-v1';
-const HELP_IMAGE_MODULES = import.meta.glob('../../assets/images/game/ui/help/**/*.{png,jpg,jpeg,webp,avif}', {
-  eager: true,
-  import: 'default'
-}) as Record<string, string>;
-const AVATAR_LAYER_MODULES = import.meta.glob('../../assets/Avatar_asset/*/*.png', {
-  eager: true,
-  import: 'default'
-}) as Record<string, string>;
 
 type HelpTheme = 'dark' | 'light';
 
-function resolveHelpImageSets() {
-  const sets: Record<'fr' | 'en', Record<HelpTheme, string[]> & { fallback: string[] }> = {
-    fr: { dark: [], light: [], fallback: [] },
-    en: { dark: [], light: [], fallback: [] }
+function createEmptyAvatarLayerSets(): GameHudAvatarLayerSets {
+  return {
+    background: [],
+    motif: [],
+    face: [],
+    eyes: [],
+    barbe: []
   };
-  const entries = Object.entries(HELP_IMAGE_MODULES)
-    .map(([path, src]) => ({ path, src, name: path.split('/').pop() ?? '' }))
-    .sort((a, b) => {
-      const aIndex = Number((a.name.match(/rules(\d+)|rules-(\d+)/i)?.slice(1).find(Boolean)) ?? 0);
-      const bIndex = Number((b.name.match(/rules(\d+)|rules-(\d+)/i)?.slice(1).find(Boolean)) ?? 0);
-      return aIndex - bIndex;
-    });
-
-  entries.forEach((entry) => {
-    const path = entry.path.toLowerCase();
-    const themedMatch = path.match(/\/(fr|en)\/(dark|light)\//);
-    if (themedMatch && /rules\d+-(dark|light)\./i.test(entry.name)) {
-      const locale = themedMatch[1] as 'fr' | 'en';
-      const theme = themedMatch[2] as HelpTheme;
-      sets[locale][theme].push(entry.src);
-      return;
-    }
-
-    if (/^(en|fr)-rules-\d+\./i.test(entry.name)) {
-      const locale = entry.name.toLowerCase().startsWith('fr-') ? 'fr' : 'en';
-      sets[locale].fallback.push(entry.src);
-    }
-  });
-
-  return sets;
-}
-
-function resolveAvatarLayerSets() {
-  const sets = {
-    background: [] as string[],
-    motif: [] as string[],
-    face: [] as string[],
-    eyes: [] as string[],
-    barbe: [] as string[]
-  };
-
-  Object.entries(AVATAR_LAYER_MODULES)
-    .map(([path, src]) => ({ path, src }))
-    .sort((a, b) => {
-      const aIndex = Number((a.path.match(/_(\d+)\.png$/)?.[1]) ?? 0);
-      const bIndex = Number((b.path.match(/_(\d+)\.png$/)?.[1]) ?? 0);
-      return aIndex - bIndex;
-    })
-    .forEach(({ path, src }) => {
-      if (path.includes('/background/')) {
-        sets.background.push(src);
-      } else if (path.includes('/motif/')) {
-        sets.motif.push(src);
-      } else if (path.includes('/face/')) {
-        sets.face.push(src);
-      } else if (path.includes('/eyes/')) {
-        sets.eyes.push(src);
-      } else if (path.includes('/barbe/')) {
-        sets.barbe.push(src);
-      }
-    });
-
-  return sets;
 }
 
 export class GameHUDSystem {
@@ -415,10 +355,12 @@ export class GameHUDSystem {
   private lastSavedGameOverSignature = '';
   private currentRunSummary: GameHUDPayload['runSummary'] | null = null;
   private previousRunStripMetrics: { score: number; highscore: number; distanceMeters: number; coins: number } | null = null;
-  private readonly avatarLayerSets = resolveAvatarLayerSets();
+  private avatarLayerSets = createEmptyAvatarLayerSets();
   private playerAvatarSelection: AvatarSelection;
   private draftAvatarSelection: AvatarSelection;
   private avatarEditorOpen = false;
+  private avatarAssetsLoaded = false;
+  private avatarAssetsPromise: Promise<void> | null = null;
   private gameOverRevealTimeouts: number[] = [];
   private readonly shapeTemplateCache = new Map<string, EquipmentShapeTemplate | null>();
   private readonly shapeTemplatePending = new Set<string>();
@@ -428,7 +370,8 @@ export class GameHUDSystem {
   private audioVolume = 0.86;
   private lastScoreFeedSerial = 0;
   private readonly scoreFeedTimeouts = new Set<number>();
-  private readonly helpImageSets = resolveHelpImageSets();
+  private readonly helpPagesCache = new Map<string, string[]>();
+  private readonly helpPagesPromises = new Map<string, Promise<string[]>>();
   private helpLocale: 'fr' | 'en' = 'en';
   private helpPageIndex = 0;
   private helpOpen = false;
@@ -439,9 +382,12 @@ export class GameHUDSystem {
   private leaderboardEntriesCache: LeaderboardEntry[] = [];
   private leaderboardRequestSerial = 0;
   private leaderboardSyncState: 'idle' | 'loading' | 'saving' | 'error' = 'idle';
+  private uiAssetsPreloaded = false;
+  private leaderboardLoaded = false;
+  private leaderboardLoadPromise: Promise<void> | null = null;
+  private deferredAssetsModulePromise: Promise<typeof import('./GameHudDeferredAssets')> | null = null;
 
   constructor(host: HTMLElement, private readonly i18n: I18nService, private readonly callbacks: GameHUDCallbacks) {
-    this.preloadUiAssets();
     this.element = document.createElement('div');
     this.element.className = 'game-hud';
     this.element.hidden = true;
@@ -813,19 +759,24 @@ export class GameHUDSystem {
     });
     this.stopObservingTheme = observeThemeChanges(() => {
       this.renderSettingsButtons();
-       this.renderAudioControls();
-       this.renderGameOverButtons();
-       this.renderAvatarEditor();
-       if (this.currentRunSummary) {
-         this.currentGameOverSignature = '';
-         this.currentGameOverRuleSrc = '';
-         this.renderGameOverSummaryFromCurrentRun();
-       } else {
-         this.renderLeaderboard();
-       }
+      this.renderAudioControls();
+      this.renderGameOverButtons();
+      this.renderAvatarEditor();
+      if (this.currentRunSummary) {
+        this.currentGameOverSignature = '';
+        this.currentGameOverRuleSrc = '';
+        this.renderGameOverSummaryFromCurrentRun();
+      } else {
+        this.renderLeaderboard();
+      }
       if (this.helpOpen) {
-        this.renderHelpPages();
-        this.setHelpPage(this.helpPageIndex);
+        void this.ensureHelpPagesLoaded(this.helpLocale).then(() => {
+          if (!this.helpOpen) {
+            return;
+          }
+          this.renderHelpPages();
+          this.setHelpPage(this.helpPageIndex);
+        });
       }
     });
     host.appendChild(this.element);
@@ -834,7 +785,6 @@ export class GameHUDSystem {
     this.closeHelp();
     this.leaderboardEntriesCache = this.readLocalLeaderboardCache();
     this.renderStatic();
-    void this.refreshLeaderboard({ rerender: true });
   }
 
   setVisible(visible: boolean) {
@@ -861,6 +811,7 @@ export class GameHUDSystem {
       this.gameOverOverlay.inert = true;
       this.toast.inert = true;
     } else {
+      this.ensureUiAssetsPreloaded();
       this.branchLayer.inert = false;
       this.shopBar.inert = false;
       this.gameOverOverlay.inert = false;
@@ -870,6 +821,100 @@ export class GameHUDSystem {
 
   dispose() {
     this.stopObservingTheme();
+  }
+
+  private ensureUiAssetsPreloaded() {
+    if (this.uiAssetsPreloaded) {
+      return;
+    }
+    this.uiAssetsPreloaded = true;
+    this.preloadUiAssets();
+  }
+
+  private ensureDeferredAssetsModule() {
+    this.deferredAssetsModulePromise ??= import('./GameHudDeferredAssets');
+    return this.deferredAssetsModulePromise;
+  }
+
+  private getHelpCacheKey(locale: 'fr' | 'en', theme = resolveDocumentTheme()) {
+    return `${locale}:${theme}`;
+  }
+
+  private ensureHelpPagesLoaded(locale: 'fr' | 'en', theme = resolveDocumentTheme()) {
+    const cacheKey = this.getHelpCacheKey(locale, theme);
+    const cached = this.helpPagesCache.get(cacheKey);
+    if (cached) {
+      return Promise.resolve(cached);
+    }
+
+    const pending = this.helpPagesPromises.get(cacheKey);
+    if (pending) {
+      return pending;
+    }
+
+    const request = this.ensureDeferredAssetsModule()
+      .then(({ loadHelpPagesFor }) => loadHelpPagesFor(locale, theme as HelpTheme))
+      .then((pages) => {
+        this.helpPagesCache.set(cacheKey, pages);
+        return pages;
+      })
+      .catch((error) => {
+        this.helpPagesPromises.delete(cacheKey);
+        console.warn('[GameHUDSystem] Failed to load deferred help assets.', error);
+        return [];
+      });
+
+    this.helpPagesPromises.set(cacheKey, request);
+    return request;
+  }
+
+  private ensureAvatarAssetsLoaded() {
+    if (this.avatarAssetsLoaded) {
+      return Promise.resolve();
+    }
+    if (this.avatarAssetsPromise) {
+      return this.avatarAssetsPromise;
+    }
+
+    this.avatarAssetsPromise = this.ensureDeferredAssetsModule()
+      .then(({ loadAvatarLayerSets }) => loadAvatarLayerSets())
+      .then((sets) => {
+        this.avatarLayerSets = sets;
+        this.avatarAssetsLoaded = true;
+        this.playerAvatarSelection = this.normalizeAvatarSelection(this.playerAvatarSelection);
+        this.draftAvatarSelection = this.normalizeAvatarSelection(this.draftAvatarSelection);
+        if (this.currentRunSummary) {
+          this.renderLeaderboard();
+        }
+        if (this.avatarEditorOpen) {
+          this.renderAvatarEditor();
+        }
+      })
+      .catch((error) => {
+        this.avatarAssetsPromise = null;
+        console.warn('[GameHUDSystem] Failed to load deferred avatar assets.', error);
+      });
+
+    return this.avatarAssetsPromise;
+  }
+
+  private ensureLeaderboardLoaded(options?: { rerender?: boolean }) {
+    if (this.leaderboardLoaded && !options?.rerender) {
+      return Promise.resolve();
+    }
+    if (this.leaderboardLoadPromise) {
+      return this.leaderboardLoadPromise;
+    }
+
+    this.leaderboardLoadPromise = this.refreshLeaderboard(options)
+      .then(() => {
+        this.leaderboardLoaded = true;
+      })
+      .finally(() => {
+        this.leaderboardLoadPromise = null;
+      });
+
+    return this.leaderboardLoadPromise;
   }
 
   setAudioControls(settings: { volume: number; muted: boolean }) {
@@ -966,12 +1011,26 @@ export class GameHUDSystem {
       payload.state === 'running' &&
       !this.helpOpen &&
       !this.helpAutoOpenedThisSession &&
-      this.helpImageSets.en.length > 0 &&
       window.localStorage.getItem(GAME_HELP_SEEN_KEY) !== '1'
     ) {
-      this.helpAutoOpenedThisSession = true;
-      window.localStorage.setItem(GAME_HELP_SEEN_KEY, '1');
-      this.openHelp('en');
+      const openAutoHelp = () => {
+        if (this.helpOpen || this.helpAutoOpenedThisSession || window.localStorage.getItem(GAME_HELP_SEEN_KEY) === '1') {
+          return;
+        }
+        this.helpAutoOpenedThisSession = true;
+        window.localStorage.setItem(GAME_HELP_SEEN_KEY, '1');
+        this.openHelp('en');
+      };
+
+      if (this.getHelpPages('en').length > 0) {
+        openAutoHelp();
+      } else {
+        void this.ensureHelpPagesLoaded('en').then((pages) => {
+          if (pages.length > 0) {
+            openAutoHelp();
+          }
+        });
+      }
     }
     if (payload.acquisition) {
       this.toast.style.setProperty('--toast-progress', payload.acquisition.progress.toFixed(3));
@@ -1429,6 +1488,17 @@ export class GameHUDSystem {
       if (!this.currentGameOverRuleSrc || isNewRun) {
         const helpPages = this.getHelpPages(this.i18n.current);
         this.currentGameOverRuleSrc = helpPages.length > 0 ? helpPages[Math.floor(Math.random() * helpPages.length)]! : '';
+        if (!this.currentGameOverRuleSrc) {
+          void this.ensureHelpPagesLoaded(this.i18n.current).then((loadedPages) => {
+            if (!this.currentRunSummary || loadedPages.length === 0 || this.currentGameOverRuleSrc) {
+              return;
+            }
+            this.currentGameOverRuleSrc = loadedPages[Math.floor(Math.random() * loadedPages.length)] ?? '';
+            if (this.currentGameOverRuleSrc) {
+              this.renderGameOverSummaryFromCurrentRun();
+            }
+          });
+        }
       }
       this.gameOverStats.innerHTML = markup.statsMarkup;
       this.gameOverStats.querySelectorAll<HTMLElement>('.game-hud__game-over-stat').forEach((element, index) => {
@@ -1445,7 +1515,8 @@ export class GameHUDSystem {
     }
     this.currentGameOverSignature = markup.signature;
     if (hasChanged) {
-      void this.refreshLeaderboard({ rerender: true });
+      void this.ensureLeaderboardLoaded({ rerender: !this.leaderboardLoaded });
+      void this.ensureAvatarAssetsLoaded();
       this.renderLeaderboard();
       if (this.avatarEditorOpen) {
         this.renderAvatarEditor();
@@ -1586,10 +1657,6 @@ export class GameHUDSystem {
   }
 
   private openHelp(locale: 'fr' | 'en') {
-    const pages = this.getHelpPages(locale);
-    if (pages.length === 0) {
-      return;
-    }
     this.helpLocale = locale;
     this.helpOpen = true;
     this.helpPageIndex = 0;
@@ -1598,8 +1665,25 @@ export class GameHUDSystem {
     this.helpOverlay.inert = false;
     this.helpOverlay.setAttribute('aria-hidden', 'false');
     this.topRightCluster.toggle(false);
-    this.renderHelpPages();
-    this.setHelpPage(0);
+    const pages = this.getHelpPages(locale);
+    if (pages.length > 0) {
+      this.renderHelpPages();
+      this.setHelpPage(0);
+      return;
+    }
+
+    this.renderHelpLoadingState();
+    void this.ensureHelpPagesLoaded(locale).then((loadedPages) => {
+      if (!this.helpOpen || this.helpLocale !== locale) {
+        return;
+      }
+      if (loadedPages.length === 0) {
+        this.closeHelp();
+        return;
+      }
+      this.renderHelpPages();
+      this.setHelpPage(0);
+    });
   }
 
   private closeHelp() {
@@ -1612,27 +1696,15 @@ export class GameHUDSystem {
   }
 
   private getHelpPages(locale: 'fr' | 'en') {
-    const theme = resolveDocumentTheme();
-    const localized = this.helpImageSets[locale][theme];
-    if (localized.length > 0) {
-      return localized;
-    }
-
-    const fallback = this.helpImageSets[locale].fallback;
-    if (fallback.length > 0) {
-      return fallback;
-    }
-
-    const englishLocalized = this.helpImageSets.en[theme];
-    if (englishLocalized.length > 0) {
-      return englishLocalized;
-    }
-
-    return this.helpImageSets.en.fallback;
+    return this.helpPagesCache.get(this.getHelpCacheKey(locale)) ?? [];
   }
 
   private renderHelpPages() {
     const pages = this.getHelpPages(this.helpLocale);
+    if (pages.length === 0) {
+      this.renderHelpLoadingState();
+      return;
+    }
     this.helpTrack.innerHTML = pages
       .map(
         (src, index) => `
@@ -1644,11 +1716,22 @@ export class GameHUDSystem {
       .join('');
   }
 
+  private renderHelpLoadingState() {
+    const loadingLabel = this.i18n.current === 'fr' ? 'Chargement…' : 'Loading…';
+    this.helpTrack.innerHTML = `
+      <div class="game-hud__help-page game-hud__help-page--loading" data-help-page="0">
+        <div class="game-hud__help-loading">${loadingLabel}</div>
+      </div>
+    `;
+    this.helpCounter.textContent = '…';
+    this.helpPrevButton.disabled = true;
+    this.helpNextButton.disabled = true;
+  }
+
   private setHelpPage(index: number) {
     const pages = this.getHelpPages(this.helpLocale);
     if (pages.length === 0) {
-      this.helpPageIndex = 0;
-      this.helpCounter.textContent = '0 / 0';
+      this.renderHelpLoadingState();
       return;
     }
     this.helpPageIndex = Math.max(0, Math.min(index, pages.length - 1));
@@ -1689,12 +1772,6 @@ export class GameHUDSystem {
       <span class="${className} ${rootClass}--base" aria-hidden="true"><img src="${src}" alt="" /></span>
       <span class="${className} ${rootClass}--hover" aria-hidden="true"><img src="${hoverSrc}" alt="" /></span>
     `;
-  }
-
-  private getGameOverBody(cause: GameOverCause) {
-    if (cause === 'enemy') return this.i18n.t('gameOverEnemy');
-    if (cause === 'out_of_bounds') return this.i18n.t('gameOverBounds');
-    return this.i18n.t('gameOverCamera');
   }
 
   private renderEquipmentIconLayer(
@@ -2345,8 +2422,8 @@ export class GameHUDSystem {
 
   private renderLeaderboard() {
     const entries = this.readLeaderboard().slice(0, 100);
-    const filledEntries =
-      entries.length >= 100 ? entries : entries.concat(Array.from({ length: 100 - entries.length }, () => null));
+    const filledEntries: Array<LeaderboardEntry | null> =
+      entries.length >= 100 ? [...entries] : [...entries, ...Array.from({ length: 100 - entries.length }, () => null)];
     this.renderedLeaderboardEntries = filledEntries;
     this.leaderboardList.innerHTML = filledEntries
       .map((entry, index) => {
@@ -2536,6 +2613,7 @@ export class GameHUDSystem {
       this.draftAvatarSelection = { ...this.playerAvatarSelection };
     }
     this.avatarEditorOpen = true;
+    void this.ensureAvatarAssetsLoaded();
     this.renderAvatarEditor();
     this.renderGameOverMode(null);
   }
@@ -2647,6 +2725,20 @@ export class GameHUDSystem {
       this.avatarEditorLayers.hidden = true;
       return;
     }
+    if (!this.avatarAssetsLoaded) {
+      const loadingLabel = this.i18n.current === 'fr' ? 'Chargement…' : 'Loading…';
+      this.avatarEditorStage.innerHTML = `
+        <div class="game-hud__avatar-editor-preview" data-avatar-editor-preview>
+          <div class="game-hud__avatar-loading">${loadingLabel}</div>
+        </div>
+      `;
+      this.avatarEditorPreview = this.avatarEditorStage.querySelector<HTMLDivElement>('[data-avatar-editor-preview]')!;
+      this.avatarEditorLayers.innerHTML = '';
+      this.avatarEditorLayers.hidden = true;
+      this.avatarEditorSaveButton.disabled = true;
+      return;
+    }
+    this.avatarEditorSaveButton.disabled = false;
     const previewSelection = this.normalizeAvatarSelection(this.draftAvatarSelection);
     const theme = resolveDocumentTheme();
     const hoverTheme = theme === 'dark' ? 'light' : 'dark';
@@ -2690,6 +2782,13 @@ export class GameHUDSystem {
 
   private renderAvatarMarkup(selection: AvatarSelection, className: string) {
     const layers = this.resolveAvatarLayers(selection);
+    if (!layers.background || !layers.motif || !layers.face || !layers.eyes || !layers.barbe) {
+      return `
+        <span class="${className}" aria-hidden="true">
+          <span style="display:block;width:100%;height:100%;border-radius:50%;background:radial-gradient(circle at 30% 30%, rgb(242 221 184 / 0.9), rgb(89 131 139 / 0.88));"></span>
+        </span>
+      `;
+    }
     return `
       <span class="${className}" aria-hidden="true">
         <img src="${layers.background}" alt="" class="${className}-layer ${className}-layer--background" />
@@ -2733,15 +2832,14 @@ export class GameHUDSystem {
     const normalized = { ...fallback } as AvatarSelection;
     AVATAR_LAYER_ORDER.forEach((layer) => {
       const layerOptions = this.avatarLayerSets[layer];
-      if (layerOptions.length === 0) {
-        normalized[layer] = 0;
+      const candidate = selection?.[layer];
+      if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+        const rawValue = Math.max(0, Math.trunc(candidate));
+        normalized[layer] =
+          layerOptions.length > 0 ? ((rawValue % layerOptions.length) + layerOptions.length) % layerOptions.length : rawValue;
         return;
       }
-      const candidate = selection?.[layer];
-      normalized[layer] =
-        typeof candidate === 'number' && Number.isFinite(candidate)
-          ? ((Math.trunc(candidate) % layerOptions.length) + layerOptions.length) % layerOptions.length
-          : fallback[layer];
+      normalized[layer] = layerOptions.length > 0 ? fallback[layer] : Math.max(0, fallback[layer]);
     });
     return normalized;
   }
@@ -2804,21 +2902,20 @@ export class GameHUDSystem {
       SOUND_BUTTON_ASSETS.off.light,
       SOUND_BUTTON_ASSETS.sprite
     ];
-    Object.values(GRADE_SPRITE_ASSET_URLS)
-      .concat(
-        Object.values(MOMENTUM_BAR_ASSETS),
-        [COIN_ICON_URL, EQUIPMENT_UI_ASSETS.bgBoat],
-        itemAssets,
-        Object.values(EQUIPMENT_UI_ASSETS.charges),
-        Object.values(MOBILE_CONTROL_ASSETS).flatMap((assetSet) => Object.values(assetSet)),
-        MOBILE_CHARGE_ASSETS.flatMap((assetSet) => Object.values(assetSet)),
-        buttonAssets,
-        Object.values(SETTINGS_BUTTON_ASSETS)
-      )
-      .forEach((src) => {
-      const image = new Image();
-      image.decoding = 'async';
-      image.src = src;
+    const preloadedAssets = [
+      ...Object.values(GRADE_SPRITE_ASSET_URLS).flatMap((assetSet) => Object.values(assetSet)),
+      ...Object.values(MOMENTUM_BAR_ASSETS),
+      COIN_ICON_URL,
+      EQUIPMENT_UI_ASSETS.bgBoat,
+      ...itemAssets,
+      ...Object.values(EQUIPMENT_UI_ASSETS.charges),
+      ...Object.values(MOBILE_CONTROL_ASSETS).flatMap((assetSet) => Object.values(assetSet)),
+      ...MOBILE_CHARGE_ASSETS.flatMap((assetSet) => Object.values(assetSet)),
+      ...buttonAssets,
+      ...Object.values(SETTINGS_BUTTON_ASSETS)
+    ];
+    preloadedAssets.forEach((src) => {
+      preloadImageAsset(src);
     });
     Object.values(EQUIPMENT_UI_ASSETS.charges).forEach((src) => this.preloadShapeTemplate(src));
     this.preloadShapeTemplate(EQUIPMENT_UI_ASSETS.bgBoat);

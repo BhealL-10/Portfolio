@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getSharedImageAsset, getSharedTextureAsset } from '../core/browserAssetCache';
 import { isMobileRuntime } from '../core/device';
 import { clamp, damp } from '../core/math';
 import type { ThemeMode } from '../types/content';
@@ -74,8 +75,6 @@ const SHARD_HUD_BOOST_ASSETS = {
   dark: new URL('../../assets/images/game/ui/buttons/icons/boostshard-dark.svg', import.meta.url).href,
   light: new URL('../../assets/images/game/ui/buttons/icons/boostshard-light.svg', import.meta.url).href
 } as const;
-const MAGNET_RADIUS_URL = new URL('../../assets/images/game/sprites/effects/magnet-radius.svg', import.meta.url).href;
-const GRAP_RADIUS_URL = new URL('../../assets/images/game/sprites/effects/grappling-hook-radius.svg', import.meta.url).href;
 const RARITY_COLORS: Record<RogueliteRarity, string> = {
   common: '#F2DDB8',
   uncommon: '#75AF80',
@@ -532,26 +531,6 @@ export class GameSessionController {
     });
   }
 
-  private createRangeIndicator(textureUrl: string, opacity: number) {
-    const texture = new THREE.TextureLoader().load(textureUrl);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(1, 1),
-      new THREE.MeshBasicMaterial({
-        map: texture,
-        color: '#ffffff',
-        transparent: true,
-        opacity,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-        depthTest: false
-      })
-    );
-    mesh.visible = false;
-    mesh.renderOrder = 28;
-    return mesh;
-  }
-
   private createSimpleRangeIndicator(color: string, opacity: number) {
     const mesh = new THREE.Mesh(
       new THREE.CircleGeometry(0.5, 40),
@@ -616,15 +595,13 @@ export class GameSessionController {
   }
 
   private createUiHudImage(url: string) {
-    const image = new Image();
-    image.decoding = 'async';
-    image.src = url;
-    return image;
+    return getSharedImageAsset(url, { decoding: 'async' });
   }
 
   private createBillboardPlane(textureUrl: string, width: number, height: number, renderOrder: number) {
-    const texture = new THREE.TextureLoader().load(textureUrl);
-    texture.colorSpace = THREE.SRGBColorSpace;
+    const texture = getSharedTextureAsset(textureUrl, {
+      colorSpace: THREE.SRGBColorSpace
+    });
     const mesh = new THREE.Mesh(
       new THREE.PlaneGeometry(width, height),
       new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false })
@@ -1688,7 +1665,7 @@ export class GameSessionController {
     this.path.ensureAhead(this.attachedIndex, 78, 72);
     this.tickModuleRuntime(simulationDelta);
     this.updateMomentum(simulationDelta);
-    this.stats.updateMomentumWindow(this.currentTime, !shopLocked && this.state !== 'game_over' && this.momentum.gauge > 0.08);
+    this.stats.updateMomentumWindow(this.currentTime, !shopLocked && this.momentum.gauge > 0.08);
     this.prewarmUpcomingMilestones();
 
     let currentNode = this.getResolvedNode(this.attachedIndex);
@@ -2122,13 +2099,6 @@ export class GameSessionController {
         this.displayNextIndex += 1;
       }
     }
-  }
-
-  private rebuildDisplayWindowAroundCurrent() {
-    const count = Math.max(this.displayWindowIndices.length || 0, this.getRecommendedVisibleCount());
-    this.path.ensureAhead(this.attachedIndex + count + 12, 78, 72);
-    this.displayWindowIndices = Array.from({ length: count }, (_, offset) => this.attachedIndex + offset);
-    this.displayNextIndex = this.attachedIndex + count;
   }
 
   private reconcileDisplayWindowAfterPathChange() {
@@ -4705,11 +4675,11 @@ export class GameSessionController {
     if (cached) {
       return cached;
     }
-    const image = new Image();
-    image.src = src;
-    image.onload = () => {
-      this.rewardBillboardSignature = '';
-    };
+    const image = getSharedImageAsset(src, {
+      onLoad: () => {
+        this.rewardBillboardSignature = '';
+      }
+    });
     this.rewardImageCache.set(src, image);
     return image;
   }

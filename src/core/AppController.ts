@@ -1404,10 +1404,6 @@ export class AppController {
     return (this.seenFacetsByProject.get(projectId)?.size ?? 0) >= 3;
   }
 
-  private isMobileDeviceLike() {
-    return isMobileRuntime();
-  }
-
   private isMiniGameOrientationBlocked() {
     const isGameMode = this.mode.is('game_transition') || this.mode.is('game') || this.mode.is('game_over');
     return isGameMode && getRuntimeDeviceState().isMobilePortrait;

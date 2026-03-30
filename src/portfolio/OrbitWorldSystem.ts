@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getSharedTextureAsset } from '../core/browserAssetCache';
 import { isMobilePortraitRuntime, isMobileRuntime } from '../core/device';
 import { damp, wrapIndex } from '../core/math';
 import type { AppMode } from '../core/ModeController';
@@ -89,7 +90,6 @@ const MINI_IDLE_FRAGMENT_OFFSETS = [
 ] as const;
 export class OrbitWorldSystem {
   private readonly root = new THREE.Group();
-  private readonly loader = new THREE.TextureLoader();
   private readonly raycaster = new THREE.Raycaster();
   private readonly dragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
   private readonly interactionPlanePoint = new THREE.Vector3();
@@ -1620,8 +1620,11 @@ export class OrbitWorldSystem {
     }
     let texture: THREE.Texture;
     if (iconSrc) {
-      texture = this.loader.load(iconSrc);
-      texture.colorSpace = THREE.SRGBColorSpace;
+      texture = getSharedTextureAsset(iconSrc, {
+        colorSpace: THREE.SRGBColorSpace,
+        wrapS: THREE.ClampToEdgeWrapping,
+        wrapT: THREE.ClampToEdgeWrapping
+      });
     } else {
       const canvas = document.createElement('canvas');
       canvas.width = 256;
@@ -1692,49 +1695,49 @@ export class OrbitWorldSystem {
     const texturePath = this.theme === 'dark' ? entity.project.logo.dark : entity.project.logo.light;
     const planeSize = 1.7 * entity.project.logo.scale;
     const angles = [0, Math.PI * (2 / 3), Math.PI * (4 / 3)];
+    const texture = getSharedTextureAsset(texturePath, {
+      colorSpace: THREE.SRGBColorSpace,
+      anisotropy: 4
+    });
 
-    this.loader.load(texturePath, (texture) => {
-      texture.colorSpace = THREE.SRGBColorSpace;
-      texture.anisotropy = 4;
+    angles.forEach((angle) => {
+      const geometry = new THREE.PlaneGeometry(planeSize, planeSize, 12, 12);
+      const positions = geometry.attributes.position;
 
-      angles.forEach((angle) => {
-        const geometry = new THREE.PlaneGeometry(planeSize, planeSize, 12, 12);
-        const positions = geometry.attributes.position;
+      for (let index = 0; index < positions.count; index += 1) {
+        const px = positions.getX(index);
+        const py = positions.getY(index);
+        const distance = Math.sqrt(px * px + py * py) / (planeSize * 0.7);
+        positions.setZ(index, Math.sin(distance * Math.PI * 0.5) * 0.22);
+      }
+      geometry.computeVertexNormals();
 
-        for (let index = 0; index < positions.count; index += 1) {
-          const px = positions.getX(index);
-          const py = positions.getY(index);
-          const distance = Math.sqrt(px * px + py * py) / (planeSize * 0.7);
-          positions.setZ(index, Math.sin(distance * Math.PI * 0.5) * 0.22);
-        }
-        geometry.computeVertexNormals();
-
-        const material = new THREE.MeshBasicMaterial({
-          map: texture,
-          transparent: true,
-          opacity: entity.project.logo.opacity,
-          side: THREE.DoubleSide,
-          depthWrite: false
-        });
-
-        const plane = new THREE.Mesh(geometry, material);
-        plane.position.set(Math.sin(angle) * 1.48, 0, Math.cos(angle) * 1.48);
-        plane.lookAt(0, 0, 0);
-        plane.userData.shardId = entity.project.id;
-        entity.group.add(plane);
-        entity.logoPlanes.push(plane);
+      const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        opacity: entity.project.logo.opacity,
+        side: THREE.DoubleSide,
+        depthWrite: false
       });
+
+      const plane = new THREE.Mesh(geometry, material);
+      plane.position.set(Math.sin(angle) * 1.48, 0, Math.cos(angle) * 1.48);
+      plane.lookAt(0, 0, 0);
+      plane.userData.shardId = entity.project.id;
+      entity.group.add(plane);
+      entity.logoPlanes.push(plane);
     });
   }
 
   private updateLogoTexture(entity: ShardEntity) {
     const texturePath = this.theme === 'dark' ? entity.project.logo.dark : entity.project.logo.light;
-    this.loader.load(texturePath, (texture) => {
-      texture.colorSpace = THREE.SRGBColorSpace;
-      entity.logoPlanes.forEach((plane) => {
-        plane.material.map = texture;
-        plane.material.needsUpdate = true;
-      });
+    const texture = getSharedTextureAsset(texturePath, {
+      colorSpace: THREE.SRGBColorSpace,
+      anisotropy: 4
+    });
+    entity.logoPlanes.forEach((plane) => {
+      plane.material.map = texture;
+      plane.material.needsUpdate = true;
     });
   }
 
@@ -1742,12 +1745,12 @@ export class OrbitWorldSystem {
     const texturePath = DEFAULT_MINI_LOGO_TEXTURE;
     if (entity.logoKey !== texturePath) {
       entity.logoKey = texturePath;
-      this.loader.load(texturePath, (texture) => {
-        texture.colorSpace = THREE.SRGBColorSpace;
-        entity.logoPlanes.forEach((plane) => {
-          plane.material.map = texture;
-          plane.material.needsUpdate = true;
-        });
+      const texture = getSharedTextureAsset(texturePath, {
+        colorSpace: THREE.SRGBColorSpace
+      });
+      entity.logoPlanes.forEach((plane) => {
+        plane.material.map = texture;
+        plane.material.needsUpdate = true;
       });
     }
 
