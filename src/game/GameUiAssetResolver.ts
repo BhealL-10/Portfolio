@@ -66,6 +66,19 @@ export const HELP_ICON_ASSETS = {
   light: new URL('../../assets/images/game/ui/buttons/icons/help-light.svg', import.meta.url).href
 } as const;
 
+export const ACHIEVEMENT_ICON_ASSETS = {
+  dark: new URL('../../assets/images/game/ui/buttons/icons/achievement-dark.svg', import.meta.url).href,
+  light: new URL('../../assets/images/game/ui/buttons/icons/achievement-light.svg', import.meta.url).href
+} as const;
+
+export const ACHIEVEMENT_RARITY_ICON_ASSETS = {
+  common: new URL('../../assets/images/game/ui/equipment/rarities/common.png', import.meta.url).href,
+  uncommon: new URL('../../assets/images/game/ui/equipment/rarities/uncommon.png', import.meta.url).href,
+  rare: new URL('../../assets/images/game/ui/equipment/rarities/rare.png', import.meta.url).href,
+  epic: new URL('../../assets/images/game/ui/equipment/rarities/epic.png', import.meta.url).href,
+  legendary: new URL('../../assets/images/game/ui/equipment/rarities/legendary.png', import.meta.url).href
+} as const;
+
 export const SHOP_ICON_ASSETS = {
   dark: new URL('../../assets/images/game/ui/buttons/icons/shop-dark.svg', import.meta.url).href,
   light: new URL('../../assets/images/game/ui/buttons/icons/shop-light.svg', import.meta.url).href

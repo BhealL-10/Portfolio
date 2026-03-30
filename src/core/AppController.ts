@@ -37,6 +37,7 @@ const ACCENT_COLOR_HOLD_SECONDS = 10;
 const ACCENT_COLOR_BLEND_SECONDS = 1;
 const PORTFOLIO_TO_GAME_ROTATE_PHASE_END = 0.08;
 const PORTFOLIO_TO_GAME_HOLD_PHASE_END = 0.16;
+const PORTFOLIO_TO_GAME_SHARD_DRIFT_START = 0.04;
 const primaterie_TO_GAME_CINEMATIC_FOCUS_END = 0.12;
 const primaterie_TO_GAME_CINEMATIC_HOLD_END = 0.28;
 
@@ -649,6 +650,10 @@ export class AppController {
     if (this.mode.is('game') || this.mode.is('game_over')) {
       if (event.key === 'Escape') {
         event.preventDefault();
+        if (this.gameHud.consumeEscapeOverlay()) {
+          this.refreshUI();
+          return;
+        }
         this.exitGame();
         return;
       }
@@ -1708,13 +1713,13 @@ export class AppController {
   }
 
   private getPortfolioToGameShardTransitionProgress(progress: number) {
-    if (progress <= PORTFOLIO_TO_GAME_HOLD_PHASE_END) {
+    if (progress <= PORTFOLIO_TO_GAME_SHARD_DRIFT_START) {
       return 0;
     }
 
     return THREE.MathUtils.smoothstep(
       THREE.MathUtils.clamp(
-        (progress - PORTFOLIO_TO_GAME_HOLD_PHASE_END) / Math.max(0.0001, 1 - PORTFOLIO_TO_GAME_HOLD_PHASE_END),
+        (progress - PORTFOLIO_TO_GAME_SHARD_DRIFT_START) / Math.max(0.0001, 1 - PORTFOLIO_TO_GAME_SHARD_DRIFT_START),
         0,
         1
       ),

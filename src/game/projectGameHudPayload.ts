@@ -67,6 +67,8 @@ export function projectGameHudPayload(
         })()
       : null,
     acquisition: hudState.acquisition,
+    achievementToasts: hudState.achievementToasts,
+    achievements: hudState.achievements,
     gameOverCause: hudState.gameOverCause
   } as const;
 }

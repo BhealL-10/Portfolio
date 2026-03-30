@@ -3,12 +3,22 @@ import { getItemById, rarityLabels, rogueliteItems } from './roguelite';
 import { preloadImageAsset } from '../core/browserAssetCache';
 import { I18nService } from '../ui/I18nService';
 import type { AcquisitionFeedback, GameOverCause, GamePlayerMotionState, LandingGrade } from './gameSessionTypes';
+import {
+  createEmptyAchievementPanelSnapshot,
+  type AchievementEntrySnapshot,
+  type AchievementPanelSnapshot,
+  type AchievementRarity,
+  type AchievementRewardSnapshot,
+  type AchievementToastSnapshot
+} from './achievements/AchievementTypes';
 import { LandingGradeDisplay } from './LandingGradeDisplay';
 import { GRADE_SPRITE_ASSET_URLS } from './GradeSpriteResolver';
 import { MobileControlsHud } from './MobileControlsHud';
 import { MOBILE_CHARGE_ASSETS, MOBILE_CONTROL_ASSETS } from './MobileControlLayoutResolver';
 import { RewardBranchLabelLayoutResolver } from './RewardBranchLabelLayoutResolver';
 import {
+  ACHIEVEMENT_ICON_ASSETS,
+  ACHIEVEMENT_RARITY_ICON_ASSETS,
   FULLSCREEN_BUTTON_ASSETS,
   getUIButtonAsset,
   HELP_ICON_ASSETS,
@@ -70,6 +80,8 @@ const ALWAYS_FULL_SLOTS = new Set(['plane', 'magnet']);
 const COOLDOWN_RING_SLOTS = new Set(['shield', 'wrapper', 'big_canon', 'front_canon', 'grappin']);
 
 type GameHUDState = 'transition' | 'running' | 'upgrade_choice' | 'game_over';
+type AchievementFilterValue = 'all' | AchievementRarity;
+type AchievementSortMode = 'rarity' | 'unlocked' | 'locked';
 
 type BrowserFullscreenDocument = Document & {
   webkitFullscreenElement?: Element | null;
@@ -164,6 +176,8 @@ interface GameHUDPayload {
     screenY: number;
   } | null;
   acquisition: AcquisitionFeedback | null;
+  achievementToasts: AchievementToastSnapshot[];
+  achievements: AchievementPanelSnapshot;
   gameOverCause: GameOverCause;
   runSummary: {
     score: number;
@@ -322,10 +336,14 @@ export class GameHUDSystem {
   private shopButtons: HTMLButtonElement[];
   private shopCloseButton: HTMLButtonElement;
   private landingFeedbackDisplay: LandingGradeDisplay;
-  private toast: HTMLDivElement;
-  private toastLabel: HTMLSpanElement;
-  private toastName: HTMLElement;
-  private toastIcon: HTMLImageElement;
+  private toastStack: HTMLDivElement;
+  private achievementsOverlay: HTMLDivElement;
+  private achievementsTitle: HTMLHeadingElement;
+  private achievementsBody: HTMLParagraphElement;
+  private achievementsSummary: HTMLDivElement;
+  private achievementsControls: HTMLDivElement;
+  private achievementsScroll: HTMLDivElement;
+  private achievementsCloseButton: HTMLButtonElement;
   private gameOverOverlay: HTMLDivElement;
   private gameOverHeaderOverlay: HTMLDivElement;
   private gameOverHeaderImage: HTMLImageElement;
@@ -333,6 +351,7 @@ export class GameHUDSystem {
   private gameOverBody: HTMLParagraphElement;
   private gameOverStats: HTMLDivElement;
   private gameOverEquipment: HTMLDivElement;
+  private gameOverAchievements: HTMLDivElement;
   private gameOverLeftColumn: HTMLDivElement;
   private leaderboardPanel: HTMLDivElement;
   private leaderboardList: HTMLDivElement;
@@ -348,6 +367,7 @@ export class GameHUDSystem {
   private avatarEditorPreview: HTMLDivElement;
   private avatarEditorLayers: HTMLDivElement;
   private avatarEditorSaveButton: HTMLButtonElement;
+  private avatarEditorCloseButton: HTMLButtonElement;
   private helpOverlay: HTMLDivElement;
   private helpStage: HTMLDivElement;
   private helpTrack: HTMLDivElement;
@@ -358,6 +378,7 @@ export class GameHUDSystem {
   private gameOverRule: HTMLDivElement;
   private gameOverRuleImage: HTMLImageElement;
   private topRightCluster: TopRightUiCluster;
+  private achievementsButton: HTMLButtonElement;
   private mobileControls: MobileControlsHud;
   private currentGameOverSignature = '';
   private currentGameOverRevealSignature = '';
@@ -397,6 +418,12 @@ export class GameHUDSystem {
   private leaderboardLoaded = false;
   private leaderboardLoadPromise: Promise<void> | null = null;
   private deferredAssetsModulePromise: Promise<typeof import('./GameHudDeferredAssets')> | null = null;
+  private achievementsOpen = false;
+  private currentAchievements = createEmptyAchievementPanelSnapshot();
+  private renderedAchievementsSerial = -1;
+  private achievementFilter: AchievementFilterValue = 'all';
+  private achievementSortMode: AchievementSortMode = 'rarity';
+  private achievementSortMenuOpen = false;
 
   constructor(host: HTMLElement, private readonly i18n: I18nService, private readonly callbacks: GameHUDCallbacks) {
     this.element = document.createElement('div');
@@ -486,11 +513,7 @@ export class GameHUDSystem {
         <button type="button" data-shop-offer="2"></button>
         <button type="button" data-shop-close></button>
       </div>
-      <div class="game-hud__toast">
-        <img data-toast-icon alt="" class="game-hud__toast-icon" />
-        <span data-toast-label></span>
-        <strong data-toast-name></strong>
-      </div>
+      <div class="game-hud__toast-stack" data-toast-stack></div>
       <div class="game-hud__mobile-controls-anchor"></div>
       <div class="game-hud__help" hidden>
         <div class="game-hud__help-stage" data-help-stage>
@@ -503,7 +526,26 @@ export class GameHUDSystem {
           <button type="button" class="game-hud__help-close" data-help-close aria-label="Close help"></button>
         </div>
       </div>
+      <div class="game-hud__achievements" hidden>
+        <div class="game-hud__achievements-shell">
+          <div class="game-hud__achievements-panel">
+            <button type="button" class="game-hud__achievements-close" data-achievements-close aria-label="Close achievements"></button>
+            <div class="game-hud__achievements-content">
+              <div class="game-hud__achievements-header">
+                <div class="game-hud__achievements-title-block">
+                  <h2 data-achievements-title></h2>
+                  <p data-achievements-body hidden></p>
+                </div>
+              </div>
+              <div class="game-hud__achievements-summary" data-achievements-summary></div>
+              <div class="game-hud__achievements-controls" data-achievements-controls></div>
+              <div class="game-hud__achievements-scroll" data-achievements-scroll></div>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="game-hud__game-over">
+        <div class="game-hud__game-over-achievements" data-game-over-achievements hidden></div>
         <div class="game-hud__game-over-side game-hud__game-over-side--left" data-game-over-left-column>
           <div class="game-hud__game-over-rule" data-game-over-rule hidden>
             <img data-game-over-rule-image alt="" class="game-hud__game-over-rule-image" />
@@ -513,6 +555,7 @@ export class GameHUDSystem {
               <div class="game-hud__avatar-editor-preview" data-avatar-editor-preview></div>
             </div>
             <div class="game-hud__avatar-editor-layers" data-avatar-editor-layers></div>
+            <button type="button" class="game-hud__avatar-editor-close" data-avatar-close></button>
             <button type="button" class="game-hud__avatar-editor-save" data-avatar-save></button>
           </div>
         </div>
@@ -599,10 +642,14 @@ export class GameHUDSystem {
     this.shopBar = this.element.querySelector<HTMLDivElement>('.game-hud__shop-bar')!;
     this.shopButtons = Array.from(this.element.querySelectorAll<HTMLButtonElement>('[data-shop-offer]'));
     this.shopCloseButton = this.element.querySelector<HTMLButtonElement>('[data-shop-close]')!;
-    this.toast = this.element.querySelector<HTMLDivElement>('.game-hud__toast')!;
-    this.toastIcon = this.element.querySelector<HTMLImageElement>('[data-toast-icon]')!;
-    this.toastLabel = this.element.querySelector<HTMLSpanElement>('[data-toast-label]')!;
-    this.toastName = this.element.querySelector<HTMLElement>('[data-toast-name]')!;
+    this.toastStack = this.element.querySelector<HTMLDivElement>('[data-toast-stack]')!;
+    this.achievementsOverlay = this.element.querySelector<HTMLDivElement>('.game-hud__achievements')!;
+    this.achievementsTitle = this.element.querySelector<HTMLHeadingElement>('[data-achievements-title]')!;
+    this.achievementsBody = this.element.querySelector<HTMLParagraphElement>('[data-achievements-body]')!;
+    this.achievementsSummary = this.element.querySelector<HTMLDivElement>('[data-achievements-summary]')!;
+    this.achievementsControls = this.element.querySelector<HTMLDivElement>('[data-achievements-controls]')!;
+    this.achievementsScroll = this.element.querySelector<HTMLDivElement>('[data-achievements-scroll]')!;
+    this.achievementsCloseButton = this.element.querySelector<HTMLButtonElement>('[data-achievements-close]')!;
     this.gameOverOverlay = this.element.querySelector<HTMLDivElement>('.game-hud__game-over')!;
     this.gameOverHeaderOverlay = this.element.querySelector<HTMLDivElement>('[data-game-over-header-overlay]')!;
     this.gameOverHeaderImage = this.element.querySelector<HTMLImageElement>('[data-game-over-header-image]')!;
@@ -610,6 +657,7 @@ export class GameHUDSystem {
     this.gameOverBody = this.element.querySelector<HTMLParagraphElement>('[data-game-over-body]')!;
     this.gameOverStats = this.element.querySelector<HTMLDivElement>('[data-game-over-stats]')!;
     this.gameOverEquipment = this.element.querySelector<HTMLDivElement>('[data-game-over-gear]')!;
+    this.gameOverAchievements = this.element.querySelector<HTMLDivElement>('[data-game-over-achievements]')!;
     this.gameOverLeftColumn = this.element.querySelector<HTMLDivElement>('[data-game-over-left-column]')!;
     this.helpOverlay = this.element.querySelector<HTMLDivElement>('.game-hud__help')!;
     this.helpStage = this.element.querySelector<HTMLDivElement>('[data-help-stage]')!;
@@ -633,6 +681,7 @@ export class GameHUDSystem {
     this.avatarEditorStage = this.element.querySelector<HTMLDivElement>('.game-hud__avatar-editor-stage')!;
     this.avatarEditorPreview = this.element.querySelector<HTMLDivElement>('[data-avatar-editor-preview]')!;
     this.avatarEditorLayers = this.element.querySelector<HTMLDivElement>('[data-avatar-editor-layers]')!;
+    this.avatarEditorCloseButton = this.element.querySelector<HTMLButtonElement>('[data-avatar-close]')!;
     this.avatarEditorSaveButton = this.element.querySelector<HTMLButtonElement>('[data-avatar-save]')!;
     this.landingFeedbackDisplay = new LandingGradeDisplay();
     this.element.appendChild(this.landingFeedbackDisplay.element);
@@ -643,8 +692,16 @@ export class GameHUDSystem {
       this.panel,
       this.i18n.current === 'fr' ? 'Paramètres du jeu' : 'Game settings'
     );
+    this.achievementsButton = document.createElement('button');
+    this.achievementsButton.type = 'button';
+    this.achievementsButton.className = 'game-hud__settings-toggle game-hud__settings-toggle--achievement';
+    this.topRightCluster.element.insertBefore(this.achievementsButton, this.topRightCluster.settingsButton.element);
     this.topRightCluster.settingsButton.element.addEventListener('click', () => {
+      this.closeAchievements();
       this.topRightCluster.toggle();
+    });
+    this.achievementsButton.addEventListener('click', () => {
+      this.toggleAchievements();
     });
     this.mobileControls = new MobileControlsHud(
       this.element.querySelector<HTMLDivElement>('.game-hud__mobile-controls-anchor')!,
@@ -694,6 +751,7 @@ export class GameHUDSystem {
     });
     this.shopCloseButton.addEventListener('click', callbacks.onCloseShop);
     this.settingsHelpButton.addEventListener('click', () => {
+      this.closeAchievements();
       this.openHelp(this.i18n.current);
     });
     this.settingsThemeButton.addEventListener('click', callbacks.onThemeToggle);
@@ -745,9 +803,56 @@ export class GameHUDSystem {
     this.helpPrevButton.addEventListener('click', () => this.setHelpPage(this.helpPageIndex - 1));
     this.helpNextButton.addEventListener('click', () => this.setHelpPage(this.helpPageIndex + 1));
     this.helpCloseButton.addEventListener('click', () => this.closeHelp());
+    this.avatarEditorCloseButton.addEventListener('click', () => {
+      this.avatarEditorOpen = false;
+      this.renderAvatarEditor();
+      this.renderGameOverMode(null);
+    });
     this.helpOverlay.addEventListener('click', (event) => {
       if (event.target === this.helpOverlay) {
         this.closeHelp();
+      }
+    });
+    this.achievementsCloseButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeAchievements();
+    });
+    this.achievementsOverlay.addEventListener('click', (event) => {
+      const sortToggleButton = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-achievement-sort-toggle]');
+      if (sortToggleButton) {
+        event.preventDefault();
+        this.achievementSortMenuOpen = !this.achievementSortMenuOpen;
+        this.renderAchievementsContent(this.currentAchievements, true);
+        return;
+      }
+      const sortOptionButton = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-achievement-sort-option]');
+      if (sortOptionButton) {
+        const nextSort = (sortOptionButton.dataset.achievementSortOption as AchievementSortMode | undefined) ?? 'rarity';
+        if (nextSort !== this.achievementSortMode) {
+          this.achievementSortMode = nextSort;
+        }
+        this.achievementSortMenuOpen = false;
+        this.renderAchievementsContent(this.currentAchievements, true);
+        return;
+      }
+      const filterButton = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-achievement-filter]');
+      if (filterButton) {
+        const nextFilter = (filterButton.dataset.achievementFilter as AchievementFilterValue | undefined) ?? 'all';
+        if (nextFilter !== this.achievementFilter) {
+          this.achievementFilter = nextFilter;
+        }
+        this.achievementSortMenuOpen = false;
+        this.renderAchievementsContent(this.currentAchievements, true);
+        return;
+      }
+      if (event.target === this.achievementsOverlay) {
+        this.closeAchievements();
+        return;
+      }
+      if (this.achievementSortMenuOpen) {
+        this.achievementSortMenuOpen = false;
+        this.renderAchievementsContent(this.currentAchievements, true);
       }
     });
     this.helpStage.addEventListener('pointerdown', (event) => {
@@ -772,10 +877,13 @@ export class GameHUDSystem {
       this.helpPointerStartX = null;
     });
     this.stopObservingTheme = observeThemeChanges(() => {
+      this.renderAchievementsButton();
       this.renderSettingsButtons();
       this.renderAudioControls();
       this.renderGameOverButtons();
       this.renderAvatarEditor();
+      this.renderAchievementsContent(this.currentAchievements, true);
+      this.renderGameOverAchievementStrip(this.currentAchievements, this.currentRunSummary !== null, true);
       if (this.currentRunSummary) {
         this.currentGameOverSignature = '';
         this.currentGameOverRuleSrc = '';
@@ -810,6 +918,7 @@ export class GameHUDSystem {
     document.body.classList.toggle('game-runtime-ui-active', visible);
     if (!visible) {
       this.closeHelp();
+      this.closeAchievements();
       this.topRightCluster.toggle(false);
       this.landingFeedbackDisplay.clear();
       this.clearScoreFeed();
@@ -819,17 +928,22 @@ export class GameHUDSystem {
       this.branchLayer.hidden = true;
       this.shopBar.hidden = true;
       this.gameOverOverlay.hidden = true;
-      this.toast.hidden = true;
+      this.toastStack.hidden = true;
+      this.toastStack.innerHTML = '';
+      this.achievementsOverlay.hidden = true;
+      this.gameOverAchievements.hidden = true;
       this.branchLayer.inert = true;
       this.shopBar.inert = true;
       this.gameOverOverlay.inert = true;
-      this.toast.inert = true;
+      this.toastStack.inert = true;
+      this.achievementsOverlay.inert = true;
     } else {
       this.ensureUiAssetsPreloaded();
       this.branchLayer.inert = false;
       this.shopBar.inert = false;
       this.gameOverOverlay.inert = false;
-      this.toast.inert = false;
+      this.toastStack.inert = false;
+      this.achievementsOverlay.inert = !this.achievementsOpen;
     }
   }
 
@@ -895,8 +1009,8 @@ export class GameHUDSystem {
       .then((sets) => {
         this.avatarLayerSets = sets;
         this.avatarAssetsLoaded = true;
-        this.playerAvatarSelection = this.normalizeAvatarSelection(this.playerAvatarSelection);
-        this.draftAvatarSelection = this.normalizeAvatarSelection(this.draftAvatarSelection);
+        this.playerAvatarSelection = this.normalizeAvatarSelection(this.playerAvatarSelection, '', true);
+        this.draftAvatarSelection = this.normalizeAvatarSelection(this.draftAvatarSelection, '', true);
         if (this.currentRunSummary) {
           this.renderLeaderboard();
         }
@@ -938,6 +1052,7 @@ export class GameHUDSystem {
   }
 
   update(payload: GameHUDPayload) {
+    this.currentAchievements = payload.achievements;
     const previousMetrics = this.previousRunStripMetrics;
     this.scoreValue.textContent = String(payload.score);
     this.highscoreValue.textContent = String(payload.highscore);
@@ -998,17 +1113,24 @@ export class GameHUDSystem {
     this.metaValue.textContent = this.renderMeta(payload);
     const shopHints = payload.branchHints.filter((hint) => hint.mode === 'shop_orbit');
     const showingShop = shopHints.length > 0;
+    const gameplayHudActive = payload.state === 'running' || payload.state === 'upgrade_choice';
+    const achievementsHudActive = gameplayHudActive || payload.state === 'game_over';
+    const toastHudActive = gameplayHudActive || payload.state === 'game_over';
+    const toastPayloads = [
+      ...payload.achievementToasts.map((value) => ({ kind: 'achievement' as const, value })),
+      ...(payload.acquisition ? [{ kind: 'acquisition' as const, value: payload.acquisition }] : [])
+    ];
     this.branchTitle.textContent = showingShop ? this.i18n.t('gameShopTitle') : this.i18n.t('gameUpgradeTitle');
     this.branchHint.textContent = showingShop ? this.i18n.t('gameShopHint') : this.i18n.t('gameUpgradeHint');
 
     this.branchLayer.hidden = !(payload.state === 'upgrade_choice' && showingShop);
     this.shopBar.hidden = !(payload.state === 'upgrade_choice' && showingShop);
     this.gameOverOverlay.hidden = payload.state !== 'game_over';
-    this.toast.hidden = !payload.acquisition;
+    this.toastStack.hidden = toastPayloads.length === 0 || !toastHudActive;
     this.branchLayer.inert = !(payload.state === 'upgrade_choice' && showingShop);
     this.shopBar.inert = !(payload.state === 'upgrade_choice' && showingShop);
     this.gameOverOverlay.inert = payload.state !== 'game_over';
-    this.toast.inert = !payload.acquisition;
+    this.toastStack.inert = toastPayloads.length === 0 || !toastHudActive;
     this.stashBar.hidden = payload.state === 'upgrade_choice' || payload.state === 'game_over';
     if (payload.state !== 'running' && this.scoreFeed.childElementCount > 0) {
       this.clearScoreFeed();
@@ -1020,7 +1142,12 @@ export class GameHUDSystem {
     this.stashBar.classList.toggle('is-visible', payload.state !== 'upgrade_choice' && payload.state !== 'game_over');
     this.momentumDock.classList.toggle('is-hidden', payload.state === 'upgrade_choice' || payload.state === 'game_over');
     this.gameOverOverlay.classList.toggle('is-visible', payload.state === 'game_over');
-    this.toast.classList.toggle('is-visible', Boolean(payload.acquisition));
+    this.toastStack.classList.toggle('is-visible', toastPayloads.length > 0 && toastHudActive);
+    this.achievementsButton.hidden = !achievementsHudActive;
+    this.achievementsButton.disabled = !achievementsHudActive;
+    if (!achievementsHudActive) {
+      this.closeAchievements();
+    }
     if (
       payload.state === 'running' &&
       !this.helpOpen &&
@@ -1046,23 +1173,7 @@ export class GameHUDSystem {
         });
       }
     }
-    if (payload.acquisition) {
-      this.toast.style.setProperty('--toast-progress', payload.acquisition.progress.toFixed(3));
-      this.toastIcon.src = payload.acquisition.offer.item.hudIconSrc;
-      this.toastIcon.hidden = false;
-      if (payload.acquisition.offer.item.kind === 'passive') {
-        this.toastLabel.hidden = true;
-        this.toastName.hidden = true;
-      } else {
-        this.toastLabel.hidden = false;
-        this.toastName.hidden = false;
-        this.toastName.textContent = payload.acquisition.offer.item.name[this.i18n.current];
-      }
-    } else {
-      this.toastIcon.hidden = true;
-      this.toastLabel.hidden = false;
-      this.toastName.hidden = false;
-    }
+    this.renderToastStack(toastPayloads, toastHudActive);
     this.renderLandingFeedback(payload.landingFeedback);
     this.mobileControls.update({
       chargeRatio: payload.chargeRatio,
@@ -1082,6 +1193,8 @@ export class GameHUDSystem {
       this.avatarEditorOpen = false;
       this.draftAvatarSelection = { ...this.playerAvatarSelection };
     }
+    this.renderAchievementsContent(payload.achievements);
+    this.renderGameOverAchievementStrip(payload.achievements, payload.state === 'game_over');
     this.renderInventory(payload.inventoryItems);
     this.renderEquipmentDock(payload.inventoryItems);
     this.renderBranchHints(shopHints);
@@ -1103,13 +1216,16 @@ export class GameHUDSystem {
     this.branchTitle.textContent = this.i18n.t('gameUpgradeTitle');
     this.branchHint.textContent = this.i18n.t('gameUpgradeHint');
     this.shopCloseButton.textContent = this.i18n.t('gameShopClose');
+    this.achievementsTitle.textContent = this.i18n.t('gameAchievementsTitle');
+    this.achievementsBody.textContent = '';
+    this.achievementsBody.hidden = true;
     this.settingsThemeButton.textContent = this.i18n.t('theme');
     this.settingsLanguageButton.textContent = this.i18n.t('language');
     this.topRightCluster.settingsButton.element.setAttribute(
       'aria-label',
       this.i18n.current === 'fr' ? 'Paramètres du jeu' : 'Game settings'
     );
-    this.toastLabel.textContent = this.i18n.t('gameAcquired');
+    this.renderAchievementsButton();
     this.gameOverTitle.textContent = this.i18n.t('gameOverTitle');
     this.gameOverBody.textContent = this.i18n.t('gameOverBody');
     this.helpPrevButton.setAttribute('aria-label', this.i18n.current === 'fr' ? 'Page précédente' : 'Previous page');
@@ -1155,11 +1271,20 @@ export class GameHUDSystem {
       'game-hud__avatar-editor-save-button',
       SAVE_BUTTON_ASSETS[theme]
     );
+    this.applySvgButton(
+      this.avatarEditorCloseButton,
+      SECONDARY_NAV_ASSETS.close[theme],
+      this.i18n.current === 'fr' ? "Fermer l'avatar" : 'Close avatar',
+      'game-hud__avatar-editor-close',
+      SECONDARY_NAV_ASSETS.close[hoverTheme]
+    );
     this.bestDistanceLabel.textContent = this.i18n.t('gameBestDistance');
     this.walletIcon.title = this.i18n.t('gameCoins');
     this.renderSettingsButtons();
     this.renderAudioControls();
     this.renderAvatarEditor();
+    this.renderAchievementsContent(this.currentAchievements, true);
+    this.renderGameOverAchievementStrip(this.currentAchievements, this.currentRunSummary !== null, true);
     if (this.currentRunSummary) {
       this.currentGameOverSignature = '';
       this.currentGameOverRuleSrc = '';
@@ -1167,6 +1292,45 @@ export class GameHUDSystem {
     } else {
       this.renderLeaderboard();
     }
+  }
+
+  private renderToastStack(
+    toasts: Array<
+      | { kind: 'achievement'; value: AchievementToastSnapshot }
+      | { kind: 'acquisition'; value: AcquisitionFeedback }
+    >,
+    gameplayHudActive: boolean
+  ) {
+    if (!gameplayHudActive || toasts.length === 0) {
+      this.toastStack.innerHTML = '';
+      return;
+    }
+
+    this.toastStack.innerHTML = toasts
+      .map((toast) => {
+        if (toast.kind === 'achievement') {
+          return `
+            <div class="game-hud__toast is-visible" data-kind="achievement" data-rarity="${toast.value.rarity}" style="--toast-progress:${toast.value.progress.toFixed(3)}">
+              <strong>${toast.value.name}</strong>
+            </div>
+          `;
+        }
+
+        const showCopy = toast.value.offer.item.kind !== 'passive';
+        const label = showCopy ? this.i18n.t('gameAcquired') : '';
+        const name = showCopy ? toast.value.offer.item.name[this.i18n.current] : '';
+        const meta =
+          toast.value.subtitle ??
+          `${this.getRarityEmoji(toast.value.offer.item.rarity)} ${this.getRarityLabel(toast.value.offer.item.rarity)}`;
+        return `
+          <div class="game-hud__toast is-visible" data-kind="acquisition" data-rarity="${toast.value.offer.item.rarity}" style="--toast-progress:${toast.value.progress.toFixed(3)}">
+            <img src="${toast.value.offer.item.hudIconSrc}" alt="" class="game-hud__toast-icon" />
+            ${showCopy ? `<span>${label}</span><strong>${name}</strong>` : ''}
+            <em>${meta}</em>
+          </div>
+        `;
+      })
+      .join('');
   }
 
   private renderBranchHints(
@@ -1524,6 +1688,7 @@ export class GameHUDSystem {
       }
     }
     if (isNewRun) {
+      this.avatarEditorOpen = false;
       this.currentGameOverRevealSignature = revealSignature;
       this.scheduleGameOverRevealSounds(summary);
     }
@@ -1589,6 +1754,7 @@ export class GameHUDSystem {
     this.gameOverBody.textContent = '';
     this.gameOverTitle.hidden = true;
     this.gameOverBody.hidden = true;
+    this.renderGameOverAchievementStrip(this.currentAchievements, !this.gameOverOverlay.hidden, true);
     this.renderGameOverButtons();
   }
 
@@ -1701,6 +1867,334 @@ export class GameHUDSystem {
     this.settingsVolumeMeter.style.setProperty('--sound-ui-sprite', `url('${SOUND_BUTTON_ASSETS.sprite}')`);
     this.settingsVolumeMeterFill.style.setProperty('--sound-ui-sprite', `url('${SOUND_BUTTON_ASSETS.sprite}')`);
     this.settingsVolumeMeter.classList.toggle('is-muted', this.audioMuted);
+  }
+
+  private renderAchievementsButton() {
+    const theme = resolveDocumentTheme();
+    this.achievementsButton.className = `game-hud__settings-toggle game-hud__settings-toggle--achievement${this.achievementsOpen ? ' is-active' : ''}`;
+    this.achievementsButton.setAttribute('aria-label', this.i18n.t('gameAchievementsOpen'));
+    this.achievementsButton.setAttribute('aria-pressed', this.achievementsOpen ? 'true' : 'false');
+    this.achievementsButton.innerHTML = `<img class="game-hud__settings-toggle-icon" src="${ACHIEVEMENT_ICON_ASSETS[theme]}" alt="" />`;
+  }
+
+  private toggleAchievements(force?: boolean) {
+    const nextOpen = force ?? !this.achievementsOpen;
+    if (nextOpen) {
+      this.openAchievements();
+      return;
+    }
+    this.closeAchievements();
+  }
+
+  private openAchievements() {
+    this.closeHelp();
+    this.topRightCluster.toggle(false);
+    this.achievementSortMenuOpen = false;
+    this.achievementsOpen = true;
+    this.achievementsOverlay.hidden = false;
+    this.achievementsOverlay.classList.add('is-visible');
+    this.achievementsOverlay.inert = false;
+    this.achievementsOverlay.setAttribute('aria-hidden', 'false');
+    void this.ensureAvatarAssetsLoaded().then(() => this.renderAchievementsContent(this.currentAchievements, true));
+    this.renderAchievementsButton();
+  }
+
+  private closeAchievements() {
+    this.achievementSortMenuOpen = false;
+    this.achievementsOpen = false;
+    this.achievementsOverlay.hidden = true;
+    this.achievementsOverlay.classList.remove('is-visible');
+    this.achievementsOverlay.inert = true;
+    this.achievementsOverlay.setAttribute('aria-hidden', 'true');
+    this.renderAchievementsButton();
+  }
+
+  private renderAchievementsContent(snapshot: AchievementPanelSnapshot, force = false) {
+    const theme = resolveDocumentTheme();
+    const hoverTheme = theme === 'dark' ? 'light' : 'dark';
+    this.applySvgButton(
+      this.achievementsCloseButton,
+      SECONDARY_NAV_ASSETS.close[theme],
+      this.i18n.t('gameAchievementsClose'),
+      'game-hud__achievements-close',
+      SECONDARY_NAV_ASSETS.close[hoverTheme]
+    );
+    if (!force && snapshot.serial === this.renderedAchievementsSerial) {
+      return;
+    }
+
+    const completionRatio = snapshot.summary.totalCount > 0 ? snapshot.summary.unlockedCount / snapshot.summary.totalCount : 0;
+    this.achievementsSummary.innerHTML = [
+      { label: this.i18n.t('gameAchievementsUnlocked'), value: `${snapshot.summary.unlockedCount} / ${snapshot.summary.totalCount}` },
+      { label: this.i18n.t('gameAchievementsRewards'), value: `${snapshot.summary.rewardsUnlocked}` },
+      { label: this.i18n.t('gameAchievementsHidden'), value: `${snapshot.summary.hiddenRemaining}` },
+      { label: this.i18n.t('gameAchievementsProgress'), value: `${Math.round(completionRatio * 100)}%` }
+    ]
+      .map(
+        (item) => `
+          <div class="game-hud__achievement-summary-stat">
+            <span class="game-hud__achievement-summary-label">${item.label}</span>
+            <div class="game-hud__achievement-summary-pill">
+              <strong>${item.value}</strong>
+            </div>
+          </div>
+        `
+      )
+      .join('');
+    this.renderAchievementsControls();
+
+    const visibleEntries = this.getVisibleAchievementEntries(snapshot.entries);
+    if (visibleEntries.length === 0) {
+      this.achievementsScroll.innerHTML = `<div class="game-hud__achievements-empty">${this.i18n.t('gameAchievementsNoMatches')}</div>`;
+      this.renderedAchievementsSerial = snapshot.serial;
+      return;
+    }
+
+    this.achievementsScroll.innerHTML = `
+      <section class="game-hud__achievement-section">
+        ${visibleEntries.map((entry) => this.renderAchievementCard(entry)).join('')}
+      </section>
+    `;
+    this.renderedAchievementsSerial = snapshot.serial;
+  }
+
+  private renderAchievementsControls() {
+    const filterOptions: Array<{ value: AchievementFilterValue; label: string; icon?: string }> = [
+      { value: 'all', label: this.i18n.t('gameAchievementsAll') },
+      { value: 'common', label: this.getAchievementRarityLabel('common'), icon: ACHIEVEMENT_RARITY_ICON_ASSETS.common },
+      { value: 'uncommon', label: this.getAchievementRarityLabel('uncommon'), icon: ACHIEVEMENT_RARITY_ICON_ASSETS.uncommon },
+      { value: 'rare', label: this.getAchievementRarityLabel('rare'), icon: ACHIEVEMENT_RARITY_ICON_ASSETS.rare },
+      { value: 'epic', label: this.getAchievementRarityLabel('epic'), icon: ACHIEVEMENT_RARITY_ICON_ASSETS.epic },
+      { value: 'legendary', label: this.getAchievementRarityLabel('legendary'), icon: ACHIEVEMENT_RARITY_ICON_ASSETS.legendary }
+    ];
+    const sortOptions: Array<{ value: AchievementSortMode; label: string }> = [
+      { value: 'rarity', label: this.i18n.t('gameAchievementsSortRarity') },
+      { value: 'unlocked', label: this.i18n.t('gameAchievementsUnlocked') },
+      { value: 'locked', label: this.i18n.t('gameAchievementsLocked') }
+    ];
+    const activeSortLabel =
+      sortOptions.find((option) => option.value === this.achievementSortMode)?.label ?? this.i18n.t('gameAchievementsSortRarity');
+    this.achievementsControls.innerHTML = `
+      <div class="game-hud__achievement-sort-shell">
+        <span class="game-hud__achievement-sort-label">${this.i18n.t('gameAchievementsSort')}</span>
+        <button type="button" class="game-hud__achievement-sort-toggle${this.achievementSortMenuOpen ? ' is-open' : ''}" data-achievement-sort-toggle>
+          <span>${activeSortLabel}</span>
+        </button>
+        <div class="game-hud__achievement-sort-menu${this.achievementSortMenuOpen ? ' is-open' : ''}">
+          ${sortOptions
+            .map(
+              (option) => `
+                <button
+                  type="button"
+                  class="game-hud__achievement-sort-option${option.value === this.achievementSortMode ? ' is-active' : ''}"
+                  data-achievement-sort-option="${option.value}"
+                >
+                  ${option.label}
+                </button>
+              `
+            )
+            .join('')}
+        </div>
+      </div>
+      <div class="game-hud__achievement-filter-row">
+        ${filterOptions
+          .map(
+            (option) => `
+              <button
+                type="button"
+                class="game-hud__achievement-filter${this.achievementFilter === option.value ? ' is-active' : ''}"
+                data-achievement-filter="${option.value}"
+              >
+                ${option.icon ? `<img src="${option.icon}" alt="" class="game-hud__achievement-filter-icon" />` : ''}
+                <span>${option.label}</span>
+              </button>
+            `
+          )
+          .join('')}
+      </div>
+    `;
+  }
+
+  private getVisibleAchievementEntries(entries: AchievementEntrySnapshot[]) {
+    const filtered = this.achievementFilter === 'all'
+      ? [...entries]
+      : entries.filter((entry) => entry.rarity === this.achievementFilter);
+    const rarityRank = (rarity: AchievementRarity) => {
+      if (rarity === 'legendary') return 4;
+      if (rarity === 'epic') return 3;
+      if (rarity === 'rare') return 2;
+      if (rarity === 'uncommon') return 1;
+      return 0;
+    };
+    const compareMystery = (left: AchievementEntrySnapshot, right: AchievementEntrySnapshot) => {
+      const mysteryDelta = Number(left.mystery) - Number(right.mystery);
+      if (mysteryDelta !== 0) {
+        return mysteryDelta;
+      }
+      return 0;
+    };
+
+    if (this.achievementSortMode === 'unlocked') {
+      return filtered
+        .filter((entry) => entry.unlocked)
+        .sort(
+          (left, right) =>
+            compareMystery(left, right) ||
+            (right.unlockOrder ?? -1) - (left.unlockOrder ?? -1) ||
+            left.name.localeCompare(right.name, this.i18n.current)
+        );
+    }
+
+    if (this.achievementSortMode === 'locked') {
+      return filtered
+        .filter((entry) => !entry.unlocked)
+        .sort(
+          (left, right) =>
+            compareMystery(left, right) ||
+            rarityRank(right.rarity) - rarityRank(left.rarity) ||
+            left.name.localeCompare(right.name, this.i18n.current)
+        );
+    }
+
+    return filtered.sort(
+      (left, right) =>
+        compareMystery(left, right) ||
+        rarityRank(right.rarity) - rarityRank(left.rarity) ||
+        left.name.localeCompare(right.name, this.i18n.current)
+    );
+  }
+
+  private renderAchievementCard(entry: AchievementPanelSnapshot['entries'][number]) {
+    const progressLabel =
+      entry.target !== null
+        ? `${Math.min(entry.progress, entry.target)} / ${entry.target}`
+        : entry.unlocked
+          ? this.i18n.t('gameAchievementsUnlocked')
+          : this.i18n.t('gameAchievementsLocked');
+    const rarityIcon = ACHIEVEMENT_RARITY_ICON_ASSETS[entry.rarity];
+    const titleLabel = entry.mystery ? '???' : entry.name;
+    const descriptionLabel = entry.mystery ? '???' : entry.description;
+    const asideMarkup = entry.reward
+      ? `<div class="game-hud__achievement-reward">${this.renderAchievementReward(entry.reward, entry.rarity)}</div>`
+      : entry.mystery
+        ? `
+          <div class="game-hud__achievement-reward game-hud__achievement-reward--mystery">
+            <span class="game-hud__achievement-reward-preview game-hud__achievement-reward-preview--mystery" data-rarity="${entry.rarity}">
+              <img src="${HELP_ICON_ASSETS[resolveDocumentTheme()]}" alt="" class="game-hud__achievement-mystery-icon" />
+            </span>
+          </div>
+        `
+        : '';
+
+    return `
+      <article class="game-hud__achievement-card${entry.unlocked ? ' is-unlocked' : ''}${entry.mystery ? ' is-mystery' : ''}${asideMarkup ? ' has-aside' : ''}" data-rarity="${entry.rarity}">
+        <div class="game-hud__achievement-copy">
+          <div class="game-hud__achievement-line game-hud__achievement-line--title">
+            <span class="game-hud__achievement-title-group">
+              <img
+                src="${entry.mystery ? HELP_ICON_ASSETS[resolveDocumentTheme()] : rarityIcon}"
+                alt="${entry.mystery ? this.i18n.t('gameAchievementsMystery') : entry.rarityLabel}"
+                class="game-hud__achievement-rarity-icon"
+              />
+              <strong class="game-hud__achievement-name">${titleLabel}</strong>
+            </span>
+          </div>
+          <p class="game-hud__achievement-line game-hud__achievement-line--objective">${descriptionLabel}</p>
+          <div class="game-hud__achievement-line game-hud__achievement-line--progress">
+            <span>${progressLabel}</span>
+          </div>
+        </div>
+        ${asideMarkup}
+      </article>
+    `;
+  }
+
+  private renderAchievementReward(reward: AchievementRewardSnapshot, rarity: AchievementPanelSnapshot['entries'][number]['rarity']) {
+    const unlockMarkup = reward.unlocks
+      .map((unlock) => {
+        const assetSrc = this.avatarLayerSets[unlock.layer][unlock.index] ?? '';
+        return `
+          <span class="game-hud__achievement-reward-asset" data-layer="${unlock.layer}">
+            <span class="game-hud__achievement-reward-preview" data-rarity="${rarity}">
+              ${assetSrc ? `<img src="${assetSrc}" alt="" class="game-hud__achievement-reward-image" />` : ''}
+            </span>
+          </span>
+        `;
+      })
+      .join('');
+
+    return `
+      <div class="game-hud__achievement-reward-assets">
+        ${unlockMarkup}
+      </div>
+    `;
+  }
+
+  private renderGameOverAchievementStrip(snapshot: AchievementPanelSnapshot, visible: boolean, force = false) {
+    const runUnlocks = snapshot.profile.runUnlockedAchievements.slice(-4);
+    if (!visible || this.avatarEditorOpen || runUnlocks.length === 0) {
+      this.gameOverAchievements.hidden = true;
+      if (force) {
+        this.gameOverAchievements.innerHTML = '';
+      }
+      return;
+    }
+    if (!force && this.gameOverAchievements.dataset.serial === `${snapshot.serial}:${runUnlocks.length}`) {
+      this.gameOverAchievements.hidden = false;
+      return;
+    }
+    this.gameOverAchievements.dataset.serial = `${snapshot.serial}:${runUnlocks.length}`;
+    this.gameOverAchievements.hidden = false;
+    this.gameOverAchievements.innerHTML = runUnlocks
+      .map(
+        (entry) => `
+          <span class="game-hud__game-over-achievement-pill" data-rarity="${entry.rarity}">
+            ${entry.name}
+          </span>
+        `
+      )
+      .join('');
+  }
+
+  private getRarityEmoji(rarity: RogueliteRarity) {
+    if (rarity === 'legendary') return '🟡';
+    if (rarity === 'epic') return '🟣';
+    if (rarity === 'rare') return '🔵';
+    if (rarity === 'uncommon') return '🟢';
+    return '⚪';
+  }
+
+  private getAchievementRarityLabel(rarity: AchievementRarity) {
+    if (rarity === 'legendary') {
+      return this.i18n.current === 'fr' ? 'Légendaire' : 'Legendary';
+    }
+    if (rarity === 'epic') {
+      return 'Epic';
+    }
+    if (rarity === 'rare') {
+      return 'Rare';
+    }
+    if (rarity === 'uncommon') {
+      return this.i18n.current === 'fr' ? 'Peu commun' : 'Uncommon';
+    }
+    return this.i18n.current === 'fr' ? 'Commun' : 'Common';
+  }
+
+  consumeEscapeOverlay() {
+    if (this.achievementSortMenuOpen) {
+      this.achievementSortMenuOpen = false;
+      this.renderAchievementsContent(this.currentAchievements, true);
+      return true;
+    }
+    if (this.achievementsOpen) {
+      this.closeAchievements();
+      return true;
+    }
+    if (this.helpOpen) {
+      this.closeHelp();
+      return true;
+    }
+    return false;
   }
 
   private openHelp(locale: 'fr' | 'en') {
@@ -2666,7 +3160,8 @@ export class GameHUDSystem {
   }
 
   private saveAvatarSelection() {
-    this.playerAvatarSelection = { ...this.draftAvatarSelection };
+    this.playerAvatarSelection = this.normalizeAvatarSelection(this.draftAvatarSelection, '', true);
+    this.draftAvatarSelection = { ...this.playerAvatarSelection };
     window.localStorage.setItem(PLAYER_AVATAR_KEY, JSON.stringify(this.playerAvatarSelection));
     const currentName = this.getLeaderboardPlayerName();
     const entries = this.readLeaderboard();
@@ -2754,11 +3249,12 @@ export class GameHUDSystem {
   }
 
   private stepAvatarSelection(layer: AvatarLayerKey, direction: -1 | 1) {
-    const assets = this.avatarLayerSets[layer];
-    if (assets.length === 0) {
+    const availableIndices = this.getAvailableAvatarIndices(layer, true);
+    if (availableIndices.length <= 1) {
       return;
     }
-    const nextValue = (this.draftAvatarSelection[layer] + direction + assets.length) % assets.length;
+    const currentIndex = Math.max(0, availableIndices.indexOf(this.draftAvatarSelection[layer]));
+    const nextValue = availableIndices[(currentIndex + direction + availableIndices.length) % availableIndices.length] ?? availableIndices[0] ?? 0;
     this.draftAvatarSelection = {
       ...this.draftAvatarSelection,
       [layer]: nextValue
@@ -2786,7 +3282,7 @@ export class GameHUDSystem {
       return;
     }
     this.avatarEditorSaveButton.disabled = false;
-    const previewSelection = this.normalizeAvatarSelection(this.draftAvatarSelection);
+    const previewSelection = this.normalizeAvatarSelection(this.draftAvatarSelection, '', true);
     const theme = resolveDocumentTheme();
     const hoverTheme = theme === 'dark' ? 'light' : 'dark';
     this.avatarEditorPreview.innerHTML = this.renderAvatarMarkup(previewSelection, 'game-hud__avatar-preview-stack');
@@ -2827,7 +3323,10 @@ export class GameHUDSystem {
     this.avatarEditorLayers.hidden = true;
   }
 
-  private renderAvatarMarkup(selection: AvatarSelection, className: string) {
+  private renderAvatarMarkup(
+    selection: AvatarSelection,
+    className: string
+  ) {
     const layers = this.resolveAvatarLayers(selection);
     if (!layers.background || !layers.motif || !layers.face || !layers.eyes || !layers.barbe) {
       return `
@@ -2861,12 +3360,12 @@ export class GameHUDSystem {
   private readPlayerAvatarSelection() {
     const raw = window.localStorage.getItem(PLAYER_AVATAR_KEY);
     if (!raw) {
-      return this.normalizeAvatarSelection(undefined);
+      return this.normalizeAvatarSelection(undefined, '', true);
     }
     try {
-      return this.normalizeAvatarSelection(JSON.parse(raw));
+      return this.normalizeAvatarSelection(JSON.parse(raw), '', true);
     } catch {
-      return this.normalizeAvatarSelection(undefined);
+      return this.normalizeAvatarSelection(undefined, '', true);
     }
   }
 
@@ -2874,40 +3373,63 @@ export class GameHUDSystem {
     return this.normalizeAvatarSelection(entry.avatar, entry.name);
   }
 
-  private normalizeAvatarSelection(selection?: Partial<AvatarSelection> | null, seed = ''): AvatarSelection {
-    const fallback = this.buildFallbackAvatarSelection(seed);
+  private normalizeAvatarSelection(selection?: Partial<AvatarSelection> | null, seed = '', unlockedOnly = false): AvatarSelection {
+    const fallback = this.buildFallbackAvatarSelection(seed, unlockedOnly);
     const normalized = { ...fallback } as AvatarSelection;
     AVATAR_LAYER_ORDER.forEach((layer) => {
-      const layerOptions = this.avatarLayerSets[layer];
+      const layerOptions = this.getAvailableAvatarIndices(layer, unlockedOnly);
+      const total = this.avatarLayerSets[layer].length;
       const candidate = selection?.[layer];
       if (typeof candidate === 'number' && Number.isFinite(candidate)) {
         const rawValue = Math.max(0, Math.trunc(candidate));
-        normalized[layer] =
-          layerOptions.length > 0 ? ((rawValue % layerOptions.length) + layerOptions.length) % layerOptions.length : rawValue;
+        if (!unlockedOnly && total <= 0) {
+          normalized[layer] = rawValue;
+          return;
+        }
+        if (layerOptions.includes(rawValue)) {
+          normalized[layer] = rawValue;
+          return;
+        }
+        if (!unlockedOnly && total > 0) {
+          normalized[layer] = ((rawValue % total) + total) % total;
+          return;
+        }
+        normalized[layer] = layerOptions[0] ?? 0;
         return;
       }
-      normalized[layer] = layerOptions.length > 0 ? fallback[layer] : Math.max(0, fallback[layer]);
+      normalized[layer] = fallback[layer];
     });
     return normalized;
   }
 
-  private buildFallbackAvatarSelection(seed = ''): AvatarSelection {
+  private buildFallbackAvatarSelection(seed = '', unlockedOnly = false): AvatarSelection {
     const hash = Array.from(seed || 'player').reduce((value, char) => value + char.charCodeAt(0), 0);
     return {
-      background: this.resolveAvatarLayerIndex('background', hash),
-      motif: this.resolveAvatarLayerIndex('motif', hash + 3),
-      face: this.resolveAvatarLayerIndex('face', hash + 7),
-      eyes: this.resolveAvatarLayerIndex('eyes', hash + 11),
-      barbe: this.resolveAvatarLayerIndex('barbe', hash + 17)
+      background: this.resolveAvatarLayerIndex('background', hash, unlockedOnly),
+      motif: this.resolveAvatarLayerIndex('motif', hash + 3, unlockedOnly),
+      face: this.resolveAvatarLayerIndex('face', hash + 7, unlockedOnly),
+      eyes: this.resolveAvatarLayerIndex('eyes', hash + 11, unlockedOnly),
+      barbe: this.resolveAvatarLayerIndex('barbe', hash + 17, unlockedOnly)
     };
   }
 
-  private resolveAvatarLayerIndex(layer: AvatarLayerKey, seed: number) {
-    const total = this.avatarLayerSets[layer].length;
-    if (total <= 0) {
+  private resolveAvatarLayerIndex(layer: AvatarLayerKey, seed: number, unlockedOnly = false) {
+    const options = this.getAvailableAvatarIndices(layer, unlockedOnly);
+    if (options.length <= 0) {
       return 0;
     }
-    return Math.abs(seed) % total;
+    return options[Math.abs(seed) % options.length] ?? options[0] ?? 0;
+  }
+
+  private getAvailableAvatarIndices(layer: AvatarLayerKey, unlockedOnly: boolean) {
+    const total = this.avatarLayerSets[layer].length;
+    const unlocked = this.currentAchievements.profile.avatarUnlocks[layer] ?? [0];
+    const baseOptions = total > 0 ? [...Array.from({ length: total }, (_, index) => index)] : [...unlocked];
+    if (!unlockedOnly) {
+      return baseOptions.length > 0 ? baseOptions : [0];
+    }
+    const filtered = unlocked.filter((index) => index >= 0 && (total <= 0 || index < total));
+    return filtered.length > 0 ? filtered : [0];
   }
 
   private preloadUiAssets() {
@@ -2935,6 +3457,8 @@ export class GameHUDSystem {
       getUIButtonAsset('hub', 'en', 'light'),
       THEME_TOGGLE_ASSETS.dark,
       THEME_TOGGLE_ASSETS.light,
+      ACHIEVEMENT_ICON_ASSETS.dark,
+      ACHIEVEMENT_ICON_ASSETS.light,
       HELP_ICON_ASSETS.dark,
       HELP_ICON_ASSETS.light,
       SECONDARY_NAV_ASSETS.left.dark,

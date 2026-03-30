@@ -90,15 +90,15 @@ export function loadAvatarLayerSets() {
 
     for (const { path, load } of entries) {
       const src = await load();
-      if (path.includes('/background/')) {
+      if (path.includes('/oreille/')) {
         sets.background.push(src);
-      } else if (path.includes('/motif/')) {
-        sets.motif.push(src);
       } else if (path.includes('/face/')) {
-        sets.face.push(src);
+        sets.motif.push(src);
       } else if (path.includes('/eyes/')) {
+        sets.face.push(src);
+      } else if (path.includes('/facemotif/')) {
         sets.eyes.push(src);
-      } else if (path.includes('/barbe/')) {
+      } else if (path.includes('/accessoire/')) {
         sets.barbe.push(src);
       }
     }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { PathDirection } from './pathTypes';
 import type { RogueliteItemKind, RogueliteItemOffer, RogueliteModuleSlot, RogueliteRarity } from './roguelite';
+import type { AchievementPanelSnapshot, AchievementToastSnapshot } from './achievements/AchievementTypes';
 
 export type GameShardSizeTier =
   | 'tiny'
@@ -210,6 +211,8 @@ export interface GameHudSnapshot {
   }>;
   landingFeedback: LandingFeedback | null;
   acquisition: AcquisitionFeedback | null;
+  achievementToasts: AchievementToastSnapshot[];
+  achievements: AchievementPanelSnapshot;
   gameOverCause: GameOverCause;
   runSummary: {
     score: number;

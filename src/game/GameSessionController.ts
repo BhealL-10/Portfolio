@@ -7,6 +7,8 @@ import type { ThemeMode } from '../types/content';
 import { CameraRailController } from './CameraRailController';
 import { CoinSystem, type CoinMarker } from './CoinSystem';
 import { EnemySystem, type EnemyMarker } from './EnemySystem';
+import { AchievementSystem } from './achievements/AchievementSystem';
+import { createEmptyAchievementPanelSnapshot } from './achievements/AchievementTypes';
 import { createMiniGamePortalNode, MINI_GAME_PORTAL_LAUNCH_ANGLE } from './MiniGamePortalLayout';
 import { DEFAULT_COLUMN_DISTANCE } from './difficultyScaler';
 import { HELP_ICON_ASSETS, SHOP_ICON_ASSETS } from './GameUiAssetResolver';
@@ -162,6 +164,12 @@ interface PendingMagnetCoin {
   duration: number;
 }
 
+interface ActiveAchievementToast {
+  achievementId: string;
+  startedAt: number;
+  serial: number;
+}
+
 type ShardHudImageKey = 'anchorLoad' | 'anchorFull' | 'boost';
 
 interface GameTickFrame {
@@ -205,6 +213,7 @@ export class GameSessionController {
   private readonly path = new GamePathSystem();
   private readonly camera = new CameraRailController();
   private readonly stats = new RunStatsSystem();
+  private readonly achievements = new AchievementSystem();
   private readonly coins: CoinSystem;
   private readonly enemies: EnemySystem;
   private readonly shop: ShopSystem;
@@ -259,6 +268,8 @@ export class GameSessionController {
     inventoryItems: [],
     landingFeedback: null,
     acquisition: null,
+    achievementToasts: [],
+    achievements: createEmptyAchievementPanelSnapshot(),
     gameOverCause: null,
     runSummary: {
       score: 0,
@@ -318,6 +329,9 @@ export class GameSessionController {
   private acquisitionDuration = 0.9;
   private landingFeedbackStartedAt = 0;
   private landingFeedbackDuration = 1.35;
+  private achievementToastDuration = 2.6;
+  private achievementToastSerial = 0;
+  private readonly achievementToasts: ActiveAchievementToast[] = [];
   private landingFeedbackNodeIndex: number | null = null;
   private lastLandingFeedbackTriggerNodeIndex: number | null = null;
   private landingFeedbackSerial = 0;
@@ -905,6 +919,7 @@ export class GameSessionController {
 
   resetRunState() {
     this.stats.reset(performance.now());
+    this.achievements.resetRun();
     this.score = 0;
     this.awaitingFirstJump = false;
     this.chargeActive = false;
@@ -917,6 +932,8 @@ export class GameSessionController {
     this.landingFeedback = null;
     this.acquisitionStartedAt = 0;
     this.landingFeedbackStartedAt = 0;
+    this.achievementToastSerial = 0;
+    this.achievementToasts.length = 0;
     this.landingFeedbackNodeIndex = null;
     this.lastLandingFeedbackTriggerNodeIndex = null;
     this.landingFeedbackSerial = 0;
@@ -1307,7 +1324,7 @@ export class GameSessionController {
       const purchased = this.shop.purchaseByIndex(index, snapshot.coins);
       if (!purchased) return false;
       if (!this.stats.spendCoins(purchased.price)) return false;
-      this.applyOffer(purchased.offer, 'Shop item');
+      this.applyOffer(purchased.offer, 'Shop item', true);
       const node = this.getResolvedNode(this.attachedIndex);
       const shopOffers = this.shop.getActiveOffers().filter((offer) => !offer.purchased).slice(0, 3);
       this.activeChoices = shopOffers.map((shopOffer) => ({
@@ -1430,6 +1447,8 @@ export class GameSessionController {
     });
     this.hudSnapshot.landingFeedback = this.landingFeedback;
     this.hudSnapshot.acquisition = this.acquisition;
+    this.hudSnapshot.achievementToasts = this.getAchievementToastSnapshots();
+    this.hudSnapshot.achievements = this.achievements.getPanelSnapshot(this.locale);
     this.hudSnapshot.gameOverCause = this.gameOverCause;
     const statsSnapshot = this.stats.getSnapshot();
     this.hudSnapshot.runSummary = {
@@ -1468,6 +1487,15 @@ export class GameSessionController {
       glideActive: state === 'running' && this.playerState === 'airborne' && Boolean(this.getEquippedItem('plane')),
       speed: this.playerVelocity.length()
     };
+  }
+
+  private getAchievementToastSnapshots() {
+    return this.achievementToasts
+      .map((toast) => {
+        const progress = clamp((this.currentTime - toast.startedAt) / this.achievementToastDuration, 0, 1);
+        return this.achievements.getToastSnapshot(toast.achievementId, this.locale, toast.serial, progress);
+      })
+      .filter((toast): toast is NonNullable<ReturnType<AchievementSystem['getToastSnapshot']>> => Boolean(toast));
   }
 
   private emitAudioEvent(event: GameAudioEvent) {
@@ -1786,6 +1814,12 @@ export class GameSessionController {
     this.tickModuleRuntime(frame.deltaTime);
     this.updateMomentum(frame.deltaTime);
     this.stats.updateMomentumWindow(this.currentTime, !frame.shopLocked && this.momentum.gauge > 0.08);
+    this.achievements.recordRunTime(this.currentTime);
+    this.achievements.recordMomentumGauge(
+      !frame.shopLocked ? clamp(this.momentum.gauge / Math.max(1, this.runUpgrades.modifiers.momentumCap), 0, 1) : 0,
+      this.currentTime
+    );
+    this.queueAchievementToastsIfNeeded();
     this.prewarmUpcomingMilestones();
 
     if (frame.shopLocked) {
@@ -1857,6 +1891,16 @@ export class GameSessionController {
         this.landingFeedbackNodeIndex = null;
       }
     }
+
+    for (let index = this.achievementToasts.length - 1; index >= 0; index -= 1) {
+      const toast = this.achievementToasts[index];
+      const progress = clamp((elapsedTime - toast.startedAt) / this.achievementToastDuration, 0, 1);
+      if (progress >= 1) {
+        this.achievementToasts.splice(index, 1);
+      }
+    }
+
+    this.queueAchievementToastsIfNeeded();
   }
 
   private getHudStateValue(): GameHudState {
@@ -2814,6 +2858,7 @@ export class GameSessionController {
       combinedImpulse.y += 0.78 + power * 0.24;
       combinedPower += power;
       this.triggerModuleFlash('wings', 0.82);
+      this.achievements.recordModuleActivated('wings');
       this.emitAudioEvent({ type: 'module_activate', slot: 'wings' });
       moduleTriggered = true;
     }
@@ -2843,6 +2888,7 @@ export class GameSessionController {
     const impulse = 3.2 + combinedPower * 0.56 + this.momentum.gauge * 2.2;
     this.playerVelocity.addScaledVector(combinedImpulse.normalize(), impulse + combinedImpulse.length() * 0.9);
     this.syncAirbornePlayerOrientation();
+    this.queueAchievementToastsIfNeeded();
     return true;
   }
 
@@ -2931,6 +2977,8 @@ export class GameSessionController {
     this.grapAwaitReleaseBeforePull = false;
     this.grapReleasePending = false;
     this.grapReleasePressedAt = 0;
+    this.achievements.recordModuleActivated('grappin');
+    this.queueAchievementToastsIfNeeded();
     this.triggerModuleFlash('grappin', 0.5);
     this.emitAudioEvent({ type: 'grapple_cast' });
     return true;
@@ -2966,6 +3014,8 @@ export class GameSessionController {
     this.wrapperHoldUntil = this.wrapperTeleportAt + 1.6;
     this.wrapperVisualUntil = this.wrapperHoldUntil + 0.4;
     this.wrapperCooldownPending = true;
+    this.achievements.recordModuleActivated('wrapper');
+    this.queueAchievementToastsIfNeeded();
     this.emitAudioEvent({ type: 'module_activate', slot: 'wrapper' });
     return true;
   }
@@ -2992,6 +3042,10 @@ export class GameSessionController {
     const node = this.getResolvedNode(index);
     this.stats.recordLanding(index, node.pathDistance, performance.now(), this.momentum.gauge);
     this.score = this.stats.getSnapshot().score;
+    if (preserveMomentum) {
+      this.achievements.recordDistance(this.stats.getSnapshot().distanceMeters);
+      this.queueAchievementToastsIfNeeded();
+    }
     this.emitScore();
 
     let nextAngle = this.orbitAngle;
@@ -3140,12 +3194,19 @@ export class GameSessionController {
     this.momentum.fillRate = Math.max(0, nextGauge - this.momentum.gauge);
     this.momentum.gauge = nextGauge;
     this.lastLandingDirection = direction;
+    this.achievements.recordLanding({
+      grade,
+      twist,
+      shapeKind: node.shapeKind,
+      isMilestone: node.isMilestone
+    });
     this.startLandingFeedback(node.index, grade, twist, attachment.worldPosition, tangentDirection, attachment.normal);
     this.emitAudioEvent({ type: 'land', kind: this.getLandingAudioKind(node) });
     this.emitAudioEvent({ type: 'grade', grade });
     if (twist) {
       this.emitAudioEvent({ type: 'twist' });
     }
+    this.queueAchievementToastsIfNeeded();
     void tangentialSpeed;
     void node;
     return angularSpeed * speedMultiplier;
@@ -3273,11 +3334,13 @@ export class GameSessionController {
     return true;
   }
 
-  private applyOffer(offer: RogueliteItemOffer, subtitle: string) {
+  private applyOffer(offer: RogueliteItemOffer, subtitle: string, purchased = false) {
     this.runUpgrades = applyItemToRunState(this.runUpgrades, offer.item.id);
     this.syncPathEventBiases();
     this.remainingExtraJumps = Math.max(0, this.runUpgrades.modifiers.extraJumps);
     this.shieldCharges = Math.max(this.shieldCharges, this.runUpgrades.modifiers.shieldCharges);
+    this.achievements.recordItemAcquired(offer.item, { purchased });
+    this.queueAchievementToastsIfNeeded();
     this.startAcquisition(offer, subtitle);
   }
 
@@ -4147,8 +4210,7 @@ export class GameSessionController {
       if (this.pendingMagnetCoins.has(this.getCoinSlotKey(node.index, slot.angle, slot.value))) return;
       if (Math.abs(shortestAngleDistance(this.orbitAngle, slot.angle)) < 0.22 + this.runUpgrades.modifiers.coinMagnet * 0.12) {
         slot.collected = true;
-        this.stats.addCoins(this.applyCoinBonus(slot.value), this.momentum.gauge);
-        this.score = this.stats.getSnapshot().score;
+        this.awardCoins(this.applyCoinBonus(slot.value));
         this.emitScore();
         collectedAny = true;
       }
@@ -4290,8 +4352,7 @@ export class GameSessionController {
         continue;
       }
       slot.collected = true;
-      this.stats.addCoins(this.applyCoinBonus(slot.value), this.momentum.gauge);
-      this.score = this.stats.getSnapshot().score;
+      this.awardCoins(this.applyCoinBonus(slot.value));
       this.emitScore();
       this.pendingMagnetCoins.delete(pending.key);
       collectedAny = true;
@@ -4365,11 +4426,11 @@ export class GameSessionController {
     if (enemyPosition.distanceTo(this.playerPosition) > node.gameplayRadius * 0.36 + 0.82) {
       return;
     }
-    if (this.isEnemyHitFromBehind(enemy.pole) || this.runUpgrades.modifiers.spikeOrbit) {
+    const hitFromBehind = this.isEnemyHitFromBehind(enemy.pole);
+    if (hitFromBehind || this.runUpgrades.modifiers.spikeOrbit) {
       enemy.alive = false;
-      this.stats.addCoins(this.applyCoinBonus(enemy.rewardCoins), this.momentum.gauge);
-      this.stats.recordEnemyKill(1, this.momentum.gauge);
-      this.score = this.stats.getSnapshot().score;
+      this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
+      this.recordEnemyKill({ amount: 1, fromBehind: hitFromBehind });
       this.emitScore();
       this.fillMomentumBurst(0.05);
       this.emitAudioEvent({ type: 'enemy_die' });
@@ -4387,9 +4448,8 @@ export class GameSessionController {
       if (enemyPosition.distanceTo(this.playerPosition) > 1.2) continue;
       if (this.runUpgrades.modifiers.spikeOrbit || this.playerState === 'airborne') {
         enemy.alive = false;
-        this.stats.addCoins(this.applyCoinBonus(enemy.rewardCoins), this.momentum.gauge);
-        this.stats.recordEnemyKill(1, this.momentum.gauge);
-        this.score = this.stats.getSnapshot().score;
+        this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
+        this.recordEnemyKill({ amount: 1 });
         this.emitScore();
         this.fillMomentumBurst(0.08);
         this.emitAudioEvent({ type: 'enemy_die' });
@@ -4410,9 +4470,8 @@ export class GameSessionController {
       this.shieldHitUntil = this.currentTime + 0.24;
       if (enemy?.alive) {
         enemy.alive = false;
-        this.stats.addCoins(this.applyCoinBonus(enemy.rewardCoins), this.momentum.gauge);
-        this.stats.recordEnemyKill(1, this.momentum.gauge);
-        this.score = this.stats.getSnapshot().score;
+        this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
+        this.recordEnemyKill({ amount: 1, shieldSave: true });
         this.emitScore();
       }
       this.fillMomentumBurst(0.04);
@@ -4445,9 +4504,8 @@ export class GameSessionController {
 
   private applyEnemyDefeat(node: ResolvedGamePathNode, enemy: NonNullable<ResolvedGamePathNode['enemySlot']>) {
     enemy.alive = false;
-    this.stats.addCoins(this.applyCoinBonus(enemy.rewardCoins), this.momentum.gauge);
-    this.stats.recordEnemyKill(1, this.momentum.gauge);
-    this.score = this.stats.getSnapshot().score;
+    this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
+    this.recordEnemyKill({ amount: 1 });
     this.emitScore();
     this.emitAudioEvent({ type: 'enemy_die' });
     void node;
@@ -4510,6 +4568,8 @@ export class GameSessionController {
           runtime.cooldownRemaining = Math.max(1.4, this.runUpgrades.modifiers.bigCanonCooldown || 4.5);
           this.bigCanonFireUntil = elapsedTime + travelDuration;
           this.triggerModuleFlash('big_canon', 0.24);
+          this.achievements.recordModuleActivated('big_canon');
+          this.queueAchievementToastsIfNeeded();
           this.emitAudioEvent({ type: 'module_activate', slot: 'big_canon' });
         }
       }
@@ -4560,12 +4620,48 @@ export class GameSessionController {
     frontRuntime.cooldownRemaining = Math.max(1, this.runUpgrades.modifiers.frontCanonCooldown || 2.4);
     this.frontCanonFireUntil = elapsedTime + travelDuration;
     this.triggerModuleFlash('front_canon', 0.22);
+    this.achievements.recordModuleActivated('front_canon');
+    this.queueAchievementToastsIfNeeded();
     this.emitAudioEvent({ type: 'module_activate', slot: 'front_canon' });
   }
 
   private applyCoinBonus(baseValue: number) {
     const doubled = this.runUpgrades.modifiers.doubleCoin ? baseValue * 2 : baseValue;
     return Math.max(1, Math.round(doubled * (1 + this.runUpgrades.modifiers.coinBonus)));
+  }
+
+  private awardCoins(amount: number) {
+    this.stats.addCoins(amount, this.momentum.gauge);
+    this.achievements.recordCoinsCollected(amount);
+    this.score = this.stats.getSnapshot().score;
+    this.queueAchievementToastsIfNeeded();
+  }
+
+  private recordEnemyKill(event: { amount?: number; fromBehind?: boolean; shieldSave?: boolean } = {}) {
+    const amount = Math.max(1, Math.trunc(event.amount ?? 1));
+    this.stats.recordEnemyKill(amount, this.momentum.gauge);
+    this.achievements.recordEnemyKill({
+      amount,
+      fromBehind: event.fromBehind,
+      shieldSave: event.shieldSave
+    });
+    this.score = this.stats.getSnapshot().score;
+    this.queueAchievementToastsIfNeeded();
+  }
+
+  private queueAchievementToastsIfNeeded() {
+    while (this.achievementToasts.length < 3) {
+      const pending = this.achievements.consumePendingUnlock();
+      if (!pending) {
+        return;
+      }
+      this.achievementToastSerial += 1;
+      this.achievementToasts.push({
+        achievementId: pending.achievementId,
+        startedAt: this.currentTime,
+        serial: this.achievementToastSerial
+      });
+    }
   }
 
   private failRun(cause: GameOverCause = 'camera') {
