@@ -24,7 +24,6 @@ RUN npm install -g pnpm@latest
 COPY package.json ./
 COPY tsconfig.json ./
 COPY vite.config.ts ./
-COPY build ./build
 
 # Copy pnpm lockfile if it exists (wildcards don't error if file missing)
 COPY pnpm-lock.yaml* ./
