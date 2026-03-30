@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { getSharedTextureAsset } from '../core/browserAssetCache';
 import { isMobilePortraitRuntime, isMobileRuntime } from '../core/device';
 import { damp, wrapIndex } from '../core/math';
+import { getThemeForegroundHex } from '../core/themePalette';
 import type { AppMode } from '../core/ModeController';
 import type { PortfolioProject, ThemeMode } from '../types/content';
 import type { VisiblePlatformVisual } from '../game/gameSessionTypes';
@@ -169,15 +170,15 @@ export class OrbitWorldSystem {
     this.entityList.forEach((entity) => {
       setDeformMaterialTheme(entity.core.material, theme);
       this.updateLogoTexture(entity);
-      entity.slotIndicator.material.color.set(theme === 'dark' ? '#A5977F' : '#2E3644');
+      entity.slotIndicator.material.color.set(getThemeForegroundHex(theme));
       entity.slotIndicator.visible = false;
       entity.iconPlane.visible = false;
     });
     this.gameFieldEntities.forEach((entity) => {
       setDeformMaterialTheme(entity.core.material, theme);
     });
-    this.backgroundPoints.material.color.set(theme === 'dark' ? '#A5977F' : '#2E3644');
-    this.constellationLines.forEach((line) => line.material.color.set(theme === 'dark' ? '#A5977F' : '#2E3644'));
+    this.backgroundPoints.material.color.set(getThemeForegroundHex(theme));
+    this.constellationLines.forEach((line) => line.material.color.set(getThemeForegroundHex(theme)));
   }
 
   setActiveIndex(index: number) {
@@ -1083,7 +1084,7 @@ export class OrbitWorldSystem {
       const guidedSlotId = this.draggingId ? this.slotSystem.getSlotForShard(this.draggingId)?.shardId ?? null : null;
       const miniAccent = this.getMiniShardAccentState(elapsedTime, requiredMiniShardCount);
       const accentColor = new THREE.Color(this.getMiniShardAccentColor(elapsedTime));
-      const themeColor = new THREE.Color(this.theme === 'dark' ? '#A5977F' : '#2E3644');
+      const themeColor = new THREE.Color(getThemeForegroundHex(this.theme));
       this.gameFieldEntities.forEach((entity, index) => {
         if (index >= requiredMiniShardCount) {
           entity.group.visible = false;
@@ -1461,7 +1462,7 @@ export class OrbitWorldSystem {
     const slotIndicator = new THREE.Mesh(
       new THREE.RingGeometry(1.0, 1.18, 36),
       new THREE.MeshBasicMaterial({
-        color: this.theme === 'dark' ? '#A5977F' : '#2E3644',
+        color: getThemeForegroundHex(this.theme),
         transparent: true,
         opacity: 0,
         side: THREE.DoubleSide,
@@ -1781,7 +1782,7 @@ export class OrbitWorldSystem {
     return new THREE.Points(
       geometry,
       new THREE.PointsMaterial({
-        color: this.theme === 'dark' ? '#A5977F' : '#2E3644',
+        color: getThemeForegroundHex(this.theme),
         size: 0.08,
         transparent: true,
         opacity: 0.35
@@ -1794,7 +1795,7 @@ export class OrbitWorldSystem {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
       const material = new THREE.LineBasicMaterial({
-        color: this.theme === 'dark' ? '#A5977F' : '#2E3644',
+        color: getThemeForegroundHex(this.theme),
         transparent: true,
         opacity: 0.9
       });

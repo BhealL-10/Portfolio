@@ -5,9 +5,11 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "vite",
+    "typecheck": "tsc --noEmit",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "validate": "pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
     "three": "^0.160.1"

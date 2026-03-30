@@ -1,11 +1,5 @@
-import * as THREE from 'three';
 import type { GameHudSnapshot } from './gameSessionTypes';
-
-interface ScreenProjection {
-  visible: boolean;
-  x: number;
-  y: number;
-}
+import { projectWorldHudAnchor, type ScreenProjection } from './worldHudProjection';
 
 export function projectGameHudPayload(
   hudState: GameHudSnapshot,
@@ -36,13 +30,13 @@ export function projectGameHudPayload(
       mode?: typeof hudState.branchHints[number]['mode'];
       price?: number;
     }>>((acc, hint) => {
-      const projected = projectWorldToScreen(hint.worldPosition);
-      if (projected.visible) {
+      const projected = projectWorldHudAnchor(hint.worldPosition, projectWorldToScreen);
+      if (projected) {
         acc.push({
           slot: hint.slot,
           offer: hint.offer,
-          screenX: projected.x,
-          screenY: projected.y,
+          screenX: projected.screenX,
+          screenY: projected.screenY,
           mode: hint.mode,
           price: hint.price
         });
@@ -51,30 +45,24 @@ export function projectGameHudPayload(
     }, []),
     shopCenter: hudState.shopCenter
       ? (() => {
-          const projected = projectWorldToScreen(hudState.shopCenter);
-          if (!projected.visible) {
-            return null;
-          }
-          return {
-            screenX: projected.x,
-            screenY: projected.y
-          };
+          return projectWorldHudAnchor(hudState.shopCenter, projectWorldToScreen);
         })()
       : null,
     inventoryItems: hudState.inventoryItems,
     runSummary: hudState.runSummary,
     landingFeedback: hudState.landingFeedback
       ? (() => {
-          const projected = projectWorldToScreen(hudState.landingFeedback.worldPosition);
-          if (!projected.visible) {
+          const projected = projectWorldHudAnchor(hudState.landingFeedback.worldPosition, projectWorldToScreen, { paddingX: 18, paddingY: 18 });
+          if (!projected) {
             return null;
           }
           return {
+            serial: hudState.landingFeedback.serial,
             grade: hudState.landingFeedback.grade,
             twist: hudState.landingFeedback.twist,
             progress: hudState.landingFeedback.progress,
-            screenX: THREE.MathUtils.clamp(projected.x, 18, window.innerWidth - 18),
-            screenY: THREE.MathUtils.clamp(projected.y, 18, window.innerHeight - 18)
+            screenX: projected.screenX,
+            screenY: projected.screenY
           };
         })()
       : null,

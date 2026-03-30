@@ -3,6 +3,7 @@ import { GradeAnimationController } from './GradeAnimationController';
 import { GradeSpriteResolver } from './GradeSpriteResolver';
 
 interface LandingGradeDisplayPayload {
+  serial: number;
   grade: LandingGrade;
   twist: boolean;
   progress: number;
@@ -127,7 +128,7 @@ export class LandingGradeDisplay {
   }
 
   private buildSignature(payload: LandingGradeDisplayPayload) {
-    return `${payload.grade}:${payload.twist ? 1 : 0}`;
+    return `${payload.serial}:${payload.grade}:${payload.twist ? 1 : 0}`;
   }
 
   private applySprite(node: HTMLDivElement, key: LandingGrade | 'twist', frameIndex: number, label: string) {

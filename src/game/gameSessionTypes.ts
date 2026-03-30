@@ -121,6 +121,7 @@ export interface AcquisitionFeedback {
 export type LandingGrade = 'miss' | 'good' | 'super' | 'perfect';
 
 export interface LandingFeedback {
+  serial: number;
   grade: LandingGrade;
   twist: boolean;
   progress: number;

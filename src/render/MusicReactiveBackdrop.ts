@@ -1,15 +1,11 @@
 import * as THREE from 'three';
+import { getThemeForegroundHex } from '../core/themePalette';
 import type { MusicReactiveState } from '../game/GameAudioSystem';
 import type { ThemeMode } from '../types/content';
 
-const THEME_FOREGROUND = {
-  dark: '#A5977F',
-  light: '#2E3644'
-} as const;
-
 const MOMENTUM_COLORS = {
-  themeDark: '#A5977F',
-  themeLight: '#2E3644',
+  themeDark: getThemeForegroundHex('dark'),
+  themeLight: getThemeForegroundHex('light'),
   uncommon: '#75AF80',
   cyan: '#8AEBEF',
   rare: '#49BCFF',
@@ -71,7 +67,7 @@ export class MusicReactiveBackdrop {
     this.theme = theme;
     this.shards = this.createShards();
     this.material = new THREE.MeshBasicMaterial({
-      color: THEME_FOREGROUND[theme],
+      color: getThemeForegroundHex(theme),
       transparent: false,
       opacity: 1,
       side: THREE.DoubleSide,
@@ -81,8 +77,8 @@ export class MusicReactiveBackdrop {
     this.mesh = new THREE.InstancedMesh(createShardGeometry(), this.material, this.shards.length);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.frustumCulled = false;
-    this.hazeInner = createHazeSprite(THEME_FOREGROUND[theme], 0.11);
-    this.hazeOuter = createHazeSprite(THEME_FOREGROUND[theme], 0.076);
+    this.hazeInner = createHazeSprite(getThemeForegroundHex(theme), 0.11);
+    this.hazeOuter = createHazeSprite(getThemeForegroundHex(theme), 0.076);
     this.hazeInner.position.set(ORB_CENTER.x, ORB_CENTER.y, ORB_CENTER.z - 0.8);
     this.hazeOuter.position.set(ORB_CENTER.x, ORB_CENTER.y, ORB_CENTER.z - 1.7);
     this.hazeInner.renderOrder = -5;
@@ -105,7 +101,7 @@ export class MusicReactiveBackdrop {
 
   setTheme(theme: ThemeMode) {
     this.theme = theme;
-    this.currentColor.set(THEME_FOREGROUND[theme]);
+    this.currentColor.set(getThemeForegroundHex(theme));
     this.targetColor.copy(this.currentColor);
     this.material.color.copy(this.currentColor);
     this.hazeInner.material.color.copy(this.currentColor);
@@ -172,7 +168,7 @@ export class MusicReactiveBackdrop {
       const positions = new Float32Array((WAVE_SEGMENTS + 1) * 3);
       geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       const material = new THREE.LineBasicMaterial({
-        color: THEME_FOREGROUND[theme],
+        color: getThemeForegroundHex(theme),
         transparent: true,
         opacity: 0.38,
         depthWrite: false,

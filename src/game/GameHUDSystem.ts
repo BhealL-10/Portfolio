@@ -71,6 +71,15 @@ const COOLDOWN_RING_SLOTS = new Set(['shield', 'wrapper', 'big_canon', 'front_ca
 
 type GameHUDState = 'transition' | 'running' | 'upgrade_choice' | 'game_over';
 
+type BrowserFullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void> | void;
+};
+
+type BrowserFullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void> | void;
+};
+
 interface GameHUDCallbacks {
   onRestart: () => void;
   onExit: () => void;
@@ -147,6 +156,7 @@ interface GameHUDPayload {
     slot?: string | null;
   }>;
   landingFeedback: {
+    serial: number;
     grade: LandingGrade;
     twist: boolean;
     progress: number;
@@ -378,6 +388,7 @@ export class GameHUDSystem {
   private helpPointerStartX: number | null = null;
   private helpAutoOpenedThisSession = false;
   private volumeDragPointerId: number | null = null;
+  private lastFullscreenTouchAt = 0;
   private renderedLeaderboardEntries: Array<LeaderboardEntry | null> = [];
   private leaderboardEntriesCache: LeaderboardEntry[] = [];
   private leaderboardRequestSerial = 0;
@@ -688,14 +699,16 @@ export class GameHUDSystem {
     this.settingsThemeButton.addEventListener('click', callbacks.onThemeToggle);
     this.settingsLanguageButton.addEventListener('click', callbacks.onLanguageToggle);
     this.settingsMuteButton.addEventListener('click', callbacks.onAudioMuteToggle);
+    this.settingsFullscreenButton.addEventListener('touchend', (event) => {
+      event.preventDefault();
+      this.lastFullscreenTouchAt = Date.now();
+      void this.toggleFullscreen();
+    }, { passive: false });
     this.settingsFullscreenButton.addEventListener('click', () => {
-      if (document.documentElement.requestFullscreen) {
-        if (document.fullscreenElement) {
-          document.exitFullscreen();
-        } else {
-          document.documentElement.requestFullscreen();
-        }
+      if (Date.now() - this.lastFullscreenTouchAt < 500) {
+        return;
       }
+      void this.toggleFullscreen();
     });
     const updateVolumeFromPointer = (clientX: number) => {
       const rect = this.settingsVolumeMeter.getBoundingClientRect();
@@ -727,6 +740,7 @@ export class GameHUDSystem {
     };
     this.settingsVolumeButton.addEventListener('pointerup', releaseVolumePointer);
     document.addEventListener('fullscreenchange', () => this.renderSettingsButtons());
+    document.addEventListener('webkitfullscreenchange', () => this.renderSettingsButtons());
     this.settingsVolumeButton.addEventListener('pointercancel', releaseVolumePointer);
     this.helpPrevButton.addEventListener('click', () => this.setHelpPage(this.helpPageIndex - 1));
     this.helpNextButton.addEventListener('click', () => this.setHelpPage(this.helpPageIndex + 1));
@@ -1580,6 +1594,7 @@ export class GameHUDSystem {
 
   private renderLandingFeedback(
     feedback: {
+      serial: number;
       grade: LandingGrade;
       twist: boolean;
       progress: number;
@@ -1590,6 +1605,7 @@ export class GameHUDSystem {
     this.landingFeedbackDisplay.update(
       feedback
         ? {
+            serial: feedback.serial,
             grade: feedback.grade,
             twist: feedback.twist,
             progress: feedback.progress,
@@ -1613,6 +1629,35 @@ export class GameHUDSystem {
     return rarityLabels[rarity][this.i18n.current];
   }
 
+  private isFullscreenActive() {
+    const fullscreenDocument = document as BrowserFullscreenDocument;
+    return Boolean(document.fullscreenElement || fullscreenDocument.webkitFullscreenElement);
+  }
+
+  private async toggleFullscreen() {
+    const fullscreenDocument = document as BrowserFullscreenDocument;
+    const fullscreenElement = document.documentElement as BrowserFullscreenElement;
+    try {
+      if (this.isFullscreenActive()) {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if (fullscreenDocument.webkitExitFullscreen) {
+          await fullscreenDocument.webkitExitFullscreen();
+        }
+      } else if (fullscreenElement.requestFullscreen) {
+        await fullscreenElement.requestFullscreen({ navigationUI: 'hide' });
+      } else if (fullscreenElement.webkitRequestFullscreen) {
+        await fullscreenElement.webkitRequestFullscreen();
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    } catch {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } finally {
+      this.renderSettingsButtons();
+    }
+  }
+
   private renderSettingsButtons() {
     const languageAsset = LANGUAGE_BUTTON_ASSETS[this.i18n.current];
     const theme = resolveDocumentTheme();
@@ -1632,10 +1677,12 @@ export class GameHUDSystem {
     this.settingsThemeButton.setAttribute('aria-label', themeLabel);
     this.settingsThemeButton.innerHTML = `<img class="game-hud__settings-theme-icon" src="${THEME_TOGGLE_ASSETS[theme]}" alt="" />`;
 
-    const fullscreenLabel = document.fullscreenElement ? (this.i18n.current === 'fr' ? 'Quitter plein écran' : 'Exit fullscreen') : (this.i18n.current === 'fr' ? 'Plein écran' : 'Fullscreen');
-    const fullscreenSrc = document.fullscreenElement ? FULLSCREEN_BUTTON_ASSETS.on[theme] : FULLSCREEN_BUTTON_ASSETS.off[theme];
+    const fullscreenActive = this.isFullscreenActive();
+    const fullscreenLabel = fullscreenActive ? (this.i18n.current === 'fr' ? 'Quitter plein écran' : 'Exit fullscreen') : (this.i18n.current === 'fr' ? 'Plein écran' : 'Fullscreen');
+    const fullscreenSrc = fullscreenActive ? FULLSCREEN_BUTTON_ASSETS.on[theme] : FULLSCREEN_BUTTON_ASSETS.off[theme];
     this.settingsFullscreenButton.className = 'game-hud__settings-chip game-hud__settings-chip--fullscreen';
     this.settingsFullscreenButton.setAttribute('aria-label', fullscreenLabel);
+    this.settingsFullscreenButton.setAttribute('aria-pressed', fullscreenActive ? 'true' : 'false');
     this.settingsFullscreenButton.innerHTML = `<img class="game-hud__settings-fullscreen-icon" src="${fullscreenSrc}" alt="" />`;
   }
 

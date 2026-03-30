@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getThemeForegroundHex } from '../core/themePalette';
 import type { ThemeMode } from '../types/content';
 import type { GameEnemyTier } from './gameSessionTypes';
 import { SpriteSheetPlane } from './SpriteSheetPlane';
@@ -44,7 +45,7 @@ export class EnemySystem {
       body.mesh.material.depthWrite = false;
       const backArrow = new THREE.Mesh(
         new THREE.ConeGeometry(0.12, 0.34, 3),
-        new THREE.MeshBasicMaterial({ color: theme === 'dark' ? '#2E3644' : '#A5977F', transparent: true, opacity: 0.95 })
+        new THREE.MeshBasicMaterial({ color: getThemeForegroundHex(theme), transparent: true, opacity: 0.95 })
       );
       backArrow.material.depthTest = false;
       backArrow.renderOrder = 33;
@@ -61,7 +62,7 @@ export class EnemySystem {
   setTheme(theme: ThemeMode) {
     this.theme = theme;
     this.pool.forEach((entry) => {
-      entry.backArrow.material.color.set(this.theme === 'dark' ? '#A5977F' : '#2E3644');
+      entry.backArrow.material.color.set(getThemeForegroundHex(this.theme));
     });
   }
 
@@ -112,7 +113,7 @@ export class EnemySystem {
       entry.body.mesh.material.opacity = 1;
       entry.body.mesh.material.color.set(marker.tier === 'invincible' ? '#F06A5A' : '#FFFFFF');
       entry.body.playLoop([0, 1, 2, 3], marker.tier === 'invincible' ? 4.8 : marker.tier === 'elite' ? 4.2 : 3.6, elapsedTime + markerIndex * 0.05);
-      entry.backArrow.material.color.set(this.theme === 'dark' ? '#A5977F' : '#2E3644');
+      entry.backArrow.material.color.set(getThemeForegroundHex(this.theme));
       entry.backArrow.material.opacity = 0.95;
       entry.group.position.copy(marker.position);
       entry.group.position.z += 0.88;

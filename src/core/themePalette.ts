@@ -1,0 +1,36 @@
+import * as THREE from 'three';
+import type { ThemeMode } from '../types/content';
+
+const THEME_FOREGROUND_HEX = {
+  dark: '#A5977F',
+  light: '#2E3644'
+} as const;
+
+const THEME_BACKGROUND_HEX = {
+  dark: '#2E3644',
+  light: '#A5977F'
+} as const;
+
+export function getThemeForegroundHex(theme: ThemeMode) {
+  return THEME_FOREGROUND_HEX[theme];
+}
+
+export function getThemeBackgroundHex(theme: ThemeMode) {
+  return THEME_BACKGROUND_HEX[theme];
+}
+
+export function getThemeShardHex(theme: ThemeMode) {
+  return getThemeForegroundHex(theme);
+}
+
+export function getThemeShardContrastHex(theme: ThemeMode) {
+  return getThemeBackgroundHex(theme);
+}
+
+export function setThemeForegroundColor(theme: ThemeMode, target: THREE.Color) {
+  return target.set(getThemeForegroundHex(theme));
+}
+
+export function setThemeBackgroundColor(theme: ThemeMode, target: THREE.Color) {
+  return target.set(getThemeBackgroundHex(theme));
+}

@@ -1,15 +1,17 @@
 import * as THREE from 'three';
 import { damp } from '../core/math';
+import { getThemeBackgroundHex, getThemeForegroundHex } from '../core/themePalette';
+import type { ScreenProjection } from '../game/worldHudProjection';
 import type { ThemeMode } from '../types/content';
 
 const PALETTE = {
   dark: {
-    background: new THREE.Color('#2E3644'),
-    foreground: new THREE.Color('#A5977F')
+    background: new THREE.Color(getThemeBackgroundHex('dark')),
+    foreground: new THREE.Color(getThemeForegroundHex('dark'))
   },
   light: {
-    background: new THREE.Color('#A5977F'),
-    foreground: new THREE.Color('#2E3644')
+    background: new THREE.Color(getThemeBackgroundHex('light')),
+    foreground: new THREE.Color(getThemeForegroundHex('light'))
   }
 } as const;
 
@@ -26,6 +28,7 @@ export class WorldRenderer {
   private readonly cameraCurrent = new THREE.Vector3(0, 0.5, 24);
   private readonly lookTarget = new THREE.Vector3(0, 0, 0);
   private readonly lookCurrent = new THREE.Vector3(0, 0, 0);
+  private readonly projectionScratch = new THREE.Vector3();
   private readonly ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
   private readonly keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
   private readonly rimLight = new THREE.PointLight(0xffffff, 25, 80, 2);
@@ -85,8 +88,8 @@ export class WorldRenderer {
     this.renderer.render(this.scene, this.camera);
   }
 
-  projectWorldToScreen(position: THREE.Vector3) {
-    const projected = position.clone().project(this.camera);
+  projectWorldToScreen(position: THREE.Vector3): ScreenProjection {
+    const projected = this.projectionScratch.copy(position).project(this.camera);
     return {
       x: ((projected.x + 1) * 0.5) * (this.host.clientWidth || window.innerWidth),
       y: ((1 - projected.y) * 0.5) * (this.host.clientHeight || window.innerHeight),

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { getSharedImageAsset, getSharedTextureAsset } from '../core/browserAssetCache';
 import { isMobileRuntime } from '../core/device';
 import { clamp, damp } from '../core/math';
+import { getThemeForegroundHex, getThemeShardContrastHex, getThemeShardHex } from '../core/themePalette';
 import type { ThemeMode } from '../types/content';
 import { CameraRailController } from './CameraRailController';
 import { CoinSystem, type CoinMarker } from './CoinSystem';
@@ -99,6 +100,38 @@ interface OrbitSample {
   tangent: THREE.Vector2;
 }
 
+interface OrbitAttachment {
+  angle: number;
+  position: THREE.Vector2;
+  tangent: THREE.Vector2;
+  normal: THREE.Vector2;
+  surfaceWorldPosition: THREE.Vector3;
+  worldPosition: THREE.Vector3;
+  contactProgress: number;
+  distanceSq: number;
+}
+
+interface SurfaceContactSample {
+  angle: number;
+  position: THREE.Vector2;
+  tangent: THREE.Vector2;
+  normal: THREE.Vector2;
+  surfaceWorldPosition: THREE.Vector3;
+  distanceSq: number;
+}
+
+interface CaptureCandidate {
+  node: ResolvedGamePathNode;
+  attachment: OrbitAttachment;
+}
+
+interface AttachedNodeRuntimeAnchor {
+  index: number;
+  resolvedX: number;
+  resolvedY: number;
+  resolvedZ: number;
+}
+
 interface ImpactWave {
   originAngle: number;
   strength: number;
@@ -130,6 +163,18 @@ interface PendingMagnetCoin {
 }
 
 type ShardHudImageKey = 'anchorLoad' | 'anchorFull' | 'boost';
+
+interface GameTickFrame {
+  deltaTime: number;
+  elapsedTime: number;
+}
+
+interface ActiveRunTickFrame extends GameTickFrame {
+  shopLocked: boolean;
+  currentNode: ResolvedGamePathNode;
+  nextNode: ResolvedGamePathNode;
+  motionStartIndex: number;
+}
 
 export class GameSessionController {
   private readonly root = new THREE.Group();
@@ -179,6 +224,10 @@ export class GameSessionController {
   private readonly scratchVectorB = new THREE.Vector3();
   private readonly scratchVectorC = new THREE.Vector3();
   private readonly scratchVector2 = new THREE.Vector2();
+  private readonly scratchVector2B = new THREE.Vector2();
+  private readonly shopCenter = new THREE.Vector3();
+  private readonly playerHeading = new THREE.Vector2(1, 0);
+  private readonly playerSurfaceNormal = new THREE.Vector2(0, 1);
   private readonly impactWaves = new Map<number, ImpactWave[]>();
   private theme: ThemeMode;
   private readonly hudSnapshot: GameHudSnapshot = {
@@ -247,6 +296,7 @@ export class GameSessionController {
   private displayNodesCacheTime = Number.NaN;
   private readonly displayNodesCache = new Map<number, ResolvedGamePathNode[]>();
   private interactableVisibleNodesCache: ResolvedGamePathNode[] | null = null;
+  private attachedNodeRuntimeAnchor: AttachedNodeRuntimeAnchor | null = null;
   private score = 0;
   private awaitingFirstJump = false;
   private orbitGraceActive = false;
@@ -270,6 +320,7 @@ export class GameSessionController {
   private landingFeedbackDuration = 1.35;
   private landingFeedbackNodeIndex: number | null = null;
   private lastLandingFeedbackTriggerNodeIndex: number | null = null;
+  private landingFeedbackSerial = 0;
   private landingFeedbackAirborneSerial = 0;
   private lastLandingFeedbackConsumedSerial = -1;
   private gameOverStartedAt = 0;
@@ -297,6 +348,7 @@ export class GameSessionController {
   private grapState: 'idle' | 'launch' | 'hooked' | 'landing' = 'idle';
   private grapStateUntil = 0;
   private grapTargetIndex: number | null = null;
+  private grapTargetAngle: number | null = null;
   private grapRopeLength = 0;
   private readonly grapTargetPosition = new THREE.Vector3();
   private grapCooldownPending = false;
@@ -305,6 +357,7 @@ export class GameSessionController {
   private grapReleasePressedAt = 0;
   private readonly frontCanonShot: PendingEnemyShot = this.createPendingEnemyShot('front_canon');
   private readonly bigCanonShot: PendingEnemyShot = this.createPendingEnemyShot('big_canon');
+  private grapRangeIndicatorHalfAngle = 0;
   private readonly pendingMagnetCoins = new Map<string, PendingMagnetCoin>();
   private eventCooldownUntil = 0;
   private milestoneChoiceCache = new Map<number, BranchChoice[]>();
@@ -405,23 +458,11 @@ export class GameSessionController {
     );
     this.bigCanonRadarSweep.visible = false;
     this.bigCanonRadarSweep.renderOrder = 29;
-    this.grapRangeIndicator = new THREE.Mesh(
-      new THREE.CircleGeometry(0.5, 28, -Math.PI / 8, Math.PI / 4),
-      new THREE.MeshBasicMaterial({
-        color: this.getRarityColor('common'),
-        transparent: true,
-        opacity: 0.16,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-        depthTest: false
-      })
-    );
-    this.grapRangeIndicator.visible = false;
-    this.grapRangeIndicator.renderOrder = 28;
+    this.grapRangeIndicator = this.createConeRangeIndicator(this.getRarityColor('common'), 0.16, this.getGrappleConeHalfAngle());
     this.milestonePlayerIndicator = new THREE.Mesh(
       new THREE.ConeGeometry(1.0, 1.95, 3),
       new THREE.MeshBasicMaterial({
-        color: theme === 'dark' ? '#A5977F' : '#2E3644',
+        color: getThemeForegroundHex(theme),
         transparent: true,
         opacity: 0.94,
         depthWrite: false,
@@ -433,7 +474,13 @@ export class GameSessionController {
     this.milestonePlayerIndicator.rotation.z = Math.PI;
     this.frontCanonLaser = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 0.24),
-      new THREE.MeshBasicMaterial({ color: '#A5977F', transparent: true, opacity: 0.4, depthWrite: false, depthTest: false })
+      new THREE.MeshBasicMaterial({
+        color: getThemeForegroundHex(theme),
+        transparent: true,
+        opacity: 0.4,
+        depthWrite: false,
+        depthTest: false
+      })
     );
     this.frontCanonLaser.visible = false;
     this.frontCanonLaser.renderOrder = 26;
@@ -442,7 +489,7 @@ export class GameSessionController {
     this.grapRope = new THREE.Mesh(
       new THREE.PlaneGeometry(0.03, 1),
       new THREE.MeshBasicMaterial({
-        color: '#A5977F',
+        color: getThemeForegroundHex(theme),
         transparent: true,
         opacity: 0.85,
         depthWrite: false,
@@ -471,7 +518,7 @@ export class GameSessionController {
     this.playerTrail = new THREE.Line(
       trailGeometry,
       new THREE.LineBasicMaterial({
-        color: theme === 'dark' ? '#A5977F' : '#2E3644',
+        color: getThemeForegroundHex(theme),
         transparent: true,
         opacity: 0.42
       })
@@ -546,6 +593,33 @@ export class GameSessionController {
     mesh.visible = false;
     mesh.renderOrder = 28;
     return mesh;
+  }
+
+  private createConeRangeIndicator(color: string, opacity: number, halfAngle: number) {
+    const mesh = new THREE.Mesh(
+      new THREE.CircleGeometry(0.5, 40, -halfAngle, halfAngle * 2),
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        depthTest: false
+      })
+    );
+    mesh.visible = false;
+    mesh.renderOrder = 28;
+    this.grapRangeIndicatorHalfAngle = halfAngle;
+    return mesh;
+  }
+
+  private syncConeRangeIndicatorGeometry(mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>, halfAngle: number) {
+    if (Math.abs(this.grapRangeIndicatorHalfAngle - halfAngle) <= 0.0001) {
+      return;
+    }
+    mesh.geometry.dispose();
+    mesh.geometry = new THREE.CircleGeometry(0.5, 40, -halfAngle, halfAngle * 2);
+    this.grapRangeIndicatorHalfAngle = halfAngle;
   }
 
   private createRadarRangeIndicator(color: string, opacity: number) {
@@ -636,11 +710,11 @@ export class GameSessionController {
 
   setTheme(theme: ThemeMode) {
     this.theme = theme;
-    this.playerTrail.material.color.set(theme === 'dark' ? '#A5977F' : '#2E3644');
+    this.playerTrail.material.color.set(getThemeForegroundHex(theme));
     this.coins.setTheme(theme);
     this.enemies.setTheme(theme);
     this.shop.setTheme(theme);
-    const uiColor = theme === 'dark' ? '#A5977F' : '#2E3644';
+    const uiColor = getThemeForegroundHex(theme);
     this.grapRope.material.color.set(uiColor);
     this.frontCanonLaser.material.color.set(uiColor);
     this.milestonePlayerIndicator.material.color.set(uiColor);
@@ -682,8 +756,8 @@ export class GameSessionController {
     const node = this.getPortalPreviewNode();
     this.angularSpeed = (Math.PI * 2) / Math.max(1.6, node.gameplayOrbitPeriod);
     const orbit = this.getOrbitSample(node, this.orbitAngle);
-    this.playerPosition.copy(this.getPlayerOrbitWorldPosition(node, this.orbitAngle, orbit));
-    this.playerVelocity.set(0, 0, 0);
+    const orbitSpeed = Math.max(1, orbit.position.length()) * this.angularSpeed;
+    this.syncAttachedPlayerSpatial(node, this.orbitAngle, this.orbitDirection, orbitSpeed, false, orbit);
     this.root.visible = true;
     this.player.visible = true;
     this.playerTrail.visible = true;
@@ -700,7 +774,7 @@ export class GameSessionController {
     this.enemies.setVisible(false);
     this.camera.reset(node);
     this.trailPoints.forEach((point) => point.copy(this.playerPosition));
-    this.updateTrail(0);
+    this.syncTrailVisual();
     this.transitionProgress = 0;
     this.portalPreviewDesiredAngle = null;
   }
@@ -845,6 +919,7 @@ export class GameSessionController {
     this.landingFeedbackStartedAt = 0;
     this.landingFeedbackNodeIndex = null;
     this.lastLandingFeedbackTriggerNodeIndex = null;
+    this.landingFeedbackSerial = 0;
     this.landingFeedbackAirborneSerial = 0;
     this.lastLandingFeedbackConsumedSerial = -1;
     this.gameOverStartedAt = 0;
@@ -853,6 +928,7 @@ export class GameSessionController {
     this.landingVisualUntil = 0;
     this.currentTime = 0;
     this.attachedIndex = 0;
+    this.attachedNodeRuntimeAnchor = null;
     this.displayWindowIndices = [];
     this.displayNextIndex = 0;
     this.orbitGraceActive = false;
@@ -866,6 +942,8 @@ export class GameSessionController {
     this.playerPosition.set(0, 0, 0);
     this.playerVelocity.set(0, 0, 0);
     this.playerVelocityTarget.set(0, 0, 0);
+    this.playerHeading.set(1, 0);
+    this.playerSurfaceNormal.set(0, 1);
     this.runUpgrades = createRunUpgradeState();
     this.remainingExtraJumps = 0;
     this.phaseJumpReadyAt = 0;
@@ -891,6 +969,7 @@ export class GameSessionController {
     this.grapState = 'idle';
     this.grapStateUntil = 0;
     this.grapTargetIndex = null;
+    this.grapTargetAngle = null;
     this.grapRopeLength = 0;
     this.grapCooldownPending = false;
     this.grapAwaitReleaseBeforePull = true;
@@ -978,7 +1057,7 @@ export class GameSessionController {
   }
 
   private buildVisiblePlatformVisual(node: ResolvedGamePathNode, isCurrent: boolean): VisiblePlatformVisual {
-    const localAngle = wrapAngle(this.orbitAngle - (node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase));
+    const localAngle = this.getSurfaceLocalAngle(node, this.orbitAngle);
     const orbitRamp = isCurrent ? (this.orbitGraceActive ? this.orbitGraceProgress : 1) : 1;
     const visualWave = this.getVisualWaveState(node);
     const leftEdge = Math.max(this.camera.getSafeLeft(), this.playerPosition.x - DEFAULT_COLUMN_DISTANCE * 1.35);
@@ -1605,101 +1684,149 @@ export class GameSessionController {
     if (this.displayNodesCacheTime === elapsedTime) {
       return;
     }
+    this.invalidateVisibleNodeCaches();
     this.displayNodesCacheTime = elapsedTime;
-    this.displayNodesCache.clear();
-    this.interactableVisibleNodesCache = null;
   }
 
-  update(deltaTime: number, elapsedTime: number) {
-    if (this.state === 'idle') return;
+  private invalidateVisibleNodeCaches() {
+    this.displayNodesCache.clear();
+    this.interactableVisibleNodesCache = null;
+    this.displayNodesCacheTime = Number.NaN;
+  }
+
+  private setAttachedNodeRuntimeAnchor(node: ResolvedGamePathNode | null) {
+    this.attachedNodeRuntimeAnchor = node
+      ? {
+          index: node.index,
+          resolvedX: node.resolvedX,
+          resolvedY: node.resolvedY,
+          resolvedZ: node.resolvedZ
+        }
+      : null;
+    this.invalidateVisibleNodeCaches();
+  }
+
+  private beginTickFrame(elapsedTime: number) {
     this.currentTime = elapsedTime;
     this.invalidateVisibleNodeCachesIfNeeded(elapsedTime);
-    const shopLocked = this.isShopInteractionLocked() && this.playerState !== 'airborne';
-    const simulationDelta = deltaTime;
+  }
 
+  // Runtime tick order:
+  // 1. frame-local timers and cache invalidation
+  // 2. gameplay simulation and state mutation
+  // 3. deferred transitions, collisions and event resolution
+  // 4. camera/world/HUD presentation sync
+  // 5. late failure checks and transient feedback timers
+  update(deltaTime: number, elapsedTime: number) {
+    if (this.state === 'idle') return;
+    this.beginTickFrame(elapsedTime);
+
+    const frame = { deltaTime, elapsedTime };
     if (this.state === 'portal_preview') {
-      this.hideWorldRewardBranchHud();
-      this.updatePortalPreview(deltaTime, elapsedTime);
+      this.runPortalPreviewFrame(frame);
       return;
     }
 
     if (this.state === 'transition_in' || this.state === 'transition_out') {
-      this.hideWorldRewardBranchHud();
-      this.tickModuleRuntime(deltaTime);
-      this.updateMomentum(deltaTime);
-    if (this.state === 'transition_in' && this.player.visible) {
-      const node = this.getResolvedNode(0);
-      const orbit = this.getOrbitSample(node, this.orbitAngle);
-      const targetPosition = this.getPlayerOrbitWorldPosition(node, this.orbitAngle, orbit);
-      const targetTravel = orbit.tangent.clone().multiplyScalar(this.orbitDirection).normalize();
-      const targetHeading = Math.atan2(targetTravel.y, targetTravel.x);
-      const wrappedStartHeading = targetHeading + shortestAngleDistance(this.transitionPlayerStartRotation.z, targetHeading);
-      this.player.position.lerpVectors(this.transitionPlayerStartPosition, targetPosition, this.transitionProgress);
-      this.player.rotation.x = THREE.MathUtils.lerp(this.transitionPlayerStartRotation.x, 0, this.transitionProgress);
-      this.player.rotation.y = THREE.MathUtils.lerp(this.transitionPlayerStartRotation.y, 0, this.transitionProgress);
-      this.player.rotation.z = THREE.MathUtils.lerp(wrappedStartHeading, targetHeading, this.transitionProgress);
-      this.player.scale.lerpVectors(
-        this.transitionPlayerStartScale,
-        new THREE.Vector3(1, this.orbitDirection > 0 ? -1 : 1, 1),
-        this.transitionProgress
-      );
-      }
+      this.runTransitionFrame(frame);
       return;
     }
 
     if (this.state === 'game_over') {
-      const currentNode = this.getResolvedNode(this.attachedIndex);
-      const nextNode = this.getResolvedNode(this.attachedIndex + 1);
-      this.clearWorldItemEffects();
-      this.coins.setVisible(false);
-      this.enemies.setVisible(false);
-      this.updateTransientFeedbacks(elapsedTime);
-      this.updateCamera(deltaTime, currentNode, nextNode);
-      this.updateTrail(deltaTime);
-      this.syncPlayerVisual(elapsedTime, deltaTime);
-      this.syncShardHud(currentNode);
-      this.syncWorldRewardBranchHud(currentNode);
+      this.runGameOverFrame(frame);
       return;
     }
 
-    this.path.ensureAhead(this.attachedIndex, 78, 72);
-    this.tickModuleRuntime(simulationDelta);
-    this.updateMomentum(simulationDelta);
-    this.stats.updateMomentumWindow(this.currentTime, !shopLocked && this.momentum.gauge > 0.08);
-    this.prewarmUpcomingMilestones();
+    const activeFrame = this.createActiveRunTickFrame(frame);
+    this.runActiveSimulationPhase(activeFrame);
+    this.runActiveResolutionPhase(activeFrame);
+    this.runActivePresentationPhase(activeFrame);
+    this.finalizeActiveRunFrame(activeFrame);
+  }
 
-    let currentNode = this.getResolvedNode(this.attachedIndex);
-    let nextNode = this.getResolvedNode(this.attachedIndex + 1);
+  private createActiveRunTickFrame(frame: GameTickFrame): ActiveRunTickFrame {
+    return {
+      ...frame,
+      shopLocked: this.isShopInteractionLocked() && this.playerState !== 'airborne',
+      currentNode: this.getResolvedNode(this.attachedIndex),
+      nextNode: this.getResolvedNode(this.attachedIndex + 1),
+      motionStartIndex: this.attachedIndex
+    };
+  }
 
-    const motionStartIndex = this.attachedIndex;
+  private runPortalPreviewFrame(frame: GameTickFrame) {
+    this.hideWorldRewardBranchHud();
+    this.simulatePortalPreviewState(frame.deltaTime);
+    this.syncPortalPreviewPresentation(frame.elapsedTime);
+  }
 
-    if (shopLocked) {
-      this.chargeActive = false;
-      this.souffleurActive = false;
-      this.updateAttached(deltaTime, currentNode);
-    } else if (this.playerState === 'airborne') {
-      this.updateAirborne(deltaTime);
-    } else {
-      this.updateAttached(deltaTime, currentNode);
-    }
+  private runTransitionFrame(frame: GameTickFrame) {
+    this.hideWorldRewardBranchHud();
+    this.tickModuleRuntime(frame.deltaTime);
+    this.updateMomentum(frame.deltaTime);
+    this.syncTransitionPresentation();
+  }
 
-    if (this.attachedIndex !== motionStartIndex || this.playerState !== 'airborne') {
-      currentNode = this.getResolvedNode(this.attachedIndex);
-      nextNode = this.getResolvedNode(this.attachedIndex + 1);
-    }
-
-    this.advanceDisplayAnchor();
-
-    this.updateEvents(deltaTime, elapsedTime, currentNode);
-    this.updateCamera(deltaTime, currentNode, nextNode);
-    this.updateTrail(deltaTime);
-    this.syncPlayerVisual(elapsedTime, deltaTime);
+  private runGameOverFrame(frame: GameTickFrame) {
+    const currentNode = this.getResolvedNode(this.attachedIndex);
+    const nextNode = this.getResolvedNode(this.attachedIndex + 1);
+    this.clearWorldItemEffects();
+    this.coins.setVisible(false);
+    this.enemies.setVisible(false);
+    this.advanceHudFeedbackTimers(frame.elapsedTime);
+    this.syncCameraFollow(frame.deltaTime, currentNode, nextNode);
+    this.syncTrailVisual();
+    this.syncPlayerVisual(frame.elapsedTime);
     this.syncShardHud(currentNode);
     this.syncWorldRewardBranchHud(currentNode);
-    this.syncMarkers(elapsedTime);
+  }
 
-    if (currentNode.isMilestone && this.playerState !== 'airborne') {
-      this.updateTransientFeedbacks(elapsedTime);
+  private runActiveSimulationPhase(frame: ActiveRunTickFrame) {
+    this.path.ensureAhead(this.attachedIndex, 78, 72);
+    this.tickModuleRuntime(frame.deltaTime);
+    this.updateMomentum(frame.deltaTime);
+    this.stats.updateMomentumWindow(this.currentTime, !frame.shopLocked && this.momentum.gauge > 0.08);
+    this.prewarmUpcomingMilestones();
+
+    if (frame.shopLocked) {
+      this.chargeActive = false;
+      this.souffleurActive = false;
+      this.updateAttached(frame.deltaTime, frame.currentNode);
+    } else if (this.playerState === 'airborne') {
+      this.updateAirborne(frame.deltaTime);
+    } else {
+      this.updateAttached(frame.deltaTime, frame.currentNode);
+    }
+
+    this.refreshActiveRunTickNodes(frame);
+    this.advanceDisplayAnchor();
+  }
+
+  private refreshActiveRunTickNodes(frame: ActiveRunTickFrame) {
+    if (this.attachedIndex !== frame.motionStartIndex || this.playerState !== 'airborne') {
+      frame.currentNode = this.getResolvedNode(this.attachedIndex);
+      frame.nextNode = this.getResolvedNode(this.attachedIndex + 1);
+    }
+  }
+
+  private runActiveResolutionPhase(frame: ActiveRunTickFrame) {
+    this.advanceDeferredRuntimeState(frame.elapsedTime);
+    this.resolveGameplayEvents(frame.elapsedTime);
+  }
+
+  private runActivePresentationPhase(frame: ActiveRunTickFrame) {
+    this.syncShopPresentation(frame.currentNode, frame.elapsedTime);
+    this.syncCameraFollow(frame.deltaTime, frame.currentNode, frame.nextNode);
+    this.syncTrailVisual();
+    this.syncPlayerVisual(frame.elapsedTime);
+    this.syncShardHud(frame.currentNode);
+    this.syncWorldRewardBranchHud(frame.currentNode);
+    this.syncMarkers(frame.elapsedTime);
+  }
+
+  private finalizeActiveRunFrame(frame: ActiveRunTickFrame) {
+    if (frame.currentNode.isMilestone && this.playerState !== 'airborne') {
+      this.advanceHudFeedbackTimers(frame.elapsedTime);
       return;
     }
 
@@ -1709,12 +1836,11 @@ export class GameSessionController {
       this.failRun('camera');
     }
 
-    this.updateTransientFeedbacks(elapsedTime);
-
+    this.advanceHudFeedbackTimers(frame.elapsedTime);
     this.updateWrapperSequence();
   }
 
-  private updateTransientFeedbacks(elapsedTime: number) {
+  private advanceHudFeedbackTimers(elapsedTime: number) {
     if (this.acquisition) {
       const progress = clamp((elapsedTime - this.acquisitionStartedAt) / this.acquisitionDuration, 0, 1);
       this.acquisition.progress = progress;
@@ -1740,7 +1866,7 @@ export class GameSessionController {
     return 'running';
   }
 
-  private updatePortalPreview(deltaTime: number, elapsedTime: number) {
+  private simulatePortalPreviewState(deltaTime: number) {
     const currentNode = this.getPortalPreviewNode();
     const baseAngularSpeed = (Math.PI * 2) / Math.max(1.6, currentNode.gameplayOrbitPeriod);
     if (this.portalPreviewDesiredAngle !== null) {
@@ -1758,10 +1884,12 @@ export class GameSessionController {
     }
 
     const liveOrbit = this.getOrbitSample(currentNode, this.orbitAngle);
-    this.playerPosition.copy(this.getPlayerOrbitWorldPosition(currentNode, this.orbitAngle, liveOrbit));
-    this.playerVelocity.set(0, 0, 0);
+    const orbitSpeed = Math.max(1, liveOrbit.position.length()) * this.angularSpeed;
+    this.syncAttachedPlayerSpatial(currentNode, this.orbitAngle, this.orbitDirection, orbitSpeed, false, liveOrbit);
     this.playerState = 'attached';
+  }
 
+  private syncPortalPreviewPresentation(elapsedTime: number) {
     this.shardHudSprite.visible = false;
     this.magnetRangeIndicator.visible = false;
     this.bigCanonRangeIndicator.visible = false;
@@ -1774,8 +1902,52 @@ export class GameSessionController {
     this.coins.setVisible(false);
     this.enemies.setVisible(false);
     this.playerTrail.visible = true;
-    this.updateTrail(deltaTime);
-    this.syncPlayerVisual(elapsedTime, deltaTime);
+    this.syncTrailVisual();
+    this.syncPlayerVisual(elapsedTime);
+  }
+
+  private syncTransitionPresentation() {
+    if (this.state !== 'transition_in' || !this.player.visible) {
+      return;
+    }
+
+    const node = this.getResolvedNode(0);
+    const orbit = this.getOrbitSample(node, this.orbitAngle);
+    const targetPosition = this.getPlayerOrbitWorldPosition(node, this.orbitAngle, orbit);
+    const targetTravel = this.getSurfaceTravelTangent(orbit, this.orbitDirection, this.scratchVector2);
+    const targetHeading = Math.atan2(targetTravel.y, targetTravel.x);
+    const wrappedStartHeading = targetHeading + shortestAngleDistance(this.transitionPlayerStartRotation.z, targetHeading);
+    this.player.position.lerpVectors(this.transitionPlayerStartPosition, targetPosition, this.transitionProgress);
+    this.player.rotation.x = THREE.MathUtils.lerp(this.transitionPlayerStartRotation.x, 0, this.transitionProgress);
+    this.player.rotation.y = THREE.MathUtils.lerp(this.transitionPlayerStartRotation.y, 0, this.transitionProgress);
+    this.player.rotation.z = THREE.MathUtils.lerp(wrappedStartHeading, targetHeading, this.transitionProgress);
+    this.player.scale.lerpVectors(
+      this.transitionPlayerStartScale,
+      new THREE.Vector3(1, this.orbitDirection > 0 ? -1 : 1, 1),
+      this.transitionProgress
+    );
+  }
+
+  private advanceDeferredRuntimeState(elapsedTime: number) {
+    if (this.state === 'upgrade_acquired' && elapsedTime >= this.eventCooldownUntil) {
+      this.state = this.playerState === 'airborne' ? 'running_airborne' : this.chargeActive ? 'running_charging' : 'running_attached';
+    }
+    this.finalizeGrappleLandingCooldown();
+  }
+
+  private finalizeGrappleLandingCooldown() {
+    if (this.grapState !== 'landing' || this.currentTime < this.grapStateUntil) {
+      return;
+    }
+    this.grapState = 'idle';
+    if (!this.grapCooldownPending) {
+      return;
+    }
+    const grapRuntime = this.ensureModuleRuntime('grappin');
+    if (grapRuntime) {
+      grapRuntime.cooldownRemaining = this.getModuleCooldownDuration('grappin');
+    }
+    this.grapCooldownPending = false;
   }
 
   private getPortalPreviewNode(): ResolvedGamePathNode {
@@ -1833,7 +2005,7 @@ export class GameSessionController {
     if (this.wrapperPendingTarget !== null && this.currentTime >= this.wrapperTeleportAt) {
       const target = this.wrapperPendingTarget;
       this.wrapperPendingTarget = null;
-      this.attachToNode(target, false, null, null);
+      this.attachToNode(target, false, null, null, null, null, this.getResolvedNode(target));
     }
     if (this.wrapperVisualUntil > 0 && this.currentTime >= this.wrapperVisualUntil) {
       if (this.wrapperCooldownPending) {
@@ -1850,7 +2022,17 @@ export class GameSessionController {
   }
 
   private getResolvedNode(index: number) {
-    return this.path.getResolvedNode(Math.max(0, index), this.currentTime, this.attachedIndex);
+    const resolvedNode = this.path.getResolvedNode(Math.max(0, index), this.currentTime, this.attachedIndex);
+    const attachedAnchor = this.attachedNodeRuntimeAnchor;
+    if (!attachedAnchor || attachedAnchor.index !== resolvedNode.index || resolvedNode.index !== this.attachedIndex) {
+      return resolvedNode;
+    }
+    return {
+      ...resolvedNode,
+      resolvedX: attachedAnchor.resolvedX,
+      resolvedY: attachedAnchor.resolvedY,
+      resolvedZ: attachedAnchor.resolvedZ
+    };
   }
 
   private getDisplayNodes(count: number) {
@@ -1977,7 +2159,8 @@ export class GameSessionController {
   }
 
   private getGrappleConeHalfAngle() {
-    return Math.PI / 7.2;
+    const rangeBonus = Math.max(0, this.getModuleStat('grappin', 'grapRange') - 4.8);
+    return clamp(Math.PI / 8 + rangeBonus * 0.055, Math.PI / 8, Math.PI / 5.8);
   }
 
   private getGrappleStatRange() {
@@ -1993,12 +2176,132 @@ export class GameSessionController {
     );
   }
 
+  // Shared gameplay surface frame helpers keep attachment, capture and render anchors aligned.
+  private getSurfaceTravelTangent(sample: OrbitSample, direction: -1 | 1, target: THREE.Vector2) {
+    return target.copy(sample.tangent).multiplyScalar(direction).normalize();
+  }
+
+  private getSurfaceNormal(sample: OrbitSample, target: THREE.Vector2) {
+    target.set(sample.tangent.y, -sample.tangent.x).normalize();
+    if (target.dot(sample.position) < 0) {
+      target.multiplyScalar(-1);
+    }
+    return target;
+  }
+
+  private getOrbitWorldPosition(node: ResolvedGamePathNode, sample: OrbitSample, target = new THREE.Vector3()) {
+    return target.set(
+      node.resolvedX + sample.position.x,
+      node.resolvedY + sample.position.y,
+      node.resolvedZ
+    );
+  }
+
+  private getSurfaceContactWorldPosition(node: ResolvedGamePathNode, angle: number, target = new THREE.Vector3()) {
+    const surfaceSample = this.getSurfaceSample(node, angle);
+    return this.getOrbitWorldPosition(node, surfaceSample, target);
+  }
+
+  private findBestSurfaceContact(
+    node: ResolvedGamePathNode,
+    worldPosition: THREE.Vector3,
+    coarseSteps = 96,
+    refineRadius = 6
+  ): SurfaceContactSample {
+    const measureAngle = (angle: number) => {
+      const sample = this.getSurfaceSample(node, angle);
+      const surfaceWorldPosition = this.getOrbitWorldPosition(node, sample, this.scratchVector);
+      const distanceSq = worldPosition.distanceToSquared(surfaceWorldPosition);
+      if (distanceSq >= bestDistanceSq) {
+        return;
+      }
+      const normal = this.getSurfaceNormal(sample, this.scratchVector2);
+      bestDistanceSq = distanceSq;
+      bestAngle = angle;
+      bestPosition.copy(sample.position);
+      bestTangent.copy(sample.tangent);
+      bestNormal.copy(normal);
+      bestSurfaceWorldPosition.copy(surfaceWorldPosition);
+    };
+
+    let bestAngle = 0;
+    let bestDistanceSq = Number.POSITIVE_INFINITY;
+    const bestPosition = new THREE.Vector2();
+    const bestTangent = new THREE.Vector2(1, 0);
+    const bestNormal = new THREE.Vector2(0, 1);
+    const bestSurfaceWorldPosition = new THREE.Vector3();
+    const coarseStepAngle = (Math.PI * 2) / Math.max(12, coarseSteps);
+
+    for (let step = 0; step < coarseSteps; step += 1) {
+      measureAngle(step * coarseStepAngle);
+    }
+
+    const refineStepAngle = coarseStepAngle / 12;
+    for (let step = -refineRadius; step <= refineRadius; step += 1) {
+      measureAngle(wrapAngle(bestAngle + step * refineStepAngle));
+    }
+
+    return {
+      angle: bestAngle,
+      position: bestPosition,
+      tangent: bestTangent,
+      normal: bestNormal,
+      surfaceWorldPosition: bestSurfaceWorldPosition,
+      distanceSq: bestDistanceSq
+    };
+  }
+
+  private offsetSurfaceWorldPosition(node: ResolvedGamePathNode, sample: OrbitSample, outwardOffset: number, target = new THREE.Vector3()) {
+    const normal = this.getSurfaceNormal(sample, this.scratchVector2);
+    return this.getOrbitWorldPosition(node, sample, target).add(this.scratchVector.set(normal.x * outwardOffset, normal.y * outwardOffset, 0));
+  }
+
+  private syncAttachedPlayerSpatial(
+    node: ResolvedGamePathNode,
+    angle: number,
+    direction: -1 | 1,
+    travelSpeed: number,
+    syncVelocity: boolean,
+    sample = this.getOrbitSample(node, angle)
+  ) {
+    this.getPlayerOrbitWorldPosition(node, angle, sample, this.playerPosition, travelSpeed);
+    const travelTangent = this.getSurfaceTravelTangent(sample, direction, this.scratchVector2);
+    this.playerHeading.copy(travelTangent);
+    this.getSurfaceNormal(sample, this.playerSurfaceNormal);
+    if (syncVelocity) {
+      this.playerVelocity.set(travelTangent.x * travelSpeed, travelTangent.y * travelSpeed, 0);
+      return;
+    }
+    this.playerVelocity.set(0, 0, 0);
+  }
+
+  private syncAirbornePlayerOrientation() {
+    const planarSpeedSq = this.playerVelocity.x * this.playerVelocity.x + this.playerVelocity.y * this.playerVelocity.y;
+    if (planarSpeedSq <= 0.0001) {
+      return;
+    }
+
+    this.playerHeading.set(this.playerVelocity.x, this.playerVelocity.y).normalize();
+    const candidateNormalX = -this.playerHeading.y;
+    const candidateNormalY = this.playerHeading.x;
+    if (this.playerSurfaceNormal.lengthSq() > 0.0001) {
+      const sign = this.playerSurfaceNormal.x * candidateNormalX + this.playerSurfaceNormal.y * candidateNormalY >= 0 ? 1 : -1;
+      this.playerSurfaceNormal.set(candidateNormalX * sign, candidateNormalY * sign);
+      return;
+    }
+    const upwardFacing = candidateNormalY >= 0 ? 1 : -1;
+    this.playerSurfaceNormal.set(candidateNormalX * upwardFacing, candidateNormalY * upwardFacing);
+  }
+
   private getMovementHeadingVector(target: THREE.Vector2) {
     const planarSpeed = Math.hypot(this.playerVelocity.x, this.playerVelocity.y);
     if (planarSpeed > 0.85) {
       return target.set(this.playerVelocity.x, this.playerVelocity.y).normalize();
     }
-    return target.set(Math.cos(this.player.rotation.z || 0), Math.sin(this.player.rotation.z || 0)).normalize();
+    if (this.playerHeading.lengthSq() > 0.0001) {
+      return target.copy(this.playerHeading).normalize();
+    }
+    return target.set(1, 0);
   }
 
   private getGrappleVisibleReach(originX: number) {
@@ -2013,25 +2316,10 @@ export class GameSessionController {
     return Math.max(3.9, this.runUpgrades.modifiers.bigCanonRange);
   }
 
-  private getBigCanonRadarSweepHalfAngle() {
-    switch (this.getEquippedItem('big_canon')?.rarity) {
-      case 'legendary':
-        return 0.34;
-      case 'epic':
-        return 0.29;
-      case 'rare':
-        return 0.24;
-      case 'uncommon':
-        return 0.19;
-      case 'common':
-      default:
-        return 0.145;
-    }
-  }
-
   private getFrontCanonEffectiveRange() {
+    const momentumBoost = this.momentum.gauge * 3.4;
     return Math.min(
-      Math.max(2.4, this.runUpgrades.modifiers.frontCanonRange),
+      Math.max(2.4, this.runUpgrades.modifiers.frontCanonRange + momentumBoost),
       Math.max(2.4, this.camera.getSafeRight() - this.playerPosition.x + 1.6)
     );
   }
@@ -2189,8 +2477,6 @@ export class GameSessionController {
   }
 
   private updateAttached(deltaTime: number, currentNode: ResolvedGamePathNode) {
-    const orbit = this.getOrbitSample(currentNode, this.orbitAngle);
-    const orbitRadius = Math.max(1, orbit.position.length());
     const baselineAngular = (Math.PI * 2) / Math.max(1.6, currentNode.gameplayOrbitPeriod);
     const chargeBoost = this.chargeActive ? 0.64 + this.chargeMeter * 0.52 : 0;
     const usingSouffleurAttached =
@@ -2211,12 +2497,8 @@ export class GameSessionController {
     this.orbitAngle = wrapAngle(this.orbitAngle + this.orbitDirection * this.angularSpeed * deltaTime);
 
     const liveOrbit = this.getOrbitSample(currentNode, this.orbitAngle);
-    this.playerPosition.copy(this.getPlayerOrbitWorldPosition(currentNode, this.orbitAngle, liveOrbit));
-    this.playerVelocity.set(
-      liveOrbit.tangent.x * orbitRadius * this.angularSpeed * this.orbitDirection,
-      liveOrbit.tangent.y * orbitRadius * this.angularSpeed * this.orbitDirection,
-      0
-    );
+    const orbitSpeed = Math.max(1, liveOrbit.position.length()) * this.angularSpeed;
+    this.syncAttachedPlayerSpatial(currentNode, this.orbitAngle, this.orbitDirection, orbitSpeed, true, liveOrbit);
 
     if (this.orbitGraceActive) {
       this.orbitGraceTravel += Math.abs(this.angularSpeed * deltaTime);
@@ -2279,13 +2561,17 @@ export class GameSessionController {
 
     if (this.grapTargetIndex !== null) {
       const grapNode = this.getResolvedNode(this.grapTargetIndex);
-      this.grapTargetPosition.set(grapNode.resolvedX, grapNode.resolvedY, grapNode.resolvedZ);
+      if (this.grapTargetAngle !== null) {
+        this.getSurfaceContactWorldPosition(grapNode, this.grapTargetAngle, this.grapTargetPosition);
+      } else {
+        this.grapTargetPosition.set(grapNode.resolvedX, grapNode.resolvedY, grapNode.resolvedZ);
+      }
       const pull = this.scratchVectorB.copy(this.grapTargetPosition).sub(this.playerPosition);
       const distance = Math.max(0.001, pull.length());
       pull.normalize();
       if (this.currentTime >= this.grapStateUntil && this.grapState === 'launch') {
         this.grapState = 'hooked';
-        this.grapRopeLength = Math.max(1.45, distance);
+        this.grapRopeLength = Math.max(0.96, distance);
         this.emitAudioEvent({ type: 'grapple_hit' });
       }
       if (this.grapState === 'launch') {
@@ -2298,20 +2584,24 @@ export class GameSessionController {
         if (this.grapReleasePending && this.currentTime - this.grapReleasePressedAt >= 0.18) {
           this.grapReleasePending = false;
         }
-        const retractRate = canPullWithHold ? 10.2 + this.momentum.gauge * 3.2 : 0;
-        const contactLength = Math.max(0.78, grapNode.gameplayRadius * 0.56);
+        const retractRate = canPullWithHold ? 6.8 + this.momentum.gauge * 2.4 : 0;
+        const contactLength = Math.max(0.72, this.getOrbitClearance(grapNode) + 0.22);
         this.grapRopeLength = Math.max(contactLength, this.grapRopeLength - retractRate * deltaTime);
-        if (canPullWithHold) {
-          this.playerVelocity.addScaledVector(pull, Math.min(14.8, 8.2 + distance * 0.68) * deltaTime);
+        const ropeTension = Math.max(0, distance - this.grapRopeLength);
+        if (canPullWithHold && ropeTension > -0.24) {
+          this.playerVelocity.addScaledVector(
+            pull,
+            Math.min(11.6, 3.6 + ropeTension * 6.2 + distance * 0.18) * deltaTime
+          );
         }
         if (this.chargeActive && canPullWithHold) {
-          const grapChargeBoost = this.souffleurActive ? 1.84 + this.runUpgrades.modifiers.souffleurBoost * 0.34 : 0.96;
+          const grapChargeBoost = this.souffleurActive ? 1.32 + this.runUpgrades.modifiers.souffleurBoost * 0.28 : 0.72;
           this.playerVelocity.addScaledVector(pull, grapChargeBoost * deltaTime);
         }
         if (canPullWithHold) {
           const radialSpeed = this.playerVelocity.dot(pull);
           if (radialSpeed > 0) {
-            this.playerVelocity.addScaledVector(pull, -radialSpeed * 0.72);
+            this.playerVelocity.addScaledVector(pull, -radialSpeed * 0.28);
           }
         }
       }
@@ -2319,35 +2609,33 @@ export class GameSessionController {
 
     this.playerPosition.addScaledVector(this.playerVelocity, deltaTime);
     this.applyGrappleConstraint();
+    this.syncAirbornePlayerOrientation();
     this.collectCoinsNearPlayer();
+    const travelSpeed = Math.max(0.001, this.playerVelocity.length());
 
     if (this.grapTargetIndex !== null) {
       const grappleNode = this.getResolvedNode(this.grapTargetIndex);
-      if (this.canCaptureNode(grappleNode, previousPosition)) {
+      const grappleAttachment = this.findCaptureAttachment(grappleNode, previousPosition, this.playerPosition, travelSpeed);
+      if (grappleAttachment) {
         const targetIndex = this.grapTargetIndex;
         this.beginGrappleLanding();
-        this.attachToNode(targetIndex, true, this.playerPosition, this.playerVelocity);
+        this.attachToNode(targetIndex, true, this.playerPosition, this.playerVelocity, previousPosition, grappleAttachment, grappleNode);
         return;
       }
-      let closestCaptureNode: ResolvedGamePathNode | null = null;
-      let closestCaptureDistanceSq = Number.POSITIVE_INFINITY;
-      for (const node of this.getInteractableVisibleNodes()) {
-        if (!this.canCaptureNode(node, previousPosition)) {
-          continue;
-        }
-        const distanceSq = this.scratchVectorB
-          .set(node.resolvedX, node.resolvedY, node.resolvedZ)
-          .distanceToSquared(this.playerPosition);
-        if (distanceSq < closestCaptureDistanceSq) {
-          closestCaptureDistanceSq = distanceSq;
-          closestCaptureNode = node;
-        }
-      }
-      if (closestCaptureNode) {
-        if (closestCaptureNode.index === this.grapTargetIndex) {
+      const closestCapture = this.findBestCaptureCandidate(this.getInteractableVisibleNodes(), previousPosition, this.playerPosition, travelSpeed);
+      if (closestCapture) {
+        if (closestCapture.node.index === this.grapTargetIndex) {
           this.beginGrappleLanding();
         }
-        this.attachToNode(closestCaptureNode.index, true, this.playerPosition, this.playerVelocity);
+        this.attachToNode(
+          closestCapture.node.index,
+          true,
+          this.playerPosition,
+          this.playerVelocity,
+          previousPosition,
+          closestCapture.attachment,
+          closestCapture.node
+        );
         return;
       }
     }
@@ -2357,49 +2645,56 @@ export class GameSessionController {
         const choice = this.activeChoices[index];
         if (!choice) continue;
         const entry = resolveRuntimeNode(choice.entry, this.currentTime, this.attachedIndex);
-        if (this.canCaptureNode(entry, previousPosition)) {
+        const rewardAttachment = this.findCaptureAttachment(entry, previousPosition, this.playerPosition, travelSpeed);
+        if (rewardAttachment) {
           this.commitRewardBranch(index, false);
-          this.attachToNode(this.attachedIndex + 1, true, this.playerPosition, this.playerVelocity);
+          this.attachToNode(
+            this.attachedIndex + 1,
+            true,
+            this.playerPosition,
+            this.playerVelocity,
+            previousPosition,
+            rewardAttachment,
+            entry
+          );
           return;
         }
       }
     }
 
     const searchLimit = this.attachedIndex + Math.max(24, this.displayWindowIndices.length + 8);
-    for (let index = this.attachedIndex + 1; index <= searchLimit; index += 1) {
-      const node = this.getResolvedNode(index);
-      if (node.resolvedX - previousPosition.x > 64) {
-        break;
+    const giganticCapture = this.findBestForwardCaptureCandidate(previousPosition, this.playerPosition, travelSpeed, searchLimit, rewardChoiceLayout, true);
+    if (giganticCapture) {
+      if (this.grapTargetIndex === giganticCapture.node.index) {
+        this.beginGrappleLanding();
       }
-      if (rewardChoiceLayout && this.isNodeInsideActiveRewardReserve(node, rewardChoiceLayout)) {
-        continue;
-      }
-      if (!node.isGigantic) {
-        continue;
-      }
-      if (this.canCaptureNode(node, previousPosition)) {
-        if (this.grapTargetIndex === index) {
-          this.beginGrappleLanding();
-        }
-        this.attachToNode(index, true, this.playerPosition, this.playerVelocity);
-        return;
-      }
+      this.attachToNode(
+        giganticCapture.node.index,
+        true,
+        this.playerPosition,
+        this.playerVelocity,
+        previousPosition,
+        giganticCapture.attachment,
+        giganticCapture.node
+      );
+      return;
     }
-    for (let index = this.attachedIndex + 1; index <= searchLimit; index += 1) {
-      const node = this.getResolvedNode(index);
-      if (node.resolvedX - previousPosition.x > 64) {
-        break;
+
+    const forwardCapture = this.findBestForwardCaptureCandidate(previousPosition, this.playerPosition, travelSpeed, searchLimit, rewardChoiceLayout, false);
+    if (forwardCapture) {
+      if (this.grapTargetIndex === forwardCapture.node.index) {
+        this.beginGrappleLanding();
       }
-      if (rewardChoiceLayout && this.isNodeInsideActiveRewardReserve(node, rewardChoiceLayout)) {
-        continue;
-      }
-      if (this.canCaptureNode(node, previousPosition)) {
-        if (this.grapTargetIndex === index) {
-          this.beginGrappleLanding();
-        }
-        this.attachToNode(index, true, this.playerPosition, this.playerVelocity);
-        return;
-      }
+      this.attachToNode(
+        forwardCapture.node.index,
+        true,
+        this.playerPosition,
+        this.playerVelocity,
+        previousPosition,
+        forwardCapture.attachment,
+        forwardCapture.node
+      );
+      return;
     }
 
     if (this.runUpgrades.modifiers.phaseJump && this.currentTime >= this.phaseJumpReadyAt) {
@@ -2411,7 +2706,7 @@ export class GameSessionController {
       const rescueRadius = (rescueNode.gameplayRadius + this.runUpgrades.modifiers.phaseJumpRescueRadius) ** 2;
       if (rescueDistance < rescueRadius) {
         this.phaseJumpReadyAt = this.currentTime + this.runUpgrades.modifiers.phaseJumpCooldown;
-        this.attachToNode(rescueIndex, true, this.playerPosition, this.playerVelocity);
+        this.attachToNode(rescueIndex, true, this.playerPosition, this.playerVelocity, null, null, rescueNode);
         return;
       }
     }
@@ -2420,7 +2715,7 @@ export class GameSessionController {
       const teleportTarget = this.path.getTeleportTarget(this.attachedIndex, this.runUpgrades.modifiers.teleportRange);
       if (teleportTarget > this.attachedIndex + 1 && this.playerPosition.x < this.camera.getSafeLeft() + 2.4) {
         this.teleportReadyAt = this.currentTime + this.runUpgrades.modifiers.teleportCooldown;
-        this.attachToNode(teleportTarget, false, null, null);
+        this.attachToNode(teleportTarget, false, null, null, null, null, this.getResolvedNode(teleportTarget));
       }
     }
 
@@ -2428,7 +2723,7 @@ export class GameSessionController {
       const warpTarget = this.path.getTeleportTarget(this.attachedIndex, this.runUpgrades.modifiers.warpRange);
       if (warpTarget > this.attachedIndex + 3 && this.playerPosition.x < this.camera.getSafeLeft() + 1.6) {
         this.warpReadyAt = this.currentTime + this.runUpgrades.modifiers.warpCooldown;
-        this.attachToNode(warpTarget, false, null, null);
+        this.attachToNode(warpTarget, false, null, null, null, null, this.getResolvedNode(warpTarget));
       }
     }
 
@@ -2455,12 +2750,10 @@ export class GameSessionController {
 
     const currentNode = this.getResolvedNode(this.attachedIndex);
     const orbit = this.getOrbitSample(currentNode, this.orbitAngle);
-    const tangent = this.scratchVector
-      .set(orbit.tangent.x * this.orbitDirection, orbit.tangent.y * this.orbitDirection, 0)
-      .normalize();
-    const radial = this.scratchVectorB
-      .set(orbit.position.x, orbit.position.y, 0)
-      .normalize();
+    const tangent2D = this.getSurfaceTravelTangent(orbit, this.orbitDirection, this.scratchVector2);
+    const normal2D = this.getSurfaceNormal(orbit, this.scratchVector2B);
+    const tangent = this.scratchVector.set(tangent2D.x, tangent2D.y, 0);
+    const radial = this.scratchVectorB.set(normal2D.x, normal2D.y, 0);
     const orbitSpeed = Math.max(1, orbit.position.length()) * this.angularSpeed;
     const launchSpeed =
       (orbitSpeed * 1.08 + 6.2 + this.chargeMeter * 9.7 * (1 + this.runUpgrades.modifiers.chargedLeapBonus)) *
@@ -2471,6 +2764,8 @@ export class GameSessionController {
 
     this.registerImpactWave(currentNode, this.orbitAngle, launchSpeed * 0.92);
     this.playerVelocity.copy(tangent.multiplyScalar(launchSpeed)).addScaledVector(radial, launchSpeed * 0.08);
+    this.playerHeading.copy(tangent2D);
+    this.playerSurfaceNormal.copy(normal2D);
     this.landingFeedbackAirborneSerial += 1;
     this.lastLandingFeedbackTriggerNodeIndex = null;
     this.awaitingFirstJump = false;
@@ -2497,11 +2792,8 @@ export class GameSessionController {
   }
 
   private tryUseAirborneModuleImpulse() {
-    const forward = this.scratchVector.set(
-      Math.cos(this.player.rotation.z || 0),
-      Math.sin(this.player.rotation.z || 0),
-      0
-    ).normalize();
+    const forward2D = this.getMovementHeadingVector(this.scratchVector2);
+    const forward = this.scratchVector.set(forward2D.x, forward2D.y, 0);
     let moduleTriggered = false;
     const combinedImpulse = this.scratchVectorB.set(0, 0, 0);
     let combinedPower = 0;
@@ -2550,6 +2842,7 @@ export class GameSessionController {
 
     const impulse = 3.2 + combinedPower * 0.56 + this.momentum.gauge * 2.2;
     this.playerVelocity.addScaledVector(combinedImpulse.normalize(), impulse + combinedImpulse.length() * 0.9);
+    this.syncAirbornePlayerOrientation();
     return true;
   }
 
@@ -2575,7 +2868,7 @@ export class GameSessionController {
     if (!candidate) {
       return false;
     }
-    return this.armGrapple(candidate.index, candidate.distance);
+    return this.armGrapple(candidate.index, candidate.distance, candidate.angle);
   }
 
   private tryActivateGrappin() {
@@ -2586,7 +2879,7 @@ export class GameSessionController {
     if (!candidate) {
       return false;
     }
-    return this.armGrapple(candidate.index, candidate.distance);
+    return this.armGrapple(candidate.index, candidate.distance, candidate.angle);
   }
 
   private findGrappleCandidate() {
@@ -2598,38 +2891,42 @@ export class GameSessionController {
     const grapConeHalfAngle = this.getGrappleConeHalfAngle();
     const minReach = 2.8;
     const effectiveReach = this.getGrappleEffectiveRange(grappleOrigin.x);
-    let bestCandidate: { index: number; distance: number; score: number } | null = null;
+    let bestCandidate: { index: number; distance: number; angle: number; contactAngle: number } | null = null;
     for (const node of this.getInteractableVisibleNodes()) {
-      const toNodeX = node.resolvedX - grappleOrigin.x;
-      const toNodeY = node.resolvedY - grappleOrigin.y;
+      const contact = this.findBestSurfaceContact(node, grappleOrigin, 120, 7);
+      const toNodeX = contact.surfaceWorldPosition.x - grappleOrigin.x;
+      const toNodeY = contact.surfaceWorldPosition.y - grappleOrigin.y;
       const distance = Math.hypot(toNodeX, toNodeY);
       if (distance < minReach) continue;
+      if (distance > effectiveReach) continue;
       const normalizedX = toNodeX / Math.max(0.001, distance);
       const normalizedY = toNodeY / Math.max(0.001, distance);
       const dot = clamp(normalizedX * headingVector.x + normalizedY * headingVector.y, -1, 1);
       if (dot <= 0) continue;
       const angle = Math.acos(dot);
       if (angle > grapConeHalfAngle) continue;
-      if (distance <= effectiveReach + this.getPhysicalRadius(node) * 0.42) {
-        const angleRatio = angle / Math.max(0.001, grapConeHalfAngle);
-        const distanceRatio = distance / Math.max(0.001, effectiveReach);
-        const score = angleRatio * 0.72 + distanceRatio * 0.28;
-        if (!bestCandidate || score < bestCandidate.score) {
-          bestCandidate = { index: node.index, distance, score };
-        }
+      if (
+        !bestCandidate ||
+        distance < bestCandidate.distance - 0.02 ||
+        (Math.abs(distance - bestCandidate.distance) <= 0.02 && angle < bestCandidate.angle)
+      ) {
+        bestCandidate = { index: node.index, distance, angle, contactAngle: contact.angle };
       }
     }
-    return bestCandidate ? { index: bestCandidate.index, distance: bestCandidate.distance } : null;
+    return bestCandidate
+      ? { index: bestCandidate.index, distance: bestCandidate.distance, angle: bestCandidate.contactAngle }
+      : null;
   }
 
-  private armGrapple(index: number, distance: number) {
+  private armGrapple(index: number, distance: number, angle: number) {
     if (!this.isGrappleAvailable()) {
       return false;
     }
     this.grapTargetIndex = index;
+    this.grapTargetAngle = angle;
     this.grapState = 'launch';
     this.grapStateUntil = this.currentTime + 0.08;
-    this.grapRopeLength = Math.max(1.45, distance);
+    this.grapRopeLength = Math.max(0.96, distance);
     this.grapCooldownPending = true;
     this.grapAwaitReleaseBeforePull = false;
     this.grapReleasePending = false;
@@ -2673,9 +2970,26 @@ export class GameSessionController {
     return true;
   }
 
-  private attachToNode(index: number, preserveMomentum: boolean, landingPosition: THREE.Vector3 | null, incomingVelocity: THREE.Vector3 | null) {
-    const node = this.getResolvedNode(index);
+  private resolveLandingOrbitDirection(attachment: OrbitAttachment, incomingPlanarVelocity: THREE.Vector2): -1 | 1 {
+    const signedTangentialVelocity = attachment.normal.x * incomingPlanarVelocity.y - attachment.normal.y * incomingPlanarVelocity.x;
+    if (Math.abs(signedTangentialVelocity) > 0.035) {
+      return signedTangentialVelocity >= 0 ? 1 : -1;
+    }
+    return attachment.tangent.dot(this.playerHeading) >= 0 ? 1 : -1;
+  }
+
+  private attachToNode(
+    index: number,
+    preserveMomentum: boolean,
+    landingPosition: THREE.Vector3 | null,
+    incomingVelocity: THREE.Vector3 | null,
+    landingSegmentStart: THREE.Vector3 | null = null,
+    resolvedAttachment: OrbitAttachment | null = null,
+    resolvedNodeSnapshot: ResolvedGamePathNode | null = null
+  ) {
     this.attachedIndex = index;
+    this.setAttachedNodeRuntimeAnchor(resolvedNodeSnapshot ?? this.getResolvedNode(index));
+    const node = this.getResolvedNode(index);
     this.stats.recordLanding(index, node.pathDistance, performance.now(), this.momentum.gauge);
     this.score = this.stats.getSnapshot().score;
     this.emitScore();
@@ -2683,13 +2997,21 @@ export class GameSessionController {
     let nextAngle = this.orbitAngle;
     let nextDirection: -1 | 1 = index === 0 ? -1 : this.orbitDirection;
     let nextAngularSpeed = (Math.PI * 2) / Math.max(1.4, node.gameplayOrbitPeriod);
+    let landingAttachment: OrbitAttachment | null = null;
 
     if (preserveMomentum && landingPosition && incomingVelocity) {
-      const attachment = this.findBestOrbitAttachment(node, landingPosition);
+      const attachment =
+        resolvedAttachment ??
+        (landingSegmentStart
+          ? this.findBestOrbitAttachmentOnSegment(node, landingSegmentStart, landingPosition, incomingVelocity.length()) ??
+            this.findBestOrbitAttachment(node, landingPosition, incomingVelocity.length())
+          : this.findBestOrbitAttachment(node, landingPosition, incomingVelocity.length()));
+      landingAttachment = attachment;
       nextAngle = attachment.angle;
-      const directionDot = attachment.tangent.dot(this.scratchVector2.set(incomingVelocity.x, incomingVelocity.y));
-      nextDirection = directionDot >= 0 ? 1 : -1;
-      const tangentialSpeed = Math.abs(directionDot);
+      const incomingPlanarVelocity = this.scratchVector2.set(incomingVelocity.x, incomingVelocity.y);
+      const signedTangentialVelocity = attachment.normal.x * incomingPlanarVelocity.y - attachment.normal.y * incomingPlanarVelocity.x;
+      nextDirection = this.resolveLandingOrbitDirection(attachment, incomingPlanarVelocity);
+      const tangentialSpeed = Math.abs(signedTangentialVelocity);
       const radius = Math.max(1.2, attachment.position.length());
       nextAngularSpeed = clamp(
         tangentialSpeed / radius,
@@ -2724,9 +3046,16 @@ export class GameSessionController {
     }
     this.grapRopeLength = 0;
 
-    const liveOrbit = this.getOrbitSample(node, this.orbitAngle);
-    this.playerPosition.copy(this.getPlayerOrbitWorldPosition(node, this.orbitAngle, liveOrbit));
-    this.playerVelocity.set(0, 0, 0);
+    if (landingAttachment) {
+      this.playerPosition.copy(landingAttachment.worldPosition);
+      this.playerHeading.copy(this.scratchVector2.copy(landingAttachment.tangent).multiplyScalar(this.orbitDirection).normalize());
+      this.playerSurfaceNormal.copy(landingAttachment.normal);
+      this.playerVelocity.set(0, 0, 0);
+    } else {
+      const liveOrbit = this.getOrbitSample(node, this.orbitAngle);
+      const orbitSpeed = Math.max(1, liveOrbit.position.length()) * this.angularSpeed;
+      this.syncAttachedPlayerSpatial(node, this.orbitAngle, this.orbitDirection, orbitSpeed, false, liveOrbit);
+    }
 
     this.collectCoinsOnCurrentNode(node);
     this.resolveEnemyContact(node);
@@ -2762,7 +3091,7 @@ export class GameSessionController {
     const incomingLength = Math.max(0.001, incoming2D.length());
     incoming2D.divideScalar(incomingLength);
     const tangentDirection = attachment.tangent.clone().multiplyScalar(direction).normalize();
-    const radialDirection = attachment.position.clone().normalize();
+    const radialDirection = attachment.normal;
     const tangentialAlignment = clamp(incoming2D.dot(tangentDirection), -1, 1);
     const frontalPenalty = Math.abs(incoming2D.dot(radialDirection));
     const twist = this.lastLandingDirection !== 0 && direction !== this.lastLandingDirection;
@@ -2811,7 +3140,7 @@ export class GameSessionController {
     this.momentum.fillRate = Math.max(0, nextGauge - this.momentum.gauge);
     this.momentum.gauge = nextGauge;
     this.lastLandingDirection = direction;
-    this.startLandingFeedback(node.index, grade, twist);
+    this.startLandingFeedback(node.index, grade, twist, attachment.worldPosition, tangentDirection, attachment.normal);
     this.emitAudioEvent({ type: 'land', kind: this.getLandingAudioKind(node) });
     this.emitAudioEvent({ type: 'grade', grade });
     if (twist) {
@@ -2835,7 +3164,14 @@ export class GameSessionController {
     return 'normal';
   }
 
-  private startLandingFeedback(nodeIndex: number, grade: LandingGrade, twist: boolean) {
+  private startLandingFeedback(
+    nodeIndex: number,
+    grade: LandingGrade,
+    twist: boolean,
+    anchorPosition: THREE.Vector3,
+    heading: THREE.Vector2,
+    normal: THREE.Vector2
+  ) {
     if (this.lastLandingFeedbackConsumedSerial === this.landingFeedbackAirborneSerial) {
       return;
     }
@@ -2849,11 +3185,17 @@ export class GameSessionController {
     this.lastLandingFeedbackTriggerNodeIndex = nodeIndex;
     this.lastLandingFeedbackConsumedSerial = this.landingFeedbackAirborneSerial;
     this.landingFeedbackStartedAt = this.currentTime;
+    this.landingFeedbackSerial += 1;
     this.landingFeedback = {
+      serial: this.landingFeedbackSerial,
       grade,
       twist,
       progress: 0,
-      worldPosition: new THREE.Vector3(this.playerPosition.x - 1.45, this.playerPosition.y + 0.82, this.playerPosition.z)
+      worldPosition: new THREE.Vector3(
+        anchorPosition.x - heading.x * 1.18 + normal.x * 0.76,
+        anchorPosition.y - heading.y * 1.18 + normal.y * 0.76,
+        anchorPosition.z + 0.02
+      )
     };
   }
 
@@ -2948,17 +3290,17 @@ export class GameSessionController {
     };
   }
 
-  private updateEvents(_deltaTime: number, elapsedTime: number, currentNode: ResolvedGamePathNode) {
-    if (this.state === 'upgrade_acquired' && elapsedTime >= this.eventCooldownUntil) {
-      this.state = this.playerState === 'airborne' ? 'running_airborne' : this.chargeActive ? 'running_charging' : 'running_attached';
-    }
-
+  private resolveGameplayEvents(elapsedTime: number) {
     this.updatePendingCanonShots(elapsedTime);
     this.updateAutoFire(elapsedTime);
-    this.shop.update(new THREE.Vector3(currentNode.resolvedX, currentNode.resolvedY, currentNode.resolvedZ), currentNode.gameplayRadius + 0.7, elapsedTime);
   }
 
-  private updateCamera(deltaTime: number, currentNode: ResolvedGamePathNode, nextNode: ResolvedGamePathNode) {
+  private syncShopPresentation(currentNode: ResolvedGamePathNode, elapsedTime: number) {
+    this.shopCenter.set(currentNode.resolvedX, currentNode.resolvedY, currentNode.resolvedZ);
+    this.shop.update(this.shopCenter, currentNode.gameplayRadius + 0.7, elapsedTime);
+  }
+
+  private syncCameraFollow(deltaTime: number, currentNode: ResolvedGamePathNode, nextNode: ResolvedGamePathNode) {
     const mobileLike = isMobileRuntime();
     const milestoneAirborne = this.airborneFromMilestone && this.playerState === 'airborne';
     const cameraCurrentNode = milestoneAirborne ? nextNode : currentNode;
@@ -2976,7 +3318,21 @@ export class GameSessionController {
         ? clamp(1 - Math.max(0, this.playerPosition.x - currentNode.resolvedX) / 24, 0, 1) * (mobileLike ? 19.5 : 16.2)
         : 0;
     const milestoneLockActive = currentNode.isGigantic && this.playerState !== 'airborne';
-    const shopLockActive = currentNode.eventType === 'shop' && this.playerState !== 'airborne';
+    const shopLockActive = this.isShopInteractionLocked() && this.playerState !== 'airborne';
+    const focusLock =
+      milestoneLockActive
+        ? {
+            mode: 'milestone' as const,
+            focusX: currentNode.resolvedX + 0.52,
+            focusY: currentNode.resolvedY
+          }
+        : shopLockActive
+          ? {
+              mode: 'shop' as const,
+              focusX: currentNode.resolvedX,
+              focusY: currentNode.resolvedY
+            }
+          : null;
     const cameraLockActive = milestoneLockActive || shopLockActive;
     const milestoneLockZoom = milestoneLockActive ? (mobileLike ? 40.5 : 50.8) : 0;
     const shopLockZoom = shopLockActive ? (mobileLike ? 13.8 : 16.2) : 0;
@@ -3001,12 +3357,12 @@ export class GameSessionController {
       largeShardFactor,
       milestoneZoom,
       choiceZoom,
-      speedPressure: speedPressure * (1 - this.runUpgrades.modifiers.timeSlowFactor * 0.55)
+      speedPressure: speedPressure * (1 - this.runUpgrades.modifiers.timeSlowFactor * 0.55),
+      focusLock
     });
   }
 
-  private updateTrail(deltaTime: number) {
-    void deltaTime;
+  private syncTrailVisual() {
     for (let index = this.trailPoints.length - 1; index > 0; index -= 1) {
       this.trailPoints[index].copy(this.trailPoints[index - 1]);
     }
@@ -3021,14 +3377,12 @@ export class GameSessionController {
     this.playerTrail.material.opacity = 0.24 + this.momentum.gauge * 0.36;
   }
 
-  private syncPlayerVisual(elapsedTime: number, deltaTime: number) {
+  private syncPlayerVisual(elapsedTime: number) {
     this.player.position.copy(this.playerPosition);
     const currentNode = this.state === 'portal_preview' ? this.getPortalPreviewNode() : this.getResolvedNode(this.attachedIndex);
     const orbit = this.getOrbitSample(currentNode, this.orbitAngle);
-    const travel = this.playerState === 'airborne'
-      ? this.scratchVector2.set(this.playerVelocity.x || 0.001, this.playerVelocity.y || 0.001).normalize()
-      : orbit.tangent.clone().multiplyScalar(this.orbitDirection).normalize();
-    const heading = Math.atan2(travel.y, travel.x);
+    const headingVector = this.getMovementHeadingVector(this.scratchVector2);
+    const heading = Math.atan2(headingVector.y, headingVector.x);
     this.player.rotation.z = heading;
     this.player.scale.set(1, this.playerState === 'airborne' ? 1 : this.orbitDirection > 0 ? -1 : 1, 1);
     this.playerMainSprite.group.rotation.z = 0;
@@ -3097,7 +3451,7 @@ export class GameSessionController {
     }
 
     this.syncModuleSprites(elapsedTime, showGlide);
-    this.syncWorldModuleIndicators(heading, deltaTime);
+    this.syncWorldModuleIndicators(heading);
   }
 
   private syncModuleSprites(elapsedTime: number, showGlide: boolean) {
@@ -3200,16 +3554,6 @@ export class GameSessionController {
         } else {
           sprite.setFrame(0);
         }
-        if (this.grapState === 'landing' && this.currentTime >= this.grapStateUntil) {
-          this.grapState = 'idle';
-          if (this.grapCooldownPending) {
-            const grapRuntime = this.ensureModuleRuntime('grappin');
-            if (grapRuntime) {
-              grapRuntime.cooldownRemaining = this.getModuleCooldownDuration('grappin');
-            }
-            this.grapCooldownPending = false;
-          }
-        }
         return;
       }
 
@@ -3217,7 +3561,7 @@ export class GameSessionController {
     });
   }
 
-  private syncWorldModuleIndicators(heading: number, deltaTime: number) {
+  private syncWorldModuleIndicators(heading: number) {
     const magnetItem = this.getEquippedItem('magnet');
     const grapItem = this.getEquippedItem('grappin');
     const magnetVisible = Boolean(magnetItem);
@@ -3237,7 +3581,6 @@ export class GameSessionController {
       magnetVisible,
       Math.max(4.8, 3.4 + this.runUpgrades.modifiers.magnetRange * 7.8),
       magnetVisible ? 0.1 : 0,
-      deltaTime,
       0.34
     );
     const bigCanonColor = this.getRarityColor(this.getEquippedItem('big_canon')?.rarity ?? 'common');
@@ -3247,7 +3590,6 @@ export class GameSessionController {
       bigCanonVisible && bigCanonReady,
       this.getBigCanonEffectiveRange(),
       bigCanonVisible && bigCanonReady ? 0.024 : 0,
-      deltaTime,
       0
     );
     this.bigCanonRadarSweep.visible = bigCanonVisible && bigCanonReady;
@@ -3255,20 +3597,19 @@ export class GameSessionController {
     this.bigCanonRadarSweep.material.opacity = bigCanonVisible && bigCanonReady ? 0.11 : 0;
     if (this.bigCanonRadarSweep.visible) {
       const bigCanonRadius = this.getBigCanonEffectiveRange();
-      const sweepHalfAngle = this.getBigCanonRadarSweepHalfAngle();
       this.bigCanonRadarSweep.position.set(this.playerPosition.x, this.playerPosition.y, this.playerPosition.z + 0.03);
       this.bigCanonRadarSweep.rotation.z = this.currentTime * 1.92;
-      this.bigCanonRadarSweep.scale.set(bigCanonRadius * 2, 0.1 + sweepHalfAngle * 0.9 + bigCanonRadius * 0.015, 1);
+      this.bigCanonRadarSweep.scale.set(bigCanonRadius * 2, 0.12 + bigCanonRadius * 0.02, 1);
     }
     this.grapRangeIndicator.material.color.set(this.getRarityColor(grapItem?.rarity ?? 'common'));
     const grapHeading = this.getMovementHeadingVector(this.scratchVector2);
     const grappleOrigin = this.getGrappleOrigin(grapHeading);
+    this.syncConeRangeIndicatorGeometry(this.grapRangeIndicator, this.getGrappleConeHalfAngle());
     this.syncRangeIndicator(
       this.grapRangeIndicator,
       grapReady,
       this.getGrappleEffectiveRange(grappleOrigin.x),
       grapReady ? 0.11 : 0,
-      deltaTime,
       2.48
     );
     if (grapReady) {
@@ -3277,7 +3618,7 @@ export class GameSessionController {
         grappleOrigin.y,
         grappleOrigin.z
       );
-      this.grapRangeIndicator.rotation.z = heading - this.getGrappleConeHalfAngle();
+      this.grapRangeIndicator.rotation.z = heading;
     }
 
     this.frontCanonLaser.visible = frontCanonVisible;
@@ -3289,7 +3630,7 @@ export class GameSessionController {
       const spreadWidth = this.getFrontCanonSpreadWidth();
       const forwardX = Math.cos(heading);
       const forwardY = Math.sin(heading);
-      const laserLength = Math.max(6.8, range * 2.1);
+      const laserLength = Math.max(3.8, range);
       const startOffset = 1.82;
       const centerOffset = startOffset + laserLength * 0.5;
       this.frontCanonLaser.material.color.set(this.getRarityColor(frontCanonItem?.rarity ?? 'common'));
@@ -3317,7 +3658,11 @@ export class GameSessionController {
             ? 0.92
             : 0.78;
       const targetNode = this.getResolvedNode(this.grapTargetIndex!);
-      this.grapTargetPosition.set(targetNode.resolvedX, targetNode.resolvedY, targetNode.resolvedZ);
+      if (this.grapTargetAngle !== null) {
+        this.getSurfaceContactWorldPosition(targetNode, this.grapTargetAngle, this.grapTargetPosition);
+      } else {
+        this.grapTargetPosition.set(targetNode.resolvedX, targetNode.resolvedY, targetNode.resolvedZ);
+      }
       const ropeVector = this.scratchVector.copy(this.grapTargetPosition).sub(this.playerPosition);
       const distance = Math.max(0.2, ropeVector.length());
       this.grapRope.position.copy(this.playerPosition).addScaledVector(ropeVector, 0.5);
@@ -3559,10 +3904,8 @@ export class GameSessionController {
     visible: boolean,
     radius: number,
     targetOpacity: number,
-    deltaTime: number,
     rotationSpeed = 0
   ) {
-    void deltaTime;
     indicator.material.opacity = visible ? targetOpacity : 0;
     indicator.visible = visible;
     if (!indicator.visible) return;
@@ -3860,34 +4203,42 @@ export class GameSessionController {
     if (this.playerState !== 'airborne') {
       return;
     }
+    const visibleNodes = this.getDisplayNodes(Math.min(22, this.getRecommendedVisibleCount()));
     let bestNode: ResolvedGamePathNode | null = null;
-    let bestDistance = Number.POSITIVE_INFINITY;
-    for (const node of this.getInteractableVisibleNodes()) {
-      const distance = this.scratchVector.set(node.resolvedX, node.resolvedY, node.resolvedZ).distanceTo(this.playerPosition);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestNode = node;
+    let bestContact: SurfaceContactSample | null = null;
+    let bestSurfaceClearance = Number.POSITIVE_INFINITY;
+    for (const node of visibleNodes) {
+      const nodeRadius = this.getPhysicalRadius(node);
+      const auraThickness = clamp(0.38 + node.visualScale * 0.08 + this.runUpgrades.modifiers.gravityCentering * 0.18, 0.42, node.isGigantic ? 2.1 : 1.32);
+      const approxDistanceToCenter = this.scratchVector.set(node.resolvedX, node.resolvedY, node.resolvedZ).distanceTo(this.playerPosition);
+      if (approxDistanceToCenter > nodeRadius + auraThickness + 1.1) {
+        continue;
       }
+      const contact = this.findBestSurfaceContact(node, this.playerPosition, 72, 5);
+      const surfaceClearance = Math.sqrt(contact.distanceSq);
+      if (surfaceClearance > auraThickness || surfaceClearance >= bestSurfaceClearance) {
+        continue;
+      }
+      bestNode = node;
+      bestContact = contact;
+      bestSurfaceClearance = surfaceClearance;
     }
-    if (!bestNode) {
+    if (!bestNode || !bestContact) {
       return;
     }
-    const toNode = this.scratchVector.set(bestNode.resolvedX, bestNode.resolvedY, bestNode.resolvedZ).sub(this.playerPosition);
-    const distance = Math.max(0.001, toNode.length());
-    const nodeRadius = this.getPhysicalRadius(bestNode);
-    const auraThickness = Math.max(0.32, nodeRadius * 0.18);
-    const influenceRadius = nodeRadius + auraThickness;
-    if (distance > influenceRadius) {
-      return;
-    }
+    const auraThickness = clamp(0.38 + bestNode.visualScale * 0.08 + this.runUpgrades.modifiers.gravityCentering * 0.18, 0.42, bestNode.isGigantic ? 2.1 : 1.32);
+    const toSurface = this.scratchVector.copy(bestContact.surfaceWorldPosition).sub(this.playerPosition);
     const speed = this.playerVelocity.length();
-    const surfaceClearance = distance - nodeRadius;
     const landingPriorityGap = Math.max(0.06, auraThickness * 0.28);
-    if (speed <= 0.08 || surfaceClearance <= landingPriorityGap) {
+    if (speed <= 0.08 || bestSurfaceClearance <= landingPriorityGap) {
       return;
     }
-    toNode.normalize();
-    const auraProgress = clamp(1 - (surfaceClearance - landingPriorityGap) / Math.max(0.0001, auraThickness - landingPriorityGap), 0, 1);
+    toSurface.normalize();
+    const auraProgress = clamp(
+      1 - (bestSurfaceClearance - landingPriorityGap) / Math.max(0.0001, auraThickness - landingPriorityGap),
+      0,
+      1
+    );
     const lowSpeedBias = clamp(1.18 - speed / 13.2, 0.14, 0.84);
     const steerStrength =
       (0.052 + this.runUpgrades.modifiers.gravityCentering * 0.042) *
@@ -3898,16 +4249,20 @@ export class GameSessionController {
     if (steerStrength <= 0.0001) {
       return;
     }
-    const currentDirection = this.playerVelocityTarget.copy(this.playerVelocity).normalize();
+    const heading2D = this.getMovementHeadingVector(this.scratchVector2);
+    const currentDirection = this.scratchVectorB.set(heading2D.x, heading2D.y, 0).normalize();
     const steeredDirection = this.scratchVectorB
       .copy(currentDirection)
       .multiplyScalar(1 - steerStrength)
-      .addScaledVector(toNode, steerStrength)
+      .addScaledVector(toSurface, steerStrength)
       .normalize();
     if (steeredDirection.lengthSq() <= 0.0001) {
       return;
     }
     this.playerVelocity.copy(steeredDirection.multiplyScalar(speed));
+    if (speed < 5.2) {
+      this.playerVelocity.addScaledVector(toSurface, (0.18 + this.runUpgrades.modifiers.gravityCentering * 0.08) * auraProgress * lowSpeedBias * deltaTime);
+    }
   }
 
   private getCoinSlotKey(nodeIndex: number, angle: number, value: number) {
@@ -3959,7 +4314,12 @@ export class GameSessionController {
     this.playerPosition.copy(this.grapTargetPosition).addScaledVector(toPlayer, this.grapRopeLength);
     const outwardSpeed = this.playerVelocity.dot(toPlayer);
     if (outwardSpeed > 0) {
+      const previousSpeed = this.playerVelocity.length();
       this.playerVelocity.addScaledVector(toPlayer, -outwardSpeed);
+      const tangentialSpeed = this.playerVelocity.length();
+      if (tangentialSpeed > 0.0001 && previousSpeed > tangentialSpeed) {
+        this.playerVelocity.multiplyScalar(THREE.MathUtils.lerp(1, previousSpeed / tangentialSpeed, 0.3));
+      }
     }
   }
 
@@ -3968,6 +4328,12 @@ export class GameSessionController {
       return;
     }
     if (this.grapTargetIndex !== null && this.grapState === 'hooked') {
+      const targetNode = this.getResolvedNode(this.grapTargetIndex);
+      if (this.grapTargetAngle !== null) {
+        this.getSurfaceContactWorldPosition(targetNode, this.grapTargetAngle, this.grapTargetPosition);
+      } else {
+        this.grapTargetPosition.set(targetNode.resolvedX, targetNode.resolvedY, targetNode.resolvedZ);
+      }
       const ropeDirection = this.scratchVector.copy(this.playerPosition).sub(this.grapTargetPosition).normalize();
       const tangent = this.scratchVectorB.set(-ropeDirection.y, ropeDirection.x, 0);
       const tangentialSpeed = this.playerVelocity.dot(tangent);
@@ -3985,6 +4351,7 @@ export class GameSessionController {
     this.grapState = 'landing';
     this.grapStateUntil = this.currentTime + 1;
     this.grapTargetIndex = null;
+    this.grapTargetAngle = null;
     this.grapRopeLength = 0;
     this.grapAwaitReleaseBeforePull = false;
     this.grapReleasePending = false;
@@ -4118,24 +4485,15 @@ export class GameSessionController {
       const runtime = this.ensureModuleRuntime('big_canon');
       if (runtime && runtime.cooldownRemaining <= 0 && !this.bigCanonShot.active) {
         const range = this.getBigCanonEffectiveRange();
-        const sweepAngle = this.currentTime * 1.92;
-        const sweepHalfAngle = this.getBigCanonRadarSweepHalfAngle();
-        let bestTarget: { node: ResolvedGamePathNode; distance: number; angleDelta: number } | null = null;
+        let bestTarget: { node: ResolvedGamePathNode; distance: number } | null = null;
         for (const node of this.getInteractableVisibleNodes()) {
           const enemy = node.enemySlot;
           if (!enemy || !enemy.alive || enemy.tier === 'invincible') continue;
           const position = this.getEnemyWorldPosition(node, enemy.pole);
           const distance = position.distanceTo(this.playerPosition);
           if (distance > range) continue;
-          const enemyAngle = Math.atan2(position.y - this.playerPosition.y, position.x - this.playerPosition.x);
-          const angleDelta = Math.abs(shortestAngleDistance(enemyAngle, sweepAngle));
-          if (angleDelta > sweepHalfAngle) continue;
-          if (
-            !bestTarget ||
-            angleDelta < bestTarget.angleDelta - 0.015 ||
-            (Math.abs(angleDelta - bestTarget.angleDelta) <= 0.015 && distance < bestTarget.distance)
-          ) {
-            bestTarget = { node, distance, angleDelta };
+          if (!bestTarget || distance < bestTarget.distance) {
+            bestTarget = { node, distance };
           }
         }
         if (bestTarget?.node.enemySlot) {
@@ -4160,8 +4518,10 @@ export class GameSessionController {
     if (!hasFrontCanon) return;
     const frontRuntime = this.ensureModuleRuntime('front_canon');
     if (!frontRuntime || frontRuntime.cooldownRemaining > 0 || this.frontCanonShot.active) return;
-    const forward = this.scratchVector.set(Math.cos(this.player.rotation.z || 0), Math.sin(this.player.rotation.z || 0), 0).normalize();
+    const forward2D = this.getMovementHeadingVector(this.scratchVector2);
+    const forward = this.scratchVector.set(forward2D.x, forward2D.y, 0);
     const range = this.getFrontCanonEffectiveRange();
+    let bestTarget: { node: ResolvedGamePathNode; along: number; sideDistance: number } | null = null;
     for (const node of this.getInteractableVisibleNodes()) {
       const enemy = node.enemySlot;
       if (!enemy || !enemy.alive || enemy.tier === 'invincible') continue;
@@ -4169,27 +4529,38 @@ export class GameSessionController {
       const toEnemy = this.scratchVectorB.copy(position).sub(this.playerPosition);
       const along = toEnemy.dot(forward);
       const sideDistance = Math.abs(toEnemy.x * -forward.y + toEnemy.y * forward.x);
-      if (along <= 0 || along > range || sideDistance > this.getFrontCanonSpreadWidth() * 0.82) continue;
-      const travelDuration = this.queueCanonShot(
-        this.frontCanonShot,
-        'front_canon',
-        node,
-        enemy.pole,
-        this.scratchVector.set(
-          this.playerPosition.x + Math.cos(this.player.rotation.z || 0) * 1.8,
-          this.playerPosition.y + Math.sin(this.player.rotation.z || 0) * 1.8,
-          this.playerPosition.z + 0.02
-        ),
-        22,
-        0.12
-      );
-      this.fillMomentumBurst(0.04);
-      frontRuntime.cooldownRemaining = Math.max(1, this.runUpgrades.modifiers.frontCanonCooldown || 2.4);
-      this.frontCanonFireUntil = elapsedTime + travelDuration;
-      this.triggerModuleFlash('front_canon', 0.22);
-      this.emitAudioEvent({ type: 'module_activate', slot: 'front_canon' });
+      const enemyRadius = enemy.tier === 'elite' ? 0.92 : enemy.tier === 'armored' ? 0.82 : enemy.tier === 'light' ? 0.68 : 1.04;
+      const hitHalfWidth = this.getFrontCanonSpreadWidth() * 0.5 + enemyRadius;
+      if (along <= 0 || along > range || sideDistance > hitHalfWidth) continue;
+      if (
+        !bestTarget ||
+        along < bestTarget.along - 0.02 ||
+        (Math.abs(along - bestTarget.along) <= 0.02 && sideDistance < bestTarget.sideDistance)
+      ) {
+        bestTarget = { node, along, sideDistance };
+      }
+    }
+    if (!bestTarget?.node.enemySlot) {
       return;
     }
+    const travelDuration = this.queueCanonShot(
+      this.frontCanonShot,
+      'front_canon',
+      bestTarget.node,
+      bestTarget.node.enemySlot.pole,
+      this.scratchVector.set(
+        this.playerPosition.x + forward2D.x * 1.8,
+        this.playerPosition.y + forward2D.y * 1.8,
+        this.playerPosition.z + 0.02
+      ),
+      22,
+      0.12
+    );
+    this.fillMomentumBurst(0.04);
+    frontRuntime.cooldownRemaining = Math.max(1, this.runUpgrades.modifiers.frontCanonCooldown || 2.4);
+    this.frontCanonFireUntil = elapsedTime + travelDuration;
+    this.triggerModuleFlash('front_canon', 0.22);
+    this.emitAudioEvent({ type: 'module_activate', slot: 'front_canon' });
   }
 
   private applyCoinBonus(baseValue: number) {
@@ -4228,16 +4599,21 @@ export class GameSessionController {
     return position.y <= -verticalLimit || position.y >= verticalLimit;
   }
 
-  private canCaptureNode(node: ResolvedGamePathNode, previousPosition?: THREE.Vector3) {
+  private getCaptureRadius(node: ResolvedGamePathNode) {
     const beltAssistRadius =
       this.playerState === 'airborne' && this.runUpgrades.modifiers.gravityCentering > 0
         ? Math.max(0.08, this.getPhysicalRadius(node) * 0.08)
         : 0;
-    const captureRadius =
+    return (
       this.getPhysicalRadius(node) +
       (node.isGigantic ? this.getOrbitClearance(node) + 1.15 : 0.92) +
       this.runUpgrades.modifiers.captureRadius +
-      beltAssistRadius;
+      beltAssistRadius
+    );
+  }
+
+  private canCaptureNode(node: ResolvedGamePathNode, previousPosition?: THREE.Vector3) {
+    const captureRadius = this.getCaptureRadius(node);
     const dx = this.playerPosition.x - node.resolvedX;
     const dy = this.playerPosition.y - node.resolvedY;
     const instantHit = dx * dx + dy * dy <= captureRadius * captureRadius;
@@ -4259,40 +4635,256 @@ export class GameSessionController {
     return closestX * closestX + closestY * closestY <= captureRadius * captureRadius;
   }
 
-  private findBestOrbitAttachment(node: ResolvedGamePathNode, worldPosition: THREE.Vector3) {
-    let bestAngle = 0;
-    let bestDistance = Number.POSITIVE_INFINITY;
-    let bestPosition = new THREE.Vector2();
-    let bestTangent = new THREE.Vector2(1, 0);
+  private isBetterCaptureCandidate(candidate: CaptureCandidate, currentBest: CaptureCandidate | null) {
+    if (!currentBest) {
+      return true;
+    }
+    if (candidate.attachment.contactProgress < currentBest.attachment.contactProgress - 0.0015) {
+      return true;
+    }
+    if (candidate.attachment.contactProgress > currentBest.attachment.contactProgress + 0.0015) {
+      return false;
+    }
+    return candidate.attachment.distanceSq < currentBest.attachment.distanceSq;
+  }
 
-    for (let step = 0; step < 72; step += 1) {
-      const angle = (step / 72) * Math.PI * 2;
-      const sample = this.getOrbitSample(node, angle);
-      const worldX = node.resolvedX + sample.position.x;
-      const worldY = node.resolvedY + sample.position.y;
-      const distance = (worldPosition.x - worldX) ** 2 + (worldPosition.y - worldY) ** 2;
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestAngle = angle;
-        bestPosition = sample.position.clone();
-        bestTangent = sample.tangent.clone();
+  private findCaptureAttachment(
+    node: ResolvedGamePathNode,
+    previousPosition: THREE.Vector3,
+    currentPosition: THREE.Vector3,
+    travelSpeed: number
+  ) {
+    if (!this.canCaptureNode(node, previousPosition)) {
+      return null;
+    }
+    return this.findBestOrbitAttachmentOnSegment(node, previousPosition, currentPosition, travelSpeed);
+  }
+
+  private findBestCaptureCandidate(
+    nodes: ResolvedGamePathNode[],
+    previousPosition: THREE.Vector3,
+    currentPosition: THREE.Vector3,
+    travelSpeed: number
+  ) {
+    let best: CaptureCandidate | null = null;
+    for (const node of nodes) {
+      const attachment = this.findCaptureAttachment(node, previousPosition, currentPosition, travelSpeed);
+      if (!attachment) {
+        continue;
+      }
+      const candidate: CaptureCandidate = { node, attachment };
+      if (this.isBetterCaptureCandidate(candidate, best)) {
+        best = candidate;
+      }
+    }
+    return best;
+  }
+
+  private findBestForwardCaptureCandidate(
+    previousPosition: THREE.Vector3,
+    currentPosition: THREE.Vector3,
+    travelSpeed: number,
+    searchLimit: number,
+    rewardChoiceLayout: NonNullable<ReturnType<GameSessionController['getActiveRewardChoiceLayout']>> | null,
+    giganticOnly: boolean
+  ) {
+    let best: CaptureCandidate | null = null;
+    for (let index = this.attachedIndex + 1; index <= searchLimit; index += 1) {
+      const node = this.getResolvedNode(index);
+      if (node.resolvedX - previousPosition.x > 64) {
+        break;
+      }
+      if (rewardChoiceLayout && this.isNodeInsideActiveRewardReserve(node, rewardChoiceLayout)) {
+        continue;
+      }
+      if (giganticOnly ? !node.isGigantic : node.isGigantic) {
+        continue;
+      }
+      const attachment = this.findCaptureAttachment(node, previousPosition, currentPosition, travelSpeed);
+      if (!attachment) {
+        continue;
+      }
+      const candidate: CaptureCandidate = { node, attachment };
+      if (this.isBetterCaptureCandidate(candidate, best)) {
+        best = candidate;
+      }
+    }
+    return best;
+  }
+
+  private getClosestSegmentParameter(start: THREE.Vector3, end: THREE.Vector3, point: THREE.Vector3) {
+    const segmentX = end.x - start.x;
+    const segmentY = end.y - start.y;
+    const segmentLengthSq = segmentX * segmentX + segmentY * segmentY;
+    if (segmentLengthSq <= 0.0001) {
+      return 1;
+    }
+    return clamp(
+      ((point.x - start.x) * segmentX + (point.y - start.y) * segmentY) / segmentLengthSq,
+      0,
+      1
+    );
+  }
+
+  private findBestOrbitAttachment(node: ResolvedGamePathNode, worldPosition: THREE.Vector3, travelSpeed: number): OrbitAttachment {
+    const measureAttachment = (angle: number) => {
+      const orbitSample = this.getOrbitSample(node, angle);
+      const surfaceSample = this.getSurfaceSample(node, angle);
+      const surfaceWorldPosition = this.getSurfaceContactWorldPosition(node, angle, this.scratchVector);
+      const candidateWorldPosition = this.getPlayerOrbitWorldPosition(node, angle, orbitSample, this.scratchVectorB, travelSpeed);
+      return {
+        angle,
+        distanceSq: worldPosition.distanceToSquared(candidateWorldPosition),
+        position: orbitSample.position.clone(),
+        tangent: surfaceSample.tangent.clone(),
+        normal: this.getSurfaceNormal(surfaceSample, this.scratchVector2).clone(),
+        surfaceWorldPosition: surfaceWorldPosition.clone(),
+        worldPosition: candidateWorldPosition.clone()
+      };
+    };
+
+    const coarseSteps = 144;
+    const coarseStepAngle = (Math.PI * 2) / coarseSteps;
+    let best = measureAttachment(0);
+    for (let step = 1; step < coarseSteps; step += 1) {
+      const candidate = measureAttachment(step * coarseStepAngle);
+      if (candidate.distanceSq < best.distanceSq) {
+        best = candidate;
+      }
+    }
+
+    const refineStepAngle = coarseStepAngle / 10;
+    for (let step = -6; step <= 6; step += 1) {
+      const candidate = measureAttachment(wrapAngle(best.angle + step * refineStepAngle));
+      if (candidate.distanceSq < best.distanceSq) {
+        best = candidate;
       }
     }
 
     return {
-      angle: bestAngle,
-      position: bestPosition,
-      tangent: bestTangent
+      angle: best.angle,
+      position: best.position,
+      tangent: best.tangent,
+      normal: best.normal,
+      surfaceWorldPosition: best.surfaceWorldPosition,
+      worldPosition: best.worldPosition,
+      contactProgress: 1,
+      distanceSq: best.distanceSq
+    };
+  }
+
+  private findBestOrbitAttachmentOnSegment(
+    node: ResolvedGamePathNode,
+    segmentStart: THREE.Vector3,
+    segmentEnd: THREE.Vector3,
+    travelSpeed: number
+  ): OrbitAttachment | null {
+    const segmentLength = Math.hypot(segmentEnd.x - segmentStart.x, segmentEnd.y - segmentStart.y);
+    const contactTolerance = clamp(Math.max(0.12, segmentLength * 0.12, node.visualScale * 0.028), 0.12, 0.46);
+    const contactToleranceSq = contactTolerance * contactTolerance;
+    const isBetterAttachment = (
+      candidate: {
+        distanceSq: number;
+        segmentT: number;
+      },
+      currentBest: {
+        distanceSq: number;
+        segmentT: number;
+      }
+    ) => {
+      const candidateOnPath = candidate.distanceSq <= contactToleranceSq;
+      const bestOnPath = currentBest.distanceSq <= contactToleranceSq;
+      if (candidateOnPath !== bestOnPath) {
+        return candidateOnPath;
+      }
+      if (candidateOnPath && bestOnPath) {
+        if (candidate.segmentT < currentBest.segmentT - 0.0015) {
+          return true;
+        }
+        if (candidate.segmentT > currentBest.segmentT + 0.0015) {
+          return false;
+        }
+        return candidate.distanceSq < currentBest.distanceSq;
+      }
+      if (candidate.distanceSq < currentBest.distanceSq - 0.0001) {
+        return true;
+      }
+      if (candidate.distanceSq > currentBest.distanceSq + 0.0001) {
+        return false;
+      }
+      return candidate.segmentT < currentBest.segmentT;
+    };
+
+    const measureAttachment = (angle: number) => {
+      const orbitSample = this.getOrbitSample(node, angle);
+      const surfaceSample = this.getSurfaceSample(node, angle);
+      const surfaceWorldPosition = this.getSurfaceContactWorldPosition(node, angle, this.scratchVector);
+      const candidateWorldPosition = this.getPlayerOrbitWorldPosition(node, angle, orbitSample, this.scratchVectorB, travelSpeed);
+      const segmentT = this.getClosestSegmentParameter(segmentStart, segmentEnd, candidateWorldPosition);
+      const closestX = segmentStart.x + (segmentEnd.x - segmentStart.x) * segmentT;
+      const closestY = segmentStart.y + (segmentEnd.y - segmentStart.y) * segmentT;
+      const dx = candidateWorldPosition.x - closestX;
+      const dy = candidateWorldPosition.y - closestY;
+      return {
+        angle,
+        distanceSq: dx * dx + dy * dy,
+        segmentT,
+        position: orbitSample.position.clone(),
+        tangent: surfaceSample.tangent.clone(),
+        normal: this.getSurfaceNormal(surfaceSample, this.scratchVector2).clone(),
+        surfaceWorldPosition: surfaceWorldPosition.clone(),
+        worldPosition: candidateWorldPosition.clone()
+      };
+    };
+
+    const coarseSteps = 192;
+    const coarseStepAngle = (Math.PI * 2) / coarseSteps;
+    let best = measureAttachment(0);
+    for (let step = 1; step < coarseSteps; step += 1) {
+      const candidate = measureAttachment(step * coarseStepAngle);
+      if (isBetterAttachment(candidate, best)) {
+        best = candidate;
+      }
+    }
+
+    const refineStepAngle = coarseStepAngle / 12;
+    for (let step = -8; step <= 8; step += 1) {
+      const candidate = measureAttachment(wrapAngle(best.angle + step * refineStepAngle));
+      if (isBetterAttachment(candidate, best)) {
+        best = candidate;
+      }
+    }
+
+    if (best.distanceSq > contactToleranceSq) {
+      return null;
+    }
+
+    return {
+      angle: best.angle,
+      position: best.position,
+      tangent: best.tangent,
+      normal: best.normal,
+      surfaceWorldPosition: best.surfaceWorldPosition,
+      worldPosition: best.worldPosition,
+      contactProgress: best.segmentT,
+      distanceSq: best.distanceSq
     };
   }
 
   private getOrbitSample(node: ResolvedGamePathNode, angle: number): OrbitSample {
+    return this.getSurfaceSampleWithClearance(node, angle, this.getOrbitClearance(node));
+  }
+
+  private getSurfaceSample(node: ResolvedGamePathNode, angle: number): OrbitSample {
+    return this.getSurfaceSampleWithClearance(node, angle, 0);
+  }
+
+  private getSurfaceSampleWithClearance(node: ResolvedGamePathNode, angle: number, clearance: number): OrbitSample {
     const parameter = wrapAngle(angle);
     const rotation = node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase;
     const extents = this.getShapeExtents(node);
-    const clearance = this.getOrbitClearance(node);
     const baseRadius = this.getPhysicalRadius(node) + clearance;
-    const localAngle = wrapAngle(parameter - rotation);
+    const localAngle = this.getSurfaceLocalAngle(node, parameter);
 
     if (node.shapeKind === 'oval') {
       const rx = extents.x + clearance;
@@ -4451,8 +5043,7 @@ export class GameSessionController {
       return 0;
     }
 
-    const rotation = node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase;
-    const boatAngle = wrapAngle(this.orbitAngle - rotation);
+    const boatAngle = this.getSurfaceLocalAngle(node, this.orbitAngle);
     const forwardTrailAngle = wrapAngle(boatAngle - this.orbitDirection * 0.28);
     const localDelta = shortestAngleDistance(localAngle, boatAngle);
     const trailDelta = shortestAngleDistance(localAngle, forwardTrailAngle);
@@ -4518,52 +5109,52 @@ export class GameSessionController {
     };
   }
 
-  private getPlayerOrbitWorldPosition(node: ResolvedGamePathNode, angle: number, sample: OrbitSample) {
-    const localAngle = wrapAngle(angle - (node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase));
-    const radial = sample.position.clone().normalize();
-    const travelSpeed =
-      this.playerState === 'airborne'
-        ? this.playerVelocity.length()
-        : Math.abs(this.angularSpeed) * Math.max(1, sample.position.length());
+  private getSurfaceLocalAngle(node: ResolvedGamePathNode, angle: number) {
+    return wrapAngle(angle - (node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase));
+  }
+
+  private getPlayerOrbitWorldPosition(
+    node: ResolvedGamePathNode,
+    angle: number,
+    sample: OrbitSample,
+    target = new THREE.Vector3(),
+    travelSpeed = this.playerState === 'airborne'
+      ? this.playerVelocity.length()
+      : Math.abs(this.angularSpeed) * Math.max(1, sample.position.length())
+  ) {
+    const localAngle = this.getSurfaceLocalAngle(node, angle);
     const deformation = Math.max(0, this.sampleSurfaceDeformation(node, localAngle));
     const largeShardLift =
       !node.isMilestone && node.visualScale >= 5
         ? clamp(0.14 + deformation * 0.92 + travelSpeed * 0.012, 0.14, 0.84)
         : clamp(deformation * 0.16 + travelSpeed * 0.003, 0, 0.12);
-    return new THREE.Vector3(
-      node.resolvedX + sample.position.x + radial.x * largeShardLift,
-      node.resolvedY + sample.position.y + radial.y * largeShardLift,
-      node.resolvedZ
-    );
+    return this.offsetSurfaceWorldPosition(node, sample, largeShardLift, target);
+  }
+
+  private getSurfaceAnchorWorldPosition(
+    node: ResolvedGamePathNode,
+    angle: number,
+    radiusFromCenter: number,
+    target = new THREE.Vector3()
+  ) {
+    const sample = this.getOrbitSample(node, angle);
+    return this.offsetSurfaceWorldPosition(node, sample, radiusFromCenter - sample.position.length(), target);
   }
 
   private getCoinWorldPosition(node: ResolvedGamePathNode, angle: number, orbitScale: number) {
     const orbit = this.getOrbitSample(node, angle);
-    const radial = orbit.position.clone().normalize();
     const clearance = this.getOrbitClearance(node);
     const orbitRadius = orbit.position.length() * orbitScale;
     const coinRadius = Math.max(
       this.getPhysicalRadius(node) + clearance * Math.max(0.92, orbitScale) + 0.26,
       orbitRadius + 0.22
     );
-    return new THREE.Vector3(
-      node.resolvedX + radial.x * coinRadius,
-      node.resolvedY + radial.y * coinRadius,
-      node.resolvedZ
-    );
+    return this.getSurfaceAnchorWorldPosition(node, angle, coinRadius);
   }
 
   private getEnemyWorldPosition(node: ResolvedGamePathNode, pole: 'north' | 'south') {
-    const orbit = this.getOrbitSample(node, pole === 'north' ? Math.PI * 0.5 : Math.PI * 1.5);
-    const local = orbit.position.clone().normalize().multiplyScalar(this.getPhysicalRadius(node) + 0.92);
-    const rotation = node.shapeKind === 'round' ? 0 : node.resolvedSpinPhase;
-    const cos = Math.cos(rotation);
-    const sin = Math.sin(rotation);
-    return new THREE.Vector3(
-      node.resolvedX + local.x * cos - local.y * sin,
-      node.resolvedY + local.x * sin + local.y * cos,
-      node.resolvedZ
-    );
+    const poleAngle = pole === 'north' ? Math.PI * 0.5 : Math.PI * 1.5;
+    return this.getSurfaceAnchorWorldPosition(node, poleAngle, this.getPhysicalRadius(node) + 0.92);
   }
 
   getPlayableBorderHint() {
@@ -4637,11 +5228,11 @@ export class GameSessionController {
   }
 
   private getThemeShardColor() {
-    return this.theme === 'dark' ? '#A5977F' : '#2E3644';
+    return getThemeShardHex(this.theme);
   }
 
   private getThemeContrastColor() {
-    return this.theme === 'dark' ? '#2E3644' : '#A5977F';
+    return getThemeShardContrastHex(this.theme);
   }
 
   private getRarityColor(rarity: RogueliteRarity) {

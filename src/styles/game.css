@@ -749,7 +749,8 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
 }
 
 .game-hud__settings-chip {
-  min-height: 32px;
+  min-height: 40px;
+  min-width: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -759,11 +760,18 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
   border: 1px solid rgb(var(--overlay-fg-rgb) / 0.14);
   background: rgb(var(--overlay-fg-rgb) / 0.08);
   padding: 6px;
+  touch-action: manipulation;
 }
 
 .game-hud__settings-chip--help {
   font-size: 1rem;
   line-height: 1;
+}
+
+html[data-runtime-device='mobile'] .game-hud__settings-chip--fullscreen {
+  min-height: 46px;
+  min-width: 46px;
+  padding: 8px;
 }
 
 .game-hud__settings-language-icon {
@@ -778,6 +786,7 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
   max-width: 32px;
   height: auto;
   object-fit: contain;
+  pointer-events: none;
 }
 
 .game-hud__settings-theme-icon {
