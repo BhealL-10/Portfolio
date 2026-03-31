@@ -48,6 +48,7 @@ interface AchievementRunState {
   highMomentumWindowStart: number | null;
   lastRecordedSecond: number;
   lastRecordedDistance: number;
+  airborneSeconds: number;
 }
 
 interface LandingAchievementEvent {
@@ -76,7 +77,8 @@ function createRunState(): AchievementRunState {
     maxMomentumWindowStart: null,
     highMomentumWindowStart: null,
     lastRecordedSecond: -1,
-    lastRecordedDistance: -1
+    lastRecordedDistance: -1,
+    airborneSeconds: 0
   };
 }
 
@@ -295,13 +297,22 @@ export class AchievementSystem {
     });
   }
 
-  recordRunTime(elapsedSeconds: number) {
-    const roundedSeconds = Math.max(0, Math.floor(elapsedSeconds));
+  recordRunTime(deltaSeconds: number) {
+    if (deltaSeconds <= 0) {
+      return;
+    }
+    const nextAirborneSeconds = Math.max(0, this.runState.airborneSeconds + deltaSeconds);
+    const roundedSeconds = Math.floor(nextAirborneSeconds);
     if (roundedSeconds <= this.runState.lastRecordedSecond) {
+      this.runState.airborneSeconds = nextAirborneSeconds;
+      return;
+    }
+    this.runState.airborneSeconds = nextAirborneSeconds;
+    this.runState.lastRecordedSecond = roundedSeconds;
+    if (roundedSeconds === 0) {
       return;
     }
     this.mutate(() => {
-      this.runState.lastRecordedSecond = roundedSeconds;
       this.raiseAll(SURVIVAL_ACHIEVEMENT_IDS, roundedSeconds);
     });
   }

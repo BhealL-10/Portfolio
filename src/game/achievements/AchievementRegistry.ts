@@ -39,12 +39,12 @@ const progressionAchievements: AchievementDefinition[] = [
   achievement('progress_distance_3000', loc('Traversée des Miroirs', 'Mirror Crossing'), loc('Parcourir 3 000 m dans une run.', 'Travel 3,000m in a single run.'), 'progression', 'epic', 3000, { rewardId: reward('eyes', 2) }),
   achievement('progress_distance_4000', loc('Marée des Verrières', 'Glasshouse Tide'), loc('Parcourir 4 000 m dans une run.', 'Travel 4,000m in a single run.'), 'progression', 'epic', 4000, { hidden: true, rewardId: reward('eyes', 3) }),
   achievement('progress_distance_5000', loc('Horizon Primaterie', 'Primaterie Horizon'), loc('Parcourir 5 000 m dans une run.', 'Travel 5,000m in a single run.'), 'progression', 'legendary', 5000, { hidden: true }),
-  achievement('progress_survive_60', loc('Marée Vive', 'Spring Tide'), loc('Survivre 60 secondes.', 'Survive for 60 seconds.'), 'progression', 'common', 60),
-  achievement('progress_survive_90', loc('Cale Silencieuse', 'Silent Hold'), loc('Survivre 90 secondes.', 'Survive for 90 seconds.'), 'progression', 'common', 90, { hidden: true }),
-  achievement('progress_survive_120', loc('Quart d’Écume', 'Foam Watch'), loc('Survivre 120 secondes.', 'Survive for 120 seconds.'), 'progression', 'common', 120, { rewardId: reward('face', 2) }),
-  achievement('progress_survive_180', loc('Quart de Nuit', 'Night Watch'), loc('Survivre 180 secondes.', 'Survive for 180 seconds.'), 'progression', 'uncommon', 180, { rewardId: reward('face', 3) }),
-  achievement('progress_survive_300', loc('Veille Océane', 'Ocean Watch'), loc('Survivre 300 secondes.', 'Survive for 300 seconds.'), 'progression', 'rare', 300, { rewardId: reward('barbe', 2) }),
-  achievement('progress_survive_900', loc('Traversée sans Port', 'Harborless Crossing'), loc('Survivre 900 secondes.', 'Survive for 900 seconds.'), 'progression', 'legendary', 900, { hidden: true })
+  achievement('progress_survive_60', loc('Marée Vive', 'Spring Tide'), loc('Planer pendant 60 secondes.', 'Gliding for 60 seconds.'), 'progression', 'common', 60),
+  achievement('progress_survive_90', loc('Cale Silencieuse', 'Silent Hold'), loc('Planer pendant 90 secondes.', 'Gliding for 90 seconds.'), 'progression', 'common', 90, { hidden: true }),
+  achievement('progress_survive_120', loc('Quart d’Écume', 'Foam Watch'), loc('Planer pendant 120 secondes.', 'Gliding for 120 seconds.'), 'progression', 'common', 120, { rewardId: reward('face', 2) }),
+  achievement('progress_survive_180', loc('Quart de Nuit', 'Night Watch'), loc('Planer pendant 180 secondes.', 'Gliding for 180 seconds.'), 'progression', 'uncommon', 180, { rewardId: reward('face', 3) }),
+  achievement('progress_survive_300', loc('Veille Océane', 'Ocean Watch'), loc('Planer pendant 300 secondes.', 'Gliding for 300 seconds.'), 'progression', 'rare', 300, { rewardId: reward('barbe', 2) }),
+  achievement('progress_survive_900', loc('Traversée sans Port', 'Harborless Crossing'), loc('Planer pendant 900 secondes.', 'Gliding for 900 seconds.'), 'progression', 'legendary', 900, { hidden: true })
 ];
 
 const shardAchievements: AchievementDefinition[] = [

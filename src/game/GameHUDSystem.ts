@@ -86,6 +86,7 @@ type AchievementSortMode = 'rarity' | 'unlocked' | 'locked';
 type BrowserFullscreenDocument = Document & {
   webkitFullscreenElement?: Element | null;
   webkitExitFullscreen?: () => Promise<void> | void;
+  webkitFullscreenEnabled?: boolean;
 };
 
 type BrowserFullscreenElement = HTMLElement & {
@@ -820,7 +821,19 @@ export class GameHUDSystem {
       event.stopPropagation();
       this.closeAchievements();
     });
+    this.achievementsCloseButton.addEventListener('pointerup', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeAchievements();
+    });
     this.achievementsOverlay.addEventListener('click', (event) => {
+      const closeButton = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-achievements-close]');
+      if (closeButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.closeAchievements();
+        return;
+      }
       const sortToggleButton = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-achievement-sort-toggle]');
       if (sortToggleButton) {
         event.preventDefault();
@@ -1815,6 +1828,17 @@ export class GameHUDSystem {
     return Boolean(document.fullscreenElement || fullscreenDocument.webkitFullscreenElement);
   }
 
+  private isFullscreenEnabled() {
+    const fullscreenDocument = document as BrowserFullscreenDocument;
+    const fullscreenElement = document.documentElement as BrowserFullscreenElement;
+    return Boolean(
+      document.fullscreenEnabled ||
+      fullscreenDocument.webkitFullscreenEnabled ||
+      fullscreenElement.requestFullscreen ||
+      fullscreenElement.webkitRequestFullscreen
+    );
+  }
+
   private async toggleFullscreen() {
     const fullscreenDocument = document as BrowserFullscreenDocument;
     const fullscreenElement = document.documentElement as BrowserFullscreenElement;
@@ -1858,13 +1882,21 @@ export class GameHUDSystem {
     this.settingsThemeButton.setAttribute('aria-label', themeLabel);
     this.settingsThemeButton.innerHTML = `<img class="game-hud__settings-theme-icon" src="${THEME_TOGGLE_ASSETS[theme]}" alt="" />`;
 
-    const fullscreenActive = this.isFullscreenActive();
-    const fullscreenLabel = fullscreenActive ? (this.i18n.current === 'fr' ? 'Quitter plein écran' : 'Exit fullscreen') : (this.i18n.current === 'fr' ? 'Plein écran' : 'Fullscreen');
-    const fullscreenSrc = fullscreenActive ? FULLSCREEN_BUTTON_ASSETS.on[theme] : FULLSCREEN_BUTTON_ASSETS.off[theme];
-    this.settingsFullscreenButton.className = 'game-hud__settings-chip game-hud__settings-chip--fullscreen';
-    this.settingsFullscreenButton.setAttribute('aria-label', fullscreenLabel);
-    this.settingsFullscreenButton.setAttribute('aria-pressed', fullscreenActive ? 'true' : 'false');
-    this.settingsFullscreenButton.innerHTML = `<img class="game-hud__settings-fullscreen-icon" src="${fullscreenSrc}" alt="" />`;
+    const fullscreenSupported = this.isFullscreenEnabled();
+    if (!fullscreenSupported) {
+      this.settingsFullscreenButton.hidden = true;
+    } else {
+      const fullscreenActive = this.isFullscreenActive();
+      const fullscreenLabel = fullscreenActive
+        ? (this.i18n.current === 'fr' ? 'Quitter plein écran' : 'Exit fullscreen')
+        : (this.i18n.current === 'fr' ? 'Plein écran' : 'Fullscreen');
+      const fullscreenSrc = fullscreenActive ? FULLSCREEN_BUTTON_ASSETS.on[theme] : FULLSCREEN_BUTTON_ASSETS.off[theme];
+      this.settingsFullscreenButton.hidden = false;
+      this.settingsFullscreenButton.className = 'game-hud__settings-chip game-hud__settings-chip--fullscreen';
+      this.settingsFullscreenButton.setAttribute('aria-label', fullscreenLabel);
+      this.settingsFullscreenButton.setAttribute('aria-pressed', fullscreenActive ? 'true' : 'false');
+      this.settingsFullscreenButton.innerHTML = `<img class="game-hud__settings-fullscreen-icon" src="${fullscreenSrc}" alt="" />`;
+    }
   }
 
   private renderAudioControls() {
@@ -1927,13 +1959,12 @@ export class GameHUDSystem {
   private renderAchievementsContent(snapshot: AchievementPanelSnapshot, force = false) {
     const theme = resolveDocumentTheme();
     const hoverTheme = theme === 'dark' ? 'light' : 'dark';
-    const contrastedTheme = hoverTheme;
     this.applySvgButton(
       this.achievementsCloseButton,
-      SECONDARY_NAV_ASSETS.close[contrastedTheme],
+      SECONDARY_NAV_ASSETS.close[theme],
       this.i18n.t('gameAchievementsClose'),
       'game-hud__achievements-close',
-      SECONDARY_NAV_ASSETS.close[theme]
+      SECONDARY_NAV_ASSETS.close[hoverTheme]
     );
     if (!force && snapshot.serial === this.renderedAchievementsSerial) {
       return;
@@ -1992,7 +2023,6 @@ export class GameHUDSystem {
       sortOptions.find((option) => option.value === this.achievementSortMode)?.label ?? this.i18n.t('gameAchievementsSortRarity');
     this.achievementsControls.innerHTML = `
       <div class="game-hud__achievement-sort-shell">
-        <span class="game-hud__achievement-sort-label">${this.i18n.t('gameAchievementsSort')}</span>
         <button type="button" class="game-hud__achievement-sort-toggle${this.achievementSortMenuOpen ? ' is-open' : ''}" data-achievement-sort-toggle>
           <span>${activeSortLabel}</span>
         </button>
@@ -2155,11 +2185,12 @@ export class GameHUDSystem {
       }
       return;
     }
-    if (!force && this.gameOverAchievements.dataset.serial === `${snapshot.serial}:${runUnlocks.length}`) {
+    const runUnlockSignature = runUnlocks.map((entry) => entry.id).join(':');
+    if (!force && this.gameOverAchievements.dataset.serial === runUnlockSignature) {
       this.gameOverAchievements.hidden = false;
       return;
     }
-    this.gameOverAchievements.dataset.serial = `${snapshot.serial}:${runUnlocks.length}`;
+    this.gameOverAchievements.dataset.serial = runUnlockSignature;
     this.gameOverAchievements.hidden = false;
     this.gameOverAchievements.innerHTML = runUnlocks
       .map(
@@ -3471,6 +3502,14 @@ export class GameHUDSystem {
       getUIButtonAsset('hub', 'fr', 'light'),
       getUIButtonAsset('hub', 'en', 'dark'),
       getUIButtonAsset('hub', 'en', 'light'),
+      LANGUAGE_BUTTON_ASSETS.fr,
+      LANGUAGE_BUTTON_ASSETS.en,
+      FULLSCREEN_BUTTON_ASSETS.on.dark,
+      FULLSCREEN_BUTTON_ASSETS.on.light,
+      FULLSCREEN_BUTTON_ASSETS.off.dark,
+      FULLSCREEN_BUTTON_ASSETS.off.light,
+      SAVE_BUTTON_ASSETS.dark,
+      SAVE_BUTTON_ASSETS.light,
       THEME_TOGGLE_ASSETS.dark,
       THEME_TOGGLE_ASSETS.light,
       ACHIEVEMENT_ICON_ASSETS.dark,
@@ -3506,5 +3545,17 @@ export class GameHUDSystem {
     });
     Object.values(EQUIPMENT_UI_ASSETS.charges).forEach((src) => this.preloadShapeTemplate(src));
     this.preloadShapeTemplate(EQUIPMENT_UI_ASSETS.bgBoat);
+
+    void this.ensureDeferredAssetsModule()
+      .then(async ({ loadAvatarLayerSets, loadHelpPagesFor }) => {
+        await Promise.all([
+          loadAvatarLayerSets(),
+          loadHelpPagesFor(this.i18n.current, 'dark'),
+          loadHelpPagesFor(this.i18n.current, 'light')
+        ]);
+      })
+      .catch((error) => {
+        console.warn('[GameHUDSystem] Failed to preload deferred UI assets.', error);
+      });
   }
 }

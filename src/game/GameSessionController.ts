@@ -1814,7 +1814,9 @@ export class GameSessionController {
     this.tickModuleRuntime(frame.deltaTime);
     this.updateMomentum(frame.deltaTime);
     this.stats.updateMomentumWindow(this.currentTime, !frame.shopLocked && this.momentum.gauge > 0.08);
-    this.achievements.recordRunTime(this.currentTime);
+    if (this.playerState === 'airborne') {
+      this.achievements.recordRunTime(frame.deltaTime);
+    }
     this.achievements.recordMomentumGauge(
       !frame.shopLocked ? clamp(this.momentum.gauge / Math.max(1, this.runUpgrades.modifiers.momentumCap), 0, 1) : 0,
       this.currentTime

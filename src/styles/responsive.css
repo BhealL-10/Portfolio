@@ -160,7 +160,7 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
 
   html[data-runtime-device='desktop'] .game-hud__leaderboard {
     min-height: min(428px, calc(var(--game-gameover-panel-min-height) + 4px));
-    padding: 120px 50px 30px;
+    padding: 190px 50px 30px;
     gap: 8px;
   }
 
@@ -217,7 +217,7 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   }
 
   html[data-runtime-device='desktop'] .game-hud__leaderboard-save-button .game-hud__svg-button-image img {
-    height: 40px;
+    height: 115px;
   }
 
   html[data-runtime-device='desktop'] .game-hud__game-over-rule-image {
@@ -251,7 +251,7 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   }
 
   html[data-runtime-device='desktop'] .game-hud__avatar-editor-save-button .game-hud__svg-button-image img {
-    height: 42px;
+    height: 115px;
   }
 }
 
@@ -584,7 +584,7 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   }
 
   .game-hud__game-over-rule-image {
-    width: 100%;
+    width: 175%;
     max-height: min(220px, var(--game-over-rule-image-max-height) * 1.4);
     object-fit: contain;
   }
@@ -683,6 +683,7 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   }
 
   .game-hud__leaderboard-controls {
+
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 6px;
   }
