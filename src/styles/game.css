@@ -1351,11 +1351,11 @@ html[data-theme='dark'] .game-hud__achievement-summary-label {
 }
 
 html[data-theme='light'] .game-hud__achievement-summary-pill {
-  background-image: url('../../assets/images/game/ui/backgrounds/hud-light-2.svg');
+  background-image: url('../../assets/images/game/ui/backgrounds/hud-light-skull.svg');
 }
 
 html[data-theme='dark'] .game-hud__achievement-summary-pill {
-  background-image: url('../../assets/images/game/ui/backgrounds/hud-dark-2.svg');
+  background-image: url('../../assets/images/game/ui/backgrounds/hud-dark-skull.svg');
 }
 
 .game-hud__achievement-summary-pill strong {

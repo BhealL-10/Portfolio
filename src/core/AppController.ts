@@ -1158,18 +1158,27 @@ export class AppController {
     const initialPositions = this.game.getInitialPlatformPositions(projectCount);
     const initialVisuals = this.game.getInitialPlatformVisuals(projectCount);
     const transitionIndex = 0;
+    const visibleTransitionIndex = THREE.MathUtils.clamp(
+      this.activeIndex,
+      0,
+      Math.max(0, initialPositions.length - 1)
+    );
     const transitionVisual = initialVisuals[transitionIndex] ?? initialVisuals[0];
     const transitionAnchor = initialPositions[transitionIndex]?.clone() ?? this.world.getCameraAlignedTransitionAnchor();
     this.gameTransitionAnchor = transitionAnchor.clone();
     if (this.gameTransitionFromprimaterie) {
-      this.world.beginExternalLayoutTransition(
-        initialPositions,
-        this.game.getInitialPlatformScales(projectCount),
-        initialVisuals,
-        { staggerVisibleIndex: transitionIndex, reverseStagger: true }
-      );
+      if (transitionVisual) {
+        this.world.beginSingleNodeExternalLayoutTransition(transitionAnchor, transitionVisual, visibleTransitionIndex);
+      } else {
+        this.world.beginExternalLayoutTransition(
+          initialPositions,
+          this.game.getInitialPlatformScales(projectCount),
+          initialVisuals,
+          { staggerVisibleIndex: visibleTransitionIndex, reverseStagger: true }
+        );
+      }
     } else if (transitionVisual) {
-      this.world.beginSingleNodeExternalLayoutTransition(transitionAnchor, transitionVisual, transitionIndex);
+      this.world.beginSingleNodeExternalLayoutTransition(transitionAnchor, transitionVisual, visibleTransitionIndex);
     } else {
       this.world.beginExternalLayoutTransition(
         initialPositions,

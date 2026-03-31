@@ -578,7 +578,10 @@ export class OrbitWorldSystem {
 
   beginSingleNodeExternalLayoutTransition(position: THREE.Vector3, visual: VisiblePlatformVisual, visibleIndex = 0) {
     const layout = this.buildSingleNodeExternalLayout(position, visual, visibleIndex);
-    this.beginExternalLayoutTransition(layout.positions, layout.scales, layout.visuals, { staggerVisibleIndex: visibleIndex });
+    this.beginExternalLayoutTransition(layout.positions, layout.scales, layout.visuals, {
+      staggerVisibleIndex: visibleIndex,
+      reverseStagger: true
+    });
   }
 
   beginExternalLayoutTransition(
