@@ -44,7 +44,7 @@
   --game-help-button-size: 112px;
   --game-help-nav-offset: 10px;
   --game-help-close-offset: -34px;
-  --game-help-stage-width: min(92vw, 1220px);
+  --game-help-stage-width: min(92vw, 1520px);
   --game-help-stage-height: min(84dvh, 860px);
   --game-help-stage-min-height: min(58dvh, 520px);
   --game-help-stage-max-height: calc(100dvh - 74px);

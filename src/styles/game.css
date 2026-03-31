@@ -1013,23 +1013,41 @@ html[data-runtime-device='mobile'] .game-hud__settings-chip--fullscreen {
   touch-action: pan-x;
   display: grid;
   place-items: center;
+  perspective: 1200px;
 }
 
 .game-hud__help-track {
-  display: flex;
+  position: relative;
+  width: 100%;
   height: 100%;
-  transition: transform 220ms ease;
-  will-change: transform;
 }
 
 .game-hud__help-page {
-  flex: 0 0 100%;
-  min-width: 100%;
-  min-height: 0;
+  position: absolute;
+  inset: 0;
+  min-height: 100%;
+  width: 100%;
   display: grid;
   place-items: center;
   padding: var(--game-help-page-padding);
   align-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  transform-origin: center center;
+}
+
+.game-hud__help-page.is-active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.game-hud__help-page.is-flipping-out-next,
+.game-hud__help-page.is-flipping-out-prev,
+.game-hud__help-page.is-flipping-in-next,
+.game-hud__help-page.is-flipping-in-prev {
+  opacity: 1;
 }
 
 .game-hud__help-image {
@@ -1042,6 +1060,74 @@ html[data-runtime-device='mobile'] .game-hud__settings-chip--fullscreen {
   object-position: center;
   user-select: none;
   -webkit-user-drag: none;
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+}
+
+.game-hud__help-page.is-flipping-out-next {
+  animation: help-page-flip-out-right 320ms ease both;
+}
+
+.game-hud__help-page.is-flipping-in-next {
+  animation: help-page-flip-in-right 320ms ease 320ms both;
+}
+
+.game-hud__help-page.is-flipping-out-prev {
+  animation: help-page-flip-out-left 320ms ease both;
+}
+
+.game-hud__help-page.is-flipping-in-prev {
+  animation: help-page-flip-in-left 320ms ease 320ms both;
+}
+
+@keyframes help-page-flip-out-right {
+  from {
+    transform: rotateY(0deg);
+    opacity: 1;
+  }
+  to {
+    transform: rotateY(90deg);
+    opacity: 1;
+  }
+}
+
+@keyframes help-page-flip-in-right {
+  from {
+    transform: rotateY(-90deg);
+    opacity: 1;
+  }
+  50% {
+    opacity: 1;
+  }
+  to {
+    transform: rotateY(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes help-page-flip-out-left {
+  from {
+    transform: rotateY(0deg);
+    opacity: 1;
+  }
+  to {
+    transform: rotateY(-90deg);
+    opacity: 1;
+  }
+}
+
+@keyframes help-page-flip-in-left {
+  from {
+    transform: rotateY(90deg);
+    opacity: 1;
+  }
+  50% {
+    opacity: 1;
+  }
+  to {
+    transform: rotateY(0deg);
+    opacity: 1;
+  }
 }
 
 .game-hud__help-footer {
@@ -2256,12 +2342,12 @@ html[data-theme='dark'] .game-hud__wallet {
 .game-hud__toast {
   position: relative;
   min-width: 188px;
-  max-width: min(340px, calc(100vw - 40px));
+  max-width: min(420px, calc(100vw - 40px));
   display: flex;
   align-items: center;
   justify-content: center;
   justify-items: center;
-  padding: 16px 26px;
+  padding: 16px 30px;
   border-radius: 999px;
   white-space: normal;
   overflow-wrap: break-word;
@@ -2279,12 +2365,12 @@ html[data-theme='dark'] .game-hud__wallet {
 .game-hud__toast::before {
   content: '';
   position: absolute;
-  inset: -8px -14px;
+  inset: -12px -18px;
   z-index: -1;
-  background-image: url('../../assets/images/game/ui/backgrounds/hud-dark-3.svg');
+  background-image: url('../../assets/images/game/ui/backgrounds/bg-achievement-toast-dark.svg');
   background-position: center;
   background-repeat: no-repeat;
-  background-size: 100% 100%;
+  background-size: 120% 120%;
   filter: none;
 }
 
@@ -2305,17 +2391,17 @@ html[data-theme='dark'] .game-hud__wallet {
 }
 
 .game-hud__toast::after {
-  mask-image: url('../../assets/images/game/ui/backgrounds/hud-dark-3.svg');
-  -webkit-mask-image: url('../../assets/images/game/ui/backgrounds/hud-dark-3.svg');
+  mask-image: url('../../assets/images/game/ui/backgrounds/bg-achievement-toast-dark.svg');
+  -webkit-mask-image: url('../../assets/images/game/ui/backgrounds/bg-achievement-toast-dark.svg');
 }
 
 html[data-theme='dark'] .game-hud__toast::after {
-  mask-image: url('../../assets/images/game/ui/backgrounds/hud-light-3.svg');
-  -webkit-mask-image: url('../../assets/images/game/ui/backgrounds/hud-light-3.svg');
+  mask-image: url('../../assets/images/game/ui/backgrounds/bg-achievement-toast-light.svg');
+  -webkit-mask-image: url('../../assets/images/game/ui/backgrounds/bg-achievement-toast-light.svg');
 }
 
 html[data-theme='dark'] .game-hud__toast::before {
-  background-image: url('../../assets/images/game/ui/backgrounds/hud-light-3.svg');
+  background-image: url('../../assets/images/game/ui/backgrounds/bg-achievement-toast-light.svg');
 }
 
 .game-hud__toast.is-visible {
@@ -2473,14 +2559,14 @@ html[data-theme='dark'] .game-hud__toast::before {
   position: relative;
   min-height: 56px;
   min-width: 180px;
-  max-width: min(340px, calc(100vw - 40px));
+  max-width: min(420px, calc(100vw - 40px));
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 16px 26px;
+  padding: 18px 30px;
   background-position: center;
   background-repeat: no-repeat;
-  background-size: 100% 100%;
+  background-size: 120% 120%;
   text-align: center;
   font-size: 0.76rem;
   line-height: 1.3;
@@ -2493,21 +2579,21 @@ html[data-theme='dark'] .game-hud__toast::before {
 }
 
 html[data-theme='light'] .game-hud__game-over-achievement-pill {
-  background-image: url('../../assets/images/game/ui/backgrounds/hud-light-4.svg');
+  background-image: url('../../assets/images/game/ui/backgrounds/bg-achievement-toast-light.svg');
 }
 
 html[data-theme='dark'] .game-hud__game-over-achievement-pill {
-  background-image: url('../../assets/images/game/ui/backgrounds/hud-dark-4.svg');
+  background-image: url('../../assets/images/game/ui/backgrounds/bg-achievement-toast-dark.svg');
 }
 
 .game-hud__game-over-achievement-pill::after {
-  mask-image: url('../../assets/images/game/ui/backgrounds/hud-dark-4.svg');
-  -webkit-mask-image: url('../../assets/images/game/ui/backgrounds/hud-dark-4.svg');
+  mask-image: url('../../assets/images/game/ui/backgrounds/bg-achievement-toast-dark.svg');
+  -webkit-mask-image: url('../../assets/images/game/ui/backgrounds/bg-achievement-toast-dark.svg');
 }
 
 html[data-theme='dark'] .game-hud__game-over-achievement-pill::after {
-  mask-image: url('../../assets/images/game/ui/backgrounds/hud-light-4.svg');
-  -webkit-mask-image: url('../../assets/images/game/ui/backgrounds/hud-light-4.svg');
+  mask-image: url('../../assets/images/game/ui/backgrounds/bg-achievement-toast-light.svg');
+  -webkit-mask-image: url('../../assets/images/game/ui/backgrounds/bg-achievement-toast-light.svg');
 }
 
 .game-hud__game-over-achievement-pill[data-rarity='common'] {

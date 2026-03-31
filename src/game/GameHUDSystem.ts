@@ -81,7 +81,7 @@ const COOLDOWN_RING_SLOTS = new Set(['shield', 'wrapper', 'big_canon', 'front_ca
 
 type GameHUDState = 'transition' | 'running' | 'upgrade_choice' | 'game_over';
 type AchievementFilterValue = 'all' | AchievementRarity;
-type AchievementSortMode = 'rarity' | 'unlocked' | 'locked';
+type AchievementSortMode = 'acquired' | 'rarity' | 'unlocked' | 'locked';
 
 type BrowserFullscreenDocument = Document & {
   webkitFullscreenElement?: Element | null;
@@ -406,6 +406,7 @@ export class GameHUDSystem {
   private readonly helpPagesPromises = new Map<string, Promise<string[]>>();
   private helpLocale: 'fr' | 'en' = 'en';
   private helpPageIndex = 0;
+  private helpPageTransitionTimeout: number | null = null;
   private helpOpen = false;
   private helpPointerStartX: number | null = null;
   private helpAutoOpenedThisSession = false;
@@ -423,7 +424,7 @@ export class GameHUDSystem {
   private currentAchievements = createEmptyAchievementPanelSnapshot();
   private renderedAchievementsSerial = -1;
   private achievementFilter: AchievementFilterValue = 'all';
-  private achievementSortMode: AchievementSortMode = 'rarity';
+  private achievementSortMode: AchievementSortMode = 'acquired';
   private achievementSortMenuOpen = false;
 
   constructor(host: HTMLElement, private readonly i18n: I18nService, private readonly callbacks: GameHUDCallbacks) {
@@ -2015,8 +2016,9 @@ export class GameHUDSystem {
       { value: 'legendary', label: this.getAchievementRarityLabel('legendary'), icon: ACHIEVEMENT_RARITY_ICON_ASSETS.legendary }
     ];
     const sortOptions: Array<{ value: AchievementSortMode; label: string }> = [
+      { value: 'acquired', label: this.i18n.t('gameAchievementsSortAcquired') },
       { value: 'rarity', label: this.i18n.t('gameAchievementsSortRarity') },
-      { value: 'unlocked', label: this.i18n.t('gameAchievementsUnlocked') },
+      { value: 'unlocked', label: this.i18n.t('gameAchievementsSortUnlocked') },
       { value: 'locked', label: this.i18n.t('gameAchievementsLocked') }
     ];
     const activeSortLabel =
@@ -2079,6 +2081,16 @@ export class GameHUDSystem {
       }
       return 0;
     };
+
+    if (this.achievementSortMode === 'acquired') {
+      return filtered.sort((left, right) =>
+        compareMystery(left, right) ||
+        Number(right.unlocked) - Number(left.unlocked) ||
+        (right.unlockOrder ?? -1) - (left.unlockOrder ?? -1) ||
+        rarityRank(right.rarity) - rarityRank(left.rarity) ||
+        left.name.localeCompare(right.name, this.i18n.current)
+      );
+    }
 
     if (this.achievementSortMode === 'unlocked') {
       return filtered
@@ -2322,8 +2334,56 @@ export class GameHUDSystem {
       this.renderHelpLoadingState();
       return;
     }
-    this.helpPageIndex = Math.max(0, Math.min(index, pages.length - 1));
-    this.helpTrack.style.transform = `translate3d(${-this.helpPageIndex * 100}%, 0, 0)`;
+
+    const newIndex = Math.max(0, Math.min(index, pages.length - 1));
+    const previousIndex = this.helpPageIndex;
+    const direction = newIndex > previousIndex ? 'next' : 'prev';
+
+    if (this.helpPageTransitionTimeout !== null) {
+      window.clearTimeout(this.helpPageTransitionTimeout);
+      this.helpPageTransitionTimeout = null;
+    }
+
+    const previousPage = this.helpTrack.querySelector<HTMLDivElement>(`[data-help-page="${previousIndex}"]`);
+    const nextPage = this.helpTrack.querySelector<HTMLDivElement>(`[data-help-page="${newIndex}"]`);
+
+    const clearTransitionClasses = (page: HTMLElement | null) => {
+      page?.classList.remove(
+        'is-flipping-out-next',
+        'is-flipping-out-prev',
+        'is-flipping-in-next',
+        'is-flipping-in-prev'
+      );
+    };
+
+    const clearAllTransitionClasses = () => {
+      this.helpTrack.querySelectorAll<HTMLElement>('.is-flipping-out-next, .is-flipping-out-prev, .is-flipping-in-next, .is-flipping-in-prev').forEach((page) => {
+        page.classList.remove(
+          'is-flipping-out-next',
+          'is-flipping-out-prev',
+          'is-flipping-in-next',
+          'is-flipping-in-prev'
+        );
+      });
+    };
+
+    clearAllTransitionClasses();
+
+    if (previousPage && nextPage && previousIndex !== newIndex) {
+      previousPage.classList.remove('is-active');
+      previousPage.classList.add(`is-flipping-out-${direction}`);
+      nextPage.classList.add('is-active', `is-flipping-in-${direction}`);
+
+      this.helpPageTransitionTimeout = window.setTimeout(() => {
+        clearTransitionClasses(previousPage);
+        clearTransitionClasses(nextPage);
+        this.helpPageTransitionTimeout = null;
+      }, 680);
+    } else if (nextPage) {
+      nextPage.classList.add('is-active');
+    }
+
+    this.helpPageIndex = newIndex;
     this.helpCounter.textContent = `${this.helpPageIndex + 1} / ${pages.length}`;
     this.helpPrevButton.disabled = this.helpPageIndex <= 0;
     this.helpNextButton.disabled = this.helpPageIndex >= pages.length - 1;

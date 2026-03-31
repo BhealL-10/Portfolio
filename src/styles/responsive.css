@@ -24,7 +24,7 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
     --game-help-button-size: 96px;
     --game-help-nav-offset: 12px;
     --game-help-close-offset: -30px;
-    --game-help-stage-width: min(88vw, 1120px);
+    --game-help-stage-width: min(88vw, 1520px);
     --game-help-stage-height: min(80dvh, 780px);
     --game-help-stage-min-height: min(52dvh, 480px);
     --game-help-stage-max-height: calc(100dvh - 68px);

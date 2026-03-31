@@ -60,8 +60,17 @@ export function loadHelpPagesFor(locale: HelpLocale, theme: HelpTheme) {
     return cached;
   }
 
-  const request = Promise.all(getHelpCandidates(locale, theme).map(async ({ load }) => load()))
-    .then((pages) => pages.filter((page): page is string => Boolean(page)));
+  const candidates = getHelpCandidates(locale, theme);
+  const request = (async () => {
+    const pages: string[] = [];
+    for (const { load } of candidates) {
+      const page = await load();
+      if (page) {
+        pages.push(page);
+      }
+    }
+    return pages;
+  })();
   helpPageCache.set(cacheKey, request);
   return request;
 }
