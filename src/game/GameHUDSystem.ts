@@ -1036,7 +1036,7 @@ export class GameHUDSystem {
       })
       .catch((error) => {
         this.avatarAssetsPromise = null;
-        console.warn('[GameHUDSystem] Failed to load deferred avatar assets.', error);
+        console.warn('[GameHUDSystem] Failed to load deferred skins.', error);
       });
 
     return this.avatarAssetsPromise;

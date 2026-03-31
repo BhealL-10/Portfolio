@@ -55,7 +55,7 @@ describe('AchievementSystem', () => {
     expect(unlocked?.reward?.name).toBe('Eyes 4');
   });
 
-  it('surfaces unlocked avatar assets in the profile snapshot', () => {
+  it('surfaces unlocked skins in the profile snapshot', () => {
     const system = new AchievementSystem(createStorage());
     system.resetRun();
 
