@@ -103,10 +103,6 @@ interface GameHUDCallbacks {
   onLanguageToggle: () => void;
   onAudioMuteToggle: () => void;
   onAudioVolumeChange: (value: number) => void;
-  onMobileJump: () => void;
-  onMobileChargeChange: (active: boolean) => void;
-  onMobileGrapple: () => void;
-  onMobileAirborneCharge: () => void;
   onGameOverStatReveal: (record: boolean) => void;
 }
 
@@ -133,10 +129,21 @@ interface GameHUDPayload {
   mobile: {
     airborneChargeCount: number;
     airborneChargeDisplayCount: number;
+    hasTeleport: boolean;
+    teleportBlocked: boolean;
+    teleportCooldownRatio: number;
+    teleportActive: boolean;
     hasGrapple: boolean;
     grappleBlocked: boolean;
+    grappleCooldownRatio: number;
+    grappleActive: boolean;
+    hasAirAction: boolean;
+    airActionBlocked: boolean;
+    airActionActive: boolean;
+    airActionDepleted: boolean;
     hasSouffleur: boolean;
     hasSouffleurFuel: boolean;
+    boostActive: boolean;
   };
   state: GameHUDState;
   offers: RogueliteItemOffer[];
@@ -221,23 +228,23 @@ interface LeaderboardEntry {
   };
 }
 
-const AVATAR_LAYER_ORDER = ['background', 'motif', 'face', 'eyes', 'barbe'] as const;
+const AVATAR_LAYER_ORDER = ['oreille', 'face', 'eyes', 'facemotif', 'accessoire'] as const;
 type AvatarLayerKey = (typeof AVATAR_LAYER_ORDER)[number];
 
 interface AvatarSelection {
-  background: number;
-  motif: number;
+  oreille: number;
   face: number;
   eyes: number;
-  barbe: number;
+  facemotif: number;
+  accessoire: number;
 }
 
 interface ResolvedAvatarLayers {
-  background: string;
-  motif: string;
+  oreille: string;
   face: string;
   eyes: string;
-  barbe: string;
+  facemotif: string;
+  accessoire: string;
 }
 
 interface EquipmentSvgBounds {
@@ -269,17 +276,19 @@ const LEADERBOARD_API_PATH = '/api/leaderboard';
 const PLAYER_ID_KEY = 'portfolio-game-player-id-v1';
 const PLAYER_NAME_KEY = 'portfolio-game-player-name';
 const PLAYER_AVATAR_KEY = 'portfolio-game-player-avatar-v1';
+const PLAYER_LEADERBOARD_REGISTERED_KEY = 'portfolio-game-player-registered-v1';
 const GAME_HELP_SEEN_KEY = 'portfolio-game-help-seen-v1';
+const GAME_HELP_TUTORIAL_COMPLETED_KEY = 'portfolio-game-help-tutorial-complete-v2';
 
 type HelpTheme = 'dark' | 'light';
 
 function createEmptyAvatarLayerSets(): GameHudAvatarLayerSets {
   return {
-    background: [],
-    motif: [],
+    oreille: [],
     face: [],
     eyes: [],
-    barbe: []
+    facemotif: [],
+    accessoire: []
   };
 }
 
@@ -385,6 +394,7 @@ export class GameHUDSystem {
   private currentGameOverRevealSignature = '';
   private currentGameOverRuleSrc = '';
   private lastSavedGameOverSignature = '';
+  private lastAutoSyncedGameOverSignature = '';
   private currentRunSummary: GameHUDPayload['runSummary'] | null = null;
   private previousRunStripMetrics: { score: number; highscore: number; distanceMeters: number; coins: number } | null = null;
   private avatarLayerSets = createEmptyAvatarLayerSets();
@@ -410,6 +420,8 @@ export class GameHUDSystem {
   private helpOpen = false;
   private helpPointerStartX: number | null = null;
   private helpAutoOpenedThisSession = false;
+  private helpFirstRunLocked = false;
+  private readonly helpVisitedPages = new Set<number>();
   private volumeDragPointerId: number | null = null;
   private lastFullscreenTouchAt = 0;
   private renderedLeaderboardEntries: Array<LeaderboardEntry | null> = [];
@@ -417,6 +429,7 @@ export class GameHUDSystem {
   private leaderboardRequestSerial = 0;
   private leaderboardSyncState: 'idle' | 'loading' | 'saving' | 'error' = 'idle';
   private uiAssetsPreloaded = false;
+  private uiAssetsPreloadPromise: Promise<void> | null = null;
   private leaderboardLoaded = false;
   private leaderboardLoadPromise: Promise<void> | null = null;
   private deferredAssetsModulePromise: Promise<typeof import('./GameHudDeferredAssets')> | null = null;
@@ -489,8 +502,8 @@ export class GameHUDSystem {
             <img src="${MOMENTUM_BAR_ASSETS.top}" alt="" class="game-hud__momentum-top" />
           </div>
         </div>
-        <div class="game-hud__score-feed" data-score-feed aria-hidden="true"></div>
       </div>
+      <div class="game-hud__score-feed" data-score-feed aria-hidden="true"></div>
       <div class="game-hud__play-zone game-hud__play-zone--top"></div>
       <div class="game-hud__play-zone game-hud__play-zone--bottom"></div>
       <div class="game-hud__stash">
@@ -710,16 +723,10 @@ export class GameHUDSystem {
     this.mobileControls = new MobileControlsHud(
       this.element.querySelector<HTMLDivElement>('.game-hud__mobile-controls-anchor')!,
       {
-        jump: this.i18n.current === 'fr' ? 'Saut' : 'Jump',
+        teleport: this.i18n.current === 'fr' ? 'Téléporteur' : 'Teleporter',
         boost: this.i18n.current === 'fr' ? 'Boost' : 'Boost',
         grapple: this.i18n.current === 'fr' ? 'Grappin' : 'Grapple',
         charge: this.i18n.current === 'fr' ? 'Charge' : 'Charge'
-      },
-      {
-        onChargeChange: callbacks.onMobileChargeChange,
-        onJump: callbacks.onMobileJump,
-        onAirborneCharge: callbacks.onMobileAirborneCharge,
-        onGrapple: callbacks.onMobileGrapple
       }
     );
 
@@ -806,7 +813,7 @@ export class GameHUDSystem {
     this.settingsVolumeButton.addEventListener('pointercancel', releaseVolumePointer);
     this.helpPrevButton.addEventListener('click', () => this.setHelpPage(this.helpPageIndex - 1));
     this.helpNextButton.addEventListener('click', () => this.setHelpPage(this.helpPageIndex + 1));
-    this.helpCloseButton.addEventListener('click', () => this.closeHelp());
+    this.helpCloseButton.addEventListener('click', () => this.requestCloseHelp());
     this.avatarEditorCloseButton.addEventListener('click', () => {
       this.avatarEditorOpen = false;
       this.renderAvatarEditor();
@@ -814,7 +821,7 @@ export class GameHUDSystem {
     });
     this.helpOverlay.addEventListener('click', (event) => {
       if (event.target === this.helpOverlay) {
-        this.closeHelp();
+        this.requestCloseHelp();
       }
     });
     this.achievementsCloseButton.addEventListener('click', (event) => {
@@ -967,12 +974,17 @@ export class GameHUDSystem {
     this.stopObservingTheme();
   }
 
+  preloadAssets() {
+    return this.ensureUiAssetsPreloaded();
+  }
+
   private ensureUiAssetsPreloaded() {
-    if (this.uiAssetsPreloaded) {
-      return;
+    if (this.uiAssetsPreloaded && this.uiAssetsPreloadPromise) {
+      return this.uiAssetsPreloadPromise;
     }
     this.uiAssetsPreloaded = true;
-    this.preloadUiAssets();
+    this.uiAssetsPreloadPromise = this.preloadUiAssets();
+    return this.uiAssetsPreloadPromise;
   }
 
   private ensureDeferredAssetsModule() {
@@ -1147,7 +1159,8 @@ export class GameHUDSystem {
     this.shopBar.inert = !(payload.state === 'upgrade_choice' && showingShop);
     this.gameOverOverlay.inert = payload.state !== 'game_over';
     this.toastStack.inert = toastPayloads.length === 0 || !toastHudActive;
-    this.stashBar.hidden = payload.state === 'upgrade_choice' || payload.state === 'game_over';
+    const stashVisible = payload.state !== 'game_over' && (payload.state !== 'upgrade_choice' || showingShop);
+    this.stashBar.hidden = !stashVisible;
     if (payload.state !== 'running' && this.scoreFeed.childElementCount > 0) {
       this.clearScoreFeed();
     }
@@ -1155,7 +1168,8 @@ export class GameHUDSystem {
     this.runStrip.hidden = payload.state === 'game_over';
     this.branchLayer.classList.toggle('is-visible', payload.state === 'upgrade_choice' && showingShop);
     this.shopBar.classList.toggle('is-visible', payload.state === 'upgrade_choice' && showingShop);
-    this.stashBar.classList.toggle('is-visible', payload.state !== 'upgrade_choice' && payload.state !== 'game_over');
+    this.stashBar.classList.toggle('is-visible', stashVisible);
+    this.stashBar.classList.toggle('is-shop-visible', payload.state === 'upgrade_choice' && showingShop);
     this.momentumDock.classList.toggle('is-hidden', payload.state === 'upgrade_choice' || payload.state === 'game_over');
     this.gameOverOverlay.classList.toggle('is-visible', payload.state === 'game_over');
     this.toastStack.classList.toggle('is-visible', toastPayloads.length > 0 && toastHudActive);
@@ -1168,21 +1182,20 @@ export class GameHUDSystem {
       payload.state === 'running' &&
       !this.helpOpen &&
       !this.helpAutoOpenedThisSession &&
-      window.localStorage.getItem(GAME_HELP_SEEN_KEY) !== '1'
+      !this.hasCompletedHelpTutorial()
     ) {
       const openAutoHelp = () => {
-        if (this.helpOpen || this.helpAutoOpenedThisSession || window.localStorage.getItem(GAME_HELP_SEEN_KEY) === '1') {
+        if (this.helpOpen || this.helpAutoOpenedThisSession || this.hasCompletedHelpTutorial()) {
           return;
         }
         this.helpAutoOpenedThisSession = true;
-        window.localStorage.setItem(GAME_HELP_SEEN_KEY, '1');
-        this.openHelp('en');
+        this.openHelp(this.i18n.current, { forceTutorial: true });
       };
 
-      if (this.getHelpPages('en').length > 0) {
+      if (this.getHelpPages(this.i18n.current).length > 0) {
         openAutoHelp();
       } else {
-        void this.ensureHelpPagesLoaded('en').then((pages) => {
+        void this.ensureHelpPagesLoaded(this.i18n.current).then((pages) => {
           if (pages.length > 0) {
             openAutoHelp();
           }
@@ -1206,6 +1219,7 @@ export class GameHUDSystem {
       this.currentGameOverRevealSignature = '';
       this.currentGameOverRuleSrc = '';
       this.lastSavedGameOverSignature = '';
+      this.lastAutoSyncedGameOverSignature = '';
       this.avatarEditorOpen = false;
       this.draftAvatarSelection = { ...this.playerAvatarSelection };
     }
@@ -1309,6 +1323,7 @@ export class GameHUDSystem {
     } else {
       this.renderLeaderboard();
     }
+    this.syncHelpCloseAvailability();
   }
 
   private renderToastStack(
@@ -1326,9 +1341,19 @@ export class GameHUDSystem {
     this.toastStack.innerHTML = toasts
       .map((toast) => {
         if (toast.kind === 'achievement') {
+          const rewardMarkup = toast.value.reward
+            ? `
+              <div class="game-hud__toast-reward">
+                ${this.renderAchievementReward(toast.value.reward, toast.value.rarity)}
+                <em>${toast.value.reward.name}</em>
+              </div>
+            `
+            : '';
           return `
             <div class="game-hud__toast is-visible" data-kind="achievement" data-rarity="${toast.value.rarity}" style="--toast-progress:${toast.value.progress.toFixed(3)}">
+              <span>${this.i18n.current === 'fr' ? 'Succès' : 'Achievement'}</span>
               <strong>${toast.value.name}</strong>
+              ${rewardMarkup}
             </div>
           `;
         }
@@ -1594,9 +1619,16 @@ export class GameHUDSystem {
   ) {
     const shopHints = hints.filter((hint) => hint.mode === 'shop_orbit');
     const theme = resolveDocumentTheme();
-    const hoverTheme = theme === 'dark' ? 'light' : 'dark';
     const buyButtonSrc = getUIButtonAsset('buy', this.i18n.current, theme);
-    const backButtonSrc = getUIButtonAsset('back', this.i18n.current, theme);
+    const layouts = this.rewardBranchLayout.resolveMany(
+      shopHints.map((hint) => ({
+        slot: hint.slot,
+        screenX: hint.screenX,
+        screenY: hint.screenY,
+        mode: 'shop_orbit' as const
+      }))
+    );
+
     this.shopButtons.forEach((button, index) => {
       const hint = shopHints[index];
       button.hidden = !hint;
@@ -1605,12 +1637,14 @@ export class GameHUDSystem {
       const affordable = (hint.price ?? 0) <= coins;
       button.disabled = !affordable;
       const showRarity = hint.offer.item.kind === 'module';
-      const layout = this.rewardBranchLayout.resolve({
-        slot: hint.slot,
-        screenX: hint.screenX,
-        screenY: hint.screenY,
-        mode: 'shop_orbit'
-      });
+      const layout =
+        layouts[index] ??
+        this.rewardBranchLayout.resolve({
+          slot: hint.slot,
+          screenX: hint.screenX,
+          screenY: hint.screenY,
+          mode: 'shop_orbit'
+        });
       const relatedCard = this.branchCards.find(
         (card) => card.dataset.slot === String(hint.slot) && card.dataset.mode === 'shop_orbit' && !card.hidden
       );
@@ -1622,7 +1656,7 @@ export class GameHUDSystem {
           42,
           Math.min(
             window.innerHeight - 42,
-            relatedCardRect ? relatedCardRect.bottom + buttonGap + buttonHalfHeight : layout.top + (layout.compact ? 124 : 146)
+            relatedCardRect ? relatedCardRect.bottom + buttonGap + buttonHalfHeight : layout.top + (layout.compact ? 102 : 116)
           )
         )
       );
@@ -1642,20 +1676,9 @@ export class GameHUDSystem {
       `;
       button.classList.toggle('is-disabled', !affordable);
     });
-    this.applySvgButton(
-      this.shopCloseButton,
-      backButtonSrc,
-      this.i18n.t('gameShopClose'),
-      'game-hud__shop-close',
-      getUIButtonAsset('back', this.i18n.current, hoverTheme)
-    );
-    if (shopCenter) {
-      this.shopCloseButton.style.left = `${Math.round(shopCenter.screenX)}px`;
-      this.shopCloseButton.style.top = `${Math.round(shopCenter.screenY)}px`;
-    } else {
-      this.shopCloseButton.style.left = '50%';
-      this.shopCloseButton.style.top = '50%';
-    }
+    this.shopCloseButton.hidden = true;
+    this.shopCloseButton.disabled = true;
+    void shopCenter;
   }
 
   private renderMeta(payload: GameHUDPayload) {
@@ -1731,6 +1754,7 @@ export class GameHUDSystem {
       }
     }
     this.updateLeaderboardSaveVisibility();
+    this.maybeAutoSyncLeaderboardEntry();
   }
 
   private getGameOverRevealSignature(summary: GameHUDPayload['runSummary']) {
@@ -2208,7 +2232,8 @@ export class GameHUDSystem {
       .map(
         (entry) => `
           <span class="game-hud__game-over-achievement-pill" data-rarity="${entry.rarity}">
-            ${entry.name}
+            <strong>${entry.name}</strong>
+            ${entry.reward ? `<span class="game-hud__game-over-achievement-reward">${this.renderAchievementReward(entry.reward, entry.rarity)}<em>${entry.reward.name}</em></span>` : ''}
           </span>
         `
       )
@@ -2250,16 +2275,59 @@ export class GameHUDSystem {
       return true;
     }
     if (this.helpOpen) {
-      this.closeHelp();
-      return true;
+      return this.requestCloseHelp();
     }
     return false;
   }
 
-  private openHelp(locale: 'fr' | 'en') {
+  private hasCompletedHelpTutorial() {
+    return (
+      window.localStorage.getItem(GAME_HELP_TUTORIAL_COMPLETED_KEY) === '1' ||
+      window.localStorage.getItem(GAME_HELP_SEEN_KEY) === '1'
+    );
+  }
+
+  private canCloseHelp() {
+    if (!this.helpFirstRunLocked) {
+      return true;
+    }
+    const pages = this.getHelpPages(this.helpLocale);
+    return pages.length > 0 && this.helpVisitedPages.size >= pages.length;
+  }
+
+  private syncHelpCloseAvailability() {
+    const closable = this.canCloseHelp();
+    this.helpCloseButton.disabled = !closable;
+    this.helpCloseButton.setAttribute('aria-disabled', String(!closable));
+    this.helpCloseButton.classList.toggle('is-locked', !closable);
+  }
+
+  private maybeCompleteHelpTutorial() {
+    if (!this.helpFirstRunLocked || !this.canCloseHelp()) {
+      this.syncHelpCloseAvailability();
+      return;
+    }
+    this.helpFirstRunLocked = false;
+    window.localStorage.setItem(GAME_HELP_TUTORIAL_COMPLETED_KEY, '1');
+    this.syncHelpCloseAvailability();
+  }
+
+  private requestCloseHelp() {
+    if (!this.canCloseHelp()) {
+      this.syncHelpCloseAvailability();
+      return true;
+    }
+    this.helpFirstRunLocked = false;
+    this.closeHelp();
+    return true;
+  }
+
+  private openHelp(locale: 'fr' | 'en', options: { forceTutorial?: boolean } = {}) {
     this.helpLocale = locale;
     this.helpOpen = true;
     this.helpPageIndex = 0;
+    this.helpFirstRunLocked = Boolean(options.forceTutorial) && !this.hasCompletedHelpTutorial();
+    this.helpVisitedPages.clear();
     this.helpOverlay.hidden = false;
     this.helpOverlay.classList.add('is-visible');
     this.helpOverlay.inert = false;
@@ -2273,11 +2341,13 @@ export class GameHUDSystem {
     }
 
     this.renderHelpLoadingState();
+    this.syncHelpCloseAvailability();
     void this.ensureHelpPagesLoaded(locale).then((loadedPages) => {
       if (!this.helpOpen || this.helpLocale !== locale) {
         return;
       }
       if (loadedPages.length === 0) {
+        this.helpFirstRunLocked = false;
         this.closeHelp();
         return;
       }
@@ -2288,6 +2358,8 @@ export class GameHUDSystem {
 
   private closeHelp() {
     this.helpOpen = false;
+    this.helpFirstRunLocked = false;
+    this.helpVisitedPages.clear();
     this.helpOverlay.hidden = true;
     this.helpOverlay.classList.remove('is-visible');
     this.helpOverlay.inert = true;
@@ -2326,6 +2398,7 @@ export class GameHUDSystem {
     this.helpCounter.textContent = '…';
     this.helpPrevButton.disabled = true;
     this.helpNextButton.disabled = true;
+    this.syncHelpCloseAvailability();
   }
 
   private setHelpPage(index: number) {
@@ -2384,9 +2457,11 @@ export class GameHUDSystem {
     }
 
     this.helpPageIndex = newIndex;
+    this.helpVisitedPages.add(this.helpPageIndex);
     this.helpCounter.textContent = `${this.helpPageIndex + 1} / ${pages.length}`;
     this.helpPrevButton.disabled = this.helpPageIndex <= 0;
     this.helpNextButton.disabled = this.helpPageIndex >= pages.length - 1;
+    this.maybeCompleteHelpTutorial();
   }
 
   private renderGameOverButtons() {
@@ -2925,7 +3000,7 @@ export class GameHUDSystem {
     }
   }
 
-  private async saveLeaderboardEntry() {
+  private async saveLeaderboardEntry(automatic = false) {
     if (!this.currentGameOverSignature || !this.currentRunSummary) {
       return;
     }
@@ -2939,6 +3014,9 @@ export class GameHUDSystem {
     const existingIndex = entries.findIndex((candidate) => this.isCurrentPlayerEntry(candidate, name));
     const existingEntry = existingIndex >= 0 ? entries[existingIndex] : null;
     if (existingEntry && existingEntry.score >= entry.score) {
+      if (!automatic) {
+        this.lastSavedGameOverSignature = this.currentGameOverSignature;
+      }
       this.renderLeaderboard();
       return;
     }
@@ -2959,6 +3037,7 @@ export class GameHUDSystem {
       const nextEntries = this.normalizeLeaderboardEntries(payload.entries);
       this.leaderboardEntriesCache = nextEntries;
       this.persistLeaderboardCache(nextEntries);
+      this.markLeaderboardRegistrationCompleted();
     } catch (error) {
       console.warn('[GameHUDSystem] Failed to save leaderboard entry remotely, falling back to local cache.', error);
       if (existingIndex >= 0) {
@@ -2969,6 +3048,7 @@ export class GameHUDSystem {
       const fallbackEntries = this.normalizeLeaderboardEntries(entries);
       this.leaderboardEntriesCache = fallbackEntries;
       this.persistLeaderboardCache(fallbackEntries);
+      this.markLeaderboardRegistrationCompleted();
       this.leaderboardSyncState = 'error';
     }
     this.lastSavedGameOverSignature = this.currentGameOverSignature;
@@ -3109,6 +3189,7 @@ export class GameHUDSystem {
     this.hideLeaderboardHover();
     this.renderLeaderboardPreview(entries);
     this.updateLeaderboardSaveVisibility();
+    this.maybeAutoSyncLeaderboardEntry();
   }
 
   private getLeaderboardEntryTitle(entry: LeaderboardEntry) {
@@ -3167,6 +3248,53 @@ export class GameHUDSystem {
     return entry.playerId?.trim() || `legacy:${this.normalizeLeaderboardName(entry.name)}`;
   }
 
+  private hasLeaderboardRegistration(name = this.getLeaderboardPlayerName()) {
+    if (window.localStorage.getItem(PLAYER_LEADERBOARD_REGISTERED_KEY) === '1') {
+      return true;
+    }
+    return this.readLeaderboard().some((entry) => this.isCurrentPlayerEntry(entry, name));
+  }
+
+  private markLeaderboardRegistrationCompleted() {
+    window.localStorage.setItem(PLAYER_LEADERBOARD_REGISTERED_KEY, '1');
+  }
+
+  private getLeaderboardOnboardingCopy() {
+    return this.i18n.current === 'fr'
+      ? {
+          register: 'Inscris ton nom et appuie sur save.',
+          avatar: 'Clique sur l’avatar pour le modifier.'
+        }
+      : {
+          register: 'Enter your name and press save.',
+          avatar: 'Click the avatar to edit it.'
+        };
+  }
+
+  private shouldShowLeaderboardOnboarding() {
+    return Boolean(this.currentRunSummary) && !this.hasLeaderboardRegistration();
+  }
+
+  private maybeAutoSyncLeaderboardEntry() {
+    if (
+      !this.currentRunSummary ||
+      !this.currentGameOverSignature ||
+      this.leaderboardSyncState === 'saving' ||
+      !this.hasLeaderboardRegistration() ||
+      this.currentGameOverSignature === this.lastSavedGameOverSignature ||
+      this.currentGameOverSignature === this.lastAutoSyncedGameOverSignature
+    ) {
+      return;
+    }
+    const currentName = this.getLeaderboardPlayerName();
+    const existingEntry = this.readLeaderboard().find((entry) => this.isCurrentPlayerEntry(entry, currentName));
+    if (!existingEntry || existingEntry.score >= this.currentRunSummary.score) {
+      return;
+    }
+    this.lastAutoSyncedGameOverSignature = this.currentGameOverSignature;
+    void this.saveLeaderboardEntry(true);
+  }
+
   private isCurrentPlayerEntry(entry: Pick<LeaderboardEntry, 'playerId' | 'name'>, name = this.getLeaderboardPlayerName()) {
     if (entry.playerId?.trim()) {
       return entry.playerId.trim() === this.getLeaderboardPlayerId();
@@ -3179,6 +3307,15 @@ export class GameHUDSystem {
     const currentName = this.getLeaderboardPlayerName();
     const existingEntry = this.readLeaderboard().find((entry) => this.isCurrentPlayerEntry(entry, currentName));
     const blockedByExistingBetterScore = Boolean(existingEntry && this.currentRunSummary && existingEntry.score >= this.currentRunSummary.score);
+    const onboardingVisible = this.shouldShowLeaderboardOnboarding();
+    const onboardingCopy = this.getLeaderboardOnboardingCopy();
+    this.leaderboardPanel.classList.toggle('is-onboarding', onboardingVisible);
+    this.leaderboardNameInput.classList.toggle('is-onboarding', onboardingVisible);
+    this.leaderboardSaveButton.classList.toggle('is-onboarding', onboardingVisible);
+    this.leaderboardRegisterCopy.hidden = !onboardingVisible;
+    this.leaderboardRegisterCopy.innerHTML = onboardingVisible
+      ? `<strong>${onboardingCopy.register}</strong><span>${onboardingCopy.avatar}</span>`
+      : '';
     this.leaderboardSaveButton.disabled =
       this.leaderboardSyncState === 'saving' ||
       !this.currentRunSummary ||
@@ -3197,10 +3334,11 @@ export class GameHUDSystem {
       [...entries.filter((entry) => !this.isCurrentPlayerEntry(entry, candidateName)), candidateEntry]
         .sort((a, b) => b.score - a.score || a.recordedAt - b.recordedAt)
         .findIndex((entry) => entry === candidateEntry) + 1;
+    const onboardingClass = this.shouldShowLeaderboardOnboarding() ? ' is-onboarding' : '';
     this.leaderboardPreview.innerHTML = `
       <div class="game-hud__leaderboard-preview-card">
         <span class="game-hud__leaderboard-preview-rank">#${previewRank}</span>
-        <button type="button" class="game-hud__leaderboard-avatar game-hud__leaderboard-avatar--preview" data-avatar-trigger aria-label="${candidateName}">
+        <button type="button" class="game-hud__leaderboard-avatar game-hud__leaderboard-avatar--preview${onboardingClass}" data-avatar-trigger aria-label="${candidateName}">
           ${this.renderAvatarMarkup(this.playerAvatarSelection, 'game-hud__leaderboard-avatar-stack')}
         </button>
         <span class="game-hud__leaderboard-preview-copy">
@@ -3435,7 +3573,7 @@ export class GameHUDSystem {
     className: string
   ) {
     const layers = this.resolveAvatarLayers(selection);
-    if (!layers.background || !layers.motif || !layers.face || !layers.eyes || !layers.barbe) {
+    if (!layers.oreille || !layers.face || !layers.eyes || !layers.facemotif || !layers.accessoire) {
       return `
         <span class="${className}" aria-hidden="true">
           <span style="display:block;width:100%;height:100%;border-radius:50%;background:radial-gradient(circle at 30% 30%, rgb(242 221 184 / 0.9), rgb(89 131 139 / 0.88));"></span>
@@ -3444,11 +3582,11 @@ export class GameHUDSystem {
     }
     return `
       <span class="${className}" aria-hidden="true">
-        <img src="${layers.background}" alt="" class="${className}-layer ${className}-layer--background" />
-        <img src="${layers.motif}" alt="" class="${className}-layer ${className}-layer--motif" />
+        <img src="${layers.oreille}" alt="" class="${className}-layer ${className}-layer--oreille" />
         <img src="${layers.face}" alt="" class="${className}-layer ${className}-layer--face" />
         <img src="${layers.eyes}" alt="" class="${className}-layer ${className}-layer--eyes" />
-        <img src="${layers.barbe}" alt="" class="${className}-layer ${className}-layer--barbe" />
+        <img src="${layers.facemotif}" alt="" class="${className}-layer ${className}-layer--facemotif" />
+        <img src="${layers.accessoire}" alt="" class="${className}-layer ${className}-layer--accessoire" />
       </span>
     `;
   }
@@ -3456,11 +3594,11 @@ export class GameHUDSystem {
   private resolveAvatarLayers(selection: AvatarSelection): ResolvedAvatarLayers {
     const normalizedSelection = this.normalizeAvatarSelection(selection);
     return {
-      background: this.avatarLayerSets.background[normalizedSelection.background] ?? '',
-      motif: this.avatarLayerSets.motif[normalizedSelection.motif] ?? '',
+      oreille: this.avatarLayerSets.oreille[normalizedSelection.oreille] ?? '',
       face: this.avatarLayerSets.face[normalizedSelection.face] ?? '',
       eyes: this.avatarLayerSets.eyes[normalizedSelection.eyes] ?? '',
-      barbe: this.avatarLayerSets.barbe[normalizedSelection.barbe] ?? ''
+      facemotif: this.avatarLayerSets.facemotif[normalizedSelection.facemotif] ?? '',
+      accessoire: this.avatarLayerSets.accessoire[normalizedSelection.accessoire] ?? ''
     };
   }
 
@@ -3483,10 +3621,26 @@ export class GameHUDSystem {
   private normalizeAvatarSelection(selection?: Partial<AvatarSelection> | null, seed = '', unlockedOnly = false): AvatarSelection {
     const fallback = this.buildFallbackAvatarSelection(seed, unlockedOnly);
     const normalized = { ...fallback } as AvatarSelection;
+    const legacySelection = (selection ?? {}) as Partial<AvatarSelection> & {
+      background?: number;
+      motif?: number;
+      barbe?: number;
+    };
+    const usesCurrentKeys =
+      typeof selection?.oreille === 'number' ||
+      typeof selection?.facemotif === 'number' ||
+      typeof selection?.accessoire === 'number';
+    const resolvedSelection: Partial<AvatarSelection> = {
+      oreille: usesCurrentKeys ? selection?.oreille : legacySelection.background,
+      face: usesCurrentKeys ? selection?.face : legacySelection.motif,
+      eyes: usesCurrentKeys ? selection?.eyes : legacySelection.face,
+      facemotif: usesCurrentKeys ? selection?.facemotif : legacySelection.eyes,
+      accessoire: usesCurrentKeys ? selection?.accessoire : legacySelection.barbe
+    };
     AVATAR_LAYER_ORDER.forEach((layer) => {
       const layerOptions = this.getAvailableAvatarIndices(layer, unlockedOnly);
       const total = this.avatarLayerSets[layer].length;
-      const candidate = selection?.[layer];
+      const candidate = resolvedSelection[layer];
       if (typeof candidate === 'number' && Number.isFinite(candidate)) {
         const rawValue = Math.max(0, Math.trunc(candidate));
         if (!unlockedOnly && total <= 0) {
@@ -3512,11 +3666,11 @@ export class GameHUDSystem {
   private buildFallbackAvatarSelection(seed = '', unlockedOnly = false): AvatarSelection {
     const hash = Array.from(seed || 'player').reduce((value, char) => value + char.charCodeAt(0), 0);
     return {
-      background: this.resolveAvatarLayerIndex('background', hash, unlockedOnly),
-      motif: this.resolveAvatarLayerIndex('motif', hash + 3, unlockedOnly),
-      face: this.resolveAvatarLayerIndex('face', hash + 7, unlockedOnly),
-      eyes: this.resolveAvatarLayerIndex('eyes', hash + 11, unlockedOnly),
-      barbe: this.resolveAvatarLayerIndex('barbe', hash + 17, unlockedOnly)
+      oreille: this.resolveAvatarLayerIndex('oreille', hash, unlockedOnly),
+      face: this.resolveAvatarLayerIndex('face', hash + 3, unlockedOnly),
+      eyes: this.resolveAvatarLayerIndex('eyes', hash + 7, unlockedOnly),
+      facemotif: this.resolveAvatarLayerIndex('facemotif', hash + 11, unlockedOnly),
+      accessoire: this.resolveAvatarLayerIndex('accessoire', hash + 17, unlockedOnly)
     };
   }
 
@@ -3600,22 +3754,24 @@ export class GameHUDSystem {
       ...buttonAssets,
       ...Object.values(SETTINGS_BUTTON_ASSETS)
     ];
-    preloadedAssets.forEach((src) => {
-      preloadImageAsset(src);
-    });
+    const imagePreload = Promise.all(preloadedAssets.map((src) => preloadImageAsset(src)));
     Object.values(EQUIPMENT_UI_ASSETS.charges).forEach((src) => this.preloadShapeTemplate(src));
     this.preloadShapeTemplate(EQUIPMENT_UI_ASSETS.bgBoat);
 
-    void this.ensureDeferredAssetsModule()
+    const deferredPreload = this.ensureDeferredAssetsModule()
       .then(async ({ loadAvatarLayerSets, loadHelpPagesFor }) => {
         await Promise.all([
           loadAvatarLayerSets(),
-          loadHelpPagesFor(this.i18n.current, 'dark'),
-          loadHelpPagesFor(this.i18n.current, 'light')
+          loadHelpPagesFor('fr', 'dark'),
+          loadHelpPagesFor('fr', 'light'),
+          loadHelpPagesFor('en', 'dark'),
+          loadHelpPagesFor('en', 'light')
         ]);
       })
       .catch((error) => {
         console.warn('[GameHUDSystem] Failed to preload deferred UI assets.', error);
       });
+
+    return Promise.all([imagePreload, deferredPreload]).then(() => undefined);
   }
 }

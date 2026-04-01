@@ -471,12 +471,19 @@ export class GamePathSystem {
     const visualScale = isGigantic ? 38 + this.nextRandom() * 14 : resolvedSizeConfig.visual[0] + this.nextRandom() * (resolvedSizeConfig.visual[1] - resolvedSizeConfig.visual[0]);
     const gameplayOrbitPeriod = isGigantic ? 5.4 + this.nextRandom() * 0.8 : resolvedSizeConfig.orbitPeriod[0] + this.nextRandom() * (resolvedSizeConfig.orbitPeriod[1] - resolvedSizeConfig.orbitPeriod[0]);
     const direction = this.directionFrom(previous.x, previous.y, x, y);
-    const { eventType, eventVisualKind } = this.resolveEventType(index, previousDistanceMeters, currentDistanceMeters, score, template);
-    const shapeKind = eventVisualKind === 'shop' ? 'triangular' : baseShapeKind;
+    const { eventType, eventVisualKind, guaranteedRoundShop } = this.resolveEventType(
+      index,
+      previousDistanceMeters,
+      currentDistanceMeters,
+      score,
+      template
+    );
+    const stylizedShopVisual = eventVisualKind === 'shop' && !guaranteedRoundShop;
+    const shapeKind = guaranteedRoundShop ? 'round' : stylizedShopVisual ? 'triangular' : baseShapeKind;
     const motionPattern = isGigantic ? 'none' : this.pickMotionPattern(template.motionPattern, score, shapeKind, resolvedSizeTier);
-    const spinDirection: GameShardSpinDirection = eventVisualKind === 'shop' ? 'cw' : this.nextRandom() < 0.5 ? 'cw' : 'ccw';
+    const spinDirection: GameShardSpinDirection = stylizedShopVisual ? 'cw' : this.nextRandom() < 0.5 ? 'cw' : 'ccw';
     const spinSpeed =
-      eventVisualKind === 'shop'
+      stylizedShopVisual
         ? 0.82 + this.nextRandom() * 0.24
         : shapeKind === 'triangular'
         ? 0.42 + this.nextRandom() * 0.22
@@ -484,7 +491,7 @@ export class GamePathSystem {
           ? 0.18 + this.nextRandom() * 0.1
           : 0.08 + this.nextRandom() * 0.12;
     const visualStretch =
-      eventVisualKind === 'shop'
+      stylizedShopVisual
         ? { x: 1.22 + this.nextRandom() * 0.14, y: 1.34 + this.nextRandom() * 0.16, z: 0.68 + this.nextRandom() * 0.1 }
         : shapeKind === 'oval'
         ? { x: 1.72 + this.nextRandom() * 0.38, y: 0.68 + this.nextRandom() * 0.12, z: 0.82 + this.nextRandom() * 0.1 }
@@ -499,6 +506,8 @@ export class GamePathSystem {
           ? 'none'
           : 'accent';
     const visibilityBoost = isMilestone || eventType !== 'none';
+    const rewardVisualBoost = eventType === 'gift' || eventType === 'rare_item';
+    const shopVisualBoost = eventType === 'shop';
 
     return this.buildNode({
       previous,
@@ -511,11 +520,20 @@ export class GamePathSystem {
       motionPattern,
       spinDirection,
       spinSpeed,
-      gameplayRadius: eventVisualKind === 'shop' ? Math.max(gameplayRadius * 1.28, 3.1) : gameplayRadius,
+      gameplayRadius:
+        stylizedShopVisual
+          ? Math.max(gameplayRadius * 1.36, 3.45)
+          : rewardVisualBoost
+            ? gameplayRadius * 1.08
+            : gameplayRadius,
       visualScale: visibilityBoost
-        ? eventVisualKind === 'shop'
-          ? Math.max(visualScale * 1.42, 4.6)
-          : visualScale * 1.08
+        ? stylizedShopVisual
+          ? Math.max(visualScale * 1.58, 5.4)
+          : shopVisualBoost
+            ? Math.max(visualScale * 1.24, 3.25)
+            : rewardVisualBoost
+              ? visualScale * 1.16
+              : visualScale * 1.08
         : visualScale,
       gameplayOrbitPeriod,
       visualStretch,
@@ -525,6 +543,7 @@ export class GamePathSystem {
       onboarding: index < 50,
       eventType,
       eventVisualKind,
+      guaranteedShopIcon: guaranteedRoundShop,
       colorHint,
       isMilestone,
       isGigantic,
@@ -795,6 +814,7 @@ export class GamePathSystem {
     onboarding: boolean;
     eventType: GameEventType;
     eventVisualKind?: GamePathNode['eventVisualKind'];
+    guaranteedShopIcon?: boolean;
     colorHint: GamePathNode['colorHint'];
     isMilestone: boolean;
     isGigantic: boolean;
@@ -823,6 +843,7 @@ export class GamePathSystem {
       eventVisualKind:
         config.eventVisualKind ??
         (config.eventType === 'shop' || config.eventType === 'gift' || config.eventType === 'rare_item' ? 'question' : 'default'),
+      guaranteedShopIcon: config.guaranteedShopIcon ?? false,
       colorHint: config.colorHint,
       gameplayOrbitPeriod: config.gameplayOrbitPeriod,
       branchSlot: config.branchSlot,
@@ -936,6 +957,7 @@ export class GamePathSystem {
       onboarding: false,
       eventType: node.eventType,
       eventVisualKind: node.eventVisualKind,
+      guaranteedShopIcon: node.guaranteedShopIcon,
       colorHint: node.colorHint,
       isMilestone: node.isMilestone,
       isGigantic: node.isGigantic,
@@ -1108,13 +1130,21 @@ export class GamePathSystem {
     template: GamePatternNodeTemplate
   ) {
     if (getCrossedUpgradeMilestone(previousDistanceMeters, currentDistanceMeters) !== null) {
-      return { eventType: 'none' as GameEventType, eventVisualKind: 'default' as GameEventVisualKind };
+      return {
+        eventType: 'none' as GameEventType,
+        eventVisualKind: 'default' as GameEventVisualKind,
+        guaranteedRoundShop: false
+      };
     }
 
     if (!this.guaranteedShopAt50Spawned && currentDistanceMeters >= 50) {
       this.guaranteedShopAt50Spawned = true;
       this.lastShopDistanceMeters = currentDistanceMeters;
-      return { eventType: 'shop' as GameEventType, eventVisualKind: 'shop' as GameEventVisualKind };
+      return {
+        eventType: 'shop' as GameEventType,
+        eventVisualKind: 'shop' as GameEventVisualKind,
+        guaranteedRoundShop: true
+      };
     }
 
     const planned = this.eventSystem.consumePlannedEvent(index, score);
@@ -1124,6 +1154,7 @@ export class GamePathSystem {
       }
       return {
         eventType: planned,
+        guaranteedRoundShop: false,
         eventVisualKind:
           (planned === 'shop' ? 'shop' : planned === 'gift' || planned === 'rare_item' ? 'question' : 'default') as GameEventVisualKind
       };
@@ -1131,38 +1162,58 @@ export class GamePathSystem {
 
     if (currentDistanceMeters > 50 && currentDistanceMeters - this.lastShopDistanceMeters >= 85 && template.sizeTier !== 'massive') {
       this.lastShopDistanceMeters = currentDistanceMeters;
-      return { eventType: 'shop' as GameEventType, eventVisualKind: 'shop' as GameEventVisualKind };
+      return {
+        eventType: 'shop' as GameEventType,
+        eventVisualKind: 'shop' as GameEventVisualKind,
+        guaranteedRoundShop: false
+      };
     }
 
     if (currentDistanceMeters >= 30 && template.sizeTier !== 'massive') {
       const eventChance =
         (currentDistanceMeters < 80
-          ? 0.026
+          ? 0.032
           : currentDistanceMeters < 100
-            ? 0.032
+            ? 0.039
             : currentDistanceMeters < 250
-              ? 0.042
+              ? 0.05
               : currentDistanceMeters < 600
-                ? 0.052
-                : 0.066) +
-        this.rewardChanceBias * 0.32 +
-        this.shopChanceBias * 0.38;
+                ? 0.061
+                : 0.075) +
+        this.rewardChanceBias * 0.36 +
+        this.shopChanceBias * 0.42;
       if (this.nextRandom() < eventChance) {
         const roll = this.nextRandom();
-        const shopThreshold = Math.min(0.64, 0.3 + this.shopChanceBias * 1.35);
-        const rewardThreshold = Math.min(0.92, 0.64 + this.rewardChanceBias * 1.4);
+        const shopThreshold = Math.min(0.68, 0.34 + this.shopChanceBias * 1.4);
+        const rewardThreshold = Math.min(0.95, 0.7 + this.rewardChanceBias * 1.48);
         if (roll < shopThreshold) {
           this.lastShopDistanceMeters = currentDistanceMeters;
-          return { eventType: 'shop' as GameEventType, eventVisualKind: 'question' as GameEventVisualKind };
+          return {
+            eventType: 'shop' as GameEventType,
+            eventVisualKind: 'question' as GameEventVisualKind,
+            guaranteedRoundShop: false
+          };
         }
         if (roll < rewardThreshold) {
-          return { eventType: 'gift' as GameEventType, eventVisualKind: 'question' as GameEventVisualKind };
+          return {
+            eventType: 'gift' as GameEventType,
+            eventVisualKind: 'question' as GameEventVisualKind,
+            guaranteedRoundShop: false
+          };
         }
-        return { eventType: 'rare_item' as GameEventType, eventVisualKind: 'question' as GameEventVisualKind };
+        return {
+          eventType: 'rare_item' as GameEventType,
+          eventVisualKind: 'question' as GameEventVisualKind,
+          guaranteedRoundShop: false
+        };
       }
     }
 
-    return { eventType: 'none' as GameEventType, eventVisualKind: 'default' as GameEventVisualKind };
+    return {
+      eventType: 'none' as GameEventType,
+      eventVisualKind: 'default' as GameEventVisualKind,
+      guaranteedRoundShop: false
+    };
   }
 
   private directionFrom(x0: number, y0: number, x1: number, y1: number): GamePathNode['direction'] {

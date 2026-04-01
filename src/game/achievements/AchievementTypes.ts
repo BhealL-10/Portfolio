@@ -1,6 +1,6 @@
 import type { LocalizedText, Language } from '../../types/content';
 
-export const ACHIEVEMENT_AVATAR_LAYERS = ['background', 'motif', 'face', 'eyes', 'barbe'] as const;
+export const ACHIEVEMENT_AVATAR_LAYERS = ['oreille', 'face', 'eyes', 'facemotif', 'accessoire'] as const;
 
 export type AchievementAvatarLayer = (typeof ACHIEVEMENT_AVATAR_LAYERS)[number];
 export type AchievementCategory = 'progression' | 'shards' | 'skill' | 'momentum' | 'combat' | 'economy' | 'modules';
@@ -97,6 +97,7 @@ export interface AchievementToastSnapshot {
   rarityEmoji: string;
   rarityLabel: string;
   rewardLabel: string | null;
+  reward: AchievementRewardSnapshot | null;
   progress: number;
 }
 
@@ -127,11 +128,11 @@ export const ACHIEVEMENT_RARITY_LABELS: Record<AchievementRarity, LocalizedText>
 };
 
 export const ACHIEVEMENT_AVATAR_LAYER_LABELS: Record<AchievementAvatarLayer, LocalizedText> = {
-  background: { fr: 'Fond', en: 'Background' },
-  motif: { fr: 'Motif', en: 'Pattern' },
-  face: { fr: 'Visage', en: 'Face' },
+  oreille: { fr: 'Oreilles', en: 'Ears' },
+  face: { fr: 'Face', en: 'Face' },
   eyes: { fr: 'Yeux', en: 'Eyes' },
-  barbe: { fr: 'Barbe', en: 'Beard' }
+  facemotif: { fr: 'Face motif', en: 'Face motif' },
+  accessoire: { fr: 'Accessoire', en: 'Accessory' }
 };
 
 export function localizeAchievementText(value: LocalizedText, locale: Language) {
@@ -140,11 +141,11 @@ export function localizeAchievementText(value: LocalizedText, locale: Language) 
 
 export function createDefaultAchievementAvatarUnlocks(): Record<AchievementAvatarLayer, number[]> {
   return {
-    background: [0],
-    motif: [0],
+    oreille: [0],
     face: [0],
     eyes: [0],
-    barbe: [0]
+    facemotif: [0],
+    accessoire: [0]
   };
 }
 

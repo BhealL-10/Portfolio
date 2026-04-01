@@ -1055,7 +1055,11 @@ export class GameAudioSystem {
   }
 
   private readStoredVolume() {
-    const stored = Number(window.localStorage.getItem(AUDIO_STORAGE_KEYS.volume));
+    const rawStored = window.localStorage.getItem(AUDIO_STORAGE_KEYS.volume);
+    if (rawStored === null) {
+      return AUDIO_GLOBAL_CONFIG.defaultMasterVolume;
+    }
+    const stored = Number(rawStored);
     return Number.isFinite(stored) ? clamp(stored, 0, 1) : AUDIO_GLOBAL_CONFIG.defaultMasterVolume;
   }
 

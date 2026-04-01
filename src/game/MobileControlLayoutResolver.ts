@@ -1,47 +1,50 @@
 import type { GameHudState, GamePlayerMotionState } from './gameSessionTypes';
-import { isMobileLandscapeRuntime } from '../core/device';
 import { resolveDocumentTheme } from './ThemeAssetResolver';
 
 export const MOBILE_CONTROL_ASSETS = {
+  teleport: {
+    dark: new URL('../../assets/images/game/ui/buttons/icons/btn-wrapper-dark.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/buttons/icons/btn-wrapper-light.svg', import.meta.url).href
+  },
   grapple: {
-    dark: new URL('../../assets/images/game/ui/mobile-controls/dark/grapple.svg', import.meta.url).href,
-    light: new URL('../../assets/images/game/ui/mobile-controls/light/grapple.svg', import.meta.url).href
+    dark: new URL('../../assets/images/game/ui/buttons/icons/btn-grap-dark.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/buttons/icons/btn-grap-light.svg', import.meta.url).href
   },
   boost: {
-    dark: new URL('../../assets/images/game/ui/mobile-controls/dark/boost.svg', import.meta.url).href,
-    light: new URL('../../assets/images/game/ui/mobile-controls/light/boost.svg', import.meta.url).href
+    dark: new URL('../../assets/images/game/ui/buttons/icons/btn-boost-dark.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/buttons/icons/btn-boost-light.svg', import.meta.url).href
   },
-  jump: {
-    dark: new URL('../../assets/images/game/ui/mobile-controls/dark/jump.svg', import.meta.url).href,
-    light: new URL('../../assets/images/game/ui/mobile-controls/light/jump.svg', import.meta.url).href
+  charge: {
+    dark: new URL('../../assets/images/game/ui/buttons/icons/btn-charge1-dark.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/buttons/icons/btn-charge1-light.svg', import.meta.url).href
   }
 } as const;
 
 export const MOBILE_CHARGE_ASSETS = [
   {
-    dark: new URL('../../assets/images/game/ui/mobile-controls/dark/charge-1.svg', import.meta.url).href,
-    light: new URL('../../assets/images/game/ui/mobile-controls/light/charge-1.svg', import.meta.url).href
+    dark: new URL('../../assets/images/game/ui/buttons/icons/btn-charge1-dark.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/buttons/icons/btn-charge1-light.svg', import.meta.url).href
   },
   {
-    dark: new URL('../../assets/images/game/ui/mobile-controls/dark/charge-2.svg', import.meta.url).href,
-    light: new URL('../../assets/images/game/ui/mobile-controls/light/charge-2.svg', import.meta.url).href
+    dark: new URL('../../assets/images/game/ui/buttons/icons/btn-charge2-dark.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/buttons/icons/btn-charge2-light.svg', import.meta.url).href
   },
   {
-    dark: new URL('../../assets/images/game/ui/mobile-controls/dark/charge-3.svg', import.meta.url).href,
-    light: new URL('../../assets/images/game/ui/mobile-controls/light/charge-3.svg', import.meta.url).href
+    dark: new URL('../../assets/images/game/ui/buttons/icons/btn-charge3-dark.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/buttons/icons/btn-charge3-light.svg', import.meta.url).href
   },
   {
-    dark: new URL('../../assets/images/game/ui/mobile-controls/dark/charge-4.svg', import.meta.url).href,
-    light: new URL('../../assets/images/game/ui/mobile-controls/light/charge-4.svg', import.meta.url).href
+    dark: new URL('../../assets/images/game/ui/buttons/icons/btn-charge4-dark.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/buttons/icons/btn-charge4-light.svg', import.meta.url).href
   },
   {
-    dark: new URL('../../assets/images/game/ui/mobile-controls/dark/charge-5.svg', import.meta.url).href,
-    light: new URL('../../assets/images/game/ui/mobile-controls/light/charge-5.svg', import.meta.url).href
+    dark: new URL('../../assets/images/game/ui/buttons/icons/btn-charge5-dark.svg', import.meta.url).href,
+    light: new URL('../../assets/images/game/ui/buttons/icons/btn-charge5-light.svg', import.meta.url).href
   }
 ] as const;
 
-export type MobileControlAction = 'hidden' | 'tap_jump' | 'tap_grapple' | 'tap_airborne_charge' | 'hold_charge' | 'hold_boost';
-export type MobileControlLabelKey = 'jump' | 'grapple' | 'charge' | 'boost';
+export type MobileControlSlot = 'left' | 'up' | 'right' | 'down';
+export type MobileControlLabelKey = 'teleport' | 'grapple' | 'charge' | 'boost';
 
 interface MobileControlLayoutInput {
   chargeRatio: number;
@@ -50,133 +53,129 @@ interface MobileControlLayoutInput {
   mobile: {
     airborneChargeCount: number;
     airborneChargeDisplayCount: number;
+    hasTeleport: boolean;
+    teleportBlocked: boolean;
+    teleportCooldownRatio: number;
+    teleportActive: boolean;
     hasGrapple: boolean;
     grappleBlocked: boolean;
+    grappleCooldownRatio: number;
+    grappleActive: boolean;
+    hasAirAction: boolean;
+    airActionBlocked: boolean;
+    airActionActive: boolean;
+    airActionDepleted: boolean;
     hasSouffleur: boolean;
     hasSouffleurFuel: boolean;
+    boostActive: boolean;
   };
 }
 
 interface MobileControlDescriptor {
   visible: boolean;
-  kind: 'jump' | 'grapple' | 'charge' | 'boost';
+  kind: 'teleport' | 'grapple' | 'charge' | 'boost';
   iconSrc: string;
   labelKey: MobileControlLabelKey;
-  action: MobileControlAction;
   dimmed: boolean;
+  active: boolean;
+  depleted?: boolean;
+  cooldownRatio: number | null;
 }
 
 export interface MobileControlLayout {
   visible: boolean;
-  primary: MobileControlDescriptor;
-  secondary: MobileControlDescriptor;
+  buttons: Record<MobileControlSlot, MobileControlDescriptor>;
 }
 
-export function getMobileControlAsset(kind: keyof typeof MOBILE_CONTROL_ASSETS, theme = resolveDocumentTheme()) {
+function isCooldownReady(ratio: number) {
+  return ratio <= 0.001;
+}
+
+function resolveIndicatorTheme() {
+  return (resolveDocumentTheme() === 'light' ? 'dark' : 'light') as 'light' | 'dark';
+}
+
+export function getMobileControlAsset(kind: keyof typeof MOBILE_CONTROL_ASSETS, theme = resolveIndicatorTheme()) {
   return MOBILE_CONTROL_ASSETS[kind][theme];
 }
 
-export function getMobileChargeAsset(level: number, theme = resolveDocumentTheme()) {
+export function getMobileChargeAsset(level: number, theme = resolveIndicatorTheme()) {
   return MOBILE_CHARGE_ASSETS[Math.max(0, Math.min(MOBILE_CHARGE_ASSETS.length - 1, level - 1))][theme];
+}
+
+function createHiddenDescriptor(kind: MobileControlDescriptor['kind'], labelKey: MobileControlLabelKey, iconSrc: string): MobileControlDescriptor {
+  return {
+    visible: false,
+    kind,
+    iconSrc,
+    labelKey,
+    dimmed: false,
+    active: false,
+    depleted: false,
+    cooldownRatio: null
+  };
 }
 
 export class MobileControlLayoutResolver {
   resolve(input: MobileControlLayoutInput): MobileControlLayout {
-    const theme = resolveDocumentTheme();
-    const visible = isMobileLandscapeRuntime() && input.state !== 'game_over';
-    const grounded = input.playerMotionState === 'attached' || input.playerMotionState === 'charging';
-    const airborne = input.playerMotionState === 'airborne';
+    const theme = resolveIndicatorTheme();
+    const hudVisible = input.state === 'running' || input.state === 'upgrade_choice';
     const airChargeLevel = Math.max(1, Math.min(5, input.mobile.airborneChargeDisplayCount || input.mobile.airborneChargeCount || 1));
-
-    if (airborne) {
-      return {
-        visible,
-        primary: input.mobile.hasGrapple
-          ? {
-              visible: true,
-              kind: 'grapple',
-              iconSrc: getMobileControlAsset('grapple', theme),
-              labelKey: 'grapple',
-              action: 'tap_grapple',
-              dimmed: input.mobile.grappleBlocked
-            }
-          : {
-              visible: false,
-              kind: 'jump',
-              iconSrc: getMobileControlAsset('jump', theme),
-              labelKey: 'jump',
-              action: 'hidden',
-              dimmed: false
-            },
-        secondary: input.mobile.airborneChargeCount > 0
-          ? {
-              visible: true,
-              kind: 'charge',
-              iconSrc: getMobileChargeAsset(airChargeLevel, theme),
-              labelKey: 'charge',
-              action: 'tap_airborne_charge',
-              dimmed: false
-            }
-          : input.mobile.hasSouffleur && input.mobile.hasSouffleurFuel
-            ? {
-                visible: true,
-                kind: 'boost',
-                iconSrc: getMobileControlAsset('boost', theme),
-                labelKey: 'boost',
-                action: 'hold_boost',
-                dimmed: false
-              }
-            : {
-                visible: false,
-                kind: 'charge',
-                iconSrc: getMobileChargeAsset(1, theme),
-                labelKey: 'charge',
-                action: 'hidden',
-                dimmed: false
-              }
-      };
-    }
-
-    if (grounded) {
-      return {
-        visible,
-        primary: {
-          visible: true,
-          kind: 'jump',
-          iconSrc: getMobileControlAsset('jump', theme),
-          labelKey: 'jump',
-          action: 'tap_jump',
-          dimmed: false
-        },
-        secondary: {
-          visible: true,
-          kind: 'boost',
-          iconSrc: getMobileControlAsset('boost', theme),
-          labelKey: 'boost',
-          action: 'hold_boost',
-          dimmed: input.chargeRatio <= 0.02
-        }
-      };
-    }
+    const teleportReady = input.mobile.hasTeleport && !input.mobile.teleportBlocked && isCooldownReady(input.mobile.teleportCooldownRatio);
+    const grappleReady = input.mobile.hasGrapple && !input.mobile.grappleBlocked && isCooldownReady(input.mobile.grappleCooldownRatio);
+    const buttons: Record<MobileControlSlot, MobileControlDescriptor> = {
+      left: input.mobile.hasTeleport
+        ? {
+            visible: true,
+            kind: 'teleport',
+            iconSrc: getMobileControlAsset('teleport', theme),
+            labelKey: 'teleport',
+            dimmed: !input.mobile.teleportActive && !teleportReady,
+            active: input.mobile.teleportActive || teleportReady,
+            cooldownRatio: input.mobile.teleportCooldownRatio
+          }
+        : createHiddenDescriptor('teleport', 'teleport', getMobileControlAsset('teleport', theme)),
+      up: input.mobile.hasAirAction
+        ? {
+            visible: true,
+            kind: 'charge',
+            iconSrc: getMobileChargeAsset(airChargeLevel, theme),
+            labelKey: 'charge',
+            dimmed:
+              input.mobile.airActionDepleted ||
+              (input.playerMotionState === 'airborne' ? false : !input.mobile.airActionActive),
+            active: input.playerMotionState === 'airborne' ? !input.mobile.airActionDepleted : input.mobile.airActionActive,
+            depleted: input.mobile.airActionDepleted,
+            cooldownRatio: null
+          }
+        : createHiddenDescriptor('charge', 'charge', getMobileChargeAsset(1, theme)),
+      right: input.mobile.hasGrapple
+        ? {
+            visible: true,
+            kind: 'grapple',
+            iconSrc: getMobileControlAsset('grapple', theme),
+            labelKey: 'grapple',
+            dimmed: !input.mobile.grappleActive && !grappleReady,
+            active: input.mobile.grappleActive || grappleReady,
+            cooldownRatio: input.mobile.grappleCooldownRatio
+          }
+        : createHiddenDescriptor('grapple', 'grapple', getMobileControlAsset('grapple', theme)),
+      down: input.mobile.hasSouffleur
+        ? {
+            visible: true,
+            kind: 'boost',
+            iconSrc: getMobileControlAsset('boost', theme),
+            labelKey: 'boost',
+            dimmed: !input.mobile.boostActive,
+            active: input.mobile.boostActive,
+            cooldownRatio: null
+          }
+        : createHiddenDescriptor('boost', 'boost', getMobileControlAsset('boost', theme))
+    };
 
     return {
-      visible,
-      primary: {
-        visible: false,
-        kind: 'jump',
-        iconSrc: getMobileControlAsset('jump', theme),
-        labelKey: 'jump',
-        action: 'hidden',
-        dimmed: false
-      },
-      secondary: {
-        visible: false,
-        kind: 'charge',
-        iconSrc: getMobileChargeAsset(1, theme),
-        labelKey: 'charge',
-        action: 'hidden',
-        dimmed: false
-      }
+      visible: hudVisible && Object.values(buttons).some((button) => button.visible),
+      buttons
     };
   }
 }

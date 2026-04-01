@@ -72,6 +72,7 @@ export interface GamePathNode {
   motionPattern: GameShardMotionPattern;
   eventType: GameEventType;
   eventVisualKind?: GameEventVisualKind;
+  guaranteedShopIcon?: boolean;
   colorHint: GameColorHint;
   gameplayOrbitPeriod: number;
   branchSlot: number | null;
@@ -185,10 +186,21 @@ export interface GameHudSnapshot {
   mobile: {
     airborneChargeCount: number;
     airborneChargeDisplayCount: number;
+    hasTeleport: boolean;
+    teleportBlocked: boolean;
+    teleportCooldownRatio: number;
+    teleportActive: boolean;
     hasGrapple: boolean;
     grappleBlocked: boolean;
+    grappleCooldownRatio: number;
+    grappleActive: boolean;
+    hasAirAction: boolean;
+    airActionBlocked: boolean;
+    airActionActive: boolean;
+    airActionDepleted: boolean;
     hasSouffleur: boolean;
     hasSouffleurFuel: boolean;
+    boostActive: boolean;
   };
   offers: RogueliteItemOffer[];
   branchHints: BranchLabelHint[];

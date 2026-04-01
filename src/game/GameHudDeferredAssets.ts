@@ -1,9 +1,9 @@
 export interface GameHudAvatarLayerSets {
-  background: string[];
-  motif: string[];
+  oreille: string[];
   face: string[];
   eyes: string[];
-  barbe: string[];
+  facemotif: string[];
+  accessoire: string[];
 }
 
 type HelpTheme = 'dark' | 'light';
@@ -84,31 +84,31 @@ export function loadAvatarLayerSets() {
     Object.entries(AVATAR_LAYER_MODULES)
       .map(([path, load]) => ({ path, load }))
       .sort((a, b) => {
-        const aIndex = Number((a.path.match(/_(\d+)\.png$/)?.[1]) ?? 0);
-        const bIndex = Number((b.path.match(/_(\d+)\.png$/)?.[1]) ?? 0);
+        const aIndex = Number((a.path.match(/[-_](\d+)\.png$/)?.[1]) ?? 0);
+        const bIndex = Number((b.path.match(/[-_](\d+)\.png$/)?.[1]) ?? 0);
         return aIndex - bIndex;
       })
   ).then(async (entries) => {
     const sets: GameHudAvatarLayerSets = {
-      background: [],
-      motif: [],
+      oreille: [],
       face: [],
       eyes: [],
-      barbe: []
+      facemotif: [],
+      accessoire: []
     };
 
     for (const { path, load } of entries) {
       const src = await load();
       if (path.includes('/oreille/')) {
-        sets.background.push(src);
+        sets.oreille.push(src);
       } else if (path.includes('/face/')) {
-        sets.motif.push(src);
-      } else if (path.includes('/eyes/')) {
         sets.face.push(src);
-      } else if (path.includes('/facemotif/')) {
+      } else if (path.includes('/eyes/')) {
         sets.eyes.push(src);
+      } else if (path.includes('/facemotif/')) {
+        sets.facemotif.push(src);
       } else if (path.includes('/accessoire/')) {
-        sets.barbe.push(src);
+        sets.accessoire.push(src);
       }
     }
 

@@ -21,21 +21,36 @@ export class RewardBranchLabelLayoutResolver {
       return layouts;
     }
 
-    const gap = layouts[0]?.compact ? 8 : 12;
+    const compact = layouts[0]?.compact ?? false;
+    const gap = compact ? 8 : 12;
     const allShopOrbit = inputs.every((input) => input.mode === 'shop_orbit');
-    const estimatedHeight = allShopOrbit ? (layouts[0]?.compact ? 132 : 150) : layouts[0]?.compact ? 108 : 122;
-    const topPadding = layouts[0]?.compact ? 10 : 16;
-    const bottomPadding = layouts[0]?.compact ? 14 : 22;
+    const estimatedHeight = allShopOrbit ? (compact ? 146 : 154) : compact ? 108 : 122;
+    const topPadding = compact ? 10 : 16;
+    const bottomPadding = compact ? 14 : 22;
     const viewportBottom = window.innerHeight - bottomPadding - estimatedHeight * 0.5;
 
     if (allShopOrbit) {
-      const sharedTop = Math.round(
-        Math.max(
-          topPadding + estimatedHeight * 0.5,
-          Math.min(viewportBottom, Math.min(...layouts.map((layout) => layout.top)))
-        )
-      );
-      layouts.forEach((layout) => {
+      const sidePadding = compact ? 10 : 20;
+      const shopGap = compact ? 12 : 18;
+      const sharedTop = Math.round(topPadding + estimatedHeight * 0.5);
+
+      if (compact) {
+        const width = Math.round(Math.max(148, Math.min(220, window.innerWidth - sidePadding * 2)));
+        layouts.forEach((layout, index) => {
+          layout.width = width;
+          layout.left = Math.round(window.innerWidth * 0.5);
+          layout.top = Math.round(sharedTop + index * (estimatedHeight + shopGap));
+        });
+        return layouts;
+      }
+
+      const availableWidth = Math.max(180, window.innerWidth - sidePadding * 2);
+      const width = Math.round(Math.max(152, Math.min(184, (availableWidth - shopGap * (inputs.length - 1)) / inputs.length)));
+      const totalWidth = width * inputs.length + shopGap * (inputs.length - 1);
+      const startCenter = Math.round((window.innerWidth - totalWidth) * 0.5 + width * 0.5);
+      layouts.forEach((layout, index) => {
+        layout.width = width;
+        layout.left = startCenter + index * (width + shopGap);
         layout.top = sharedTop;
       });
       return layouts;
@@ -82,7 +97,9 @@ export class RewardBranchLabelLayoutResolver {
     const sidePadding = compact ? 10 : 20;
     const topPadding = compact ? 10 : 18;
     const bottomPadding = compact ? 14 : 22;
-    const width = Math.round(Math.max(132, Math.min(compact ? 156 : 196, window.innerWidth - sidePadding * 2)));
+    const width = Math.round(
+      Math.max(132, Math.min(input.mode === 'shop_orbit' ? (compact ? 172 : 184) : compact ? 156 : 196, window.innerWidth - sidePadding * 2))
+    );
 
     if (input.mode !== 'shop_orbit') {
       const anchorGap = compact ? 26 : 34;

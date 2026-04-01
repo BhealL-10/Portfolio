@@ -6,8 +6,7 @@ html[data-runtime-device='mobile'] .mobile-only {
   display: block !important;
 }
 
-html[data-runtime-device='desktop'] .mobile-only,
-html[data-runtime-device='desktop'] .game-hud__mobile-controls {
+html[data-runtime-device='desktop'] .mobile-only {
   display: none !important;
 }
 
@@ -134,9 +133,10 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   }
 
   html[data-runtime-device='desktop'] .game-hud__score-feed {
+    top: calc(var(--safe-top) + 95px);
+    left: calc(var(--safe-left) + 165px);
     gap: 5px;
-    min-width: 88px;
-    padding-bottom: 10px;
+    padding-left: 16px;
   }
 
   html[data-runtime-device='desktop'] .game-hud__score-feed-entry strong {
@@ -405,15 +405,15 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
     --game-upgrade-desc-size: 0.6rem;
     --game-gameover-label-size: 0.42rem;
     --game-gameover-value-size: 0.6rem;
-    --game-mobile-control-size: 84px;
-    --game-mobile-control-side-size: 84px;
-    --game-mobile-control-jump-size: 84px;
-    --game-mobile-control-charge-size: 84px;
+    --game-mobile-control-size: 360px;
+    --game-mobile-control-side-size: 360px;
+    --game-mobile-control-jump-size: 360px;
+    --game-mobile-control-charge-size: 360px;
     --game-mobile-control-padding: 12px;
-    --game-mobile-control-icon-width: 58px;
-    --game-mobile-control-side-icon-width: 54px;
-    --game-mobile-control-jump-icon-width: 56px;
-    --game-mobile-control-charge-icon-width: 60px;
+    --game-mobile-control-icon-width: 274px;
+    --game-mobile-control-side-icon-width: 274px;
+    --game-mobile-control-jump-icon-width: 274px;
+    --game-mobile-control-charge-icon-width: 274px;
     --game-primaterie-logo-width: min(124px, 34vw);
     --game-primaterie-anchor-width: min(176px, calc(100vw - 18px));
     --game-primaterie-anchor-padding: 12px 7px 8px;

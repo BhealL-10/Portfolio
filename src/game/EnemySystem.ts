@@ -141,15 +141,15 @@ export class EnemySystem {
       }
       if (entry.dying) {
         const deathElapsed = elapsedTime - entry.deathStartedAt;
-        if (deathElapsed >= 0.52) {
+        if (deathElapsed >= 0.72) {
           entry.group.visible = false;
           entry.activeId = null;
           entry.dying = false;
           return;
         }
         entry.group.visible = true;
-        entry.body.playLoop([4, 5, 6, 7], 6.4, deathElapsed);
-        const fade = Math.max(0, 1 - deathElapsed / 0.52);
+        entry.body.playLoop([4, 5, 6, 7], 4.4, deathElapsed);
+        const fade = Math.max(0, 1 - deathElapsed / 0.72);
         entry.body.mesh.material.opacity = fade;
         entry.backArrow.material.opacity = fade;
       }

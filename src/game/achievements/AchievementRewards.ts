@@ -1,19 +1,27 @@
 import type { AchievementAvatarLayer, AchievementRewardDefinition } from './AchievementTypes';
 
 const AVATAR_LAYER_COUNTS: Record<AchievementAvatarLayer, number> = {
-  background: 9,
-  motif: 5,
-  face: 9,
-  eyes: 12,
-  barbe: 10
+  oreille: 9,
+  face: 5,
+  eyes: 9,
+  facemotif: 15,
+  accessoire: 17
 };
 
 const AVATAR_LAYER_NAMES = {
-  background: { fr: 'Fond', en: 'Background' },
-  motif: { fr: 'Motif', en: 'Pattern' },
-  face: { fr: 'Visage', en: 'Face' },
+  oreille: { fr: 'Oreilles', en: 'Ears' },
+  face: { fr: 'Face', en: 'Face' },
   eyes: { fr: 'Yeux', en: 'Eyes' },
-  barbe: { fr: 'Barbe', en: 'Beard' }
+  facemotif: { fr: 'Face motif', en: 'Face motif' },
+  accessoire: { fr: 'Accessoire', en: 'Accessory' }
+} as const;
+
+const LEGACY_LAYER_ALIASES = {
+  background: 'oreille',
+  motif: 'face',
+  face: 'eyes',
+  eyes: 'facemotif',
+  barbe: 'accessoire'
 } as const;
 
 export function createAchievementRewardId(layer: AchievementAvatarLayer, humanIndex: number) {
@@ -57,3 +65,12 @@ export const ACHIEVEMENT_REWARDS: AchievementRewardDefinition[] = (Object.entrie
 });
 
 export const ACHIEVEMENT_REWARDS_BY_ID = new Map(ACHIEVEMENT_REWARDS.map((reward) => [reward.id, reward]));
+
+for (const reward of ACHIEVEMENT_REWARDS) {
+  const legacyLayer = Object.entries(LEGACY_LAYER_ALIASES).find(([, layer]) => layer === reward.avatarUnlocks[0]?.layer)?.[0];
+  if (!legacyLayer) {
+    continue;
+  }
+  const humanIndex = reward.avatarUnlocks[0]!.index + 1;
+  ACHIEVEMENT_REWARDS_BY_ID.set(`avatar-${legacyLayer}-${humanIndex}`, reward);
+}

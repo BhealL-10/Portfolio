@@ -19,6 +19,7 @@ export type RogueliteModuleSlot =
 
 export interface RogueliteItemStats {
   momentumRetention?: number;
+  doubleCoin?: boolean;
   coinBonus?: number;
   shopDiscount?: number;
   preventFail?: boolean;
@@ -265,7 +266,7 @@ const PASSIVE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     description: loc('Augmente les gains de pièces.', 'Increase coin rewards.'),
     hudIconSrc: HUD_ICON_URLS.bourse,
     boatVisual: null,
-    statsByRarity: passiveStats({ coinBonus: 2.0 })
+    statsByRarity: passiveStats({ doubleCoin: true })
   },
   {
     baseId: 'smuggler_favor',
@@ -366,7 +367,7 @@ const PASSIVE_BLUEPRINTS: RogueliteItemBlueprint[] = [
     category: 'utility',
     unlockScore: 0,
     name: loc('Ceinture d’orbite', 'Orbit Belt'),
-    description: loc('Dévie doucement la trajectoire près des shards, comme une petite gravité orbitale plus sensible à basse vitesse.', 'Gently bends your path near shards like a light orbital gravity, stronger at lower speed.'),
+    description: loc('Élargit l’orbite autour des shards, affiche leur radius et donne une sensation de plané plus haut au-dessus de leur surface.', 'Expands shard orbit radius, reveals their radius ring, and makes your glide feel slightly elevated above the surface.'),
     hudIconSrc: HUD_ICON_URLS.ceinture,
     boatVisual: null,
     statsByRarity: passiveStats({ gravityCentering: 0.82 })
@@ -870,6 +871,7 @@ function recomputeModifiers(runState: RunUpgradeState) {
     if (!item) return;
     const stats = item.statsByRarity[item.rarity];
     if (stats.momentumRetention) runState.modifiers.momentumRetention += stats.momentumRetention;
+    if (stats.doubleCoin) runState.modifiers.doubleCoin = true;
     if (stats.coinBonus) runState.modifiers.coinBonus += stats.coinBonus;
     if (stats.shopDiscount) runState.modifiers.shopDiscount += stats.shopDiscount;
     if (stats.preventFail) runState.modifiers.failSafe = true;

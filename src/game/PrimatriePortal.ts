@@ -17,6 +17,8 @@ export class primateriePortal {
   readonly element: HTMLDivElement;
   private readonly logo: HTMLImageElement;
   private readonly anchor: HTMLDivElement;
+  private readonly actions: HTMLDivElement;
+  private readonly loadingLabel: HTMLDivElement;
   private readonly themeButton: HTMLImageElement;
   private readonly languageButton: HTMLImageElement;
   private readonly portfolioButton: HTMLButtonElement;
@@ -25,6 +27,7 @@ export class primateriePortal {
   private readonly tenVsTenButton: HTMLButtonElement;
   private visible = false;
   private busy = false;
+  private loading = false;
   private locale: Language = 'fr';
 
   constructor(
@@ -47,17 +50,20 @@ export class primateriePortal {
         <img class="primaterie-portal__logo" data-primaterie-logo alt="primaterie" />
       </div>
       <div class="primaterie-portal__anchor">
-        <div class="primaterie-portal__actions">
+        <div class="primaterie-portal__actions" data-primaterie-actions>
           <button type="button" data-primaterie-single></button>
           <button type="button" data-primaterie-3v3 disabled></button>
           <button type="button" data-primaterie-10v10 disabled></button>
           <button type="button" data-primaterie-portfolio></button>
         </div>
+        <div class="primaterie-portal__loading" data-primaterie-loading></div>
       </div>
     `;
 
     this.logo = this.element.querySelector<HTMLImageElement>('[data-primaterie-logo]')!;
     this.anchor = this.element.querySelector<HTMLDivElement>('.primaterie-portal__anchor')!;
+    this.actions = this.element.querySelector<HTMLDivElement>('[data-primaterie-actions]')!;
+    this.loadingLabel = this.element.querySelector<HTMLDivElement>('[data-primaterie-loading]')!;
     this.themeButton = this.element.querySelector<HTMLImageElement>('[data-primaterie-theme]')!;
     this.languageButton = this.element.querySelector<HTMLImageElement>('[data-primaterie-language]')!;
     this.portfolioButton = this.element.querySelector<HTMLButtonElement>('[data-primaterie-portfolio]')!;
@@ -91,6 +97,10 @@ export class primateriePortal {
     return this.visible;
   }
 
+  get isLoading() {
+    return this.loading;
+  }
+
   setVisible(visible: boolean) {
     this.visible = visible;
     if (!visible) {
@@ -100,6 +110,7 @@ export class primateriePortal {
       }
       this.element.setAttribute('inert', '');
       this.setBusy(false);
+      this.setLoading(false);
     } else {
       this.element.removeAttribute('inert');
     }
@@ -111,10 +122,13 @@ export class primateriePortal {
   setBusy(busy: boolean) {
     this.busy = busy;
     this.element.classList.toggle('is-busy', busy);
-    this.singlePlayerButton.disabled = busy;
-    this.portfolioButton.disabled = busy;
-    this.threeVsThreeButton.disabled = true;
-    this.tenVsTenButton.disabled = true;
+    this.refreshActionState();
+  }
+
+  setLoading(loading: boolean) {
+    this.loading = loading;
+    this.element.classList.toggle('is-loading', loading);
+    this.refreshActionState();
   }
 
   setLocale(locale: Language) {
@@ -137,8 +151,22 @@ export class primateriePortal {
     this.portfolioButton.textContent = 'Portfolio';
     this.threeVsThreeButton.textContent = '3v3';
     this.tenVsTenButton.textContent = '10v10';
+    this.loadingLabel.textContent = this.locale === 'fr' ? 'Chargement' : 'Loading';
     this.themeButton.setAttribute('aria-label', this.locale === 'fr' ? 'Changer le theme' : 'Change theme');
     this.languageButton.setAttribute('aria-label', this.locale === 'fr' ? 'Changer la langue' : 'Change language');
+    this.actions.setAttribute('aria-hidden', String(this.loading));
+    this.loadingLabel.setAttribute('aria-hidden', String(!this.loading));
     this.setBusy(this.busy);
+    this.setLoading(this.loading);
+  }
+
+  private refreshActionState() {
+    const disabled = this.busy || this.loading;
+    this.singlePlayerButton.disabled = disabled;
+    this.portfolioButton.disabled = disabled;
+    this.threeVsThreeButton.disabled = true;
+    this.tenVsTenButton.disabled = true;
+    this.actions.setAttribute('aria-hidden', String(this.loading));
+    this.loadingLabel.setAttribute('aria-hidden', String(!this.loading));
   }
 }

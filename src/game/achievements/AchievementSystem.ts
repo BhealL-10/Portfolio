@@ -42,13 +42,17 @@ const MAIN_MODULE_SLOTS: RogueliteModuleSlot[] = [
 interface AchievementRunState {
   backKills: number;
   landings: number;
+  cleanLandingStreak: number;
   twistStreak: number;
+  superLandingStreak: number;
   perfectStreak: number;
   maxMomentumWindowStart: number | null;
   highMomentumWindowStart: number | null;
   lastRecordedSecond: number;
   lastRecordedDistance: number;
   airborneSeconds: number;
+  milestoneRewardClaimed: boolean;
+  airborneModuleSlots: Set<RogueliteModuleSlot>;
 }
 
 interface LandingAchievementEvent {
@@ -72,13 +76,17 @@ function createRunState(): AchievementRunState {
   return {
     backKills: 0,
     landings: 0,
+    cleanLandingStreak: 0,
     twistStreak: 0,
+    superLandingStreak: 0,
     perfectStreak: 0,
     maxMomentumWindowStart: null,
     highMomentumWindowStart: null,
     lastRecordedSecond: -1,
     lastRecordedDistance: -1,
-    airborneSeconds: 0
+    airborneSeconds: 0,
+    milestoneRewardClaimed: false,
+    airborneModuleSlots: new Set<RogueliteModuleSlot>()
   };
 }
 
@@ -110,8 +118,7 @@ const LANDING_ACHIEVEMENT_IDS = [
   'shards_land_25',
   'shards_land_50',
   'shards_land_100',
-  'shards_land_200',
-  'shards_land_300'
+  'shards_land_200'
 ] as const;
 
 const LANDING_CHAIN_ACHIEVEMENT_IDS = [
@@ -121,6 +128,10 @@ const LANDING_CHAIN_ACHIEVEMENT_IDS = [
   'shards_chain_30',
   'shards_chain_40'
 ] as const;
+const EARLY_FAIL_STREAK_ACHIEVEMENT_ID = 'progress_early_fail_streak_5';
+const FAIL_STREAK_ACHIEVEMENT_ID = 'progress_fail_streak_10';
+const NO_MILESTONE_REWARD_ACHIEVEMENT_ID = 'shards_100_without_milestone_reward';
+const AIR_MODULE_COMBO_ACHIEVEMENT_ID = 'modules_air_combo_3';
 
 const MILESTONE_ACHIEVEMENT_IDS = ['shards_milestone_1', 'shards_milestone_3', 'shards_milestone_5'] as const;
 const TRIANGULAR_SHARD_ACHIEVEMENT_IDS = ['shards_triangular_5', 'shards_triangular_15', 'shards_triangular_30'] as const;
@@ -222,6 +233,11 @@ export class AchievementSystem {
         return;
       }
 
+      if (item.slot === 'propulseur' || item.slot === 'wings' || item.slot === 'reacteur_front' || item.slot === 'reacteur_back') {
+        this.runState.airborneModuleSlots.add(item.slot);
+        this.raiseProgress(AIR_MODULE_COMBO_ACHIEVEMENT_ID, this.runState.airborneModuleSlots.size);
+      }
+
       if (this.markRawFlag(getRawKey(['module-owned', item.slot]))) {
         const uniqueModules = MAIN_MODULE_SLOTS.reduce((count, slot) => {
           return count + (this.getRawProgress(getRawKey(['module-owned', slot])) > 0 ? 1 : 0);
@@ -261,7 +277,6 @@ export class AchievementSystem {
     this.mutate(() => {
       this.runState.landings += 1;
       this.incrementAll(LANDING_ACHIEVEMENT_IDS, 1);
-      this.raiseAll(LANDING_CHAIN_ACHIEVEMENT_IDS, this.runState.landings);
 
       if (event.isMilestone) {
         this.incrementAll(MILESTONE_ACHIEVEMENT_IDS, 1);
@@ -276,13 +291,29 @@ export class AchievementSystem {
       } else {
         this.runState.twistStreak = 0;
       }
+      if (event.grade === 'super' || event.grade === 'perfect') {
+        this.runState.cleanLandingStreak += 1;
+      } else {
+        this.runState.cleanLandingStreak = 0;
+      }
+      if (event.grade === 'super') {
+        this.runState.superLandingStreak += 1;
+      } else {
+        this.runState.superLandingStreak = 0;
+      }
       if (event.grade === 'perfect') {
         this.runState.perfectStreak += 1;
         this.incrementAll(PERFECT_ACHIEVEMENT_IDS, 1);
+        this.incrementProgress('shards_land_300', 1);
         this.raiseAll(PERFECT_STREAK_ACHIEVEMENT_IDS, this.runState.perfectStreak);
       } else {
         this.runState.perfectStreak = 0;
       }
+      this.raiseProgress(LANDING_CHAIN_ACHIEVEMENT_IDS[0], this.runState.cleanLandingStreak);
+      this.raiseProgress(LANDING_CHAIN_ACHIEVEMENT_IDS[1], this.runState.cleanLandingStreak);
+      this.raiseProgress(LANDING_CHAIN_ACHIEVEMENT_IDS[2], this.runState.perfectStreak);
+      this.raiseProgress(LANDING_CHAIN_ACHIEVEMENT_IDS[3], this.runState.perfectStreak);
+      this.raiseProgress(LANDING_CHAIN_ACHIEVEMENT_IDS[4], this.runState.perfectStreak);
     });
   }
 
@@ -294,6 +325,30 @@ export class AchievementSystem {
     this.mutate(() => {
       this.runState.lastRecordedDistance = roundedDistance;
       this.raiseAll(DISTANCE_ACHIEVEMENT_IDS, roundedDistance);
+      if (!this.runState.milestoneRewardClaimed && roundedDistance >= 100) {
+        this.raiseProgress(NO_MILESTONE_REWARD_ACHIEVEMENT_ID, 1);
+      }
+    });
+  }
+
+  recordMilestoneRewardClaimed() {
+    this.runState.milestoneRewardClaimed = true;
+  }
+
+  recordRunEnded(distanceMeters: number) {
+    this.mutate(() => {
+      const nextFailStreak = this.getRawProgress(getRawKey(['run-fail-streak'])) + 1;
+      this.setRawProgress(getRawKey(['run-fail-streak']), nextFailStreak);
+      this.raiseProgress(FAIL_STREAK_ACHIEVEMENT_ID, nextFailStreak);
+
+      if (distanceMeters < 10) {
+        const nextEarlyFailStreak = this.getRawProgress(getRawKey(['run-early-fail-streak'])) + 1;
+        this.setRawProgress(getRawKey(['run-early-fail-streak']), nextEarlyFailStreak);
+        this.raiseProgress(EARLY_FAIL_STREAK_ACHIEVEMENT_ID, nextEarlyFailStreak);
+        return;
+      }
+
+      this.setRawProgress(getRawKey(['run-early-fail-streak']), 0);
     });
   }
 
@@ -417,6 +472,7 @@ export class AchievementSystem {
       rarityEmoji: entry.rarityEmoji,
       rarityLabel: entry.rarityLabel,
       rewardLabel: entry.reward?.name ?? null,
+      reward: entry.reward,
       progress
     };
   }

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getSharedImageAsset, getSharedTextureAsset } from '../core/browserAssetCache';
+import { getSharedImageAsset, getSharedTextureAsset, preloadImageAsset } from '../core/browserAssetCache';
 import { isMobileRuntime } from '../core/device';
 import { clamp, damp } from '../core/math';
 import { getThemeForegroundHex, getThemeShardContrastHex, getThemeShardHex } from '../core/themePalette';
@@ -36,6 +36,7 @@ import {
   getItemById,
   getModuleChargesForItem,
   getModuleGaugeConfig,
+  rogueliteItems,
   type ModuleRuntimeState,
   type RogueliteRarity,
   type RogueliteModuleSlot,
@@ -224,6 +225,8 @@ export class GameSessionController {
   private readonly transitionPlayerStartRotation = new THREE.Euler();
   private readonly transitionPlayerStartScale = new THREE.Vector3(1, 1, 1);
   private transitionProgress = 0;
+  private visualAssetsPreloaded = false;
+  private visualAssetsPreloadPromise: Promise<void> | null = null;
   private readonly scoreListeners = new Set<() => void>();
   private readonly audioListeners = new Set<(event: GameAudioEvent) => void>();
   private readonly playerPosition = new THREE.Vector3();
@@ -257,10 +260,21 @@ export class GameSessionController {
     mobile: {
       airborneChargeCount: 0,
       airborneChargeDisplayCount: 0,
+      hasTeleport: false,
+      teleportBlocked: false,
+      teleportCooldownRatio: 0,
+      teleportActive: false,
       hasGrapple: false,
       grappleBlocked: false,
+      grappleCooldownRatio: 0,
+      grappleActive: false,
+      hasAirAction: false,
+      airActionBlocked: false,
+      airActionActive: false,
+      airActionDepleted: false,
       hasSouffleur: false,
-      hasSouffleurFuel: false
+      hasSouffleurFuel: false,
+      boostActive: false
     },
     offers: [],
     branchHints: [],
@@ -498,8 +512,8 @@ export class GameSessionController {
     );
     this.frontCanonLaser.visible = false;
     this.frontCanonLaser.renderOrder = 26;
-    this.frontCanonProjectile = this.createBillboardPlane(FRONT_CANON_PROJECTILE_URL, 1.6, 0.28, 28);
-    this.bigCanonProjectile = this.createBillboardPlane(BIG_CANON_PROJECTILE_URL, 1.3, 0.24, 28);
+    this.frontCanonProjectile = this.createBillboardPlane(FRONT_CANON_PROJECTILE_URL, 0.32, 0.32, 28);
+    this.bigCanonProjectile = this.createBillboardPlane(BIG_CANON_PROJECTILE_URL, 0.4, 0.4, 28);
     this.grapRope = new THREE.Mesh(
       new THREE.PlaneGeometry(0.03, 1),
       new THREE.MeshBasicMaterial({
@@ -544,6 +558,46 @@ export class GameSessionController {
     this.coins = new CoinSystem(scene, theme);
     this.enemies = new EnemySystem(scene, theme);
     this.shop = new ShopSystem(scene, theme);
+  }
+
+  preloadAssets() {
+    if (this.visualAssetsPreloadPromise) {
+      return this.visualAssetsPreloadPromise;
+    }
+    if (this.visualAssetsPreloaded) {
+      return Promise.resolve();
+    }
+
+    const moduleSpriteAssets = rogueliteItems
+      .map((item) => item.boatVisual?.spriteSheetUrl ?? null)
+      .filter((src): src is string => Boolean(src));
+    const assets = new Set<string>([
+      ITEM_PLACEHOLDER_ICON,
+      PLAYER_MAIN_SPRITE_URL,
+      PLAYER_BOOST_SPRITE_URL,
+      STICK_MONKEY_AIR_URL,
+      STICK_MONKEY_GLIDE_URL,
+      BIG_CANON_PROJECTILE_URL,
+      FRONT_CANON_PROJECTILE_URL,
+      ...Object.values(SHARD_HUD_ANCHOR_LOAD_ASSETS),
+      ...Object.values(SHARD_HUD_ANCHOR_FULL_ASSETS),
+      ...Object.values(SHARD_HUD_BOOST_ASSETS),
+      ...Object.values(SHOP_ICON_ASSETS),
+      ...Object.values(HELP_ICON_ASSETS),
+      ...rogueliteItems.flatMap((item) => [item.hudIconSrc, item.rarityIconSrc]),
+      ...moduleSpriteAssets
+    ]);
+
+    this.visualAssetsPreloadPromise = Promise.all(Array.from(assets, (src) => preloadImageAsset(src)))
+      .then(() => {
+        this.visualAssetsPreloaded = true;
+      })
+      .catch((error) => {
+        this.visualAssetsPreloadPromise = null;
+        console.warn('[GameSessionController] Failed to preload visual assets.', error);
+      });
+
+    return this.visualAssetsPreloadPromise;
   }
 
   get currentState() {
@@ -1096,8 +1150,18 @@ export class GameSessionController {
     const liveDensity = isCurrent ? THREE.MathUtils.lerp(passiveDensity, targetDensity, orbitRamp) : Math.max(passiveDensity, visualWave?.density ?? passiveDensity);
     const activeStrength = node.isMilestone ? 0.012 + orbitRamp * 0.02 : passiveStrength + 0.18 + orbitRamp * 0.12 + this.momentum.gauge * 0.46;
     const rewardItem = node.offerId ? getItemById(node.offerId) : null;
-    const isGuaranteedShopShard = node.eventType === 'shop' && node.eventVisualKind === 'shop';
+    const isGuaranteedShopShard = Boolean(node.guaranteedShopIcon);
     const isRandomRewardShard = node.eventVisualKind === 'question' || node.eventType === 'gift' || node.eventType === 'rare_item';
+    const gravityBeltRadius =
+      this.runUpgrades.modifiers.gravityCentering > 0 && !node.isMilestone
+        ? clamp(
+            1 -
+              (Math.hypot(node.resolvedX - this.playerPosition.x, node.resolvedY - this.playerPosition.y) - this.getPhysicalRadius(node)) /
+                Math.max(4.8, 6.4 + this.runUpgrades.modifiers.gravityCentering * 4.6),
+            0,
+            1
+          )
+        : 0;
     const maskedByMilestone = false;
     const stripeMix = clamp((node.isMilestone ? 0.08 : 0.12) + fragmentAmount * 0.18 + (isCurrent ? orbitRamp * 0.1 : 0), 0, 0.42);
     const stripePhase = this.currentTime * (node.isMilestone ? 1.1 : 1.95) + localAngle * 1.6;
@@ -1120,10 +1184,14 @@ export class GameSessionController {
             : node.colorHint === 'reward' || isRandomRewardShard
             ? this.getThemeShardColor()
             : null,
-      ringTint: null,
-      ringScale: 0,
+      ringTint: gravityBeltRadius > 0.02 ? this.getThemeContrastColor() : null,
+      ringScale:
+        gravityBeltRadius > 0.02
+          ? Math.max(node.visualScale * node.visualStretch.x, node.visualScale * node.visualStretch.y) *
+            (1.14 + this.runUpgrades.modifiers.gravityCentering * 0.06 + gravityBeltRadius * 0.14)
+          : 0,
       stripeTint: this.getThemeContrastColor(),
-      stripeMix,
+      stripeMix: gravityBeltRadius > 0.02 ? stripeMix * 0.72 : stripeMix,
       stripePhase,
       pulse:
         node.isMilestone
@@ -1136,7 +1204,7 @@ export class GameSessionController {
               ? 0.68
               : node.eventType !== 'none'
                 ? 0.34
-                : clamp(this.momentum.gauge * 0.22, 0, 0.22),
+                : clamp(this.momentum.gauge * 0.22, 0, 0.22) + gravityBeltRadius * 0.08,
       deformAngle: isCurrent ? localAngle : visualWave?.angle ?? 0,
       deformStrength: isCurrent ? activeStrength : Math.max(passiveStrength, visualWave?.strength ?? 0) + (node.isMilestone ? 0 : fragmentAmount * 0.16),
       deformDensity: liveDensity,
@@ -1172,10 +1240,6 @@ export class GameSessionController {
     ) {
       return false;
     }
-    if (this.isShopInteractionLocked()) {
-      this.chargeActive = false;
-      return false;
-    }
 
     if (active) {
       this.chargeActive = true;
@@ -1200,7 +1264,7 @@ export class GameSessionController {
     return false;
   }
 
-  setUpActionActive(active: boolean) {
+  setGrappleActionActive(active: boolean) {
     this.upActionActive = active;
     if (active) {
       return;
@@ -1216,6 +1280,10 @@ export class GameSessionController {
     this.grapReleasePending = false;
   }
 
+  setUpActionActive(active: boolean) {
+    this.setGrappleActionActive(active);
+  }
+
   triggerJump() {
     if (
       this.state === 'idle' ||
@@ -1226,15 +1294,11 @@ export class GameSessionController {
     ) {
       return false;
     }
-    if (this.isShopInteractionLocked()) {
-      this.chargeActive = false;
-      return false;
-    }
     if (this.playerState === 'attached' || this.playerState === 'charging') {
       this.chargeActive = false;
       return this.launch();
     }
-    return this.performAirAction();
+    return this.triggerAirborneMobilityAction();
   }
 
   triggerAirborneMobilityAction() {
@@ -1259,6 +1323,19 @@ export class GameSessionController {
     return this.tryConsumeAirborneExtraJump();
   }
 
+  triggerTeleportAction() {
+    if (
+      this.state === 'idle' ||
+      this.state === 'portal_preview' ||
+      this.state === 'transition_in' ||
+      this.state === 'transition_out' ||
+      this.state === 'game_over'
+    ) {
+      return false;
+    }
+    return this.tryActivateWrapper(false, true);
+  }
+
   triggerUpAction() {
     if (
       this.state === 'idle' ||
@@ -1269,25 +1346,10 @@ export class GameSessionController {
     ) {
       return false;
     }
-    if (this.isShopInteractionLocked()) {
-      return false;
-    }
-    if (this.grapTargetIndex !== null && (this.grapState === 'launch' || this.grapState === 'hooked')) {
-      if (this.grapState === 'hooked') {
-        this.grapReleasePending = true;
-        this.grapReleasePressedAt = this.currentTime;
-      } else {
-        this.releaseGrapple();
-      }
-      return true;
-    }
-    if (this.tryActivateGrappleFromCurrentState()) {
-      return true;
-    }
-    return this.triggerJump();
+    return this.triggerAirborneMobilityAction();
   }
 
-  triggerMobileGrappleAction() {
+  triggerHarpoonAction() {
     if (
       this.state === 'idle' ||
       this.state === 'portal_preview' ||
@@ -1310,6 +1372,10 @@ export class GameSessionController {
       return true;
     }
     return this.tryActivateGrappleFromCurrentState();
+  }
+
+  triggerMobileGrappleAction() {
+    return this.triggerHarpoonAction();
   }
 
   triggerMobileAirborneChargeAction() {
@@ -1354,13 +1420,29 @@ export class GameSessionController {
 
   closeShopChoice() {
     if (this.choiceMode !== 'shop_orbit' || this.state !== 'upgrade_branching') return false;
+    this.dismissActiveShopChoice();
+    this.state = this.playerState === 'airborne' ? 'running_airborne' : this.chargeActive ? 'running_charging' : 'running_attached';
+    this.eventCooldownUntil = this.currentTime + 0.18;
+    return true;
+  }
+
+  private dismissActiveShopChoice() {
+    if (this.choiceMode !== 'shop_orbit') {
+      return;
+    }
     this.shop.reset();
     this.choiceMode = 'none';
     this.activeChoices = [];
     this.activeShopAngles = [];
-    this.state = this.playerState === 'airborne' ? 'running_airborne' : this.chargeActive ? 'running_charging' : 'running_attached';
-    this.eventCooldownUntil = this.currentTime + 0.18;
-    return true;
+  }
+
+  private dismissActiveRewardChoice() {
+    if (this.choiceMode !== 'reward_branch') {
+      return;
+    }
+    this.choiceMode = 'none';
+    this.activeChoices = [];
+    this.activeShopAngles = [];
   }
 
   private isShopInteractionLocked() {
@@ -1504,14 +1586,51 @@ export class GameSessionController {
 
   private getMobileHudState() {
     const airborneChargeCount = this.getRemainingAirborneChargeCount();
+    const airborne = this.playerState === 'airborne';
+    const onShard = !airborne && this.playerState !== 'dead';
     const souffleurRuntime = this.getModuleRuntime('souffleur');
+    const wrapperRuntime = this.getModuleRuntime('wrapper');
+    const grappleRuntime = this.getModuleRuntime('grappin');
+    const hasTeleport = Boolean(this.getEquippedItem('wrapper'));
+    const hasGrapple = Boolean(this.getEquippedItem('grappin'));
+    const hasSouffleurItem = Boolean(this.getEquippedItem('souffleur'));
+    const hasAirAction =
+      this.runUpgrades.modifiers.infiniteFlaps ||
+      this.remainingExtraJumps > 0 ||
+      Boolean(this.getEquippedItem('propulseur')) ||
+      Boolean(this.getEquippedItem('wings')) ||
+      Boolean(this.getEquippedItem('reacteur_front')) ||
+      Boolean(this.getEquippedItem('reacteur_back'));
+    const teleportBusy = this.isWrapperBusy();
+    const grappleBusy = this.grapState !== 'idle' || this.grapTargetIndex !== null;
+    const airActionActive =
+      (this.moduleFlashUntil.wings ?? 0) > this.currentTime ||
+      (this.moduleFlashUntil.propulseur ?? 0) > this.currentTime ||
+      (this.moduleFlashUntil.reacteur_front ?? 0) > this.currentTime ||
+      (this.moduleFlashUntil.reacteur_back ?? 0) > this.currentTime;
+    const airActionDepleted = !this.runUpgrades.modifiers.infiniteFlaps && airborneChargeCount <= 0;
+    const boostVisible = onShard || (airborne && hasSouffleurItem);
+    const boostActive = onShard ? this.chargeActive : airborne && hasSouffleurItem && this.souffleurActive;
     return {
       airborneChargeCount,
       airborneChargeDisplayCount: this.runUpgrades.modifiers.infiniteFlaps ? 5 : Math.max(0, Math.min(5, airborneChargeCount)),
-      hasGrapple: Boolean(this.getEquippedItem('grappin')),
-      grappleBlocked: Boolean(this.getEquippedItem('grappin')) && !this.isGrappleAvailable(),
-      hasSouffleur: Boolean(this.getEquippedItem('souffleur')),
-      hasSouffleurFuel: Boolean((souffleurRuntime?.gaugeCurrent ?? 0) > 0.001) && !this.souffleurRequiresFullRecharge
+      hasTeleport,
+      teleportBlocked: hasTeleport && !this.isWrapperAvailable(),
+      teleportCooldownRatio: hasTeleport && !teleportBusy ? this.getDisplayedCooldownRatio('wrapper', wrapperRuntime) : 0,
+      teleportActive: hasTeleport && teleportBusy,
+      hasGrapple,
+      grappleBlocked: hasGrapple && !this.isGrappleAvailable(),
+      grappleCooldownRatio: grappleBusy ? 0 : this.getDisplayedCooldownRatio('grappin', grappleRuntime),
+      grappleActive: hasGrapple && (grappleBusy || (this.moduleFlashUntil.grappin ?? 0) > this.currentTime),
+      hasAirAction,
+      airActionBlocked: hasAirAction && !airborne,
+      airActionActive: airActionActive && !airActionDepleted,
+      airActionDepleted,
+      hasSouffleur: boostVisible,
+      hasSouffleurFuel:
+        onShard ||
+        (Boolean((souffleurRuntime?.gaugeCurrent ?? 0) > 0.001) && !this.souffleurRequiresFullRecharge && boostVisible),
+      boostActive
     };
   }
 
@@ -1578,8 +1697,7 @@ export class GameSessionController {
     if (!runtime || cooldownDuration <= 0) {
       return 0;
     }
-    const visualLeadTime = Math.min(0.16, cooldownDuration * 0.08);
-    return Math.min(1, Math.max(0, runtime.cooldownRemaining - visualLeadTime) / cooldownDuration);
+    return Math.min(1, Math.max(0, runtime.cooldownRemaining) / cooldownDuration);
   }
 
   private ensureModuleRuntime(slot: RogueliteModuleSlot) {
@@ -1825,7 +1943,6 @@ export class GameSessionController {
     this.prewarmUpcomingMilestones();
 
     if (frame.shopLocked) {
-      this.chargeActive = false;
       this.souffleurActive = false;
       this.updateAttached(frame.deltaTime, frame.currentNode);
     } else if (this.playerState === 'airborne') {
@@ -2129,6 +2246,7 @@ export class GameSessionController {
           shapeKind: 'round',
           colorHint: 'none',
           eventType: 'none',
+          guaranteedShopIcon: false,
           isMilestone: false,
           isGigantic: false,
           coinSlots: [],
@@ -2193,20 +2311,42 @@ export class GameSessionController {
     if (this.interactableVisibleNodesCache) {
       return this.interactableVisibleNodesCache;
     }
-    const result = this.getDisplayNodes(Math.min(28, this.getRecommendedVisibleCount())).filter((node) => {
-      if (node.index <= this.attachedIndex) {
-        return false;
-      }
+    const hasBigCanon = Boolean(this.getEquippedItem('big_canon'));
+    const hasFrontCanon = Boolean(this.getEquippedItem('front_canon'));
+    const hasGrapple = Boolean(this.getEquippedItem('grappin'));
+    const maxReach = Math.max(
+      12,
+      hasBigCanon ? this.getBigCanonEffectiveRange() + 5.2 : 0,
+      hasFrontCanon ? this.getFrontCanonEffectiveRange() + this.getFrontCanonSpreadWidth() + 5.8 : 0,
+      hasGrapple ? this.getGrappleEffectiveRange(this.playerPosition.x) + 5.8 : 0
+    );
+    const leftLimit = this.playerPosition.x - Math.max(4.8, maxReach * 0.32);
+    const rightLimit = this.playerPosition.x + maxReach + 6.8;
+    const searchLimit = this.attachedIndex + Math.max(32, Math.ceil(maxReach / Math.max(0.001, DEFAULT_COLUMN_DISTANCE)) * 14);
+    const result: ResolvedGamePathNode[] = [];
+
+    for (let index = Math.max(0, this.attachedIndex - 2); index <= searchLimit; index += 1) {
+      const node = this.getResolvedNode(index);
       const radius = this.getPhysicalRadius(node);
-      return node.resolvedX + radius >= this.camera.getSafeLeft() - 1.2 && node.resolvedX - radius <= this.camera.getSafeRight() + 1.6;
-    });
+      if (node.resolvedX + radius < leftLimit) {
+        continue;
+      }
+      if (node.resolvedX - radius > rightLimit) {
+        if (index > this.attachedIndex + 6) {
+          break;
+        }
+        continue;
+      }
+      result.push(node);
+    }
+
     this.interactableVisibleNodesCache = result;
     return result;
   }
 
   private getGrappleConeHalfAngle() {
     const rangeBonus = Math.max(0, this.getModuleStat('grappin', 'grapRange') - 4.8);
-    return clamp(Math.PI / 8 + rangeBonus * 0.055, Math.PI / 8, Math.PI / 5.8);
+    return clamp(Math.PI / 6.9 + rangeBonus * 0.06, Math.PI / 7.2, Math.PI / 4.9);
   }
 
   private getGrappleStatRange() {
@@ -2351,23 +2491,30 @@ export class GameSessionController {
   }
 
   private getGrappleVisibleReach(originX: number) {
-    return Math.max(3.6, this.camera.getSafeRight() - originX + DEFAULT_COLUMN_DISTANCE * 0.4);
+    return Math.max(8.2, this.camera.getSafeRight() - originX + DEFAULT_COLUMN_DISTANCE * 1.8);
   }
 
   private getGrappleEffectiveRange(originX: number) {
-    return Math.min(this.getGrappleStatRange(), this.getGrappleVisibleReach(originX));
+    return Math.max(this.getGrappleStatRange() + 0.72, this.getGrappleVisibleReach(originX) * 0.72);
   }
 
   private getBigCanonEffectiveRange() {
-    return Math.max(3.9, this.runUpgrades.modifiers.bigCanonRange);
+    return Math.max(5.2, this.runUpgrades.modifiers.bigCanonRange + 1.1);
   }
 
   private getFrontCanonEffectiveRange() {
-    const momentumBoost = this.momentum.gauge * 3.4;
-    return Math.min(
-      Math.max(2.4, this.runUpgrades.modifiers.frontCanonRange + momentumBoost),
-      Math.max(2.4, this.camera.getSafeRight() - this.playerPosition.x + 1.6)
-    );
+    const rarityFloor =
+      this.getEquippedItem('front_canon')?.rarity === 'legendary'
+        ? 12.8
+        : this.getEquippedItem('front_canon')?.rarity === 'epic'
+          ? 11.6
+          : this.getEquippedItem('front_canon')?.rarity === 'rare'
+            ? 10.4
+            : this.getEquippedItem('front_canon')?.rarity === 'uncommon'
+              ? 9.2
+              : 8.4;
+    const momentumBoost = this.momentum.gauge * 4.6;
+    return Math.max(rarityFloor, this.runUpgrades.modifiers.frontCanonRange + momentumBoost + 4.4);
   }
 
   private getFrontCanonSpreadWidth() {
@@ -2577,9 +2724,6 @@ export class GameSessionController {
     this.collectCoinsNearPlayer();
     this.resolveEnemyContact(currentNode);
 
-    if (!this.isShopInteractionLocked()) {
-      void this.tryActivateWrapper(false);
-    }
   }
 
   private updateAirborne(deltaTime: number) {
@@ -2602,7 +2746,6 @@ export class GameSessionController {
       this.triggerModuleFlash('souffleur', 0.12);
     }
 
-    void this.tryActivateWrapper(false);
     const rewardChoiceLayout = this.getActiveRewardChoiceLayout();
 
     if (this.grapTargetIndex !== null) {
@@ -2615,29 +2758,36 @@ export class GameSessionController {
       const pull = this.scratchVectorB.copy(this.grapTargetPosition).sub(this.playerPosition);
       const distance = Math.max(0.001, pull.length());
       pull.normalize();
+      const holdingGrapple =
+        this.upActionActive &&
+        !this.grapAwaitReleaseBeforePull &&
+        (!this.grapReleasePending || this.currentTime - this.grapReleasePressedAt >= 0.14);
       if (this.currentTime >= this.grapStateUntil && this.grapState === 'launch') {
         this.grapState = 'hooked';
         this.grapRopeLength = Math.max(0.96, distance);
         this.emitAudioEvent({ type: 'grapple_hit' });
       }
       if (this.grapState === 'launch') {
-        this.playerVelocity.addScaledVector(pull, Math.min(8.6, 4.2 + distance * 0.2) * deltaTime);
+        const launchRetractRate = holdingGrapple ? 4.4 + this.momentum.gauge * 1.8 : 0;
+        const launchFloor = Math.max(0.88, distance * 0.82);
+        this.grapRopeLength = Math.max(launchFloor, this.grapRopeLength - launchRetractRate * deltaTime);
+        this.playerVelocity.addScaledVector(
+          pull,
+          Math.min(10.4, 4.8 + distance * (holdingGrapple ? 0.42 : 0.24)) * deltaTime
+        );
       } else {
-        const canPullWithHold =
-          this.upActionActive &&
-          !this.grapAwaitReleaseBeforePull &&
-          (!this.grapReleasePending || this.currentTime - this.grapReleasePressedAt >= 0.18);
+        const canPullWithHold = holdingGrapple;
         if (this.grapReleasePending && this.currentTime - this.grapReleasePressedAt >= 0.18) {
           this.grapReleasePending = false;
         }
-        const retractRate = canPullWithHold ? 6.8 + this.momentum.gauge * 2.4 : 0;
+        const retractRate = canPullWithHold ? 8.1 + this.momentum.gauge * 2.9 : 0;
         const contactLength = Math.max(0.72, this.getOrbitClearance(grapNode) + 0.22);
         this.grapRopeLength = Math.max(contactLength, this.grapRopeLength - retractRate * deltaTime);
         const ropeTension = Math.max(0, distance - this.grapRopeLength);
         if (canPullWithHold && ropeTension > -0.24) {
           this.playerVelocity.addScaledVector(
             pull,
-            Math.min(11.6, 3.6 + ropeTension * 6.2 + distance * 0.18) * deltaTime
+            Math.min(13.2, 4.2 + ropeTension * 7.2 + distance * 0.22) * deltaTime
           );
         }
         if (this.chargeActive && canPullWithHold) {
@@ -2658,6 +2808,11 @@ export class GameSessionController {
     this.syncAirbornePlayerOrientation();
     this.collectCoinsNearPlayer();
     const travelSpeed = Math.max(0.001, this.playerVelocity.length());
+
+    this.resolveAirborneEnemyContact(previousPosition, travelSpeed);
+    if (this.state === 'game_over') {
+      return;
+    }
 
     if (this.grapTargetIndex !== null) {
       const grappleNode = this.getResolvedNode(this.grapTargetIndex);
@@ -2787,14 +2942,15 @@ export class GameSessionController {
       this.failRun('camera');
       return;
     }
-
-    this.resolveAirborneEnemyContact();
   }
 
   private launch() {
     if (this.playerState !== 'attached' && this.playerState !== 'charging') return false;
 
     const currentNode = this.getResolvedNode(this.attachedIndex);
+    if (this.choiceMode === 'shop_orbit') {
+      this.dismissActiveShopChoice();
+    }
     const orbit = this.getOrbitSample(currentNode, this.orbitAngle);
     const tangent2D = this.getSurfaceTravelTangent(orbit, this.orbitDirection, this.scratchVector2);
     const normal2D = this.getSurfaceNormal(orbit, this.scratchVector2B);
@@ -2825,16 +2981,6 @@ export class GameSessionController {
     this.emitAudioEvent({ type: 'jump', maxBoost, speed: launchSpeed });
     this.emitAudioEvent({ type: 'sail', fast: launchSpeed >= 11.5 });
     return true;
-  }
-
-  private performAirAction() {
-    if (this.playerState !== 'airborne') return false;
-    if (this.tryUseAirborneModuleImpulse()) return true;
-
-    if (this.tryActivateGrappin()) return true;
-    if (this.tryActivateWrapper(false)) return true;
-
-    return this.tryConsumeAirborneExtraJump();
   }
 
   private tryUseAirborneModuleImpulse() {
@@ -2919,17 +3065,6 @@ export class GameSessionController {
     return this.armGrapple(candidate.index, candidate.distance, candidate.angle);
   }
 
-  private tryActivateGrappin() {
-    if (this.playerState !== 'airborne') {
-      return false;
-    }
-    const candidate = this.findGrappleCandidate();
-    if (!candidate) {
-      return false;
-    }
-    return this.armGrapple(candidate.index, candidate.distance, candidate.angle);
-  }
-
   private findGrappleCandidate() {
     if (!this.isGrappleAvailable() || this.playerState !== 'airborne') {
       return null;
@@ -2937,33 +3072,83 @@ export class GameSessionController {
     const headingVector = this.getMovementHeadingVector(this.scratchVector2);
     const grappleOrigin = this.getGrappleOrigin(headingVector);
     const grapConeHalfAngle = this.getGrappleConeHalfAngle();
-    const minReach = 2.8;
+    const minReach = 1.1;
     const effectiveReach = this.getGrappleEffectiveRange(grappleOrigin.x);
-    let bestCandidate: { index: number; distance: number; angle: number; contactAngle: number } | null = null;
-    for (const node of this.getInteractableVisibleNodes()) {
-      const contact = this.findBestSurfaceContact(node, grappleOrigin, 120, 7);
-      const toNodeX = contact.surfaceWorldPosition.x - grappleOrigin.x;
-      const toNodeY = contact.surfaceWorldPosition.y - grappleOrigin.y;
-      const distance = Math.hypot(toNodeX, toNodeY);
-      if (distance < minReach) continue;
-      if (distance > effectiveReach) continue;
-      const normalizedX = toNodeX / Math.max(0.001, distance);
-      const normalizedY = toNodeY / Math.max(0.001, distance);
-      const dot = clamp(normalizedX * headingVector.x + normalizedY * headingVector.y, -1, 1);
-      if (dot <= 0) continue;
-      const angle = Math.acos(dot);
-      if (angle > grapConeHalfAngle) continue;
-      if (
-        !bestCandidate ||
-        distance < bestCandidate.distance - 0.02 ||
-        (Math.abs(distance - bestCandidate.distance) <= 0.02 && angle < bestCandidate.angle)
-      ) {
-        bestCandidate = { index: node.index, distance, angle, contactAngle: contact.angle };
+    const searchNodes = new Map<number, ResolvedGamePathNode>();
+    this.getInteractableVisibleNodes().forEach((node) => {
+      searchNodes.set(node.index, node);
+    });
+    this.getDisplayNodes(Math.min(34, this.getRecommendedVisibleCount() + 10)).forEach((node) => {
+      if (node.index === this.attachedIndex) {
+        return;
       }
+      searchNodes.set(node.index, node);
+    });
+    let bestCandidate: { index: number; distance: number; angle: number; contactAngle: number; score: number } | null = null;
+    const evaluateWithCone = (allowedConeHalfAngle: number) => {
+      let found = false;
+      for (const node of searchNodes.values()) {
+        const centerX = node.resolvedX - grappleOrigin.x;
+        const centerY = node.resolvedY - grappleOrigin.y;
+        const centerDistance = Math.hypot(centerX, centerY);
+        const edgeDistance = Math.max(0, centerDistance - this.getPhysicalRadius(node) * 0.92);
+        if (edgeDistance < minReach || edgeDistance > effectiveReach) {
+          continue;
+        }
+        const centerNormalizedX = centerX / Math.max(0.001, centerDistance);
+        const centerNormalizedY = centerY / Math.max(0.001, centerDistance);
+        const centerDot = clamp(centerNormalizedX * headingVector.x + centerNormalizedY * headingVector.y, -1, 1);
+        if (centerDot <= -0.08) {
+          continue;
+        }
+        const centerAngle = Math.acos(centerDot);
+        if (centerAngle > allowedConeHalfAngle) {
+          continue;
+        }
+
+        const contact = this.findBestSurfaceContact(node, grappleOrigin, 120, 7);
+        const toNodeX = contact.surfaceWorldPosition.x - grappleOrigin.x;
+        const toNodeY = contact.surfaceWorldPosition.y - grappleOrigin.y;
+        const distance = Math.hypot(toNodeX, toNodeY);
+        if (distance < minReach || distance > effectiveReach + 0.4) {
+          continue;
+        }
+        const normalizedX = toNodeX / Math.max(0.001, distance);
+        const normalizedY = toNodeY / Math.max(0.001, distance);
+        const dot = clamp(normalizedX * headingVector.x + normalizedY * headingVector.y, -1, 1);
+        const contactAngle = Math.acos(dot);
+        const usedAngle = Math.min(centerAngle, contactAngle);
+        if (usedAngle > allowedConeHalfAngle) {
+          continue;
+        }
+        const score = usedAngle * 2.1 + edgeDistance / Math.max(3.2, effectiveReach);
+        if (
+          !bestCandidate ||
+          score < bestCandidate.score - 0.002 ||
+          (Math.abs(score - bestCandidate.score) <= 0.002 && edgeDistance < bestCandidate.distance - 0.02) ||
+          (Math.abs(edgeDistance - bestCandidate.distance) <= 0.02 && usedAngle < bestCandidate.angle)
+        ) {
+          bestCandidate = { index: node.index, distance: edgeDistance, angle: usedAngle, contactAngle: contact.angle, score };
+          found = true;
+        }
+      }
+      return found;
+    };
+
+    if (!evaluateWithCone(grapConeHalfAngle)) {
+      evaluateWithCone(grapConeHalfAngle * 1.35);
     }
-    return bestCandidate
-      ? { index: bestCandidate.index, distance: bestCandidate.distance, angle: bestCandidate.contactAngle }
-      : null;
+    const resolvedCandidate = bestCandidate as {
+      index: number;
+      distance: number;
+      angle: number;
+      contactAngle: number;
+      score: number;
+    } | null;
+    if (!resolvedCandidate) {
+      return null;
+    }
+    return { index: resolvedCandidate.index, distance: resolvedCandidate.distance, angle: resolvedCandidate.contactAngle };
   }
 
   private armGrapple(index: number, distance: number, angle: number) {
@@ -2986,7 +3171,7 @@ export class GameSessionController {
     return true;
   }
 
-  private tryActivateWrapper(emergencyOnly: boolean) {
+  private tryActivateWrapper(emergencyOnly: boolean, allowChoiceInterrupt = false) {
     if (!this.getEquippedItem('wrapper')) {
       return false;
     }
@@ -2994,7 +3179,16 @@ export class GameSessionController {
       return false;
     }
     if (this.choiceMode !== 'none' || this.state === 'upgrade_branching') {
-      return false;
+      if (!allowChoiceInterrupt) {
+        return false;
+      }
+      if (this.choiceMode === 'shop_orbit') {
+        this.dismissActiveShopChoice();
+      } else if (this.choiceMode === 'reward_branch') {
+        this.dismissActiveRewardChoice();
+      }
+      this.state = this.playerState === 'airborne' ? 'running_airborne' : this.chargeActive ? 'running_charging' : 'running_attached';
+      this.eventCooldownUntil = Math.max(this.eventCooldownUntil, this.currentTime + 0.18);
     }
     if (
       emergencyOnly &&
@@ -3327,6 +3521,7 @@ export class GameSessionController {
     this.path.queuePostMilestoneEvents(branchTailIndex, branchTailIndex);
     this.reconcileDisplayWindowAfterPathChange();
     this.milestoneChoiceCache.delete(this.attachedIndex);
+    this.achievements.recordMilestoneRewardClaimed();
     this.applyOffer(choice.offer, viaFallback ? 'Quick choice' : 'Path chosen');
     this.choiceMode = 'none';
     this.activeChoices = [];
@@ -3644,7 +3839,7 @@ export class GameSessionController {
     this.syncRangeIndicator(
       this.magnetRangeIndicator,
       magnetVisible,
-      Math.max(4.8, 3.4 + this.runUpgrades.modifiers.magnetRange * 7.8),
+      this.getCoinMagnetRadius(),
       magnetVisible ? 0.1 : 0,
       0.34
     );
@@ -3695,8 +3890,8 @@ export class GameSessionController {
       const spreadWidth = this.getFrontCanonSpreadWidth();
       const forwardX = Math.cos(heading);
       const forwardY = Math.sin(heading);
-      const laserLength = Math.max(3.8, range);
-      const startOffset = 1.82;
+      const startOffset = 1.7;
+      const laserLength = Math.max(range, startOffset + 0.28);
       const centerOffset = startOffset + laserLength * 0.5;
       this.frontCanonLaser.material.color.set(this.getRarityColor(frontCanonItem?.rarity ?? 'common'));
       this.frontCanonLaser.position.set(
@@ -3716,6 +3911,7 @@ export class GameSessionController {
     const grapHasTarget = this.grapTargetIndex !== null && this.grapState !== 'idle';
     this.grapRope.visible = grapHasTarget;
     if (grapHasTarget) {
+      const ropeOrigin = this.getGrappleOrigin(grapHeading);
       this.grapRope.material.opacity =
         this.grapState === 'launch'
           ? 0.58
@@ -3728,10 +3924,10 @@ export class GameSessionController {
       } else {
         this.grapTargetPosition.set(targetNode.resolvedX, targetNode.resolvedY, targetNode.resolvedZ);
       }
-      const ropeVector = this.scratchVector.copy(this.grapTargetPosition).sub(this.playerPosition);
+      const ropeVector = this.scratchVector.copy(this.grapTargetPosition).sub(ropeOrigin);
       const distance = Math.max(0.2, ropeVector.length());
-      this.grapRope.position.copy(this.playerPosition).addScaledVector(ropeVector, 0.5);
-      this.grapRope.position.z = this.playerPosition.z + 0.02;
+      this.grapRope.position.copy(ropeOrigin).addScaledVector(ropeVector, 0.5);
+      this.grapRope.position.z = ropeOrigin.z + 0.02;
       this.grapRope.rotation.z = Math.atan2(ropeVector.y, ropeVector.x) - Math.PI * 0.5;
       this.grapRope.scale.set(this.grapState === 'hooked' ? 1.12 : 1, distance, 1);
     } else {
@@ -4425,10 +4621,10 @@ export class GameSessionController {
     const enemy = node.enemySlot;
     if (!enemy || !enemy.alive) return;
     const enemyPosition = this.getEnemyWorldPosition(node, enemy.pole);
-    if (enemyPosition.distanceTo(this.playerPosition) > node.gameplayRadius * 0.36 + 0.82) {
+    if (!this.isEnemyWithinContact(node, enemy, enemyPosition, this.playerPosition, false)) {
       return;
     }
-    const hitFromBehind = this.isEnemyHitFromBehind(enemy.pole);
+    const hitFromBehind = this.isEnemyHitFromBehind(node, enemy, enemyPosition, this.playerPosition);
     if (hitFromBehind || this.runUpgrades.modifiers.spikeOrbit) {
       enemy.alive = false;
       this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
@@ -4441,24 +4637,46 @@ export class GameSessionController {
     this.consumeProtectionOrFail(enemy);
   }
 
-  private resolveAirborneEnemyContact() {
-    for (let index = this.attachedIndex + 1; index <= this.attachedIndex + 4; index += 1) {
-      const node = this.getResolvedNode(index);
+  private resolveAirborneEnemyContact(previousPosition: THREE.Vector3, travelSpeed = this.playerVelocity.length()) {
+    let bestContact:
+      | {
+          node: ResolvedGamePathNode;
+          enemy: NonNullable<ResolvedGamePathNode['enemySlot']>;
+          enemyPosition: THREE.Vector3;
+          projection: number;
+          distanceSq: number;
+        }
+      | null = null;
+    for (const node of this.getInteractableVisibleNodes()) {
       const enemy = node.enemySlot;
       if (!enemy || !enemy.alive) continue;
       const enemyPosition = this.getEnemyWorldPosition(node, enemy.pole);
-      if (enemyPosition.distanceTo(this.playerPosition) > 1.2) continue;
-      if (this.runUpgrades.modifiers.spikeOrbit || this.playerState === 'airborne') {
-        enemy.alive = false;
-        this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
-        this.recordEnemyKill({ amount: 1 });
-        this.emitScore();
-        this.fillMomentumBurst(0.08);
-        this.emitAudioEvent({ type: 'enemy_die' });
-      } else {
-        this.consumeProtectionOrFail(enemy);
+      if (!this.isEnemyWithinContact(node, enemy, enemyPosition, previousPosition, true)) continue;
+      const projection = this.getTravelProjectionRatio(previousPosition, enemyPosition);
+      const distanceSq = previousPosition.distanceToSquared(enemyPosition);
+      if (
+        !bestContact ||
+        projection < bestContact.projection - 0.001 ||
+        (Math.abs(projection - bestContact.projection) <= 0.001 && distanceSq < bestContact.distanceSq)
+      ) {
+        bestContact = { node, enemy, enemyPosition, projection, distanceSq };
       }
+    }
+    if (!bestContact) {
       return;
+    }
+    const { node, enemy, enemyPosition } = bestContact;
+    const hitFromBehind = this.isEnemyHitFromBehind(node, enemy, enemyPosition, previousPosition);
+    const airborneImpactKill = this.isAirborneEnemyImpactKill(node, enemy, enemyPosition, previousPosition, travelSpeed);
+    if (this.runUpgrades.modifiers.spikeOrbit || hitFromBehind || airborneImpactKill) {
+      enemy.alive = false;
+      this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
+      this.recordEnemyKill({ amount: 1, fromBehind: hitFromBehind });
+      this.emitScore();
+      this.fillMomentumBurst(0.08);
+      this.emitAudioEvent({ type: 'enemy_die' });
+    } else {
+      this.consumeProtectionOrFail(enemy);
     }
   }
 
@@ -4557,15 +4775,19 @@ export class GameSessionController {
           }
         }
         if (bestTarget?.node.enemySlot) {
+          const targetEnemy = bestTarget.node.enemySlot;
           const travelDuration = this.queueCanonShot(
             this.bigCanonShot,
             'big_canon',
             bestTarget.node,
-            bestTarget.node.enemySlot.pole,
+            targetEnemy.pole,
             this.scratchVector.set(this.playerPosition.x, this.playerPosition.y + 0.18, this.playerPosition.z + 0.02),
-            18.5,
-            0.16
+            15.5,
+            0.22
           );
+          if (targetEnemy.alive) {
+            this.applyEnemyDefeat(bestTarget.node, targetEnemy);
+          }
           this.fillMomentumBurst(0.05);
           runtime.cooldownRemaining = Math.max(1.4, this.runUpgrades.modifiers.bigCanonCooldown || 4.5);
           this.bigCanonFireUntil = elapsedTime + travelDuration;
@@ -4583,17 +4805,21 @@ export class GameSessionController {
     const forward2D = this.getMovementHeadingVector(this.scratchVector2);
     const forward = this.scratchVector.set(forward2D.x, forward2D.y, 0);
     const range = this.getFrontCanonEffectiveRange();
+    const frontStartOffset = 1.7;
+    const laserOriginX = this.playerPosition.x + forward2D.x * frontStartOffset;
+    const laserOriginY = this.playerPosition.y + forward2D.y * frontStartOffset;
+    const laserLength = Math.max(range, frontStartOffset + 0.28);
     let bestTarget: { node: ResolvedGamePathNode; along: number; sideDistance: number } | null = null;
     for (const node of this.getInteractableVisibleNodes()) {
       const enemy = node.enemySlot;
       if (!enemy || !enemy.alive || enemy.tier === 'invincible') continue;
       const position = this.getEnemyWorldPosition(node, enemy.pole);
-      const toEnemy = this.scratchVectorB.copy(position).sub(this.playerPosition);
+      const toEnemy = this.scratchVectorB.set(position.x - laserOriginX, position.y - laserOriginY, 0);
       const along = toEnemy.dot(forward);
       const sideDistance = Math.abs(toEnemy.x * -forward.y + toEnemy.y * forward.x);
-      const enemyRadius = enemy.tier === 'elite' ? 0.92 : enemy.tier === 'armored' ? 0.82 : enemy.tier === 'light' ? 0.68 : 1.04;
+      const enemyRadius = this.getEnemyScanRadius(enemy);
       const hitHalfWidth = this.getFrontCanonSpreadWidth() * 0.5 + enemyRadius;
-      if (along <= 0 || along > range || sideDistance > hitHalfWidth) continue;
+      if (along < -enemyRadius || along > laserLength + enemyRadius || sideDistance > hitHalfWidth) continue;
       if (
         !bestTarget ||
         along < bestTarget.along - 0.02 ||
@@ -4605,19 +4831,23 @@ export class GameSessionController {
     if (!bestTarget?.node.enemySlot) {
       return;
     }
+    const targetEnemy = bestTarget.node.enemySlot;
     const travelDuration = this.queueCanonShot(
       this.frontCanonShot,
       'front_canon',
       bestTarget.node,
-      bestTarget.node.enemySlot.pole,
+      targetEnemy.pole,
       this.scratchVector.set(
-        this.playerPosition.x + forward2D.x * 1.8,
-        this.playerPosition.y + forward2D.y * 1.8,
+        this.playerPosition.x + forward2D.x * frontStartOffset,
+        this.playerPosition.y + forward2D.y * frontStartOffset,
         this.playerPosition.z + 0.02
       ),
-      22,
-      0.12
+      24,
+      0.16
     );
+    if (targetEnemy.alive) {
+      this.applyEnemyDefeat(bestTarget.node, targetEnemy);
+    }
     this.fillMomentumBurst(0.04);
     frontRuntime.cooldownRemaining = Math.max(1, this.runUpgrades.modifiers.frontCanonCooldown || 2.4);
     this.frontCanonFireUntil = elapsedTime + travelDuration;
@@ -4688,6 +4918,8 @@ export class GameSessionController {
     this.resetPendingEnemyShot(this.bigCanonShot);
     this.clearWorldItemEffects();
     this.shop.reset();
+    this.achievements.recordRunEnded(this.stats.getSnapshot().distanceMeters);
+    this.queueAchievementToastsIfNeeded();
     this.emitAudioEvent({ type: 'game_over' });
     this.emitScore();
   }
@@ -5226,7 +5458,8 @@ export class GameSessionController {
       !node.isMilestone && node.visualScale >= 5
         ? clamp(0.14 + deformation * 0.92 + travelSpeed * 0.012, 0.14, 0.84)
         : clamp(deformation * 0.16 + travelSpeed * 0.003, 0, 0.12);
-    return this.offsetSurfaceWorldPosition(node, sample, largeShardLift, target);
+    const beltHoverLift = this.getGravityBeltHoverLift(node, travelSpeed);
+    return this.offsetSurfaceWorldPosition(node, sample, largeShardLift + beltHoverLift, target);
   }
 
   private getSurfaceAnchorWorldPosition(
@@ -5255,6 +5488,76 @@ export class GameSessionController {
     return this.getSurfaceAnchorWorldPosition(node, poleAngle, this.getPhysicalRadius(node) + 0.92);
   }
 
+  private getEnemyScanRadius(enemy: NonNullable<ResolvedGamePathNode['enemySlot']>) {
+    return enemy.tier === 'elite' ? 1.08 : enemy.tier === 'armored' ? 0.96 : enemy.tier === 'light' ? 0.82 : 1.16;
+  }
+
+  private getTravelProjectionRatio(previousPosition: THREE.Vector3, targetPosition: THREE.Vector3) {
+    const segmentX = this.playerPosition.x - previousPosition.x;
+    const segmentY = this.playerPosition.y - previousPosition.y;
+    const segmentZ = this.playerPosition.z - previousPosition.z;
+    const segmentLengthSq = segmentX * segmentX + segmentY * segmentY + segmentZ * segmentZ;
+    if (segmentLengthSq <= 0.0001) {
+      return 1;
+    }
+    const toTargetX = targetPosition.x - previousPosition.x;
+    const toTargetY = targetPosition.y - previousPosition.y;
+    const toTargetZ = targetPosition.z - previousPosition.z;
+    return clamp((toTargetX * segmentX + toTargetY * segmentY + toTargetZ * segmentZ) / segmentLengthSq, 0, 1);
+  }
+
+  private getEnemyContactRadius(node: ResolvedGamePathNode, enemy: NonNullable<ResolvedGamePathNode['enemySlot']>, airborne: boolean) {
+    const enemyRadius = enemy.tier === 'elite' ? 1.02 : enemy.tier === 'armored' ? 0.94 : enemy.tier === 'light' ? 0.82 : 1.12;
+    const nodeBias = node.gameplayRadius * 0.22;
+    const movementBias = airborne ? 0.42 : 0.28;
+    return Math.max(enemyRadius + movementBias, nodeBias + (airborne ? 1.04 : 0.98));
+  }
+
+  private getAirborneEnemyImpactKillSpeed(enemy: NonNullable<ResolvedGamePathNode['enemySlot']>) {
+    return enemy.tier === 'elite' ? 8.9 : enemy.tier === 'armored' ? 8.1 : enemy.tier === 'light' ? 6.7 : 7.6;
+  }
+
+  private isEnemyWithinContact(
+    node: ResolvedGamePathNode,
+    enemy: NonNullable<ResolvedGamePathNode['enemySlot']>,
+    enemyPosition: THREE.Vector3,
+    previousPosition: THREE.Vector3,
+    airborne: boolean
+  ) {
+    const contactRadius = this.getEnemyContactRadius(node, enemy, airborne);
+    const segmentX = this.playerPosition.x - previousPosition.x;
+    const segmentY = this.playerPosition.y - previousPosition.y;
+    const segmentZ = this.playerPosition.z - previousPosition.z;
+    const segmentLengthSq = segmentX * segmentX + segmentY * segmentY + segmentZ * segmentZ;
+    if (segmentLengthSq <= 0.0001) {
+      return enemyPosition.distanceTo(this.playerPosition) <= contactRadius;
+    }
+    const toEnemyX = enemyPosition.x - previousPosition.x;
+    const toEnemyY = enemyPosition.y - previousPosition.y;
+    const toEnemyZ = enemyPosition.z - previousPosition.z;
+    const projection = clamp(
+      (toEnemyX * segmentX + toEnemyY * segmentY + toEnemyZ * segmentZ) / segmentLengthSq,
+      0,
+      1
+    );
+    const closestX = previousPosition.x + segmentX * projection;
+    const closestY = previousPosition.y + segmentY * projection;
+    const closestZ = previousPosition.z + segmentZ * projection;
+    const deltaX = enemyPosition.x - closestX;
+    const deltaY = enemyPosition.y - closestY;
+    const deltaZ = enemyPosition.z - closestZ;
+    return deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ <= contactRadius * contactRadius;
+  }
+
+  private getGravityBeltHoverLift(node: ResolvedGamePathNode, travelSpeed: number) {
+    if (this.runUpgrades.modifiers.gravityCentering <= 0 || node.isGigantic) {
+      return 0;
+    }
+    const speedBias = clamp(1.1 - travelSpeed / 13.5, 0.18, 1);
+    const sizeBias = clamp(node.visualScale * 0.028, 0.03, 0.16);
+    return clamp(0.12 + this.runUpgrades.modifiers.gravityCentering * 0.16 + sizeBias * speedBias, 0, 0.42);
+  }
+
   getPlayableBorderHint() {
     const nodes = this.getDisplayNodes(Math.min(28, this.getRecommendedVisibleCount()));
     const left = nodes[0]?.resolvedX ?? this.playerPosition.x - DEFAULT_COLUMN_DISTANCE * 2;
@@ -5269,8 +5572,100 @@ export class GameSessionController {
     };
   }
 
-  private isEnemyHitFromBehind(pole: 'north' | 'south') {
-    return pole === 'north' ? this.orbitDirection === 1 : this.orbitDirection === -1;
+  private isEnemyHitFromBehind(
+    node: ResolvedGamePathNode,
+    enemy: NonNullable<ResolvedGamePathNode['enemySlot']>,
+    enemyPosition: THREE.Vector3,
+    previousPosition: THREE.Vector3
+  ) {
+    const segmentX = this.playerPosition.x - previousPosition.x;
+    const segmentY = this.playerPosition.y - previousPosition.y;
+    const segmentZ = this.playerPosition.z - previousPosition.z;
+    const segmentLengthSq = segmentX * segmentX + segmentY * segmentY + segmentZ * segmentZ;
+    let contactX = this.playerPosition.x;
+    let contactY = this.playerPosition.y;
+
+    if (segmentLengthSq > 0.0001) {
+      const toEnemyX = enemyPosition.x - previousPosition.x;
+      const toEnemyY = enemyPosition.y - previousPosition.y;
+      const toEnemyZ = enemyPosition.z - previousPosition.z;
+      const projection = clamp(
+        (toEnemyX * segmentX + toEnemyY * segmentY + toEnemyZ * segmentZ) / segmentLengthSq,
+        0,
+        1
+      );
+      contactX = previousPosition.x + segmentX * projection;
+      contactY = previousPosition.y + segmentY * projection;
+    }
+
+    const outwardX = enemyPosition.x - node.resolvedX;
+    const outwardY = enemyPosition.y - node.resolvedY;
+    const outwardLength = Math.hypot(outwardX, outwardY);
+    if (outwardLength > 0.0001) {
+      const normalizedOutwardX = outwardX / outwardLength;
+      const normalizedOutwardY = outwardY / outwardLength;
+      const enemyToContactX = contactX - enemyPosition.x;
+      const enemyToContactY = contactY - enemyPosition.y;
+      const contactLength = Math.hypot(enemyToContactX, enemyToContactY);
+      if (contactLength > 0.0001) {
+        const normalizedContactX = enemyToContactX / contactLength;
+        const normalizedContactY = enemyToContactY / contactLength;
+        const rearDot = normalizedContactX * normalizedOutwardX + normalizedContactY * normalizedOutwardY;
+        if (rearDot <= -0.18) {
+          return true;
+        }
+        if (rearDot >= 0.08) {
+          return false;
+        }
+      }
+    }
+
+    const heading = segmentLengthSq > 0.0001
+      ? this.scratchVector2.set(segmentX, segmentY).normalize()
+      : this.getMovementHeadingVector(this.scratchVector2);
+    const toEnemyX = enemyPosition.x - contactX;
+    const toEnemyY = enemyPosition.y - contactY;
+    const distance = Math.hypot(toEnemyX, toEnemyY);
+    if (distance > 0.0001) {
+      const normalizedDot = (toEnemyX * heading.x + toEnemyY * heading.y) / distance;
+      if (normalizedDot <= -0.12) {
+        return true;
+      }
+      if (normalizedDot >= 0.18) {
+        return false;
+      }
+    }
+
+    return enemy.pole === 'north' ? this.orbitDirection === 1 : this.orbitDirection === -1;
+  }
+
+  private isAirborneEnemyImpactKill(
+    node: ResolvedGamePathNode,
+    enemy: NonNullable<ResolvedGamePathNode['enemySlot']>,
+    enemyPosition: THREE.Vector3,
+    previousPosition: THREE.Vector3,
+    travelSpeed: number
+  ) {
+    void node;
+    if (travelSpeed < this.getAirborneEnemyImpactKillSpeed(enemy)) {
+      return false;
+    }
+    const travelX = this.playerPosition.x - previousPosition.x;
+    const travelY = this.playerPosition.y - previousPosition.y;
+    const travelLength = Math.hypot(travelX, travelY);
+    if (travelLength <= 0.0001) {
+      return false;
+    }
+    const normalizedTravelX = travelX / travelLength;
+    const normalizedTravelY = travelY / travelLength;
+    const toEnemyX = enemyPosition.x - previousPosition.x;
+    const toEnemyY = enemyPosition.y - previousPosition.y;
+    const toEnemyLength = Math.hypot(toEnemyX, toEnemyY);
+    if (toEnemyLength <= 0.0001) {
+      return true;
+    }
+    const approachDot = (normalizedTravelX * toEnemyX + normalizedTravelY * toEnemyY) / toEnemyLength;
+    return approachDot >= -0.38;
   }
 
   private prewarmUpcomingMilestones() {

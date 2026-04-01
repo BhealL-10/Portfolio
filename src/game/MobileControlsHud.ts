@@ -1,13 +1,6 @@
 import type { GameHudState, GamePlayerMotionState } from './gameSessionTypes';
 import { MobileControlButton } from './MobileControlButton';
-import { getMobileControlAsset, MobileControlAction, MobileControlLayoutResolver } from './MobileControlLayoutResolver';
-
-interface MobileControlsHudCallbacks {
-  onChargeChange: (active: boolean) => void;
-  onJump: () => void;
-  onAirborneCharge: () => void;
-  onGrapple: () => void;
-}
+import { getMobileChargeAsset, getMobileControlAsset, MobileControlLayoutResolver, type MobileControlSlot } from './MobileControlLayoutResolver';
 
 interface MobileControlsHudPayload {
   chargeRatio: number;
@@ -16,35 +9,46 @@ interface MobileControlsHudPayload {
   mobile: {
     airborneChargeCount: number;
     airborneChargeDisplayCount: number;
+    hasTeleport: boolean;
+    teleportBlocked: boolean;
+    teleportCooldownRatio: number;
+    teleportActive: boolean;
     hasGrapple: boolean;
     grappleBlocked: boolean;
+    grappleCooldownRatio: number;
+    grappleActive: boolean;
+    hasAirAction: boolean;
+    airActionBlocked: boolean;
+    airActionActive: boolean;
+    airActionDepleted: boolean;
     hasSouffleur: boolean;
     hasSouffleurFuel: boolean;
+    boostActive: boolean;
   };
 }
 
 export class MobileControlsHud {
   readonly element: HTMLDivElement;
   private readonly resolver = new MobileControlLayoutResolver();
-  private readonly primaryButton: MobileControlButton;
-  private readonly secondaryButton: MobileControlButton;
-  private currentPrimaryAction: MobileControlAction = 'hidden';
-  private currentSecondaryAction: MobileControlAction = 'hidden';
-  private chargePressed = false;
+  private readonly buttons: Record<MobileControlSlot, MobileControlButton>;
 
-  constructor(host: HTMLElement, private readonly labels: Record<'jump' | 'boost' | 'grapple' | 'charge', string>, private readonly callbacks: MobileControlsHudCallbacks) {
+  constructor(host: HTMLElement, labels: Record<'teleport' | 'grapple' | 'charge' | 'boost', string>) {
     this.element = document.createElement('div');
     this.element.className = 'game-hud__mobile-controls';
+    this.element.setAttribute('aria-hidden', 'true');
 
-    this.primaryButton = new MobileControlButton('jump', labels.jump, getMobileControlAsset('jump'));
-    this.primaryButton.element.dataset.slot = 'primary';
-    this.secondaryButton = new MobileControlButton('charge', labels.charge, getMobileControlAsset('jump'));
-    this.secondaryButton.element.dataset.slot = 'secondary';
+    this.buttons = {
+      left: new MobileControlButton('teleport', labels.teleport, getMobileControlAsset('teleport')),
+      up: new MobileControlButton('charge', labels.charge, getMobileChargeAsset(1)),
+      right: new MobileControlButton('grapple', labels.grapple, getMobileControlAsset('grapple')),
+      down: new MobileControlButton('boost', labels.boost, getMobileControlAsset('boost'))
+    };
 
-    this.bindPrimary();
-    this.bindSecondary();
+    (Object.entries(this.buttons) as Array<[MobileControlSlot, MobileControlButton]>).forEach(([slot, button]) => {
+      button.element.dataset.slot = slot;
+      this.element.appendChild(button.element);
+    });
 
-    this.element.append(this.primaryButton.element, this.secondaryButton.element);
     host.appendChild(this.element);
   }
 
@@ -52,67 +56,15 @@ export class MobileControlsHud {
     const layout = this.resolver.resolve(payload);
     this.element.classList.toggle('is-visible', layout.visible);
 
-    this.currentPrimaryAction = layout.primary.action;
-    this.currentSecondaryAction = layout.secondary.action;
-    this.applyDescriptor(this.primaryButton, layout.primary.kind, layout.primary.iconSrc, this.labels[layout.primary.labelKey], layout.primary.visible, layout.primary.dimmed);
-    this.applyDescriptor(this.secondaryButton, layout.secondary.kind, layout.secondary.iconSrc, this.labels[layout.secondary.labelKey], layout.secondary.visible, layout.secondary.dimmed);
-
-    if (this.chargePressed && this.currentSecondaryAction !== 'hold_charge' && this.currentSecondaryAction !== 'hold_boost') {
-      this.chargePressed = false;
-      this.secondaryButton.setPressed(false);
-      this.callbacks.onChargeChange(false);
-    }
-  }
-
-  private applyDescriptor(button: MobileControlButton, kind: string, iconSrc: string, label: string, visible: boolean, dimmed: boolean) {
-    button.setKind(kind);
-    button.setIcon(iconSrc);
-    button.setLabel(label);
-    button.setVisible(visible);
-    button.setDimmed(dimmed);
-    button.setEnabled(visible);
-  }
-
-  private bindPrimary() {
-    const release = () => this.primaryButton.setPressed(false);
-    this.primaryButton.element.addEventListener('pointerdown', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      this.primaryButton.setPressed(true);
-      if (this.currentPrimaryAction === 'tap_jump') {
-        this.callbacks.onJump();
-      } else if (this.currentPrimaryAction === 'tap_grapple') {
-        this.callbacks.onGrapple();
-      }
+    (Object.entries(layout.buttons) as Array<[MobileControlSlot, (typeof layout.buttons)[MobileControlSlot]]>).forEach(([slot, descriptor]) => {
+      const button = this.buttons[slot];
+      button.setKind(descriptor.kind);
+      button.setIcon(descriptor.iconSrc);
+      button.setVisible(descriptor.visible);
+      button.setDimmed(descriptor.dimmed);
+      button.setActive(descriptor.active);
+      button.setDepleted(Boolean(descriptor.depleted));
+      button.setCooldownRatio(descriptor.cooldownRatio);
     });
-    this.primaryButton.element.addEventListener('pointerup', release);
-    this.primaryButton.element.addEventListener('pointercancel', release);
-    this.primaryButton.element.addEventListener('pointerleave', release);
-  }
-
-  private bindSecondary() {
-    const stopHold = () => {
-      if (!this.chargePressed) return;
-      this.chargePressed = false;
-      this.secondaryButton.setPressed(false);
-      this.callbacks.onChargeChange(false);
-    };
-
-    this.secondaryButton.element.addEventListener('pointerdown', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      this.secondaryButton.setPressed(true);
-      if (this.currentSecondaryAction === 'tap_airborne_charge') {
-        this.callbacks.onAirborneCharge();
-        return;
-      }
-      if (this.currentSecondaryAction === 'hold_charge' || this.currentSecondaryAction === 'hold_boost') {
-        this.chargePressed = true;
-        this.callbacks.onChargeChange(true);
-      }
-    });
-    this.secondaryButton.element.addEventListener('pointerup', stopHold);
-    this.secondaryButton.element.addEventListener('pointercancel', stopHold);
-    this.secondaryButton.element.addEventListener('pointerleave', stopHold);
   }
 }

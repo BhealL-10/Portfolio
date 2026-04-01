@@ -130,5 +130,21 @@ export function getSharedImageAsset(
 }
 
 export function preloadImageAsset(src: string, decoding: HTMLImageElement['decoding'] = 'async') {
-  void getSharedImageAsset(src, { decoding });
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve();
+    };
+
+    const image = getSharedImageAsset(src, { decoding, onLoad: finish });
+    if (image.complete && image.naturalWidth > 0) {
+      finish();
+      return;
+    }
+    image.addEventListener('error', finish, { once: true });
+  });
 }

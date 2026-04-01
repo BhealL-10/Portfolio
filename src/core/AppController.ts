@@ -103,6 +103,8 @@ export class AppController {
   private gameRuntime: LoadedGameRuntime | null = null;
   private gameRuntimeLoader: Promise<LoadedGameRuntime> | null = null;
   private pendingGameTransitionRequest: { forceDirectEntry: boolean; skipPreAlign: boolean } | null = null;
+  private primaterieHubPreloaded = false;
+  private primaterieHubPreloadPromise: Promise<void> | null = null;
   private hasObservedUserGesture = false;
   private primateriePendingAction: {
     execute: () => void;
@@ -293,18 +295,6 @@ export class AppController {
           onLanguageToggle: () => this.i18n.toggle(),
           onAudioMuteToggle: () => audio.toggleMute(),
           onAudioVolumeChange: (value) => audio.setVolume(value),
-          onMobileJump: () => {
-            game.triggerJump();
-          },
-          onMobileChargeChange: (active) => {
-            game.setChargeActive(active);
-          },
-          onMobileGrapple: () => {
-            game.triggerMobileGrappleAction();
-          },
-          onMobileAirborneCharge: () => {
-            game.triggerMobileAirborneChargeAction();
-          },
           onGameOverStatReveal: (record) => {
             audio.handleEvent({ type: 'land', kind: 'reward' });
             if (record) {
@@ -393,6 +383,41 @@ export class AppController {
     this.gameRuntime?.primateriePortal.setVisible(visible);
   }
 
+  private preloadprimaterieHubAssets() {
+    if (!this.gameRuntime) {
+      return Promise.resolve();
+    }
+    if (this.primaterieHubPreloadPromise) {
+      return this.primaterieHubPreloadPromise;
+    }
+    if (this.primaterieHubPreloaded) {
+      this.primateriePortal.setLoading(false);
+      return Promise.resolve();
+    }
+
+    this.primateriePortal.setLoading(true);
+    this.primaterieHubPreloadPromise = Promise.all([this.game.preloadAssets(), this.gameHud.preloadAssets()])
+      .then(() => {
+        this.primaterieHubPreloaded = true;
+      })
+      .catch((error) => {
+        console.warn('[AppController] Failed to preload primaterie hub assets.', error);
+      })
+      .finally(() => {
+        this.primaterieHubPreloadPromise = null;
+        if (!this.gameRuntime) {
+          return;
+        }
+        this.primateriePortal.setLoading(false);
+        this.primateriePortal.setBusy(Boolean(this.primateriePendingAction));
+        if (this.mode.is('primaterie_portal')) {
+          this.refreshUI();
+        }
+      });
+
+    return this.primaterieHubPreloadPromise;
+  }
+
   private enterprimateriePortalMode() {
     if (!this.gameRuntime) {
       return;
@@ -409,7 +434,11 @@ export class AppController {
     this.game.clearPortalPreviewTransitionIntent();
     this.syncprimateriePortalLayout();
     this.primateriePortal.setBusy(false);
+    this.primateriePortal.setLoading(!this.primaterieHubPreloaded);
     this.setprimateriePortalVisible(true);
+    if (!this.primaterieHubPreloaded) {
+      void this.preloadprimaterieHubAssets();
+    }
     this.refreshUI();
   }
 
@@ -417,7 +446,7 @@ export class AppController {
     if (!this.gameRuntime) {
       return;
     }
-    if (!this.mode.is('primaterie_portal') || this.primateriePendingAction) {
+    if (!this.mode.is('primaterie_portal') || this.primateriePendingAction || !this.primaterieHubPreloaded) {
       return;
     }
     if (modeId !== 'adventure') {
@@ -671,22 +700,22 @@ export class AppController {
 
         if (event.key === 'ArrowDown') {
           event.preventDefault();
-          const playerMotionState = this.game.getHudState().playerMotionState;
-          if (playerMotionState === 'airborne' && !event.repeat) {
-            this.game.triggerAirborneMobilityAction();
-          } else {
-            this.game.setChargeActive(true);
+          this.game.setChargeActive(true);
+        } else if (event.key === 'ArrowLeft') {
+          event.preventDefault();
+          if (!event.repeat) {
+            this.game.triggerTeleportAction();
           }
         } else if (event.key === 'ArrowUp') {
           event.preventDefault();
-          this.game.setUpActionActive(true);
           if (!event.repeat) {
-            const playerMotionState = this.game.getHudState().playerMotionState;
-            if (playerMotionState === 'airborne') {
-              this.game.triggerMobileGrappleAction();
-            } else {
-              this.game.triggerJump();
-            }
+            this.game.triggerUpAction();
+          }
+        } else if (event.key === 'ArrowRight') {
+          event.preventDefault();
+          this.game.setGrappleActionActive(true);
+          if (!event.repeat) {
+            this.game.triggerHarpoonAction();
           }
         }
         return;
@@ -750,14 +779,11 @@ export class AppController {
     }
     if (!this.mode.is('game')) return;
     if (event.key === 'ArrowDown') {
-      const playerMotionState = this.game.getHudState().playerMotionState;
-      if (playerMotionState !== 'airborne') {
-        this.game.setChargeActive(false);
-      }
+      this.game.setChargeActive(false);
       return;
     }
-    if (event.key === 'ArrowUp') {
-      this.game.setUpActionActive(false);
+    if (event.key === 'ArrowRight') {
+      this.game.setGrappleActionActive(false);
     }
   };
 
@@ -1362,7 +1388,7 @@ export class AppController {
     if (gameRuntime) {
       if (orientationBlocked) {
         this.game.setChargeActive(false);
-        this.game.setUpActionActive(false);
+        this.game.setGrappleActionActive(false);
       }
       this.game.update(orientationBlocked ? 0 : deltaTime, elapsedTime);
       const audioActive = this.mode.is('game') || this.mode.is('game_over');
@@ -1370,14 +1396,18 @@ export class AppController {
       this.audio.update(this.game.getAudioState(), deltaTime);
 
       if (this.mode.is('primaterie_portal')) {
+        let portalTransitionStarted = false;
         if (this.primateriePendingAction) {
           const pendingAction = this.primateriePendingAction;
           if (this.game.preparePortalPreviewTransition('forward')) {
             this.primateriePendingAction = null;
             pendingAction.execute();
+            portalTransitionStarted = true;
           }
         }
-        this.syncprimateriePortalLayout();
+        if (!portalTransitionStarted && this.mode.is('primaterie_portal')) {
+          this.syncprimateriePortalLayout();
+        }
       }
 
       if (this.mode.is('game') || this.mode.is('game_over')) {
