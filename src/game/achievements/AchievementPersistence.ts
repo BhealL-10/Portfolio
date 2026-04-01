@@ -1,6 +1,7 @@
 import type { AchievementPersistenceState } from './AchievementTypes';
 
 const ACHIEVEMENT_STORAGE_KEY = 'portfolio-game-achievements-v2';
+const ACHIEVEMENT_RESET_TOKEN_KEY = 'portfolio-game-achievements-reset-token-v1';
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -47,6 +48,30 @@ export function writeAchievementPersistence(state: AchievementPersistenceState, 
     return;
   }
   target.setItem(ACHIEVEMENT_STORAGE_KEY, JSON.stringify(normalizeAchievementPersistence(state)));
+}
+
+export function clearAchievementPersistence(storage?: StorageLike | null) {
+  const target = resolveStorage(storage);
+  if (!target) {
+    return;
+  }
+  target.setItem(ACHIEVEMENT_STORAGE_KEY, JSON.stringify(createEmptyAchievementPersistenceState()));
+}
+
+export function readAchievementResetToken(storage?: StorageLike | null) {
+  const target = resolveStorage(storage);
+  if (!target) {
+    return null;
+  }
+  return target.getItem(ACHIEVEMENT_RESET_TOKEN_KEY);
+}
+
+export function writeAchievementResetToken(token: string, storage?: StorageLike | null) {
+  const target = resolveStorage(storage);
+  if (!target) {
+    return;
+  }
+  target.setItem(ACHIEVEMENT_RESET_TOKEN_KEY, token);
 }
 
 export function normalizeAchievementPersistence(value: unknown): AchievementPersistenceState {

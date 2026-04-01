@@ -2,7 +2,14 @@ import type { Language } from '../../types/content';
 import { clamp } from '../../core/math';
 import type { RogueliteItemDefinition, RogueliteModuleSlot } from '../roguelite';
 import { ACHIEVEMENT_REGISTRY, ACHIEVEMENT_REGISTRY_BY_ID } from './AchievementRegistry';
-import { readAchievementPersistence, type StorageLike, writeAchievementPersistence } from './AchievementPersistence';
+import {
+  clearAchievementPersistence,
+  readAchievementPersistence,
+  readAchievementResetToken,
+  type StorageLike,
+  writeAchievementPersistence,
+  writeAchievementResetToken
+} from './AchievementPersistence';
 import { ACHIEVEMENT_REWARDS_BY_ID } from './AchievementRewards';
 import {
   ACHIEVEMENT_AVATAR_LAYER_LABELS,
@@ -251,6 +258,27 @@ export class AchievementSystem {
     this.storage = storage;
     this.state = readAchievementPersistence(storage);
     this.backfillClaimedRewards();
+  }
+
+  syncGlobalResetToken(token: string | null | undefined) {
+    const normalizedToken = typeof token === 'string' ? token.trim() : '';
+    if (!normalizedToken) {
+      return false;
+    }
+    const currentToken = readAchievementResetToken(this.storage);
+    if (currentToken === normalizedToken) {
+      return false;
+    }
+    clearAchievementPersistence(this.storage);
+    writeAchievementResetToken(normalizedToken, this.storage);
+    this.state = readAchievementPersistence(this.storage);
+    this.runState = createRunState();
+    this.pendingUnlocks.length = 0;
+    this.runUnlockedIds.length = 0;
+    this.mutationChanged = false;
+    this.uiVersion += 1;
+    this.uiCache.clear();
+    return true;
   }
 
   resetRun() {

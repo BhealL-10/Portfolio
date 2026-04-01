@@ -152,4 +152,20 @@ describe('AchievementSystem', () => {
     const reward = system.getPanelSnapshot('en').entries.find((entry) => entry.id === 'skill_perfect_1')?.reward;
     expect(reward?.name).toBe('Face motif 3');
   });
+
+  it('clears persisted achievements when the global reset token changes', () => {
+    const storage = createStorage();
+    const system = new AchievementSystem(storage);
+    system.resetRun();
+    system.recordEnemyKill({ amount: 10 });
+    expect(system.getPanelSnapshot('en').entries.find((entry) => entry.id === 'combat_kill_10')?.unlocked).toBe(true);
+
+    expect(system.syncGlobalResetToken('leaderboard-reset-1')).toBe(true);
+
+    const resetSnapshot = system.getPanelSnapshot('en');
+    expect(resetSnapshot.entries.find((entry) => entry.id === 'combat_kill_10')?.unlocked).toBe(false);
+    expect(resetSnapshot.profile.unlockedRewards).toHaveLength(0);
+    expect(system.consumePendingUnlock()).toBeNull();
+    expect(system.syncGlobalResetToken('leaderboard-reset-1')).toBe(false);
+  });
 });

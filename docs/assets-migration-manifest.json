@@ -648,8 +648,7 @@
       "reason": "portfolio project organization"
     },
     {
-      "from": "assets/images/projects/AcceuilPortfolio.svg",
-      "to": "assets/images/portfolio/projects/ape-prod/home-screen.svg",
+      "from": "assets/images/projects/AcceuilPortfolio.svg",,
       "reason": "portfolio project organization"
     },
     {
@@ -1307,7 +1306,6 @@
     "assets/images/shared/branding/variants/logo-hub-light.svg",
     "assets/images/shared/branding/variants/logo-v2-dark.svg",
     "assets/images/shared/branding/variants/logo-v2-light.svg",
-    "assets/images/portfolio/projects/ape-prod/home-screen.svg",
     "assets/images/portfolio/projects/ape-prod/value-proposition.png",
     "assets/images/portfolio/projects/davinci-resolve/gallery-01.webp",
     "assets/images/portfolio/projects/davinci-resolve/gallery-02.webp",

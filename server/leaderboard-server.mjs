@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 const PORT = Number(process.env.PORT || 8080);
 const DATA_DIR = process.env.LEADERBOARD_DATA_DIR || '/data';
 const DATA_FILE = join(DATA_DIR, 'leaderboard.json');
+const ACHIEVEMENT_RESET_FILE = join(DATA_DIR, 'achievement-reset.json');
 const MAX_ENTRIES = 100;
 
 function sendJson(res, status, payload) {
@@ -98,6 +99,9 @@ async function ensureDataFile() {
   if (!existsSync(DATA_FILE)) {
     await writeFile(DATA_FILE, '[]\n', 'utf8');
   }
+  if (!existsSync(ACHIEVEMENT_RESET_FILE)) {
+    await writeFile(ACHIEVEMENT_RESET_FILE, `${JSON.stringify({ token: '0' }, null, 2)}\n`, 'utf8');
+  }
 }
 
 async function readLeaderboard() {
@@ -121,6 +125,17 @@ async function writeLeaderboard(entries) {
   await writeFile(tempFile, `${JSON.stringify(normalized, null, 2)}\n`, 'utf8');
   await rename(tempFile, DATA_FILE);
   return normalized;
+}
+
+async function readAchievementResetToken() {
+  await ensureDataFile();
+  try {
+    const raw = await readFile(ACHIEVEMENT_RESET_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return typeof parsed?.token === 'string' && parsed.token.trim() ? parsed.token.trim() : '0';
+  } catch {
+    return '0';
+  }
 }
 
 function readRequestBody(req) {
@@ -158,7 +173,8 @@ const server = createServer(async (req, res) => {
 
     if (req.method === 'GET') {
       const entries = await readLeaderboard();
-      sendJson(res, 200, { entries });
+      const achievementResetToken = await readAchievementResetToken();
+      sendJson(res, 200, { entries, achievementResetToken });
       return;
     }
 
@@ -169,7 +185,8 @@ const server = createServer(async (req, res) => {
       const currentEntries = await readLeaderboard();
       const nextEntries = dedupeAndSort([...currentEntries, incomingEntry]);
       const persisted = await writeLeaderboard(nextEntries);
-      sendJson(res, 200, { entries: persisted, saved: incomingEntry });
+      const achievementResetToken = await readAchievementResetToken();
+      sendJson(res, 200, { entries: persisted, saved: incomingEntry, achievementResetToken });
       return;
     }
 

@@ -99,6 +99,7 @@ interface GameHUDCallbacks {
   onMainMenu: () => void;
   onSelectUpgrade: (index: number) => void;
   onCloseShop: () => void;
+  onLeaderboardResetToken: (token: string | null | undefined) => void;
   onThemeToggle: () => void;
   onLanguageToggle: () => void;
   onAudioMuteToggle: () => void;
@@ -226,6 +227,11 @@ interface LeaderboardEntry {
     enemiesKilled: number;
     longestMomentumSeconds: number;
   };
+}
+
+interface LeaderboardPayload {
+  entries?: unknown[];
+  achievementResetToken?: unknown;
 }
 
 const AVATAR_LAYER_ORDER = ['oreille', 'face', 'eyes', 'facemotif', 'accessoire'] as const;
@@ -3033,7 +3039,10 @@ export class GameHUDSystem {
       if (!response.ok) {
         throw new Error(`Leaderboard save failed with status ${response.status}`);
       }
-      const payload = (await response.json()) as { entries?: unknown[] };
+      const payload = (await response.json()) as LeaderboardPayload;
+      this.callbacks.onLeaderboardResetToken(
+        typeof payload.achievementResetToken === 'string' ? payload.achievementResetToken : null
+      );
       const nextEntries = this.normalizeLeaderboardEntries(payload.entries);
       this.leaderboardEntriesCache = nextEntries;
       this.persistLeaderboardCache(nextEntries);
@@ -3124,10 +3133,13 @@ export class GameHUDSystem {
       if (!response.ok) {
         throw new Error(`Leaderboard fetch failed with status ${response.status}`);
       }
-      const payload = (await response.json()) as { entries?: unknown[] };
+      const payload = (await response.json()) as LeaderboardPayload;
       if (requestSerial !== this.leaderboardRequestSerial) {
         return;
       }
+      this.callbacks.onLeaderboardResetToken(
+        typeof payload.achievementResetToken === 'string' ? payload.achievementResetToken : null
+      );
       const nextEntries = this.normalizeLeaderboardEntries(payload.entries);
       this.leaderboardEntriesCache = nextEntries;
       this.persistLeaderboardCache(nextEntries);

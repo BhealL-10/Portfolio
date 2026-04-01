@@ -808,6 +808,16 @@ export class GameSessionController {
     this.rewardBillboardSignature = '';
   }
 
+  syncAchievementResetToken(token: string | null | undefined) {
+    if (!this.achievements.syncGlobalResetToken(token)) {
+      return false;
+    }
+    this.achievementToasts.length = 0;
+    this.achievementToastSerial = 0;
+    this.hudSnapshot.achievements = this.achievements.getPanelSnapshot(this.locale);
+    return true;
+  }
+
   private getProgressionDirectionSign() {
     return this.path.getWorldDirectionSign();
   }

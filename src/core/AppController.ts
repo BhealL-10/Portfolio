@@ -292,6 +292,11 @@ export class AppController {
           onRestart: () => this.restartGame(),
           onExit: () => this.exitGame(),
           onMainMenu: () => this.returnToMiniGameMainMenu(),
+          onLeaderboardResetToken: (token) => {
+            if (game.syncAchievementResetToken(token) && (this.mode.is('game') || this.mode.is('game_over'))) {
+              this.refreshUI();
+            }
+          },
           onThemeToggle: () => this.theme.toggle(),
           onLanguageToggle: () => this.i18n.toggle(),
           onAudioMuteToggle: () => audio.toggleMute(),
