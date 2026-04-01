@@ -3683,13 +3683,16 @@ export class GameHUDSystem {
   }
 
   private getAvailableAvatarIndices(layer: AvatarLayerKey, unlockedOnly: boolean) {
+    const availableIndices = this.avatarLayerSets[layer]
+      .map((src, index) => (src ? index : -1))
+      .filter((index) => index >= 0);
     const total = this.avatarLayerSets[layer].length;
     const unlocked = this.currentAchievements.profile.avatarUnlocks[layer] ?? [0];
-    const baseOptions = total > 0 ? [...Array.from({ length: total }, (_, index) => index)] : [...unlocked];
+    const baseOptions = availableIndices.length > 0 ? [...availableIndices] : [...unlocked];
     if (!unlockedOnly) {
       return baseOptions.length > 0 ? baseOptions : [0];
     }
-    const filtered = unlocked.filter((index) => index >= 0 && (total <= 0 || index < total));
+    const filtered = unlocked.filter((index) => index >= 0 && (total <= 0 || Boolean(this.avatarLayerSets[layer][index])));
     return filtered.length > 0 ? filtered : [0];
   }
 

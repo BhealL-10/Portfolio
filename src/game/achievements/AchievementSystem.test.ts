@@ -26,9 +26,9 @@ function consumeAllUnlockIds(system: AchievementSystem) {
 }
 
 describe('AchievementSystem', () => {
-  it('ships the full 114 achievement registry with 52 mysteries', () => {
-    expect(ACHIEVEMENT_REGISTRY).toHaveLength(114);
-    expect(ACHIEVEMENT_REGISTRY.filter((achievement) => achievement.hidden)).toHaveLength(52);
+  it('ships the full 144 achievement registry with 69 mysteries', () => {
+    expect(ACHIEVEMENT_REGISTRY).toHaveLength(144);
+    expect(ACHIEVEMENT_REGISTRY.filter((achievement) => achievement.hidden)).toHaveLength(69);
   });
 
   it('unlocks combat achievements cumulatively and queues unlock toasts once', () => {
@@ -123,5 +123,33 @@ describe('AchievementSystem', () => {
     const unlockedEntry = system.getPanelSnapshot('fr').entries.find((entry) => entry.id === 'shards_land_300');
     expect(unlockedEntry?.unlocked).toBe(true);
     expect(unlockedEntry?.description).toBe('Réussir 300 atterrissages perfect.');
+  });
+
+  it('maps the explicit manual rewards requested for perfect and front canon achievements', () => {
+    const firstPerfect = ACHIEVEMENT_REGISTRY.find((entry) => entry.id === 'skill_perfect_1');
+    const frontCanonTrigger = ACHIEVEMENT_REGISTRY.find((entry) => entry.id === 'modules_front_canon_10');
+    const frontCanonKills = ACHIEVEMENT_REGISTRY.find((entry) => entry.id === 'combat_front_canon_kill_10');
+
+    expect(firstPerfect?.rewardId).toBe('avatar-facemotif-3');
+    expect(frontCanonTrigger?.name.fr).toBe('Radar déréglé');
+    expect(frontCanonTrigger?.name.en).toBe('ProgressFiles Strike 10');
+    expect(frontCanonTrigger?.rewardId).toBe('avatar-accessoire-17');
+    expect(frontCanonKills?.rewardId).toBe('avatar-accessoire-16');
+  });
+
+  it('unlocks the first perfect reward immediately on the first perfect landing', () => {
+    const system = new AchievementSystem(createStorage());
+    system.resetRun();
+
+    system.recordLanding({
+      grade: 'perfect',
+      twist: false,
+      shapeKind: 'round',
+      isMilestone: false
+    });
+
+    expect(consumeAllUnlockIds(system)).toContain('skill_perfect_1');
+    const reward = system.getPanelSnapshot('en').entries.find((entry) => entry.id === 'skill_perfect_1')?.reward;
+    expect(reward?.name).toBe('Face motif 3');
   });
 });

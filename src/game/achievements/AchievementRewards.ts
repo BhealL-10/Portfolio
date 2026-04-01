@@ -1,11 +1,11 @@
 import type { AchievementAvatarLayer, AchievementRewardDefinition } from './AchievementTypes';
 
-const AVATAR_LAYER_COUNTS: Record<AchievementAvatarLayer, number> = {
-  oreille: 9,
-  face: 5,
-  eyes: 9,
-  facemotif: 15,
-  accessoire: 17
+const AVATAR_LAYER_HUMAN_INDICES: Record<AchievementAvatarLayer, number[]> = {
+  oreille: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+  face: [1, 2, 3, 4, 5],
+  eyes: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+  facemotif: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+  accessoire: [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
 };
 
 const AVATAR_LAYER_NAMES = {
@@ -54,15 +54,13 @@ function createAvatarReward(layer: AchievementAvatarLayer, index: number): Achie
   };
 }
 
-export const ACHIEVEMENT_REWARDS: AchievementRewardDefinition[] = (Object.entries(AVATAR_LAYER_COUNTS) as Array<
-  [AchievementAvatarLayer, number]
->).flatMap(([layer, count]) => {
-  const rewards: AchievementRewardDefinition[] = [];
-  for (let index = 1; index < count; index += 1) {
-    rewards.push(createAvatarReward(layer, index));
-  }
-  return rewards;
-});
+export const ACHIEVEMENT_REWARDS: AchievementRewardDefinition[] = (Object.entries(AVATAR_LAYER_HUMAN_INDICES) as Array<
+  [AchievementAvatarLayer, number[]]
+>).flatMap(([layer, humanIndices]) =>
+  humanIndices
+    .filter((humanIndex) => humanIndex > 1)
+    .map((humanIndex) => createAvatarReward(layer, humanIndex - 1))
+);
 
 export const ACHIEVEMENT_REWARDS_BY_ID = new Map(ACHIEVEMENT_REWARDS.map((reward) => [reward.id, reward]));
 

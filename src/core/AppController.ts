@@ -285,6 +285,7 @@ export class AppController {
 
         const game = new module.GameSessionController(this.renderer.scene, this.theme.current);
         game.setLocale(this.i18n.current);
+        game.setThemeRequestHandler((theme) => this.theme.set(theme));
 
         const audio = new module.GameAudioSystem();
         const gameHud = new module.GameHUDSystem(this.uiHost, this.i18n, {

@@ -13,6 +13,7 @@ interface CameraRailUpdateConfig {
   deltaTime: number;
   state: GameSessionState;
   score: number;
+  directionSign: 1 | -1;
   currentNode: ResolvedGamePathNode;
   nextNode: ResolvedGamePathNode;
   playerPosition: THREE.Vector3;
@@ -46,14 +47,16 @@ export class CameraRailController {
   private safeTop = Infinity;
   private safeBottom = -Infinity;
   private readonly fov = 42;
+  private directionSign: 1 | -1 = 1;
 
-  reset(node: ResolvedGamePathNode) {
-    this.railX = node.resolvedX - 4.4;
-    this.currentFocus.set(node.resolvedX + 4.2, node.resolvedY);
+  reset(node: ResolvedGamePathNode, directionSign: 1 | -1 = 1) {
+    this.directionSign = directionSign;
+    this.railX = node.resolvedX - 4.4 * directionSign;
+    this.currentFocus.set(node.resolvedX + 4.2 * directionSign, node.resolvedY);
     this.targetFocus.copy(this.currentFocus);
     this.currentZoom = 11.8;
     this.targetZoom = 11.8;
-    this.position.set(this.currentFocus.x - CameraRailController.CAMERA_CENTER_OFFSET, node.resolvedY + 0.18, this.currentZoom);
+    this.position.set(this.currentFocus.x - CameraRailController.CAMERA_CENTER_OFFSET * directionSign, node.resolvedY + 0.18, this.currentZoom);
     this.lookAt.set(this.currentFocus.x, node.resolvedY, 0);
     this.safeLeft = -Infinity;
     this.safeRight = Infinity;
@@ -62,6 +65,7 @@ export class CameraRailController {
   }
 
   update(config: CameraRailUpdateConfig) {
+    this.directionSign = config.directionSign;
     const profile = getDifficultyProfile(config.score);
     const lockMode = config.focusLock?.mode ?? 'none';
     this.advanceRail(profile, config, lockMode);
@@ -82,11 +86,14 @@ export class CameraRailController {
       lockMode === 'none';
     const runPressure = 1 + Math.min(0.65, config.score / 420);
     if (running) {
-      this.railX += profile.cameraSpeed * config.speedPressure * runPressure * config.deltaTime;
+      this.railX += profile.cameraSpeed * config.speedPressure * runPressure * config.deltaTime * this.directionSign;
     }
 
     if (lockMode === 'none') {
-      this.railX = Math.max(this.railX, config.playerPosition.x - profile.cameraLookAhead);
+      this.railX =
+        this.directionSign > 0
+          ? Math.max(this.railX, config.playerPosition.x - profile.cameraLookAhead)
+          : Math.min(this.railX, config.playerPosition.x + profile.cameraLookAhead);
     }
   }
 
@@ -105,7 +112,7 @@ export class CameraRailController {
       };
     }
 
-    const desiredX = config.currentNode.isGigantic ? config.currentNode.resolvedX + 0.4 : this.railX + profile.cameraLookAhead;
+    const desiredX = config.currentNode.isGigantic ? config.currentNode.resolvedX + 0.4 * this.directionSign : this.railX + profile.cameraLookAhead * this.directionSign;
     const routeY = config.currentNode.isGigantic
       ? config.currentNode.resolvedY
       : config.currentNode.resolvedY * 0.64 + config.nextNode.resolvedY * 0.36;
@@ -116,7 +123,9 @@ export class CameraRailController {
       : THREE.MathUtils.clamp(0.36 + Math.min(0.4, Math.abs(playerYOffset) / 11) + laneFocusBias * 0.16, 0.36, 0.78);
     const desiredY = config.currentNode.isGigantic ? routeY : THREE.MathUtils.lerp(routeY, config.playerPosition.y, playerFollow);
     const horizontalCatchup =
-      config.playerPosition.x >= this.currentFocus.x - 0.08
+      (this.directionSign > 0
+        ? config.playerPosition.x >= this.currentFocus.x - 0.08
+        : config.playerPosition.x <= this.currentFocus.x + 0.08)
         ? Math.max(12, profile.cameraCatchupSpeed * 4.2)
         : Math.max(4.4, profile.cameraCatchupSpeed * 1.25);
     return {
@@ -131,9 +140,12 @@ export class CameraRailController {
   private applyFocusTarget(deltaTime: number, playerPosition: THREE.Vector3, target: CameraFocusTarget) {
     this.targetFocus.set(target.desiredX, target.desiredY);
     const nextFocusX = damp(this.currentFocus.x, this.targetFocus.x, target.horizontalResponse, deltaTime);
-    this.currentFocus.x = target.clampToPlayer
-      ? Math.max(this.currentFocus.x, playerPosition.x - 0.08, nextFocusX)
-      : nextFocusX;
+    this.currentFocus.x =
+      target.clampToPlayer
+        ? this.directionSign > 0
+          ? Math.max(this.currentFocus.x, playerPosition.x - 0.08, nextFocusX)
+          : Math.min(this.currentFocus.x, playerPosition.x + 0.08, nextFocusX)
+        : nextFocusX;
     this.currentFocus.y = damp(this.currentFocus.y, this.targetFocus.y, target.verticalResponse, deltaTime);
   }
 
@@ -163,7 +175,11 @@ export class CameraRailController {
   }
 
   private updatePose() {
-    this.position.set(this.currentFocus.x - CameraRailController.CAMERA_CENTER_OFFSET, this.currentFocus.y + 0.18, this.currentZoom);
+    this.position.set(
+      this.currentFocus.x - CameraRailController.CAMERA_CENTER_OFFSET * this.directionSign,
+      this.currentFocus.y + 0.18,
+      this.currentZoom
+    );
     this.lookAt.set(this.currentFocus.x, this.currentFocus.y, 0);
   }
 
@@ -180,7 +196,7 @@ export class CameraRailController {
   }
 
   isBehindSafeLine(position: THREE.Vector3) {
-    return position.x < this.safeLeft;
+    return this.directionSign > 0 ? position.x < this.safeLeft : position.x > this.safeRight;
   }
 
   isOutsideVerticalBounds(position: THREE.Vector3, padding = 0.02) {

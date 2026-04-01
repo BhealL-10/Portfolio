@@ -242,6 +242,7 @@ export class GameSessionController {
   private readonly playerSurfaceNormal = new THREE.Vector2(0, 1);
   private readonly impactWaves = new Map<number, ImpactWave[]>();
   private theme: ThemeMode;
+  private themeRequestHandler: ((theme: ThemeMode) => void) | null = null;
   private readonly hudSnapshot: GameHudSnapshot = {
     state: 'transition',
     playerMotionState: 'attached',
@@ -333,6 +334,10 @@ export class GameSessionController {
   private orbitAngle = Math.PI * 0.18;
   private orbitDirection: -1 | 1 = -1;
   private angularSpeed = 0;
+  private mirrorLaunchEligible = false;
+  private mirrorLaunchAnchorIndex: number | null = null;
+  private mirrorLaunchSpeedThreshold = 0;
+  private mirrorThemeBase: ThemeMode | null = null;
   private lastLandingDirection: -1 | 1 | 0 = 0;
   private choiceMode: ChoiceMode = 'none';
   private activeChoices: BranchChoice[] = [];
@@ -791,12 +796,63 @@ export class GameSessionController {
     this.rewardBillboardSignature = '';
   }
 
+  setThemeRequestHandler(handler: ((theme: ThemeMode) => void) | null) {
+    this.themeRequestHandler = handler;
+  }
+
   setLocale(locale: 'fr' | 'en') {
     if (this.locale === locale) {
       return;
     }
     this.locale = locale;
     this.rewardBillboardSignature = '';
+  }
+
+  private getProgressionDirectionSign() {
+    return this.path.getWorldDirectionSign();
+  }
+
+  private unprojectWorldX(worldX: number) {
+    return this.path.unprojectWorldX(worldX);
+  }
+
+  private resolveChoiceNode(node: BranchChoice['entry']) {
+    return this.path.resolveExternalNode(node, this.currentTime, this.attachedIndex);
+  }
+
+  private getDirectionalDelta(fromX: number, toX: number) {
+    return (toX - fromX) * this.getProgressionDirectionSign();
+  }
+
+  private isMirrorAnchorNode(node: ResolvedGamePathNode) {
+    return node.index === 0 || node.isMilestone;
+  }
+
+  private getMirrorReverseSpeed(speedX = this.playerVelocity.x) {
+    return Math.max(0, -speedX * this.getProgressionDirectionSign());
+  }
+
+  private getMirrorLaunchSpeedThreshold(launchSpeed: number) {
+    return Math.max(9.6, launchSpeed * 0.68);
+  }
+
+  private restoreThemeAfterMirror() {
+    const baseTheme = this.mirrorThemeBase;
+    this.mirrorThemeBase = null;
+    if (!baseTheme || this.theme === baseTheme) {
+      return;
+    }
+    if (this.themeRequestHandler) {
+      this.themeRequestHandler(baseTheme);
+    } else {
+      this.setTheme(baseTheme);
+    }
+  }
+
+  private isNearCameraBackline(positionX: number, padding: number) {
+    return this.getProgressionDirectionSign() > 0
+      ? positionX < this.camera.getSafeLeft() + padding
+      : positionX > this.camera.getSafeRight() - padding;
   }
 
   setTransitionProgress(progress: number) {
@@ -840,7 +896,7 @@ export class GameSessionController {
     this.shop.reset();
     this.coins.setVisible(false);
     this.enemies.setVisible(false);
-    this.camera.reset(node);
+    this.camera.reset(node, this.getProgressionDirectionSign());
     this.trailPoints.forEach((point) => point.copy(this.playerPosition));
     this.syncTrailVisual();
     this.transitionProgress = 0;
@@ -855,7 +911,7 @@ export class GameSessionController {
     this.resetRunState();
     this.path.reset();
     this.path.prebuild(180);
-    this.camera.reset(this.getResolvedNode(0));
+    this.camera.reset(this.getResolvedNode(0), this.getProgressionDirectionSign());
     this.state = 'transition_in';
     this.root.visible = true;
     if (preservePortalPreviewBoat) {
@@ -883,7 +939,7 @@ export class GameSessionController {
     this.player.visible = true;
     this.playerTrail.visible = true;
     this.attachToNode(0, false, null, null);
-    this.camera.reset(this.getResolvedNode(0));
+    this.camera.reset(this.getResolvedNode(0), this.getProgressionDirectionSign());
     this.awaitingFirstJump = true;
     this.state = 'running_attached';
     this.emitAudioEvent({ type: 'run_start' });
@@ -936,7 +992,7 @@ export class GameSessionController {
     this.resetPendingEnemyShot(this.bigCanonShot);
     this.coins.reset();
     this.enemies.reset();
-    this.camera.reset(this.getResolvedNode(0));
+    this.camera.reset(this.getResolvedNode(0), this.getProgressionDirectionSign());
   }
 
   getPortalPreviewLayout() {
@@ -1010,6 +1066,11 @@ export class GameSessionController {
     this.orbitAngle = Math.PI * 0.18;
     this.orbitDirection = -1;
     this.angularSpeed = 0;
+    this.mirrorLaunchEligible = false;
+    this.mirrorLaunchAnchorIndex = null;
+    this.mirrorLaunchSpeedThreshold = 0;
+    this.restoreThemeAfterMirror();
+    this.path.setWorldDirectionTransform(1);
     this.playerPosition.set(0, 0, 0);
     this.playerVelocity.set(0, 0, 0);
     this.playerVelocityTarget.set(0, 0, 0);
@@ -1985,6 +2046,8 @@ export class GameSessionController {
 
     if (this.isOutsidePlayableField(this.playerPosition)) {
       this.failRun('out_of_bounds');
+    } else if (this.tryTriggerMirrorMode(frame.currentNode)) {
+      // Mirror mode replaces the usual forbidden-side failure and keeps the run alive.
     } else if (this.camera.isBehindSafeLine(this.playerPosition)) {
       this.failRun('camera');
     }
@@ -2272,13 +2335,14 @@ export class GameSessionController {
       return null;
     }
     const milestoneNode = this.getResolvedNode(this.attachedIndex);
-    const rewardNodes = this.activeChoices.map((choice) => resolveRuntimeNode(choice.entry, this.currentTime, this.attachedIndex));
+    const rewardNodes = this.activeChoices.map((choice) => this.resolveChoiceNode(choice.entry));
+    const rewardXValues = rewardNodes.map((node) => node.resolvedX);
     const rewardYValues = rewardNodes.map((node) => node.resolvedY);
     return {
       milestoneNode,
       rewardNodes,
-      reservedStart: milestoneNode.resolvedX - DEFAULT_COLUMN_DISTANCE * 4.2,
-      reservedEnd: Math.max(...rewardNodes.map((node) => node.resolvedX), milestoneNode.resolvedX) + DEFAULT_COLUMN_DISTANCE * 3.4,
+      reservedStart: Math.min(milestoneNode.resolvedX, ...rewardXValues) - DEFAULT_COLUMN_DISTANCE * 3.4,
+      reservedEnd: Math.max(milestoneNode.resolvedX, ...rewardXValues) + DEFAULT_COLUMN_DISTANCE * 3.4,
       reservedTop: Math.max(milestoneNode.resolvedY, ...rewardYValues) + DEFAULT_COLUMN_DISTANCE * 1.2,
       reservedBottom: Math.min(milestoneNode.resolvedY, ...rewardYValues) - DEFAULT_COLUMN_DISTANCE * 1.2
     };
@@ -2320,8 +2384,16 @@ export class GameSessionController {
       hasFrontCanon ? this.getFrontCanonEffectiveRange() + this.getFrontCanonSpreadWidth() + 5.8 : 0,
       hasGrapple ? this.getGrappleEffectiveRange(this.playerPosition.x) + 5.8 : 0
     );
-    const leftLimit = this.playerPosition.x - Math.max(4.8, maxReach * 0.32);
-    const rightLimit = this.playerPosition.x + maxReach + 6.8;
+    const directionSign = this.getProgressionDirectionSign();
+    const backwardReach = Math.max(4.8, maxReach * 0.32);
+    const leftLimit =
+      directionSign > 0
+        ? this.playerPosition.x - backwardReach
+        : this.playerPosition.x - maxReach - 6.8;
+    const rightLimit =
+      directionSign > 0
+        ? this.playerPosition.x + maxReach + 6.8
+        : this.playerPosition.x + backwardReach;
     const searchLimit = this.attachedIndex + Math.max(32, Math.ceil(maxReach / Math.max(0.001, DEFAULT_COLUMN_DISTANCE)) * 14);
     const result: ResolvedGamePathNode[] = [];
 
@@ -2487,11 +2559,13 @@ export class GameSessionController {
     if (this.playerHeading.lengthSq() > 0.0001) {
       return target.copy(this.playerHeading).normalize();
     }
-    return target.set(1, 0);
+    return target.set(this.getProgressionDirectionSign(), 0);
   }
 
   private getGrappleVisibleReach(originX: number) {
-    return Math.max(8.2, this.camera.getSafeRight() - originX + DEFAULT_COLUMN_DISTANCE * 1.8);
+    return this.getProgressionDirectionSign() > 0
+      ? Math.max(8.2, this.camera.getSafeRight() - originX + DEFAULT_COLUMN_DISTANCE * 1.8)
+      : Math.max(8.2, originX - this.camera.getSafeLeft() + DEFAULT_COLUMN_DISTANCE * 1.8);
   }
 
   private getGrappleEffectiveRange(originX: number) {
@@ -2550,8 +2624,11 @@ export class GameSessionController {
     for (let slot = 0; slot < this.displayWindowIndices.length; slot += 1) {
       const nodeIndex = this.displayWindowIndices[slot]!;
       const node = this.getResolvedNode(nodeIndex);
-      const fullyPastLeftEdge = node.resolvedX + this.getPhysicalRadius(node) + 5.5 < this.camera.getSafeLeft();
-      if (!fullyPastLeftEdge) {
+      const fullyPastBackline =
+        this.getProgressionDirectionSign() > 0
+          ? node.resolvedX + this.getPhysicalRadius(node) + 5.5 < this.camera.getSafeLeft()
+          : node.resolvedX - this.getPhysicalRadius(node) - 5.5 > this.camera.getSafeRight();
+      if (!fullyPastBackline) {
         continue;
       }
 
@@ -2597,8 +2674,11 @@ export class GameSessionController {
   private findReplacementDisplayNode(excludeSlot: number) {
     for (let candidateIndex = this.displayNextIndex; candidateIndex < this.displayNextIndex + 24; candidateIndex += 1) {
       const replacement = this.getResolvedNode(candidateIndex);
-      const spawnsOffscreenRight = replacement.resolvedX - this.getPhysicalRadius(replacement) > this.camera.getSafeRight() + 2.8;
-      if (!spawnsOffscreenRight) {
+      const spawnsOffscreenAhead =
+        this.getProgressionDirectionSign() > 0
+          ? replacement.resolvedX - this.getPhysicalRadius(replacement) > this.camera.getSafeRight() + 2.8
+          : replacement.resolvedX + this.getPhysicalRadius(replacement) < this.camera.getSafeLeft() - 2.8;
+      if (!spawnsOffscreenAhead) {
         continue;
       }
       if (this.isDisplayNodeOverlapping(replacement, excludeSlot)) {
@@ -2845,7 +2925,7 @@ export class GameSessionController {
       for (let index = 0; index < this.activeChoices.length; index += 1) {
         const choice = this.activeChoices[index];
         if (!choice) continue;
-        const entry = resolveRuntimeNode(choice.entry, this.currentTime, this.attachedIndex);
+        const entry = this.resolveChoiceNode(choice.entry);
         const rewardAttachment = this.findCaptureAttachment(entry, previousPosition, this.playerPosition, travelSpeed);
         if (rewardAttachment) {
           this.commitRewardBranch(index, false);
@@ -2914,7 +2994,7 @@ export class GameSessionController {
 
     if (this.teleportReadyAt <= this.currentTime && this.runUpgrades.modifiers.teleportRange > 0) {
       const teleportTarget = this.path.getTeleportTarget(this.attachedIndex, this.runUpgrades.modifiers.teleportRange);
-      if (teleportTarget > this.attachedIndex + 1 && this.playerPosition.x < this.camera.getSafeLeft() + 2.4) {
+      if (teleportTarget > this.attachedIndex + 1 && this.isNearCameraBackline(this.playerPosition.x, 2.4)) {
         this.teleportReadyAt = this.currentTime + this.runUpgrades.modifiers.teleportCooldown;
         this.attachToNode(teleportTarget, false, null, null, null, null, this.getResolvedNode(teleportTarget));
       }
@@ -2922,7 +3002,7 @@ export class GameSessionController {
 
     if (this.warpReadyAt <= this.currentTime && this.runUpgrades.modifiers.warpRange > 0) {
       const warpTarget = this.path.getTeleportTarget(this.attachedIndex, this.runUpgrades.modifiers.warpRange);
-      if (warpTarget > this.attachedIndex + 3 && this.playerPosition.x < this.camera.getSafeLeft() + 1.6) {
+      if (warpTarget > this.attachedIndex + 3 && this.isNearCameraBackline(this.playerPosition.x, 1.6)) {
         this.warpReadyAt = this.currentTime + this.runUpgrades.modifiers.warpCooldown;
         this.attachToNode(warpTarget, false, null, null, null, null, this.getResolvedNode(warpTarget));
       }
@@ -2935,6 +3015,10 @@ export class GameSessionController {
 
     if (this.isOutsidePlayableField(this.playerPosition)) {
       this.failRun('out_of_bounds');
+      return;
+    }
+
+    if (this.tryTriggerMirrorMode(currentNode)) {
       return;
     }
 
@@ -2963,6 +3047,20 @@ export class GameSessionController {
       this.runUpgrades.modifiers.jumpPower *
       (1 + this.runUpgrades.modifiers.speedBonus * 0.35);
     const maxBoost = this.chargeMeter >= 0.98;
+    const reverseLaunch = tangent2D.x * this.getProgressionDirectionSign() < -0.12;
+    const mirrorEligibleAnchor = this.isMirrorAnchorNode(currentNode);
+    const mirrorLaunchFastEnough = launchSpeed >= this.getMirrorLaunchSpeedThreshold(launchSpeed);
+    this.mirrorLaunchEligible = mirrorEligibleAnchor && reverseLaunch && mirrorLaunchFastEnough;
+    if (this.mirrorLaunchEligible) {
+      this.mirrorLaunchAnchorIndex = currentNode.index;
+      this.mirrorLaunchSpeedThreshold = Math.max(7.8, launchSpeed * 0.64);
+      this.achievements.recordReverseLaunchFromAnchor();
+      this.queueAchievementToastsIfNeeded();
+    } else {
+      this.mirrorLaunchEligible = false;
+      this.mirrorLaunchAnchorIndex = null;
+      this.mirrorLaunchSpeedThreshold = 0;
+    }
 
     this.registerImpactWave(currentNode, this.orbitAngle, launchSpeed * 0.92);
     this.playerVelocity.copy(tangent.multiplyScalar(launchSpeed)).addScaledVector(radial, launchSpeed * 0.08);
@@ -3006,7 +3104,7 @@ export class GameSessionController {
       combinedImpulse.y += 0.78 + power * 0.24;
       combinedPower += power;
       this.triggerModuleFlash('wings', 0.82);
-      this.achievements.recordModuleActivated('wings');
+      this.achievements.recordModuleActivated('wings', this.currentTime);
       this.emitAudioEvent({ type: 'module_activate', slot: 'wings' });
       moduleTriggered = true;
     }
@@ -3164,7 +3262,7 @@ export class GameSessionController {
     this.grapAwaitReleaseBeforePull = false;
     this.grapReleasePending = false;
     this.grapReleasePressedAt = 0;
-    this.achievements.recordModuleActivated('grappin');
+    this.achievements.recordModuleActivated('grappin', this.currentTime);
     this.queueAchievementToastsIfNeeded();
     this.triggerModuleFlash('grappin', 0.5);
     this.emitAudioEvent({ type: 'grapple_cast' });
@@ -3192,7 +3290,7 @@ export class GameSessionController {
     }
     if (
       emergencyOnly &&
-      this.playerPosition.x >= this.camera.getSafeLeft() + 2.6 &&
+      !this.isNearCameraBackline(this.playerPosition.x, 2.6) &&
       Math.abs(this.playerPosition.y) < 26
     ) {
       return false;
@@ -3210,7 +3308,7 @@ export class GameSessionController {
     this.wrapperHoldUntil = this.wrapperTeleportAt + 1.6;
     this.wrapperVisualUntil = this.wrapperHoldUntil + 0.4;
     this.wrapperCooldownPending = true;
-    this.achievements.recordModuleActivated('wrapper');
+    this.achievements.recordModuleActivated('wrapper', this.currentTime);
     this.queueAchievementToastsIfNeeded();
     this.emitAudioEvent({ type: 'module_activate', slot: 'wrapper' });
     return true;
@@ -3234,9 +3332,12 @@ export class GameSessionController {
     resolvedNodeSnapshot: ResolvedGamePathNode | null = null
   ) {
     this.attachedIndex = index;
+    this.mirrorLaunchEligible = false;
+    this.mirrorLaunchAnchorIndex = null;
+    this.mirrorLaunchSpeedThreshold = 0;
     this.setAttachedNodeRuntimeAnchor(resolvedNodeSnapshot ?? this.getResolvedNode(index));
     const node = this.getResolvedNode(index);
-    this.stats.recordLanding(index, node.pathDistance, performance.now(), this.momentum.gauge);
+    this.stats.recordLanding(node.pathDistance, performance.now());
     this.score = this.stats.getSnapshot().score;
     if (preserveMomentum) {
       this.achievements.recordDistance(this.stats.getSnapshot().distanceMeters);
@@ -3394,7 +3495,8 @@ export class GameSessionController {
       grade,
       twist,
       shapeKind: node.shapeKind,
-      isMilestone: node.isMilestone
+      isMilestone: node.isMilestone,
+      inMirror: this.getProgressionDirectionSign() < 0
     });
     this.startLandingFeedback(node.index, grade, twist, attachment.worldPosition, tangentDirection, attachment.normal);
     this.emitAudioEvent({ type: 'land', kind: this.getLandingAudioKind(node) });
@@ -3562,6 +3664,7 @@ export class GameSessionController {
 
   private syncCameraFollow(deltaTime: number, currentNode: ResolvedGamePathNode, nextNode: ResolvedGamePathNode) {
     const mobileLike = isMobileRuntime();
+    const directionSign = this.getProgressionDirectionSign();
     const milestoneAirborne = this.airborneFromMilestone && this.playerState === 'airborne';
     const cameraCurrentNode = milestoneAirborne ? nextNode : currentNode;
     const cameraNextNode =
@@ -3570,12 +3673,12 @@ export class GameSessionController {
         : nextNode;
     const upcomingMilestoneFactor =
       cameraNextNode.isGigantic
-        ? clamp(1 - Math.max(0, cameraNextNode.resolvedX - this.playerPosition.x) / 34, 0, 1)
+        ? clamp(1 - Math.max(0, this.getDirectionalDelta(this.playerPosition.x, cameraNextNode.resolvedX)) / 34, 0, 1)
         : 0;
     const largeShardFactor = clamp((Math.max(cameraCurrentNode.visualScale, cameraNextNode.visualScale) - 2.8) / 28, 0, 1.24);
     const milestoneReleaseZoom =
       milestoneAirborne
-        ? clamp(1 - Math.max(0, this.playerPosition.x - currentNode.resolvedX) / 24, 0, 1) * (mobileLike ? 19.5 : 16.2)
+        ? clamp(1 - Math.max(0, this.getDirectionalDelta(currentNode.resolvedX, this.playerPosition.x)) / 24, 0, 1) * (mobileLike ? 19.5 : 16.2)
         : 0;
     const milestoneLockActive = currentNode.isGigantic && this.playerState !== 'airborne';
     const shopLockActive = this.isShopInteractionLocked() && this.playerState !== 'airborne';
@@ -3583,7 +3686,7 @@ export class GameSessionController {
       milestoneLockActive
         ? {
             mode: 'milestone' as const,
-            focusX: currentNode.resolvedX + 0.52,
+            focusX: currentNode.resolvedX + 0.52 * directionSign,
             focusY: currentNode.resolvedY
           }
         : shopLockActive
@@ -3610,6 +3713,7 @@ export class GameSessionController {
       deltaTime,
       state: this.state,
       score: this.score,
+      directionSign,
       currentNode: cameraCurrentNode,
       nextNode: cameraNextNode,
       playerPosition: this.playerPosition,
@@ -3964,12 +4068,15 @@ export class GameSessionController {
     this.rewardHeaderBillboard.sprite.position.set(currentNode.resolvedX, currentNode.resolvedY + 11.2, currentNode.resolvedZ + 0.06);
     this.activeChoices.slice(0, 3).forEach((choice, index) => {
       const billboard = this.rewardCardBillboards[index];
-      const preview = choice.previewNodes[0] ?? choice.entry;
+      const preview = this.resolveChoiceNode(choice.previewNodes[0] ?? choice.entry);
       const cardScale = mobileLike ? 1.28 : 1.16;
       const slotOffsetY = index === 0 ? 0.28 : index === 2 ? -0.28 : 0;
       billboard.sprite.scale.set(16.8 * cardScale, 7.8 * cardScale, 1);
-      // Décalage vers la droite pour l’affichage des descriptions (mirror de l’ancien comportement)
-      billboard.sprite.position.set(preview.x + 12.7, preview.y + slotOffsetY, preview.z + 0.06);
+      billboard.sprite.position.set(
+        preview.resolvedX + 12.7 * this.getProgressionDirectionSign(),
+        preview.resolvedY + slotOffsetY,
+        preview.resolvedZ + 0.06
+      );
     });
   }
 
@@ -4628,7 +4735,7 @@ export class GameSessionController {
     if (hitFromBehind || this.runUpgrades.modifiers.spikeOrbit) {
       enemy.alive = false;
       this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
-      this.recordEnemyKill({ amount: 1, fromBehind: hitFromBehind });
+      this.recordEnemyKill({ amount: 1, fromBehind: hitFromBehind, source: 'impact' });
       this.emitScore();
       this.fillMomentumBurst(0.05);
       this.emitAudioEvent({ type: 'enemy_die' });
@@ -4671,7 +4778,7 @@ export class GameSessionController {
     if (this.runUpgrades.modifiers.spikeOrbit || hitFromBehind || airborneImpactKill) {
       enemy.alive = false;
       this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
-      this.recordEnemyKill({ amount: 1, fromBehind: hitFromBehind });
+      this.recordEnemyKill({ amount: 1, fromBehind: hitFromBehind, source: 'impact' });
       this.emitScore();
       this.fillMomentumBurst(0.08);
       this.emitAudioEvent({ type: 'enemy_die' });
@@ -4691,7 +4798,7 @@ export class GameSessionController {
       if (enemy?.alive) {
         enemy.alive = false;
         this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
-        this.recordEnemyKill({ amount: 1, shieldSave: true });
+        this.recordEnemyKill({ amount: 1, shieldSave: true, source: 'shield' });
         this.emitScore();
       }
       this.fillMomentumBurst(0.04);
@@ -4717,15 +4824,19 @@ export class GameSessionController {
     const node = shot.targetIndex !== null ? this.getResolvedNode(shot.targetIndex) : null;
     const enemy = node?.enemySlot;
     if (node && enemy && enemy.alive && enemy.pole === shot.targetPole && enemy.tier !== 'invincible') {
-      this.applyEnemyDefeat(node, enemy);
+      this.applyEnemyDefeat(node, enemy, shot.slot);
     }
     this.resetPendingEnemyShot(shot);
   }
 
-  private applyEnemyDefeat(node: ResolvedGamePathNode, enemy: NonNullable<ResolvedGamePathNode['enemySlot']>) {
+  private applyEnemyDefeat(
+    node: ResolvedGamePathNode,
+    enemy: NonNullable<ResolvedGamePathNode['enemySlot']>,
+    source: 'impact' | 'front_canon' | 'big_canon' = 'impact'
+  ) {
     enemy.alive = false;
     this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
-    this.recordEnemyKill({ amount: 1 });
+    this.recordEnemyKill({ amount: 1, source });
     this.emitScore();
     this.emitAudioEvent({ type: 'enemy_die' });
     void node;
@@ -4786,13 +4897,13 @@ export class GameSessionController {
             0.22
           );
           if (targetEnemy.alive) {
-            this.applyEnemyDefeat(bestTarget.node, targetEnemy);
+            this.applyEnemyDefeat(bestTarget.node, targetEnemy, 'big_canon');
           }
           this.fillMomentumBurst(0.05);
           runtime.cooldownRemaining = Math.max(1.4, this.runUpgrades.modifiers.bigCanonCooldown || 4.5);
           this.bigCanonFireUntil = elapsedTime + travelDuration;
           this.triggerModuleFlash('big_canon', 0.24);
-          this.achievements.recordModuleActivated('big_canon');
+          this.achievements.recordModuleActivated('big_canon', this.currentTime);
           this.queueAchievementToastsIfNeeded();
           this.emitAudioEvent({ type: 'module_activate', slot: 'big_canon' });
         }
@@ -4846,13 +4957,13 @@ export class GameSessionController {
       0.16
     );
     if (targetEnemy.alive) {
-      this.applyEnemyDefeat(bestTarget.node, targetEnemy);
+      this.applyEnemyDefeat(bestTarget.node, targetEnemy, 'front_canon');
     }
     this.fillMomentumBurst(0.04);
     frontRuntime.cooldownRemaining = Math.max(1, this.runUpgrades.modifiers.frontCanonCooldown || 2.4);
     this.frontCanonFireUntil = elapsedTime + travelDuration;
     this.triggerModuleFlash('front_canon', 0.22);
-    this.achievements.recordModuleActivated('front_canon');
+    this.achievements.recordModuleActivated('front_canon', this.currentTime);
     this.queueAchievementToastsIfNeeded();
     this.emitAudioEvent({ type: 'module_activate', slot: 'front_canon' });
   }
@@ -4869,13 +4980,23 @@ export class GameSessionController {
     this.queueAchievementToastsIfNeeded();
   }
 
-  private recordEnemyKill(event: { amount?: number; fromBehind?: boolean; shieldSave?: boolean } = {}) {
+  private recordEnemyKill(
+    event: {
+      amount?: number;
+      fromBehind?: boolean;
+      shieldSave?: boolean;
+      source?: 'impact' | 'front_canon' | 'big_canon' | 'shield';
+    } = {}
+  ) {
     const amount = Math.max(1, Math.trunc(event.amount ?? 1));
     this.stats.recordEnemyKill(amount, this.momentum.gauge);
     this.achievements.recordEnemyKill({
       amount,
       fromBehind: event.fromBehind,
-      shieldSave: event.shieldSave
+      shieldSave: event.shieldSave,
+      source: event.source,
+      inMirror: this.getProgressionDirectionSign() < 0,
+      atSeconds: this.currentTime
     });
     this.score = this.stats.getSnapshot().score;
     this.queueAchievementToastsIfNeeded();
@@ -4894,6 +5015,106 @@ export class GameSessionController {
         serial: this.achievementToastSerial
       });
     }
+  }
+
+  private tryTriggerMirrorMode(anchorNode: ResolvedGamePathNode) {
+    if (!this.mirrorLaunchEligible || !this.camera.isBehindSafeLine(this.playerPosition)) {
+      return false;
+    }
+    if (!this.isMirrorAnchorNode(anchorNode) || this.mirrorLaunchAnchorIndex !== anchorNode.index) {
+      return false;
+    }
+    if (this.getMirrorReverseSpeed() < this.mirrorLaunchSpeedThreshold) {
+      return false;
+    }
+    this.toggleMirrorMode(anchorNode.index);
+    this.mirrorLaunchEligible = false;
+    this.mirrorLaunchAnchorIndex = null;
+    this.mirrorLaunchSpeedThreshold = 0;
+    return true;
+  }
+
+  private toggleMirrorMode(anchorIndex: number) {
+    const rawAnchorNode = this.path.getNode(anchorIndex);
+    if (!rawAnchorNode) {
+      return;
+    }
+    const rawAnchorResolved = resolveRuntimeNode(rawAnchorNode, this.currentTime, this.attachedIndex);
+    const anchorWorldNode = this.getResolvedNode(anchorIndex);
+    const previousSign = this.getProgressionDirectionSign();
+    const nextSign = (previousSign * -1) as 1 | -1;
+    const receptionNodeIndex = anchorIndex + 1;
+    const toRawX = (worldX: number) => this.unprojectWorldX(worldX);
+    const newOffset = anchorWorldNode.resolvedX - nextSign * rawAnchorResolved.resolvedX;
+    const reprojectX = (worldX: number) => newOffset + nextSign * toRawX(worldX);
+    const reprojectVector = (vector: THREE.Vector3) => {
+      vector.x = reprojectX(vector.x);
+    };
+
+    reprojectVector(this.playerPosition);
+    reprojectVector(this.transitionPlayerStartPosition);
+    reprojectVector(this.shopCenter);
+    reprojectVector(this.grapTargetPosition);
+    this.playerVelocity.x *= -1;
+    this.playerVelocityTarget.x *= -1;
+    this.playerHeading.x *= -1;
+    this.playerSurfaceNormal.x *= -1;
+    this.trailPoints.forEach(reprojectVector);
+    this.frontCanonShot.start.x = reprojectX(this.frontCanonShot.start.x);
+    this.frontCanonShot.target.x = reprojectX(this.frontCanonShot.target.x);
+    this.bigCanonShot.start.x = reprojectX(this.bigCanonShot.start.x);
+    this.bigCanonShot.target.x = reprojectX(this.bigCanonShot.target.x);
+    this.pendingMagnetCoins.forEach((coin) => {
+      coin.start.x = reprojectX(coin.start.x);
+    });
+
+    this.path.setWorldDirectionTransform(nextSign, rawAnchorResolved.resolvedX, anchorWorldNode.resolvedX);
+    this.setAttachedNodeRuntimeAnchor(this.getResolvedNode(this.attachedIndex));
+    const mirroredAnchorNode = this.getResolvedNode(anchorIndex);
+    const receptionNode = this.getResolvedNode(receptionNodeIndex);
+    const receptionDirection = this.scratchVector
+      .set(
+        receptionNode.resolvedX - mirroredAnchorNode.resolvedX,
+        receptionNode.resolvedY - mirroredAnchorNode.resolvedY,
+        receptionNode.resolvedZ - mirroredAnchorNode.resolvedZ
+      )
+      .normalize();
+    if (!Number.isFinite(receptionDirection.x) || receptionDirection.lengthSq() <= 0.0001) {
+      receptionDirection.set(nextSign, 0, 0);
+    }
+    const preservedSpeed = Math.max(this.getMirrorReverseSpeed(-this.playerVelocity.x), this.playerVelocity.length(), this.mirrorLaunchSpeedThreshold + 1.4);
+    const receptionLift = 1.05 + Math.min(1.35, mirroredAnchorNode.gameplayRadius * 0.12);
+    this.playerPosition.set(
+      mirroredAnchorNode.resolvedX + receptionDirection.x * (mirroredAnchorNode.gameplayRadius + 0.94),
+      mirroredAnchorNode.resolvedY + receptionDirection.y * (mirroredAnchorNode.gameplayRadius * 0.42) + receptionLift,
+      mirroredAnchorNode.resolvedZ
+    );
+    this.playerVelocity.set(receptionDirection.x * preservedSpeed, receptionDirection.y * preservedSpeed + 1.2, 0);
+    this.playerVelocityTarget.copy(this.playerVelocity);
+    this.playerHeading.set(receptionDirection.x, receptionDirection.y).normalize();
+    this.playerSurfaceNormal.set(-receptionDirection.y, receptionDirection.x).normalize();
+    this.playerState = 'airborne';
+    this.state = 'running_airborne';
+    this.choiceMode = 'none';
+    this.activeChoices = [];
+    this.activeShopAngles = [];
+    this.eventCooldownUntil = Math.max(this.eventCooldownUntil, this.currentTime + 0.22);
+    this.camera.reset(mirroredAnchorNode, nextSign);
+
+    if (nextSign < 0) {
+      this.mirrorThemeBase ??= this.theme;
+      const mirrorTheme = this.mirrorThemeBase === 'dark' ? 'light' : 'dark';
+      if (this.themeRequestHandler) {
+        this.themeRequestHandler(mirrorTheme);
+      } else {
+        this.setTheme(mirrorTheme);
+      }
+    } else {
+      this.restoreThemeAfterMirror();
+    }
+
+    this.achievements.recordMirrorModeToggled(nextSign < 0);
+    this.queueAchievementToastsIfNeeded();
   }
 
   private failRun(cause: GameOverCause = 'camera') {
@@ -4918,6 +5139,7 @@ export class GameSessionController {
     this.resetPendingEnemyShot(this.bigCanonShot);
     this.clearWorldItemEffects();
     this.shop.reset();
+    this.restoreThemeAfterMirror();
     this.achievements.recordRunEnded(this.stats.getSnapshot().distanceMeters);
     this.queueAchievementToastsIfNeeded();
     this.emitAudioEvent({ type: 'game_over' });
@@ -5019,10 +5241,15 @@ export class GameSessionController {
     giganticOnly: boolean
   ) {
     let best: CaptureCandidate | null = null;
+    const directionSign = this.getProgressionDirectionSign();
     for (let index = this.attachedIndex + 1; index <= searchLimit; index += 1) {
       const node = this.getResolvedNode(index);
-      if (node.resolvedX - previousPosition.x > 64) {
+      const directionalOffset = (node.resolvedX - previousPosition.x) * directionSign;
+      if (directionalOffset > 64) {
         break;
+      }
+      if (directionalOffset < -8) {
+        continue;
       }
       if (rewardChoiceLayout && this.isNodeInsideActiveRewardReserve(node, rewardChoiceLayout)) {
         continue;
@@ -5683,15 +5910,14 @@ export class GameSessionController {
   private getBranchHints(): BranchLabelHint[] {
     if (this.choiceMode === 'reward_branch') {
       return this.activeChoices.slice(0, 3).map((choice, index) => {
-        const preview = choice.previewNodes[0] ?? choice.entry;
+        const preview = this.resolveChoiceNode(choice.previewNodes[0] ?? choice.entry);
         return {
           slot: index as 0 | 1 | 2,
           offer: choice.offer,
-          // Basculer la référence de position vers la droite de la branche/milestone
           worldPosition: new THREE.Vector3(
-            preview.x + (index === 1 ? 3.6 : 3.2),
-            preview.y + (index === 0 ? 0.28 : index === 2 ? -0.28 : 0),
-            preview.z
+            preview.resolvedX + (index === 1 ? 3.6 : 3.2) * this.getProgressionDirectionSign(),
+            preview.resolvedY + (index === 0 ? 0.28 : index === 2 ? -0.28 : 0),
+            preview.resolvedZ
           ),
           mode: 'reward_branch'
         };

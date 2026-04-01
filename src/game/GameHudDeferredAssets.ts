@@ -99,16 +99,18 @@ export function loadAvatarLayerSets() {
 
     for (const { path, load } of entries) {
       const src = await load();
+      const humanIndex = Number((path.match(/[-_](\d+)\.png$/)?.[1]) ?? 0);
+      const targetIndex = Math.max(0, humanIndex - 1);
       if (path.includes('/oreille/')) {
-        sets.oreille.push(src);
+        sets.oreille[targetIndex] = src;
       } else if (path.includes('/face/')) {
-        sets.face.push(src);
+        sets.face[targetIndex] = src;
       } else if (path.includes('/eyes/')) {
-        sets.eyes.push(src);
+        sets.eyes[targetIndex] = src;
       } else if (path.includes('/facemotif/')) {
-        sets.facemotif.push(src);
+        sets.facemotif[targetIndex] = src;
       } else if (path.includes('/accessoire/')) {
-        sets.accessoire.push(src);
+        sets.accessoire[targetIndex] = src;
       }
     }
 

@@ -1,4 +1,3 @@
-import { clamp } from '../core/math';
 import type { GameHudSnapshot } from './gameSessionTypes';
 import { pathDistanceToMeters } from './difficultyScaler';
 
@@ -65,11 +64,11 @@ export class RunStatsSystem {
     this.lastScoreFeedEvent = null;
   }
 
-  recordLanding(shardsLanded: number, pathDistance: number, elapsedTime: number, momentumGauge: number) {
+  recordLanding(pathDistance: number, elapsedTime: number) {
     const previousDistanceMeters = this.distanceMeters;
-    this.shardsLanded = Math.max(this.shardsLanded, shardsLanded);
-    this.distanceMeters = Math.max(this.distanceMeters, pathDistanceToMeters(pathDistance));
-    this.awardScore(1, momentumGauge);
+    this.shardsLanded += 1;
+    this.distanceMeters = Math.max(this.distanceMeters, Math.abs(pathDistanceToMeters(pathDistance)));
+    this.awardLandingFragment();
 
     for (const milestone of [10, 100, 1000] as const) {
       if (previousDistanceMeters >= milestone || this.distanceMeters < milestone || this.splitTimes[milestone] !== undefined) {
@@ -98,7 +97,7 @@ export class RunStatsSystem {
   addCoins(amount: number, momentumGauge: number) {
     this.coins += amount;
     this.coinsCollected += amount;
-    this.awardScore(amount * 2, momentumGauge);
+    void momentumGauge;
     if (this.coinsCollected > this.bestCoinsCollected) {
       this.bestCoinsCollected = this.coinsCollected;
       this.persist();
@@ -107,7 +106,7 @@ export class RunStatsSystem {
 
   recordEnemyKill(amount = 1, momentumGauge = 0) {
     this.enemiesKilled += amount;
-    this.awardScore(amount * 5, momentumGauge);
+    void momentumGauge;
     if (this.enemiesKilled > this.bestEnemiesKilled) {
       this.bestEnemiesKilled = this.enemiesKilled;
       this.persist();
@@ -194,16 +193,16 @@ export class RunStatsSystem {
     window.localStorage.setItem(SPLITS_KEY, JSON.stringify(this.bestSplitTimes));
   }
 
-  private awardScore(basePoints: number, momentumGauge: number) {
-    const multiplier = 1 + clamp(momentumGauge, 0, 1);
-    const gained = Math.max(1, Math.round(basePoints * multiplier));
+  private awardLandingFragment() {
+    const basePoints = 1;
+    const gained = 1;
     this.scoreFeedSerial += 1;
     this.lastScoreFeedEvent = {
       serial: this.scoreFeedSerial,
       basePoints,
       gained,
-      multiplier,
-      momentumRatio: clamp(momentumGauge, 0, 1)
+      multiplier: 1,
+      momentumRatio: 0
     };
     this.totalScore += gained;
     if (this.totalScore > this.bestScore) {

@@ -46,6 +46,8 @@ interface AchievementRunState {
   twistStreak: number;
   superLandingStreak: number;
   perfectStreak: number;
+  landingGradeHistory: LandingAchievementEvent['grade'][];
+  perfectTwistCount: number;
   maxMomentumWindowStart: number | null;
   highMomentumWindowStart: number | null;
   lastRecordedSecond: number;
@@ -53,6 +55,10 @@ interface AchievementRunState {
   airborneSeconds: number;
   milestoneRewardClaimed: boolean;
   airborneModuleSlots: Set<RogueliteModuleSlot>;
+  recentKillTimes: number[];
+  recentBackKillTimes: number[];
+  recentCanonActivations: Array<{ slot: 'front_canon' | 'big_canon'; atSeconds: number }>;
+  mirrorActive: boolean;
 }
 
 interface LandingAchievementEvent {
@@ -60,12 +66,16 @@ interface LandingAchievementEvent {
   twist: boolean;
   shapeKind: 'round' | 'oval' | 'triangular';
   isMilestone: boolean;
+  inMirror?: boolean;
 }
 
 interface EnemyKillAchievementEvent {
   amount?: number;
   fromBehind?: boolean;
   shieldSave?: boolean;
+  source?: 'impact' | 'front_canon' | 'big_canon' | 'shield';
+  inMirror?: boolean;
+  atSeconds?: number;
 }
 
 interface ItemAchievementOptions {
@@ -80,13 +90,19 @@ function createRunState(): AchievementRunState {
     twistStreak: 0,
     superLandingStreak: 0,
     perfectStreak: 0,
+    landingGradeHistory: [],
+    perfectTwistCount: 0,
     maxMomentumWindowStart: null,
     highMomentumWindowStart: null,
     lastRecordedSecond: -1,
     lastRecordedDistance: -1,
     airborneSeconds: 0,
     milestoneRewardClaimed: false,
-    airborneModuleSlots: new Set<RogueliteModuleSlot>()
+    airborneModuleSlots: new Set<RogueliteModuleSlot>(),
+    recentKillTimes: [],
+    recentBackKillTimes: [],
+    recentCanonActivations: [],
+    mirrorActive: false
   };
 }
 
@@ -128,25 +144,51 @@ const LANDING_CHAIN_ACHIEVEMENT_IDS = [
   'shards_chain_30',
   'shards_chain_40'
 ] as const;
+
 const EARLY_FAIL_STREAK_ACHIEVEMENT_ID = 'progress_early_fail_streak_5';
 const FAIL_STREAK_ACHIEVEMENT_ID = 'progress_fail_streak_10';
 const NO_MILESTONE_REWARD_ACHIEVEMENT_ID = 'shards_100_without_milestone_reward';
 const AIR_MODULE_COMBO_ACHIEVEMENT_ID = 'modules_air_combo_3';
+const REVERSE_LAUNCH_ACHIEVEMENT_IDS = ['progress_reverse_launch_1', 'progress_reverse_launch_5', 'progress_reverse_launch_15'] as const;
+const MIRROR_MODE_ACHIEVEMENT_ID = 'mirror_mode_1';
+const MIRROR_TOGGLE_ACHIEVEMENT_ID = 'mirror_toggle_3';
+const MIRROR_RETURN_ACHIEVEMENT_ID = 'mirror_return_1';
 
 const MILESTONE_ACHIEVEMENT_IDS = ['shards_milestone_1', 'shards_milestone_3', 'shards_milestone_5'] as const;
 const TRIANGULAR_SHARD_ACHIEVEMENT_IDS = ['shards_triangular_5', 'shards_triangular_15', 'shards_triangular_30'] as const;
+const MIRROR_LANDING_ACHIEVEMENT_IDS = ['mirror_land_5', 'mirror_land_15'] as const;
+
 const TWIST_ACHIEVEMENT_IDS = ['skill_twist_5', 'skill_twist_15', 'skill_twist_30', 'skill_twist_50', 'skill_twist_75', 'skill_twist_150'] as const;
-const PERFECT_ACHIEVEMENT_IDS = ['skill_perfect_3', 'skill_perfect_10', 'skill_perfect_25', 'skill_perfect_50', 'skill_perfect_100'] as const;
+const PERFECT_ACHIEVEMENT_IDS = ['skill_perfect_1', 'skill_perfect_3', 'skill_perfect_10', 'skill_perfect_25', 'skill_perfect_50', 'skill_perfect_100'] as const;
 const TWIST_STREAK_ACHIEVEMENT_IDS = ['skill_twist_streak_3', 'skill_twist_streak_5', 'skill_twist_streak_10', 'skill_twist_streak_20'] as const;
 const PERFECT_STREAK_ACHIEVEMENT_IDS = ['skill_perfect_streak_2', 'skill_perfect_streak_3', 'skill_perfect_streak_4', 'skill_perfect_streak_6'] as const;
+const SUPER_STREAK_ACHIEVEMENT_IDS = ['skill_super_streak_3', 'skill_super_streak_5'] as const;
+const CLEAN_STREAK_ACHIEVEMENT_ID = 'skill_clean_streak_8';
+const PERFECT_TWIST_ACHIEVEMENT_IDS = ['skill_perfect_twist_3', 'skill_perfect_twist_10'] as const;
+const MILESTONE_PERFECT_ACHIEVEMENT_ID = 'skill_milestone_perfect_1';
+const GRADE_PATTERN_FAIL_GOOD_SUPER_PERFECT_ID = 'skill_grade_pattern_fail_good_super_perfect';
+const GRADE_PATTERN_PERFECT_SUPER_GOOD_MISS_ID = 'skill_grade_pattern_perfect_super_good_miss';
+const GRADE_PATTERN_PERFECT_GOOD_PERFECT_ID = 'skill_grade_pattern_perfect_good_perfect';
+const MIRROR_PERFECT_ACHIEVEMENT_ID = 'mirror_perfect_3';
+
 const KILL_ACHIEVEMENT_IDS = ['combat_kill_1', 'combat_kill_10', 'combat_kill_25', 'combat_kill_50', 'combat_kill_75', 'combat_kill_150', 'combat_kill_300'] as const;
 const BACK_KILL_ACHIEVEMENT_IDS = ['combat_back_run_10', 'combat_back_run_25', 'combat_back_run_50'] as const;
 const SHIELD_SAVE_ACHIEVEMENT_IDS = ['combat_shield_save_1', 'combat_shield_save_10', 'combat_shield_save_25'] as const;
+const FRONT_CANON_KILL_ACHIEVEMENT_IDS = ['combat_front_canon_kill_10', 'combat_front_canon_kill_25'] as const;
+const BIG_CANON_KILL_ACHIEVEMENT_IDS = ['combat_big_canon_kill_10', 'combat_big_canon_kill_25'] as const;
+const DOUBLE_KILL_ACHIEVEMENT_ID = 'combat_double_kill_5s';
+const TRIPLE_KILL_ACHIEVEMENT_ID = 'combat_triple_kill_5s';
+const BACK_DOUBLE_KILL_ACHIEVEMENT_ID = 'combat_back_double_kill_5s';
+const MIRROR_KILL_ACHIEVEMENT_ID = 'mirror_kill_5';
+const MIRROR_BACK_KILL_ACHIEVEMENT_ID = 'mirror_back_kill_3';
+
 const COIN_ACHIEVEMENT_IDS = ['economy_coins_20', 'economy_coins_100', 'economy_coins_300', 'economy_coins_500', 'economy_coins_700', 'economy_coins_1200'] as const;
 const SHOP_ACHIEVEMENT_IDS = ['economy_buy_1', 'economy_buy_5', 'economy_buy_15', 'economy_buy_30'] as const;
+
 const UNIQUE_MODULE_ACHIEVEMENT_IDS = ['modules_unique_3', 'modules_unique_6', 'modules_unique_9', 'modules_unique_12'] as const;
 const MOMENTUM_MAX_HOLD_IDS = ['momentum_hold_max_5', 'momentum_hold_max_10', 'momentum_hold_max_20'] as const;
 const MOMENTUM_HIGH_HOLD_IDS = ['momentum_hold_high_15', 'momentum_hold_high_45', 'momentum_hold_high_90', 'momentum_hold_high_120'] as const;
+const CANON_COMBO_ACHIEVEMENT_IDS = ['modules_canon_combo_1', 'modules_canon_combo_5'] as const;
 
 const MODULE_ACQUISITION_IDS: Partial<Record<RogueliteModuleSlot, string>> = {
   plane: 'modules_plane_1',
@@ -171,6 +213,28 @@ function getRarityRank(rarity: AchievementRarity) {
 
 function getRawKey(parts: string[]) {
   return `meta:${parts.join(':')}`;
+}
+
+function getEventTimeSeconds(candidate?: number) {
+  if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+    return candidate;
+  }
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now() / 1000;
+  }
+  return Date.now() / 1000;
+}
+
+function trimWindow(values: number[], now: number, windowSeconds: number) {
+  return values.filter((value) => now - value <= windowSeconds);
+}
+
+function matchesEndingPattern(history: LandingAchievementEvent['grade'][], pattern: LandingAchievementEvent['grade'][]) {
+  if (history.length < pattern.length) {
+    return false;
+  }
+  const offset = history.length - pattern.length;
+  return pattern.every((grade, index) => history[offset + index] === grade);
 }
 
 export class AchievementSystem {
@@ -198,6 +262,7 @@ export class AchievementSystem {
 
   recordEnemyKill(event: EnemyKillAchievementEvent = {}) {
     const amount = Math.max(1, Math.trunc(event.amount ?? 1));
+    const timestamp = getEventTimeSeconds(event.atSeconds);
     this.mutate(() => {
       this.incrementAll(KILL_ACHIEVEMENT_IDS, amount);
       if (event.fromBehind) {
@@ -206,6 +271,21 @@ export class AchievementSystem {
       }
       if (event.shieldSave) {
         this.incrementAll(SHIELD_SAVE_ACHIEVEMENT_IDS, amount);
+      }
+      if (event.source === 'front_canon') {
+        this.incrementAll(FRONT_CANON_KILL_ACHIEVEMENT_IDS, amount);
+      }
+      if (event.source === 'big_canon') {
+        this.incrementAll(BIG_CANON_KILL_ACHIEVEMENT_IDS, amount);
+      }
+      if (event.inMirror) {
+        this.incrementProgress(MIRROR_KILL_ACHIEVEMENT_ID, amount);
+        if (event.fromBehind) {
+          this.incrementProgress(MIRROR_BACK_KILL_ACHIEVEMENT_ID, amount);
+        }
+      }
+      for (let index = 0; index < amount; index += 1) {
+        this.recordKillWindow(timestamp, Boolean(event.fromBehind));
       }
     });
   }
@@ -263,13 +343,16 @@ export class AchievementSystem {
     });
   }
 
-  recordModuleActivated(slot: RogueliteModuleSlot) {
+  recordModuleActivated(slot: RogueliteModuleSlot, atSeconds?: number) {
     this.mutate(() => {
       const ids = MODULE_ACTIVATION_IDS[slot];
-      if (!ids) {
-        return;
+      if (ids) {
+        this.incrementAll(ids, 1);
       }
-      this.incrementAll(ids, 1);
+
+      if (slot === 'front_canon' || slot === 'big_canon') {
+        this.recordCanonCombo(slot, getEventTimeSeconds(atSeconds));
+      }
     });
   }
 
@@ -306,14 +389,42 @@ export class AchievementSystem {
         this.incrementAll(PERFECT_ACHIEVEMENT_IDS, 1);
         this.incrementProgress('shards_land_300', 1);
         this.raiseAll(PERFECT_STREAK_ACHIEVEMENT_IDS, this.runState.perfectStreak);
+        if (event.twist) {
+          this.runState.perfectTwistCount += 1;
+          this.raiseAll(PERFECT_TWIST_ACHIEVEMENT_IDS, this.runState.perfectTwistCount);
+        }
+        if (event.isMilestone) {
+          this.raiseProgress(MILESTONE_PERFECT_ACHIEVEMENT_ID, 1);
+        }
       } else {
         this.runState.perfectStreak = 0;
       }
+
+      this.raiseProgress(CLEAN_STREAK_ACHIEVEMENT_ID, this.runState.cleanLandingStreak);
+      this.raiseAll(SUPER_STREAK_ACHIEVEMENT_IDS, this.runState.superLandingStreak);
       this.raiseProgress(LANDING_CHAIN_ACHIEVEMENT_IDS[0], this.runState.cleanLandingStreak);
       this.raiseProgress(LANDING_CHAIN_ACHIEVEMENT_IDS[1], this.runState.cleanLandingStreak);
       this.raiseProgress(LANDING_CHAIN_ACHIEVEMENT_IDS[2], this.runState.perfectStreak);
       this.raiseProgress(LANDING_CHAIN_ACHIEVEMENT_IDS[3], this.runState.perfectStreak);
       this.raiseProgress(LANDING_CHAIN_ACHIEVEMENT_IDS[4], this.runState.perfectStreak);
+
+      this.runState.landingGradeHistory = [...this.runState.landingGradeHistory.slice(-3), event.grade];
+      if (matchesEndingPattern(this.runState.landingGradeHistory, ['miss', 'good', 'super', 'perfect'])) {
+        this.raiseProgress(GRADE_PATTERN_FAIL_GOOD_SUPER_PERFECT_ID, 1);
+      }
+      if (matchesEndingPattern(this.runState.landingGradeHistory, ['perfect', 'super', 'good', 'miss'])) {
+        this.raiseProgress(GRADE_PATTERN_PERFECT_SUPER_GOOD_MISS_ID, 1);
+      }
+      if (matchesEndingPattern(this.runState.landingGradeHistory, ['perfect', 'good', 'perfect'])) {
+        this.raiseProgress(GRADE_PATTERN_PERFECT_GOOD_PERFECT_ID, 1);
+      }
+
+      if (event.inMirror) {
+        this.incrementAll(MIRROR_LANDING_ACHIEVEMENT_IDS, 1);
+        if (event.grade === 'perfect') {
+          this.incrementProgress(MIRROR_PERFECT_ACHIEVEMENT_ID, 1);
+        }
+      }
     });
   }
 
@@ -335,6 +446,26 @@ export class AchievementSystem {
     this.runState.milestoneRewardClaimed = true;
   }
 
+  recordReverseLaunchFromAnchor() {
+    this.mutate(() => {
+      this.incrementAll(REVERSE_LAUNCH_ACHIEVEMENT_IDS, 1);
+    });
+  }
+
+  recordMirrorModeToggled(enabled: boolean) {
+    this.mutate(() => {
+      if (enabled) {
+        this.raiseProgress(MIRROR_MODE_ACHIEVEMENT_ID, 1);
+      } else if (this.runState.mirrorActive) {
+        this.raiseProgress(MIRROR_RETURN_ACHIEVEMENT_ID, 1);
+      }
+      const toggleCount = this.getRawProgress(getRawKey(['mirror-toggle-count'])) + 1;
+      this.setRawProgress(getRawKey(['mirror-toggle-count']), toggleCount);
+      this.raiseProgress(MIRROR_TOGGLE_ACHIEVEMENT_ID, toggleCount);
+      this.runState.mirrorActive = enabled;
+    });
+  }
+
   recordRunEnded(distanceMeters: number) {
     this.mutate(() => {
       const nextFailStreak = this.getRawProgress(getRawKey(['run-fail-streak'])) + 1;
@@ -345,10 +476,11 @@ export class AchievementSystem {
         const nextEarlyFailStreak = this.getRawProgress(getRawKey(['run-early-fail-streak'])) + 1;
         this.setRawProgress(getRawKey(['run-early-fail-streak']), nextEarlyFailStreak);
         this.raiseProgress(EARLY_FAIL_STREAK_ACHIEVEMENT_ID, nextEarlyFailStreak);
-        return;
+      } else {
+        this.setRawProgress(getRawKey(['run-early-fail-streak']), 0);
       }
 
-      this.setRawProgress(getRawKey(['run-early-fail-streak']), 0);
+      this.runState.mirrorActive = false;
     });
   }
 
@@ -485,6 +617,31 @@ export class AchievementSystem {
       this.uiCache.clear();
       writeAchievementPersistence(this.state, this.storage);
     }
+  }
+
+  private recordKillWindow(atSeconds: number, fromBehind: boolean) {
+    this.runState.recentKillTimes = trimWindow([...this.runState.recentKillTimes, atSeconds], atSeconds, 5);
+    if (this.runState.recentKillTimes.length >= 2) {
+      this.raiseProgress(DOUBLE_KILL_ACHIEVEMENT_ID, 1);
+    }
+    if (this.runState.recentKillTimes.length >= 3) {
+      this.raiseProgress(TRIPLE_KILL_ACHIEVEMENT_ID, 1);
+    }
+    if (!fromBehind) {
+      return;
+    }
+    this.runState.recentBackKillTimes = trimWindow([...this.runState.recentBackKillTimes, atSeconds], atSeconds, 5);
+    if (this.runState.recentBackKillTimes.length >= 2) {
+      this.raiseProgress(BACK_DOUBLE_KILL_ACHIEVEMENT_ID, 1);
+    }
+  }
+
+  private recordCanonCombo(slot: 'front_canon' | 'big_canon', atSeconds: number) {
+    this.runState.recentCanonActivations = this.runState.recentCanonActivations.filter((entry) => atSeconds - entry.atSeconds <= 5);
+    if (this.runState.recentCanonActivations.some((entry) => entry.slot !== slot)) {
+      this.incrementAll(CANON_COMBO_ACHIEVEMENT_IDS, 1);
+    }
+    this.runState.recentCanonActivations.push({ slot, atSeconds });
   }
 
   private incrementProgress(id: string, amount: number) {

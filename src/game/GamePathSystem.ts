@@ -68,6 +68,8 @@ export class GamePathSystem {
   private guaranteedShopAt50Spawned = false;
   private rewardChanceBias = 0;
   private shopChanceBias = 0;
+  private worldDirectionSign: 1 | -1 = 1;
+  private worldOffsetX = 0;
 
   reset() {
     this.seed = (Math.random() * 0x7fffffff) | 1;
@@ -77,6 +79,8 @@ export class GamePathSystem {
     this.guaranteedShopAt50Spawned = false;
     this.rewardChanceBias = 0;
     this.shopChanceBias = 0;
+    this.worldDirectionSign = 1;
+    this.worldOffsetX = 0;
     this.nodes = [
       {
         index: 0,
@@ -139,7 +143,7 @@ export class GamePathSystem {
   }
 
   getInitialPositions(count: number) {
-    return this.getInitialNodes(count).map((node) => ({ x: node.x, y: node.y, z: node.z }));
+    return this.getInitialNodes(count).map((node) => ({ x: this.projectWorldX(node.x), y: node.y, z: node.z }));
   }
 
   getNode(index: number) {
@@ -149,13 +153,34 @@ export class GamePathSystem {
 
   getWindow(start: number, count: number, elapsedTime: number, currentIndex: number) {
     this.ensureAhead(start + count);
-    return this.nodes.slice(start, start + count).map((node) => resolveRuntimeNode(node, elapsedTime, currentIndex));
+    return this.nodes.slice(start, start + count).map((node) => this.projectResolvedNode(resolveRuntimeNode(node, elapsedTime, currentIndex)));
   }
 
   getResolvedNode(index: number, elapsedTime: number, currentIndex: number): ResolvedGamePathNode {
     this.ensureAhead(index + 1);
     const node = this.nodes[index] ?? this.nodes[this.nodes.length - 1]!;
-    return resolveRuntimeNode(node, elapsedTime, currentIndex);
+    return this.projectResolvedNode(resolveRuntimeNode(node, elapsedTime, currentIndex));
+  }
+
+  resolveExternalNode(node: GamePathNode, elapsedTime: number, currentIndex: number) {
+    return this.projectResolvedNode(resolveRuntimeNode(node, elapsedTime, currentIndex));
+  }
+
+  setWorldDirectionTransform(directionSign: 1 | -1, anchorRawX = 0, anchorWorldX = anchorRawX) {
+    this.worldDirectionSign = directionSign;
+    this.worldOffsetX = anchorWorldX - directionSign * anchorRawX;
+  }
+
+  getWorldDirectionSign() {
+    return this.worldDirectionSign;
+  }
+
+  projectWorldX(rawX: number) {
+    return this.worldOffsetX + this.worldDirectionSign * rawX;
+  }
+
+  unprojectWorldX(worldX: number) {
+    return (worldX - this.worldOffsetX) / this.worldDirectionSign;
   }
 
   replaceFuture(startIndex: number, nodes: GamePathNode[]) {
@@ -308,10 +333,10 @@ export class GamePathSystem {
         const y = previous.y + (node.y - previous.y) * t;
         const length = Math.hypot(node.x - previous.x, node.y - previous.y) || 1;
         return {
-          x,
+          x: this.projectWorldX(x),
           y,
           z: 0,
-          tangent: { x: (node.x - previous.x) / length, y: (node.y - previous.y) / length }
+          tangent: { x: ((node.x - previous.x) / length) * this.worldDirectionSign, y: (node.y - previous.y) / length }
         };
       }
       previous = node;
@@ -321,11 +346,44 @@ export class GamePathSystem {
     const before = this.nodes[this.nodes.length - 2] ?? last;
     const length = Math.hypot(last.x - before.x, last.y - before.y) || 1;
     return {
-      x: last.x,
+      x: this.projectWorldX(last.x),
       y: last.y,
       z: 0,
-      tangent: { x: (last.x - before.x) / length, y: (last.y - before.y) / length }
+      tangent: { x: ((last.x - before.x) / length) * this.worldDirectionSign, y: (last.y - before.y) / length }
     };
+  }
+
+  private projectResolvedNode(node: ResolvedGamePathNode): ResolvedGamePathNode {
+    if (this.worldDirectionSign === 1 && this.worldOffsetX === 0) {
+      return node;
+    }
+    return {
+      ...node,
+      x: this.projectWorldX(node.x),
+      resolvedX: this.projectWorldX(node.resolvedX),
+      direction: this.projectDirection(node.direction)
+    };
+  }
+
+  private projectDirection(direction: GamePathNode['direction']): GamePathNode['direction'] {
+    if (this.worldDirectionSign === 1) {
+      return direction;
+    }
+    switch (direction) {
+      case 'up_right':
+        return 'up_left';
+      case 'down_right':
+        return 'down_left';
+      case 'up_left':
+        return 'up_right';
+      case 'down_left':
+        return 'down_right';
+      case 'right':
+        return 'right';
+      case 'up':
+      default:
+        return direction;
+    }
   }
 
   private append(minimumNodes: number) {
