@@ -4,6 +4,7 @@ import { isMobilePortraitRuntime, isMobileRuntime } from '../core/device';
 import { damp, wrapIndex } from '../core/math';
 import { getThemeForegroundHex } from '../core/themePalette';
 import type { AppMode } from '../core/ModeController';
+import { SpriteSheetPlane } from '../game/SpriteSheetPlane';
 import type { PortfolioProject, ThemeMode } from '../types/content';
 import type { VisiblePlatformVisual } from '../game/gameSessionTypes';
 import { SecretSlotSystem } from './SecretSlotSystem';
@@ -79,16 +80,35 @@ interface GameFieldEntity {
 
 const ORBIT_CAMERA_POSITION = new THREE.Vector3(0, 0.88, 28.8);
 const MINI_SHARDS_PER_SLOT = 4;
-const MINI_SHARD_PALETTE = ['#75AF80', '#FF4545', '#49BCFF', '#8AEBEF'] as const;
 const DEFAULT_MINI_LOGO_TEXTURE = new URL('../../assets/images/shared/branding/ape-prod-mark-dark.svg', import.meta.url).href;
-const MINI_SHARD_ACCENT_SWAP_SECONDS = 1;
-const MINI_SHARD_ACCENT_BLEND_SECONDS = 0.32;
-const MINI_IDLE_FRAGMENT_OFFSETS = [
-  new THREE.Vector3(-1.84, 0.92, -0.78),
-  new THREE.Vector3(1.52, 1.36, 0.94),
-  new THREE.Vector3(-1.18, -1.62, 1.08),
-  new THREE.Vector3(1.96, -0.84, -1.18)
-] as const;
+const SHARDLOCK_BASE_TEXTURE = new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-base.png', import.meta.url).href;
+const SHARDLOCK_SLOT_SPRITES = {
+  1: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-sprite-1.png', import.meta.url).href,
+  2: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-sprite-2.png', import.meta.url).href,
+  3: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-sprite-3.png', import.meta.url).href,
+  4: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-sprite-4.png', import.meta.url).href
+} as const;
+const SHARDLOCK_BASE_SIZE = 14.6;
+const SHARDLOCK_BASE_POSITION = new THREE.Vector3(0, 0.8, 0.18);
+const SLOT_PREVIEW_FRAME_DURATION = 0.58;
+const SLOT_UNLOCK_FRAME_DURATION = 0.14;
+const SLOT_MINI_SHARD_COUNT = MINI_SHARDS_PER_SLOT;
+const ORBITING_SHARD_SCALE = 0.68;
+const ACTIVE_ORBITING_SHARD_SCALE = 0.76;
+const DRAGGING_SHARD_SCALE = 0.82;
+const SLOT_PREVIEW_SHARD_SCALE = 0.64;
+const SNAPPED_SHARD_SCALE = 0.58;
+
+interface SlotVisualRuntime {
+  shardId: string;
+  anchor: THREE.Object3D;
+  sprite: SpriteSheetPlane | null;
+  state: 'hidden' | 'preview_forward' | 'locked' | 'unlocking_reverse';
+  stateElapsed: number;
+  wasActivated: boolean;
+  currentFrame: number;
+}
+
 export class OrbitWorldSystem {
   private readonly root = new THREE.Group();
   private readonly raycaster = new THREE.Raycaster();
@@ -113,7 +133,12 @@ export class OrbitWorldSystem {
   private readonly focusWaveGeometry = createFragmentedRoundedRectGeometry(2.04, 1.38, 0.42, 0.36);
   private readonly constellationLines: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>[];
   private readonly gameFieldEntities: GameFieldEntity[];
+  private readonly shardLockGroup = new THREE.Group();
+  private readonly shardLockBase: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  private readonly shardLockSlots = new Map<string, SlotVisualRuntime>();
   private readonly cameraFacingAnchor = new THREE.Object3D();
+  private shardLockTransitionActive = false;
+  private shardLockTransitionProgress = 0;
   private globalOrbitTime = 0;
   private hoveredId: string | null = null;
   private focusedId: string | null = null;
@@ -133,9 +158,6 @@ export class OrbitWorldSystem {
   private externalTransitionDelays: number[] = [];
   private speedAccentTimer = 36;
   private speedAccentId: string | null = null;
-  private miniShardAccentIndex = 0;
-  private miniShardPreviousAccentIndex = -1;
-  private miniShardNextAccentSwapAt = 0;
   private nextFocusWaveAt = 0;
   private focusWaveUntil = 0;
   private unlockCallbacks = new Set<() => void>();
@@ -159,6 +181,10 @@ export class OrbitWorldSystem {
     this.backgroundPoints = this.createBackgroundPoints();
     this.scene.add(this.backgroundPoints);
     this.constellationLines = this.createConstellationLines();
+    this.shardLockBase = this.createShardLockBase();
+    this.root.add(this.shardLockGroup);
+    this.shardLockGroup.add(this.shardLockBase);
+    this.initializeShardLockSlots();
     this.entityList = projects.map((project, index) => this.createShard(project, index));
     this.gameFieldEntities = Array.from({ length: Math.max(1, this.slotSystem.getSlots().length * MINI_SHARDS_PER_SLOT) }, (_, index) =>
       this.createGameFieldShard(index)
@@ -478,6 +504,7 @@ export class OrbitWorldSystem {
       return false;
     }
     entity.snapped = false;
+    this.slotSystem.deactivate(shardId);
     entity.runtimeState = 'orbiting';
     entity.velocity.set(0, 0, 0);
     entity.dragTarget.copy(entity.group.position);
@@ -487,6 +514,11 @@ export class OrbitWorldSystem {
   onUnlocked(callback: () => void) {
     this.unlockCallbacks.add(callback);
     return () => this.unlockCallbacks.delete(callback);
+  }
+
+  setShardLockTransition(active: boolean, progress: number) {
+    this.shardLockTransitionActive = active;
+    this.shardLockTransitionProgress = THREE.MathUtils.clamp(progress, 0, 1);
   }
 
   activateSlotPreview() {
@@ -731,6 +763,7 @@ export class OrbitWorldSystem {
     this.backgroundPoints.rotation.z += deltaTime * 0.012;
     this.backgroundPoints.rotation.y += deltaTime * 0.02;
     this.syncLivePivot(elapsedTime);
+    this.updateShardLockTotem(deltaTime, elapsedTime);
     if (this.focusedId) {
       if (this.nextFocusWaveAt <= 0) {
         this.nextFocusWaveAt = elapsedTime + 5 + Math.random() * 10;
@@ -771,9 +804,9 @@ export class OrbitWorldSystem {
       const orbitTarget = this.computeOrbitTarget(entity, elapsedTime, isActive);
 
       let targetPosition = orbitTarget;
-      let targetScaleX = isActive ? 1.1 : 1;
-      let targetScaleY = isActive ? 1.1 : 1;
-      let targetScaleZ = isActive ? 1.1 : 1;
+      let targetScaleX = isActive ? ACTIVE_ORBITING_SHARD_SCALE : ORBITING_SHARD_SCALE;
+      let targetScaleY = isActive ? ACTIVE_ORBITING_SHARD_SCALE : ORBITING_SHARD_SCALE;
+      let targetScaleZ = isActive ? ACTIVE_ORBITING_SHARD_SCALE : ORBITING_SHARD_SCALE;
       let targetOpacity = this.focusedId ? (isFocused ? 1 : 0.26) : 1;
       let targetState: RuntimeState = entity.snapped ? 'snapped' : 'orbiting';
 
@@ -841,21 +874,21 @@ export class OrbitWorldSystem {
         }
       } else if (isDragging) {
         targetPosition = entity.dragTarget;
-        targetScaleX = 1.06;
-        targetScaleY = 1.06;
-        targetScaleZ = 1.06;
+        targetScaleX = DRAGGING_SHARD_SCALE;
+        targetScaleY = DRAGGING_SHARD_SCALE;
+        targetScaleZ = DRAGGING_SHARD_SCALE;
         targetState = 'dragging';
       } else if (entity.snapped) {
         targetPosition = new THREE.Vector3(slot!.worldPosition.x, slot!.worldPosition.y, slot!.worldPosition.z);
-        targetScaleX = 1.34;
-        targetScaleY = 1.08;
-        targetScaleZ = 1.18;
+        targetScaleX = SNAPPED_SHARD_SCALE;
+        targetScaleY = SNAPPED_SHARD_SCALE * 0.88;
+        targetScaleZ = SNAPPED_SHARD_SCALE * 0.94;
         targetState = 'snapped';
       } else if (isSlotPreview && slot) {
         targetPosition = new THREE.Vector3(slot.worldPosition.x, slot.worldPosition.y, slot.worldPosition.z);
-        targetScaleX = 1.2;
-        targetScaleY = 1.02;
-        targetScaleZ = 1.08;
+        targetScaleX = SLOT_PREVIEW_SHARD_SCALE;
+        targetScaleY = SLOT_PREVIEW_SHARD_SCALE * 0.88;
+        targetScaleZ = SLOT_PREVIEW_SHARD_SCALE * 0.94;
         targetState = 'snapped';
       } else if (inFocusFlow) {
         const focusVisual = THREE.MathUtils.clamp(entity.focusAmount, 0, 1);
@@ -1082,100 +1115,70 @@ export class OrbitWorldSystem {
 
   private updateGameFieldEntities(deltaTime: number, elapsedTime: number) {
     if (!this.externalLayoutActive) {
-      const slots = this.slotSystem.getSlots();
-      const requiredMiniShardCount = Math.max(1, slots.length * MINI_SHARDS_PER_SLOT);
-      const guidedSlotId = this.draggingId ? this.slotSystem.getSlotForShard(this.draggingId)?.shardId ?? null : null;
-      const miniAccent = this.getMiniShardAccentState(elapsedTime, requiredMiniShardCount);
-      const accentColor = new THREE.Color(this.getMiniShardAccentColor(elapsedTime));
-      const themeColor = new THREE.Color(getThemeForegroundHex(this.theme));
-      this.gameFieldEntities.forEach((entity, index) => {
-        if (index >= requiredMiniShardCount) {
-          entity.group.visible = false;
+      const visibleSlots = this.slotSystem.getSlots();
+      let runtimeIndex = 0;
+
+      visibleSlots.forEach((slot, slotIndex) => {
+        const project = this.entities.get(slot.shardId)?.project ?? null;
+        for (let miniIndex = 0; miniIndex < SLOT_MINI_SHARD_COUNT && runtimeIndex < this.gameFieldEntities.length; miniIndex += 1) {
+          const entity = this.gameFieldEntities[runtimeIndex++]!;
+          const phase = elapsedTime * 0.72 + slotIndex * 1.38 + miniIndex * ((Math.PI * 2) / SLOT_MINI_SHARD_COUNT);
+          const previewBoost = this.draggingId === slot.shardId ? 1 : 0;
+          const slotStrength = slot.activated ? 1 : 0.74;
+          const idleRadius = 1.02 + miniIndex * 0.22;
+          const lockedRadius = 0.52 + miniIndex * 0.08;
+          const radius = THREE.MathUtils.lerp(idleRadius, lockedRadius, slot.activated ? 1 : 0);
+          const targetScale = (0.108 + miniIndex * 0.014) * (slot.activated ? 1.1 : 1.02);
+          const logoOpacity = slot.activated ? 0.92 : 0.66;
+          const verticalBob = slot.activated ? 0.09 + previewBoost * 0.05 : 0.22 + previewBoost * 0.12;
+          const depthBob = slot.activated ? 0.16 : 0.28;
+          const targetPosition = new THREE.Vector3(
+            slot.worldPosition.x + Math.cos(phase) * radius,
+            slot.worldPosition.y + Math.sin(phase * 1.18) * verticalBob + Math.sin(elapsedTime * 0.9 + miniIndex) * (slot.activated ? 0.05 : 0.11),
+            slot.worldPosition.z - (slot.activated ? 0.16 : 0.24) + Math.sin(phase * 0.9) * depthBob
+          );
+
+          entity.group.visible = true;
           entity.hiddenUntil = 0;
-          this.syncMiniLogoPlanes(entity, null, 0, 0);
-          return;
+          entity.group.position.x = damp(entity.group.position.x, targetPosition.x, 8.4, deltaTime);
+          entity.group.position.y = damp(entity.group.position.y, targetPosition.y, 8.4, deltaTime);
+          entity.group.position.z = damp(entity.group.position.z, targetPosition.z, 8.4, deltaTime);
+          entity.group.rotation.x = damp(entity.group.rotation.x, 0.12 + Math.sin(phase) * 0.08, 5.2, deltaTime);
+          entity.group.rotation.y = damp(entity.group.rotation.y, phase * 0.18, 3.6, deltaTime);
+          entity.group.rotation.z = damp(entity.group.rotation.z, Math.sin(phase * 0.7) * 0.18, 4.4, deltaTime);
+          entity.group.scale.x = damp(entity.group.scale.x, targetScale, 6.2, deltaTime);
+          entity.group.scale.y = damp(entity.group.scale.y, targetScale, 6.2, deltaTime);
+          entity.group.scale.z = damp(entity.group.scale.z, targetScale * 0.92, 6.2, deltaTime);
+          entity.core.material.opacity = 0.82 + slotStrength * 0.1;
+          entity.core.material.emissiveIntensity = 0.08 + slotStrength * 0.06;
+          entity.accentRing.visible = false;
+          entity.iconPlane.visible = false;
+          setDeformMaterialTheme(entity.core.material, this.theme);
+          this.syncMiniLogoPlanes(entity, project, logoOpacity, targetScale);
+          updateDeformUniforms(entity.core.material, {
+            time: elapsedTime,
+            hover: 0,
+            drag: 0,
+            focus: 0,
+            settled: 0,
+            snap: 0.18 + slotStrength * 0.12,
+            orbitAngle: 0,
+            orbitPulse: 0.05 + previewBoost * 0.05,
+            waveDensity: 0.82 + slotStrength * 0.1,
+            stripeMix: 0,
+            stripePhase: phase
+          });
         }
-        const slotIndex = Math.floor(index / MINI_SHARDS_PER_SLOT);
-        const slotOrbitIndex = index % MINI_SHARDS_PER_SLOT;
-        const slot = slots[slotIndex];
-        if (!slot) {
-          entity.group.visible = false;
-          this.syncMiniLogoPlanes(entity, null, 0, 0);
-          return;
-        }
-        const angleDirection = slotOrbitIndex % 2 === 0 ? 1 : -1;
-        const activated = slot.activated;
-        const guided = guidedSlotId === slot.shardId;
-        const guidePulse = guided ? 0.5 + 0.5 * Math.sin(elapsedTime * 5.4 + slotOrbitIndex * 0.9) : 0;
-        const orbitRadius = (activated ? 1.12 : guided ? 0.94 : 1.78) + slotOrbitIndex * (activated ? 0.46 : guided ? 0.34 : 0.76);
-        const orbitSpeed = (activated ? 1.54 : guided ? 1.08 : 0.78) + slotOrbitIndex * 0.11;
-        const basePhase = (slotOrbitIndex / MINI_SHARDS_PER_SLOT) * Math.PI * 2 + slotIndex * 0.08;
-        const angle = basePhase + elapsedTime * orbitSpeed * angleDirection;
-        const fragmentOffset = MINI_IDLE_FRAGMENT_OFFSETS[slotOrbitIndex] ?? MINI_IDLE_FRAGMENT_OFFSETS[0];
-        const drift = activated
-          ? new THREE.Vector3(Math.cos(angle) * orbitRadius, Math.sin(angle) * orbitRadius * 0.96, Math.sin(angle * 0.9) * 0.44)
-          : guided
-            ? new THREE.Vector3(Math.cos(angle) * orbitRadius, Math.sin(angle) * orbitRadius * 0.9, Math.sin(angle * 0.9) * 0.34)
-            : fragmentOffset
-                .clone()
-                .multiplyScalar(orbitRadius * 0.78)
-                .add(
-                  new THREE.Vector3(
-                    Math.sin(angle * 1.3) * 0.64,
-                    Math.cos(angle * 1.7) * 0.52,
-                    Math.sin(angle * 0.8 + slotOrbitIndex) * 1.18
-                  )
-                );
-        const targetX = slot.worldPosition.x + drift.x;
-        const targetY = slot.worldPosition.y + drift.y;
-        const targetZ = slot.worldPosition.z + drift.z;
-        entity.group.visible = true;
-        entity.group.position.x = damp(entity.group.position.x, targetX, 4.6, deltaTime);
-        entity.group.position.y = damp(entity.group.position.y, targetY, 4.6, deltaTime);
-        entity.group.position.z = damp(entity.group.position.z, targetZ, 4.6, deltaTime);
-        entity.group.rotation.x = damp(entity.group.rotation.x, entity.group.rotation.x + deltaTime * (activated ? 0.16 : 0.32), 2, deltaTime);
-        entity.group.rotation.y = damp(entity.group.rotation.y, entity.group.rotation.y + deltaTime * (activated ? 0.24 : 0.44), 2, deltaTime);
-        entity.group.rotation.z = damp(entity.group.rotation.z, entity.group.rotation.z + deltaTime * (activated ? 0.12 : 0.28), 2, deltaTime);
-        entity.group.scale.setScalar(
-          damp(entity.group.scale.x, (activated ? 0.286 : guided ? 0.244 : 0.332) + Math.sin(elapsedTime * 1.8 + index) * 0.026, 6, deltaTime)
-        );
+      });
+
+      for (; runtimeIndex < this.gameFieldEntities.length; runtimeIndex += 1) {
+        const entity = this.gameFieldEntities[runtimeIndex]!;
+        entity.group.visible = false;
+        entity.hiddenUntil = 0;
         entity.accentRing.visible = false;
         entity.iconPlane.visible = false;
-        const miniScale = activated ? 0.286 : guided ? 0.244 : 0.352;
-        const miniLogoOpacity = this.focusedId ? 0.2 : activated ? 0.96 : guided ? THREE.MathUtils.lerp(0.82, 1, guidePulse) : 0.88;
-        entity.core.material.opacity = this.focusedId ? 0.28 : 1;
-        entity.core.material.emissiveIntensity = this.focusedId ? 0.08 : activated ? 0.24 : guided ? THREE.MathUtils.lerp(0.16, 0.28, guidePulse) : 0.14;
-        const accentBlend =
-          index === miniAccent.activeIndex
-            ? miniAccent.blend
-            : index === miniAccent.previousIndex
-              ? 1 - miniAccent.blend
-              : 0;
-        const targetColor = themeColor.clone().lerp(accentColor, accentBlend);
-        entity.core.material.color.lerp(targetColor, THREE.MathUtils.clamp(deltaTime * 8.4, 0, 1));
-        entity.core.material.emissive.lerp(targetColor, THREE.MathUtils.clamp(deltaTime * 8.4, 0, 1));
-        this.syncMiniLogoPlanes(entity, this.entities.get(slot.shardId)?.project ?? null, miniLogoOpacity, miniScale);
-        entity.logoPlanes.forEach((plane, planeIndex) => {
-          const planeAngle = Number(plane.userData.logoAngle ?? 0);
-          const visibility = activated || guided
-            ? 0.16 + Math.max(0, Math.cos(angle + planeAngle - Math.PI * 0.5)) * 0.84
-            : 0.22 + Math.max(0, Math.cos(angle * 0.62 + planeAngle - Math.PI * 0.35)) * 0.78;
-          plane.visible = miniLogoOpacity * visibility > 0.06;
-          plane.material.opacity = miniLogoOpacity * visibility * (0.9 + planeIndex * 0.04);
-        });
-        updateDeformUniforms(entity.core.material, {
-          time: elapsedTime,
-          hover: 0,
-          drag: 0,
-          focus: 0,
-          settled: 0,
-          snap: activated ? 0.08 : guided ? 0.22 : 1.2,
-          orbitAngle: angle,
-          orbitPulse: activated ? 0.16 : guided ? 0.14 : 0.34,
-          waveDensity: activated ? 0.78 : guided ? 0.76 : 1.92,
-          stripeMix: 0
-        });
-      });
+        this.syncMiniLogoPlanes(entity, null, 0, 0);
+      }
       return;
     }
 
@@ -1355,55 +1358,6 @@ export class OrbitWorldSystem {
     return THREE.MathUtils.smoothstep(normalized, 0, 1);
   }
 
-  private getMiniShardAccentState(elapsedTime: number, count: number) {
-    if (count <= 1) {
-      return { activeIndex: 0, previousIndex: -1, blend: 1 };
-    }
-
-    if (this.miniShardNextAccentSwapAt <= 0) {
-      this.miniShardAccentIndex = Math.floor(Math.random() * count);
-      this.miniShardPreviousAccentIndex = -1;
-      this.miniShardNextAccentSwapAt = elapsedTime + MINI_SHARD_ACCENT_SWAP_SECONDS;
-    }
-
-    while (elapsedTime >= this.miniShardNextAccentSwapAt) {
-      this.miniShardPreviousAccentIndex = this.miniShardAccentIndex;
-      let nextIndex = this.miniShardAccentIndex;
-      while (nextIndex === this.miniShardAccentIndex && count > 1) {
-        nextIndex = Math.floor(Math.random() * count);
-      }
-      this.miniShardAccentIndex = nextIndex;
-      this.miniShardNextAccentSwapAt += MINI_SHARD_ACCENT_SWAP_SECONDS;
-    }
-
-    this.miniShardAccentIndex = THREE.MathUtils.clamp(this.miniShardAccentIndex, 0, count - 1);
-    if (this.miniShardPreviousAccentIndex >= count) {
-      this.miniShardPreviousAccentIndex = -1;
-    }
-
-    const swapStartedAt = this.miniShardNextAccentSwapAt - MINI_SHARD_ACCENT_SWAP_SECONDS;
-    const blend = THREE.MathUtils.clamp((elapsedTime - swapStartedAt) / MINI_SHARD_ACCENT_BLEND_SECONDS, 0, 1);
-    return {
-      activeIndex: this.miniShardAccentIndex,
-      previousIndex: this.miniShardPreviousAccentIndex,
-      blend
-    };
-  }
-
-  private getMiniShardAccentColor(elapsedTime: number) {
-    const cycleDuration = 10 + 1;
-    const cycleIndex = Math.floor(elapsedTime / cycleDuration) % MINI_SHARD_PALETTE.length;
-    const cycleTime = elapsedTime % cycleDuration;
-    const from = new THREE.Color(MINI_SHARD_PALETTE[cycleIndex]);
-    if (cycleTime <= 10) {
-      return `#${from.getHexString()}`;
-    }
-    const to = new THREE.Color(MINI_SHARD_PALETTE[(cycleIndex + 1) % MINI_SHARD_PALETTE.length]);
-    const blend = THREE.MathUtils.clamp((cycleTime - 10) / 1, 0, 1);
-    from.lerp(to, blend);
-    return `#${from.getHexString()}`;
-  }
-
   private computeOrbitTarget(entity: ShardEntity, elapsedTime: number, isActive: boolean) {
     const orbitFlow = isActive && !this.focusedId && this.draggingId !== entity.project.id ? 0 : 1;
     const angle = entity.orbitPhase + elapsedTime * entity.orbitSpeed * entity.orbitBoost * orbitFlow;
@@ -1528,6 +1482,63 @@ export class OrbitWorldSystem {
     return entity;
   }
 
+  private createShardLockBase() {
+    const texture = getSharedTextureAsset(SHARDLOCK_BASE_TEXTURE, {
+      colorSpace: THREE.SRGBColorSpace,
+      anisotropy: 8
+    });
+    const material = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      alphaTest: 0.04,
+      depthWrite: true,
+      depthTest: true,
+      toneMapped: false
+    });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(SHARDLOCK_BASE_SIZE, SHARDLOCK_BASE_SIZE), material);
+    mesh.position.z = 0.02;
+    return mesh;
+  }
+
+  private initializeShardLockSlots() {
+    this.shardLockGroup.position.copy(SHARDLOCK_BASE_POSITION);
+    this.shardLockGroup.renderOrder = 4;
+    this.slotSystem.getSlots().forEach((slot) => {
+      const anchor = new THREE.Object3D();
+      anchor.position.set(
+        (slot.normalizedPosition.x - 0.5) * SHARDLOCK_BASE_SIZE,
+        (0.5 - slot.normalizedPosition.y) * SHARDLOCK_BASE_SIZE,
+        0.14
+      );
+      this.shardLockGroup.add(anchor);
+
+      let sprite: SpriteSheetPlane | null = null;
+      if (slot.animated) {
+        sprite = new SpriteSheetPlane({
+          textureUrl: SHARDLOCK_SLOT_SPRITES[slot.slotIndex as 1 | 2 | 3 | 4],
+          layout: { columns: 2, rows: 2 },
+          width: SHARDLOCK_BASE_SIZE,
+          height: SHARDLOCK_BASE_SIZE,
+          alphaTest: 0.08,
+          renderOrder: 2
+        });
+        sprite.group.position.z = -0.16;
+        sprite.setVisible(false);
+        this.shardLockGroup.add(sprite.group);
+      }
+
+      this.shardLockSlots.set(slot.shardId, {
+        shardId: slot.shardId,
+        anchor,
+        sprite,
+        state: 'hidden',
+        stateElapsed: 0,
+        wasActivated: slot.activated,
+        currentFrame: 0
+      });
+    });
+  }
+
   private createGameFieldShard(index: number) {
     const group = new THREE.Group();
     group.visible = false;
@@ -1535,6 +1546,7 @@ export class OrbitWorldSystem {
 
     const material = createDeformMaterial(this.theme, 900 + index * 23);
     const core = new THREE.Mesh(this.miniShardGeometry, material);
+    core.renderOrder = 8;
     group.add(core);
     const accentRing = this.createAccentRing();
     accentRing.visible = false;
@@ -1563,6 +1575,101 @@ export class OrbitWorldSystem {
       hiddenUntil: 0,
       logoKey: null
     } satisfies GameFieldEntity;
+  }
+
+  private updateShardLockTotem(deltaTime: number, _elapsedTime: number) {
+    const visible = !this.externalLayoutActive || this.shardLockTransitionActive;
+    this.shardLockGroup.visible = visible;
+    if (!visible) {
+      return;
+    }
+
+    this.cameraFacingAnchor.position.copy(SHARDLOCK_BASE_POSITION);
+    this.cameraFacingAnchor.lookAt(this.cameraReferencePosition);
+    const toCamera = this.cameraReferencePosition.clone().sub(SHARDLOCK_BASE_POSITION).normalize();
+    const transitionPose = this.resolveShardLockTransitionPose(this.shardLockTransitionProgress);
+    this.shardLockGroup.position.copy(SHARDLOCK_BASE_POSITION).add(transitionPose.offset);
+    this.shardLockGroup.quaternion.slerp(this.cameraFacingAnchor.quaternion, THREE.MathUtils.clamp(deltaTime * 9.5, 0, 1));
+    this.shardLockGroup.scale.copy(transitionPose.scale);
+    if (this.shardLockTransitionActive && this.shardLockTransitionProgress >= 0.98) {
+      this.shardLockGroup.visible = false;
+    }
+
+    for (const slot of this.slotSystem.getSlots()) {
+      const runtime = this.shardLockSlots.get(slot.shardId);
+      if (!runtime) continue;
+
+      runtime.anchor.getWorldPosition(this.interactionPlanePoint);
+      this.interactionPlanePoint.addScaledVector(toCamera, 0.3);
+      this.slotSystem.setWorldPosition(slot.shardId, this.interactionPlanePoint);
+
+      const entity = this.entities.get(slot.shardId) ?? null;
+      const previewing =
+        this.draggingId === slot.shardId &&
+        !slot.activated &&
+        entity !== null &&
+        this.slotSystem.getProximity(slot.shardId, entity.dragTarget) > 0.18;
+
+      this.slotSystem.setPreviewing(slot.shardId, previewing);
+
+      if (slot.activated) {
+        runtime.state = 'locked';
+        runtime.stateElapsed = 0;
+        runtime.currentFrame = 3;
+      } else if (runtime.wasActivated && !slot.activated) {
+        runtime.state = 'unlocking_reverse';
+        runtime.stateElapsed = 0;
+      } else if (previewing) {
+        if (runtime.state !== 'preview_forward') {
+          runtime.state = 'preview_forward';
+          runtime.stateElapsed = 0;
+        }
+      } else if (runtime.state !== 'unlocking_reverse') {
+        if (runtime.state === 'preview_forward' && runtime.currentFrame > 0) {
+          runtime.state = 'unlocking_reverse';
+          runtime.stateElapsed = 0;
+        } else {
+          runtime.state = 'hidden';
+          runtime.stateElapsed = 0;
+          runtime.currentFrame = 0;
+          this.slotSystem.hide(slot.shardId);
+        }
+      }
+
+      runtime.wasActivated = slot.activated;
+      runtime.stateElapsed += deltaTime;
+
+      if (!runtime.sprite) {
+        continue;
+      }
+      if (runtime.state === 'hidden') {
+        runtime.sprite.setVisible(false);
+        continue;
+      }
+
+      runtime.sprite.setVisible(true);
+      if (runtime.state === 'preview_forward') {
+        runtime.currentFrame = Math.min(3, Math.floor(runtime.stateElapsed / SLOT_PREVIEW_FRAME_DURATION));
+        runtime.sprite.setFrame(runtime.currentFrame);
+        continue;
+      }
+      if (runtime.state === 'locked') {
+        runtime.currentFrame = 3;
+        runtime.sprite.setFrame(3);
+        continue;
+      }
+
+      const reverseStep = Math.floor(runtime.stateElapsed / SLOT_UNLOCK_FRAME_DURATION);
+      const reverseFrame = Math.max(0, runtime.currentFrame - reverseStep);
+      runtime.sprite.setFrame(reverseFrame);
+      if (runtime.stateElapsed >= SLOT_UNLOCK_FRAME_DURATION * (runtime.currentFrame + 1)) {
+        runtime.state = 'hidden';
+        runtime.stateElapsed = 0;
+        runtime.currentFrame = 0;
+        runtime.sprite.setVisible(false);
+        this.slotSystem.hide(slot.shardId);
+      }
+    }
   }
 
   private createAccentRing() {
@@ -1745,8 +1852,8 @@ export class OrbitWorldSystem {
     });
   }
 
-  private syncMiniLogoPlanes(entity: GameFieldEntity, _project: PortfolioProject | null, opacity: number, scale: number) {
-    const texturePath = DEFAULT_MINI_LOGO_TEXTURE;
+  private syncMiniLogoPlanes(entity: GameFieldEntity, project: PortfolioProject | null, opacity: number, scale: number) {
+    const texturePath = project ? (this.theme === 'dark' ? project.logo.dark : project.logo.light) : DEFAULT_MINI_LOGO_TEXTURE;
     if (entity.logoKey !== texturePath) {
       entity.logoKey = texturePath;
       const texture = getSharedTextureAsset(texturePath, {
@@ -1758,13 +1865,45 @@ export class OrbitWorldSystem {
       });
     }
 
-    const planeScale = Math.max(0.28, scale * 2.18);
+    const planeScale = Math.max(0.24, scale * 2.22);
     entity.logoPlanes.forEach((plane, index) => {
       plane.visible = opacity > 0.02;
       plane.material.opacity = opacity * (0.86 + index * 0.06);
       plane.scale.setScalar(planeScale);
       plane.renderOrder = 24;
     });
+  }
+
+  private resolveShardLockTransitionPose(progress: number) {
+    if (!this.shardLockTransitionActive) {
+      return {
+        offset: new THREE.Vector3(0, 0, 0),
+        scale: new THREE.Vector3(1, 1, 1)
+      };
+    }
+
+    const offset = new THREE.Vector3();
+    const scale = new THREE.Vector3(1, 1, 1);
+
+    if (progress < 0.14) {
+      const local = easeInOutCubic(progress / 0.14);
+      offset.y -= 0.18 * local;
+      scale.set(1 + local * 0.06, 1 - local * 0.08, 1);
+    } else if (progress < 0.34) {
+      const local = easeOutCubic((progress - 0.14) / 0.2);
+      offset.y = THREE.MathUtils.lerp(-0.18, 0.95, local);
+      scale.set(1.02 - local * 0.04, 0.92 + local * 0.1, 1);
+    } else if (progress < 0.42) {
+      const local = easeInOutCubic((progress - 0.34) / 0.08);
+      offset.y = THREE.MathUtils.lerp(0.95, 0, local);
+      scale.set(0.98 + local * 0.02, 1.02 - local * 0.02, 1);
+    } else {
+      const local = easeInCubic((progress - 0.42) / 0.58);
+      offset.y = THREE.MathUtils.lerp(0, -16.4, local);
+      scale.set(1 - local * 0.06, 1 + local * 0.024, 1);
+    }
+
+    return { offset, scale };
   }
 
   private createBackgroundPoints() {
@@ -1815,4 +1954,20 @@ export class OrbitWorldSystem {
       line.visible = false;
     });
   }
+}
+
+function easeOutCubic(value: number) {
+  const clamped = THREE.MathUtils.clamp(value, 0, 1);
+  const inverse = 1 - clamped;
+  return 1 - inverse * inverse * inverse;
+}
+
+function easeInCubic(value: number) {
+  const clamped = THREE.MathUtils.clamp(value, 0, 1);
+  return clamped * clamped * clamped;
+}
+
+function easeInOutCubic(value: number) {
+  const clamped = THREE.MathUtils.clamp(value, 0, 1);
+  return clamped < 0.5 ? 4 * clamped * clamped * clamped : 1 - Math.pow(-2 * clamped + 2, 3) / 2;
 }

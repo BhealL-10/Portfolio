@@ -63,6 +63,12 @@ export interface ContactLink {
 
 export interface SecretSlot {
   shardId: string;
+  slotIndex: number;
+  animated: boolean;
+  normalizedPosition: {
+    x: number;
+    y: number;
+  };
   worldPosition: {
     x: number;
     y: number;
@@ -70,4 +76,5 @@ export interface SecretSlot {
   };
   snapRadius: number;
   activated: boolean;
+  state: 'hidden' | 'preview_forward' | 'locked' | 'unlocking_reverse';
 }

@@ -1,5 +1,4 @@
-import type { Language } from '../types/content';
-import type { ContentService } from '../data/ContentService';
+import type { Language, PortfolioProject } from '../types/content';
 import { I18nService } from './I18nService';
 
 const LANGUAGE_BUTTON_ASSETS = {
@@ -31,7 +30,7 @@ export class NavigationHUD {
   constructor(
     host: HTMLElement,
     private readonly i18n: I18nService,
-    private readonly content: ContentService,
+    private readonly visibleProjects: PortfolioProject[],
     callbacks: NavigationHUDCallbacks
   ) {
     this.element = document.createElement('div');
@@ -60,7 +59,7 @@ export class NavigationHUD {
     this.projectRail = document.createElement('div');
     this.projectRail.className = 'navigation-hud__rail';
 
-    this.content.getProjects().forEach((_, index) => {
+    this.visibleProjects.forEach((_, index) => {
       const dot = document.createElement('button');
       dot.className = 'navigation-hud__dot';
       dot.type = 'button';
@@ -84,11 +83,11 @@ export class NavigationHUD {
   }
 
   setActiveProject(index: number, language: Language) {
-    const project = this.content.getProjectByOrder(index);
+    const project = this.visibleProjects[index] || null;
     this.activeChip.textContent = project ? project.title[language] : '';
     this.dots.forEach((dot, dotIndex) => {
       dot.classList.toggle('is-active', dotIndex === index);
-      dot.title = this.content.getProjectByOrder(dotIndex)?.title[language] || '';
+      dot.title = this.visibleProjects[dotIndex]?.title[language] || '';
     });
     this.outroDot.classList.remove('is-active');
   }

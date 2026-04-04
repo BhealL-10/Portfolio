@@ -55,6 +55,7 @@ interface LoadedGameRuntime {
 
 export class AppController {
   private readonly content = new ContentService();
+  private readonly portfolioHubProjects = this.content.getProjects().slice(0, 6);
   private readonly theme = new ThemeService();
   private readonly i18n = new I18nService();
   private readonly mode = new ModeController();
@@ -143,12 +144,11 @@ export class AppController {
     );
     void this.parallaxLayers.init();
     this.slotSystem = new SecretSlotSystem(
-      this.content
-        .getProjects()
+      this.portfolioHubProjects
         .map((project) => project.id)
     );
-    this.world = new OrbitWorldSystem(this.renderer.scene, this.content.getProjects(), this.slotSystem, this.theme.current);
-    this.hud = new NavigationHUD(this.uiHost, this.i18n, this.content, {
+    this.world = new OrbitWorldSystem(this.renderer.scene, this.portfolioHubProjects, this.slotSystem, this.theme.current);
+    this.hud = new NavigationHUD(this.uiHost, this.i18n, this.portfolioHubProjects, {
       onThemeToggle: () => this.theme.toggle(),
       onLanguageToggle: () => this.i18n.toggle(),
       onAboutToggle: () => this.toggleAbout(),
@@ -778,7 +778,7 @@ export class AppController {
       this.stepActiveIndex(1);
     } else if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      const project = this.content.getProjectByOrder(this.activeIndex);
+      const project = this.portfolioHubProjects[this.activeIndex] || null;
       if (project) this.enterFocus(project.id);
     }
   };
@@ -858,7 +858,7 @@ export class AppController {
   };
 
   private stepActiveIndex(direction: number) {
-    this.activeIndex = wrapIndex(this.activeIndex + direction, this.content.getProjectCount());
+    this.activeIndex = wrapIndex(this.activeIndex + direction, this.portfolioHubProjects.length);
     this.world.setActiveIndex(this.activeIndex);
     this.refreshUI();
   }
@@ -871,7 +871,7 @@ export class AppController {
       return;
     }
 
-    const lastIndex = this.content.getProjectCount() - 1;
+    const lastIndex = this.portfolioHubProjects.length - 1;
     if (direction > 0 && this.activeIndex >= lastIndex) {
       this.openAboutFromScroll();
       return;
@@ -918,7 +918,7 @@ export class AppController {
     this.world.setActiveIndex(index);
     this.refreshUI();
 
-    const project = this.content.getProjectByOrder(index);
+    const project = this.portfolioHubProjects[index] || null;
     if (project && isPortfolioBrowseMode(this.mode.current)) {
       this.enterFocus(project.id);
     }
@@ -1195,6 +1195,7 @@ export class AppController {
 
     this.mode.setMode('game_transition');
     this.gameTransitionProgress = 0;
+    this.parallaxLayers.rearmAdventureIntro();
     this.parallaxLayers.beginAdventureIntro();
     this.parallaxLayers.setTransitionState(true, 0);
     this.game.startTransition();
@@ -1245,6 +1246,7 @@ export class AppController {
             ? this.getprimaterieToGameShardTransitionProgress(value)
             : this.getPortfolioToGameShardTransitionProgress(value)
         );
+        this.world.setShardLockTransition(!this.gameTransitionFromprimaterie, value);
       },
       onComplete: () => {
         this.gameTransitionTweenId = null;
@@ -1252,6 +1254,7 @@ export class AppController {
         this.gameTransitionFromprimaterie = false;
         this.gameTransitionReturningToHub = false;
         this.gameTransitionAnchor = null;
+        this.world.setShardLockTransition(false, 0);
         this.mode.setMode('game');
         this.game.beginRun();
         this.parallaxLayers.resetForRun(this.game.getParallaxCoverageAnchorX());
@@ -1501,6 +1504,7 @@ export class AppController {
     );
     this.renderer.setCameraTarget(cameraPosition, cameraLookAt);
     this.renderer.update(deltaTime);
+    this.world.setShardLockTransition(this.mode.is('game_transition') && !this.gameTransitionFromprimaterie, this.gameTransitionProgress);
     const musicReactiveState = gameRuntime
       ? this.audio.getMusicReactiveState()
       : {
@@ -1531,6 +1535,7 @@ export class AppController {
       this.parallaxLayers.setMirrorMode(this.game.isMirrorModeActive());
       this.parallaxLayers.setCoverageAnchorX(this.game.getParallaxCoverageAnchorX());
       this.parallaxLayers.setViewState(this.game.getParallaxViewState());
+      this.parallaxLayers.setMusicReactiveState(musicReactiveState);
       this.parallaxLayers.setTransitionState(this.mode.is('game_transition') && !this.gameTransitionReturningToHub, this.gameTransitionProgress);
     }
     this.parallaxLayers.setVisible(parallaxVisible);
@@ -1569,7 +1574,9 @@ export class AppController {
   private refreshUI() {
     this.syncRuntimeDeviceState();
     const focusedProject = this.world.getFocusedProject();
-    const focusIndex = focusedProject ? this.content.getProjectIndex(focusedProject.id) : this.activeIndex;
+    const focusIndex = focusedProject
+      ? Math.max(0, this.portfolioHubProjects.findIndex((project) => project.id === focusedProject.id))
+      : this.activeIndex;
     const isGameMode = isGameRuntimeMode(this.mode.current);
     const showGameHud = isGameMode && !this.gameTransitionReturningToHub && this.gameRuntime !== null;
     const primaterieMode = isprimaterieMode(this.mode.current);

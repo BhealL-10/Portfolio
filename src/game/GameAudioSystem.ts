@@ -75,6 +75,39 @@ const MUSIC_TRACKS: Record<MusicTrackId, StereoTrackUrls> = {
   }
 };
 
+const ORDERED_LOOP_SEQUENCE = ['loop1', 'loop2', 'loop3', 'loop4'] as const satisfies readonly Exclude<MusicTrackId, 'intro'>[];
+const ORDERED_LOOP_CYCLE_DISTANCE_METERS = 250;
+
+export function resolveOrderedMusicLoopProgression(
+  previousTrack: MusicTrackId,
+  distanceMeters: number,
+  nextCycleIndex: number
+): { trackId: Exclude<MusicTrackId, 'intro'>; nextCycleIndex: number } {
+  if (previousTrack === 'intro') {
+    return {
+      trackId: 'loop1',
+      nextCycleIndex: 1
+    };
+  }
+
+  if (distanceMeters >= ORDERED_LOOP_CYCLE_DISTANCE_METERS) {
+    const normalizedIndex = ((nextCycleIndex % ORDERED_LOOP_SEQUENCE.length) + ORDERED_LOOP_SEQUENCE.length) % ORDERED_LOOP_SEQUENCE.length;
+    const trackId = ORDERED_LOOP_SEQUENCE[normalizedIndex]!;
+    return {
+      trackId,
+      nextCycleIndex: (normalizedIndex + 1) % ORDERED_LOOP_SEQUENCE.length
+    };
+  }
+
+  const previousIndex = Math.max(0, ORDERED_LOOP_SEQUENCE.indexOf(previousTrack as Exclude<MusicTrackId, 'intro'>));
+  const unlockedIndex = distanceMeters >= 150 ? 3 : distanceMeters >= 100 ? 2 : distanceMeters >= 50 ? 1 : 0;
+  const nextIndex = Math.min(previousIndex + 1, unlockedIndex);
+  return {
+    trackId: ORDERED_LOOP_SEQUENCE[nextIndex]!,
+    nextCycleIndex: (nextIndex + 1) % ORDERED_LOOP_SEQUENCE.length
+  };
+}
+
 const SFX = {
   blowerOn: [new URL('../../assets/audio/sfx/modules/blower/on.wav', import.meta.url).href],
   blowerOff: [new URL('../../assets/audio/sfx/modules/blower/off.wav', import.meta.url).href],
@@ -173,6 +206,7 @@ export class GameAudioSystem {
   private reactiveEnergy = 0;
   private musicPlaybackRate = 1;
   private musicTrackAnalysisElapsed = 0;
+  private nextOrderedLoopIndex = 0;
   private volume = this.readStoredVolume();
   private muted = this.readStoredMuted();
 
@@ -230,6 +264,7 @@ export class GameAudioSystem {
       this.pendingRunStart = false;
       this.stopMusic();
       this.stopAllLoops(false);
+      this.nextOrderedLoopIndex = 0;
       this.reactiveBass = 0;
       this.reactiveMid = 0;
       this.reactiveMelody = 0;
@@ -295,6 +330,7 @@ export class GameAudioSystem {
     if (event.type === 'run_start') {
       this.prime();
       this.pendingRunStart = true;
+      this.nextOrderedLoopIndex = 0;
       this.stopMusic();
       this.stopAllLoops(false);
       return;
@@ -653,18 +689,13 @@ export class GameAudioSystem {
   }
 
   private resolveNextMusicTrack(previousTrack: MusicTrackId): MusicTrackId {
-    if (previousTrack === 'intro') {
-      return 'loop1';
-    }
-    const distance = this.lastState?.distanceMeters ?? 0;
-    if (distance <= 100) return 'loop1';
-    if (distance <= 150) return 'loop2';
-    if (distance <= 200) return 'loop3';
-    if (distance <= 250) return 'loop4';
-    if (previousTrack === 'loop1') return 'loop2';
-    if (previousTrack === 'loop2') return 'loop3';
-    if (previousTrack === 'loop3') return 'loop4';
-    return 'loop1';
+    const { trackId, nextCycleIndex } = resolveOrderedMusicLoopProgression(
+      previousTrack,
+      this.lastState?.distanceMeters ?? 0,
+      this.nextOrderedLoopIndex
+    );
+    this.nextOrderedLoopIndex = nextCycleIndex;
+    return trackId;
   }
 
   private async preloadMusicAnalyses() {

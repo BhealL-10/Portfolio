@@ -3126,6 +3126,9 @@ export class GameSessionController {
 
     const currentNode = this.getResolvedNode(this.attachedIndex);
     if (currentNode.isMilestone) {
+      if (this.tryTriggerMirrorMode(currentNode)) {
+        return;
+      }
       return;
     }
 
@@ -3165,11 +3168,11 @@ export class GameSessionController {
     const maxBoost = this.chargeMeter >= 0.98;
     const reverseLaunch = tangent2D.x * this.getProgressionDirectionSign() < -0.12;
     const mirrorEligibleAnchor = this.isMirrorAnchorNode(currentNode);
-    const mirrorLaunchFastEnough = launchSpeed >= this.getMirrorLaunchSpeedThreshold(launchSpeed);
+    const mirrorLaunchFastEnough = currentNode.isMilestone || launchSpeed >= this.getMirrorLaunchSpeedThreshold(launchSpeed);
     this.mirrorLaunchEligible = mirrorEligibleAnchor && reverseLaunch && mirrorLaunchFastEnough;
     if (this.mirrorLaunchEligible) {
       this.mirrorLaunchAnchorIndex = currentNode.index;
-      this.mirrorLaunchSpeedThreshold = Math.max(7.8, launchSpeed * 0.64);
+      this.mirrorLaunchSpeedThreshold = currentNode.isMilestone ? 0 : Math.max(7.8, launchSpeed * 0.64);
       this.achievements.recordReverseLaunchFromAnchor();
       this.queueAchievementToastsIfNeeded();
     } else {

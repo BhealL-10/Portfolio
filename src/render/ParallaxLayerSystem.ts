@@ -1,10 +1,13 @@
 import * as THREE from 'three';
 import { damp } from '../core/math';
+import type { MusicReactiveState } from '../game/GameAudioSystem';
 import type { ThemeMode } from '../types/content';
 import {
   PARALLAX_GLOBAL_Y_OFFSET_PX,
   PARALLAX_LAYER_CONFIG,
   PARALLAX_LAYER_ORDER,
+  PARALLAX_TOP_HORIZON_BOTTOM_SCREEN_RATIO,
+  PARALLAX_TOP_HORIZON_VERTICAL_OFFSET_PX,
   type LayerCategory
 } from './ParallaxLayerConfig';
 import { preloadParallaxLayerAssets } from './ParallaxLayerAssetResolver';
@@ -36,7 +39,9 @@ export interface ParallaxLayerViewState {
 export class ParallaxLayerSystem {
   private readonly root = new THREE.Group();
   private readonly strips = new Map<LayerCategory, ParallaxStrip>();
+  private readonly topHorizonStrip: ParallaxStrip;
   private readonly verticalOffsetPx: Record<LayerCategory, number> = { ...INITIAL_VERTICAL_OFFSET_PX };
+  private topHorizonVerticalOffsetPx = 0;
   private visible = false;
   private mirrorMode = false;
   private playableWorldMinY = -28;
@@ -53,6 +58,14 @@ export class ParallaxLayerSystem {
   private viewportWidthPx = 1;
   private viewportHeightPx = 1;
   private accumulatedDriftSeconds = 0;
+  private targetBass = 0;
+  private targetMid = 0;
+  private targetMelody = 0;
+  private targetEnergy = 0;
+  private smoothedBass = 0;
+  private smoothedMid = 0;
+  private smoothedMelody = 0;
+  private smoothedEnergy = 0;
   private hasPlayedLayerIntro = false;
   private introTransitionRequested = false;
   private introTransitionActive = false;
@@ -73,6 +86,17 @@ export class ParallaxLayerSystem {
       const strip = new ParallaxStrip(this.root, PARALLAX_LAYER_CONFIG[category], this.renderer, this.camera, initialTheme);
       this.strips.set(category, strip);
     });
+    this.topHorizonStrip = new ParallaxStrip(
+      this.root,
+      {
+        ...PARALLAX_LAYER_CONFIG.horizon,
+        localZ: PARALLAX_LAYER_CONFIG.horizon.localZ + 0.2,
+        renderOrder: PARALLAX_LAYER_CONFIG.horizon.renderOrder + 0.1
+      },
+      this.renderer,
+      this.camera,
+      initialTheme
+    );
   }
 
   init() {
@@ -94,6 +118,7 @@ export class ParallaxLayerSystem {
             await strip.init(displayedHeightPx);
           })
         );
+        await this.topHorizonStrip.init(this.resolveDisplayedHeightPx(PARALLAX_LAYER_CONFIG.horizon));
         this.initialized = true;
         this.refreshAssets();
       })
@@ -111,6 +136,7 @@ export class ParallaxLayerSystem {
     this.visible = visible;
     this.root.visible = visible && this.initialized;
     this.strips.forEach((strip) => strip.setVisible(visible && this.initialized));
+    this.topHorizonStrip.setVisible(visible && this.initialized);
     if (visible) {
       this.pendingCoverageRealign = true;
     }
@@ -120,6 +146,7 @@ export class ParallaxLayerSystem {
     this.currentTheme = theme;
     this.captureViewportSize();
     this.strips.forEach((strip, category) => strip.setTheme(theme, this.resolveDisplayedHeightPx(PARALLAX_LAYER_CONFIG[category])));
+    this.topHorizonStrip.setTheme(theme, this.resolveDisplayedHeightPx(PARALLAX_LAYER_CONFIG.horizon));
   }
 
   setMirrorMode(enabled: boolean) {
@@ -128,6 +155,7 @@ export class ParallaxLayerSystem {
     }
     this.mirrorMode = enabled;
     this.strips.forEach((strip) => strip.setMirrorMode(enabled));
+    this.topHorizonStrip.setMirrorMode(enabled);
   }
 
   setCoverageAnchorX(worldX: number) {
@@ -142,6 +170,20 @@ export class ParallaxLayerSystem {
     this.milestoneView = viewState.isMilestoneView;
   }
 
+  setMusicReactiveState(reactive: MusicReactiveState) {
+    if (!reactive.active) {
+      this.targetBass = 0;
+      this.targetMid = 0;
+      this.targetMelody = 0;
+      this.targetEnergy = 0;
+      return;
+    }
+    this.targetBass = reactive.bassIntensity;
+    this.targetMid = reactive.midIntensity;
+    this.targetMelody = reactive.melodyIntensity;
+    this.targetEnergy = reactive.overallEnergy;
+  }
+
   resetForRun(worldX = this.coverageInputX) {
     this.coverageInputX = worldX;
     this.coverageAnchorX = worldX;
@@ -151,7 +193,16 @@ export class ParallaxLayerSystem {
     PARALLAX_LAYER_ORDER.forEach((category) => {
       this.verticalOffsetPx[category] = 0;
     });
+    this.topHorizonVerticalOffsetPx = 0;
     this.strips.forEach((strip) => strip.resetLayout());
+    this.topHorizonStrip.resetLayout();
+  }
+
+  rearmAdventureIntro() {
+    this.hasPlayedLayerIntro = false;
+    this.introTransitionRequested = false;
+    this.introTransitionActive = false;
+    this.introTransitionProgress = 1;
   }
 
   beginAdventureIntro() {
@@ -187,6 +238,10 @@ export class ParallaxLayerSystem {
       strip.setMirrorMode(this.mirrorMode);
       strip.setTheme(this.currentTheme, this.resolveDisplayedHeightPx(PARALLAX_LAYER_CONFIG[category]));
     });
+    this.topHorizonStrip.resetLayout();
+    this.topHorizonStrip.setVisible(this.visible);
+    this.topHorizonStrip.setMirrorMode(this.mirrorMode);
+    this.topHorizonStrip.setTheme(this.currentTheme, this.resolveDisplayedHeightPx(PARALLAX_LAYER_CONFIG.horizon));
   }
 
   update(deltaTime: number) {
@@ -201,6 +256,10 @@ export class ParallaxLayerSystem {
     this.root.scale.set(1, 1, 1);
 
     this.accumulatedDriftSeconds += deltaTime;
+    this.smoothedBass = damp(this.smoothedBass, this.targetBass, 9, deltaTime);
+    this.smoothedMid = damp(this.smoothedMid, this.targetMid, 9, deltaTime);
+    this.smoothedMelody = damp(this.smoothedMelody, this.targetMelody, 9, deltaTime);
+    this.smoothedEnergy = damp(this.smoothedEnergy, this.targetEnergy, 9, deltaTime);
     if (this.pendingCoverageRealign) {
       this.coverageAnchorX = this.coverageInputX;
       this.coverageAnchorOriginX = this.coverageInputX;
@@ -215,6 +274,7 @@ export class ParallaxLayerSystem {
     const worldTravelX = this.coverageAnchorX - this.coverageAnchorOriginX;
     const playerHeightSignal = this.resolvePlayerHeightSignal();
     const puppetActive = this.cameraFollowsPlayer && !this.milestoneView;
+    const horizonMusicVerticalOffsetPx = -(this.smoothedBass * 55.4 + this.smoothedEnergy * 50.1);
 
     PARALLAX_LAYER_ORDER.forEach((category) => {
       const strip = this.strips.get(category);
@@ -227,7 +287,15 @@ export class ParallaxLayerSystem {
       const directionalDrift = config.staticLayer ? 0 : this.accumulatedDriftSeconds * config.driftSpeedPx * (this.mirrorMode ? -1 : 1);
       const progressionParallaxPx = worldTravelX * config.parallaxFactor * (this.mirrorMode ? 1 : -1);
       const travelOffsetPx = directionalDrift + progressionParallaxPx;
-      const targetVerticalOffsetPx = puppetActive ? playerHeightSignal * config.playerHeightInfluencePx : 0;
+      const musicVerticalOffsetPx =
+        category === 'horizon'
+          ? horizonMusicVerticalOffsetPx
+          : category === 'far'
+            ? this.smoothedMelody * 72.4 + this.smoothedMid * 60.9 - this.smoothedBass * 50.2
+            : category === 'mid'
+              ? this.smoothedMid * 46.6 + this.smoothedMelody * 40.2 - this.smoothedBass * 50.4
+              : this.smoothedBass * 50.2 + this.smoothedEnergy *51.1 - this.smoothedMelody * 40.6;
+      const targetVerticalOffsetPx = (puppetActive ? playerHeightSignal * config.playerHeightInfluencePx : 0) + musicVerticalOffsetPx;
       this.verticalOffsetPx[category] = damp(this.verticalOffsetPx[category], targetVerticalOffsetPx, PUPPET_HEIGHT_RESPONSE, deltaTime);
       const introOffsetPx = this.resolveIntroOffsetPx(category);
       const unclampedBottomScreenY =
@@ -246,11 +314,41 @@ export class ParallaxLayerSystem {
         mirrorMode: this.mirrorMode
       });
     });
+
+    const horizonConfig = PARALLAX_LAYER_CONFIG.horizon;
+    const topHorizonDisplayedHeightPx = this.resolveDisplayedHeightPx(horizonConfig);
+    const horizonDirectionalDrift = horizonConfig.staticLayer
+      ? 0
+      : this.accumulatedDriftSeconds * horizonConfig.driftSpeedPx * (this.mirrorMode ? -1 : 1);
+    const horizonProgressionParallaxPx = worldTravelX * horizonConfig.parallaxFactor * (this.mirrorMode ? 1 : -1);
+    const topTravelOffsetPx = horizonDirectionalDrift + horizonProgressionParallaxPx;
+    this.topHorizonVerticalOffsetPx = -this.verticalOffsetPx.horizon;
+    const topIntroOffsetPx = -(this.resolveIntroOffsetPx('horizon') + topHorizonDisplayedHeightPx * 1.14);
+    const unclampedTopBottomScreenY =
+      this.viewportHeightPx * PARALLAX_TOP_HORIZON_BOTTOM_SCREEN_RATIO +
+      PARALLAX_TOP_HORIZON_VERTICAL_OFFSET_PX +
+      this.topHorizonVerticalOffsetPx +
+      topIntroOffsetPx;
+    const topBottomScreenY =
+      this.introTransitionRequested || this.introTransitionActive
+        ? unclampedTopBottomScreenY
+        : THREE.MathUtils.clamp(unclampedTopBottomScreenY, topHorizonDisplayedHeightPx * 0.52, this.viewportHeightPx * 0.42);
+
+    this.topHorizonStrip.update({
+      viewportWidthPx: this.viewportWidthPx,
+      viewportHeightPx: this.viewportHeightPx,
+      bottomScreenY: topBottomScreenY,
+      displayedHeightPx: topHorizonDisplayedHeightPx,
+      travelOffsetPx: topTravelOffsetPx,
+      mirrorMode: this.mirrorMode,
+      verticalFlip: true
+    });
   }
 
   dispose() {
     this.strips.forEach((strip) => strip.dispose());
     this.strips.clear();
+    this.topHorizonStrip.dispose();
     if (this.root.parent) {
       this.root.parent.remove(this.root);
     }
