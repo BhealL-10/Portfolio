@@ -11,6 +11,7 @@ import { OrbitWorldSystem } from '../portfolio/OrbitWorldSystem';
 import { SecretSlotSystem } from '../portfolio/SecretSlotSystem';
 import { ShardInteractionSystem } from '../portfolio/ShardInteractionSystem';
 import { MusicReactiveBackdrop } from '../render/MusicReactiveBackdrop';
+import { ParallaxLayerSystem } from '../render/ParallaxLayerSystem';
 import { WorldRenderer } from '../render/WorldRenderer';
 import { AboutSectionSystem } from '../ui/AboutSectionSystem';
 import { FocusPresentationSystem } from '../ui/FocusPresentationSystem';
@@ -63,6 +64,7 @@ export class AppController {
   private readonly uiHost: HTMLDivElement;
   private readonly renderer: WorldRenderer;
   private readonly musicBackdrop: MusicReactiveBackdrop;
+  private readonly parallaxLayers: ParallaxLayerSystem;
   private readonly slotSystem: SecretSlotSystem;
   private readonly world: OrbitWorldSystem;
   private readonly intro: IntroVoronoiSystem;
@@ -133,6 +135,13 @@ export class AppController {
     this.renderer = new WorldRenderer(this.canvasHost);
     this.renderer.setTheme(this.theme.current);
     this.musicBackdrop = new MusicReactiveBackdrop(this.renderer.scene, this.theme.current);
+    this.parallaxLayers = new ParallaxLayerSystem(
+      this.renderer.scene,
+      this.renderer.camera,
+      this.renderer.renderer,
+      this.theme.current
+    );
+    void this.parallaxLayers.init();
     this.slotSystem = new SecretSlotSystem(
       this.content
         .getProjects()
@@ -526,6 +535,7 @@ export class AppController {
     this.theme.onChange((theme) => {
       this.renderer.setTheme(theme);
       this.musicBackdrop.setTheme(theme);
+      this.parallaxLayers.setTheme(theme);
       this.world.setTheme(theme);
       if (this.gameRuntime) {
         this.game.setTheme(theme);
@@ -1185,6 +1195,8 @@ export class AppController {
 
     this.mode.setMode('game_transition');
     this.gameTransitionProgress = 0;
+    this.parallaxLayers.beginAdventureIntro();
+    this.parallaxLayers.setTransitionState(true, 0);
     this.game.startTransition();
     const projectCount = this.getGameFieldCount();
     const initialPositions = this.game.getInitialPlatformPositions(projectCount);
@@ -1242,6 +1254,7 @@ export class AppController {
         this.gameTransitionAnchor = null;
         this.mode.setMode('game');
         this.game.beginRun();
+        this.parallaxLayers.resetForRun(this.game.getParallaxCoverageAnchorX());
         const gameFieldCount = this.getGameFieldCount();
         this.world.setExternalLayoutPositions(
           this.game.getVisiblePlatformPositions(gameFieldCount),
@@ -1261,6 +1274,7 @@ export class AppController {
     }
     this.audio.prime();
     this.game.restart();
+    this.parallaxLayers.resetForRun(this.game.getParallaxCoverageAnchorX());
     const gameFieldCount = this.getGameFieldCount();
     this.world.setExternalLayoutPositions(
       this.game.getVisiblePlatformPositions(gameFieldCount),
@@ -1504,8 +1518,23 @@ export class AppController {
         musicReactiveState.active &&
         this.game.currentState !== 'portal_preview'
     );
+    const parallaxVisible = Boolean(
+      gameRuntime &&
+        (this.mode.is('game_transition') || this.mode.is('game') || this.mode.is('game_over')) &&
+        !this.gameTransitionReturningToHub &&
+        this.game.currentState !== 'idle' &&
+        this.game.currentState !== 'portal_preview'
+    );
     this.musicBackdrop.setVisible(musicBackdropVisible);
     this.musicBackdrop.update(deltaTime, elapsedTime, this.renderer.camera, musicReactiveState);
+    if (parallaxVisible && gameRuntime) {
+      this.parallaxLayers.setMirrorMode(this.game.isMirrorModeActive());
+      this.parallaxLayers.setCoverageAnchorX(this.game.getParallaxCoverageAnchorX());
+      this.parallaxLayers.setViewState(this.game.getParallaxViewState());
+      this.parallaxLayers.setTransitionState(this.mode.is('game_transition') && !this.gameTransitionReturningToHub, this.gameTransitionProgress);
+    }
+    this.parallaxLayers.setVisible(parallaxVisible);
+    this.parallaxLayers.update(deltaTime);
     const cinematicBlurStrength =
       this.mode.is('game_transition') && this.gameTransitionFromprimaterie
         ? Math.max(

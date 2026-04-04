@@ -192,10 +192,35 @@ interface GameHUDPayload {
     score: number;
     bestScore: number;
     shardsLanded: number;
+    bestShards: number;
     distanceMeters: number;
+    bestDistanceMeters: number;
     coinsCollected: number;
+    bestCoinsCollected: number;
     enemiesKilled: number;
+    bestEnemiesKilled: number;
     longestMomentumSeconds: number;
+    bestLongestMomentumSeconds: number;
+    scoreBreakdown: {
+      landings: {
+        count: number;
+        score: number;
+      };
+      kills: {
+        count: number;
+        score: number;
+      };
+      coins: {
+        count: number;
+        score: number;
+      };
+      momentum: {
+        score: number;
+      };
+      other: {
+        score: number;
+      };
+    };
     personalBests: {
       score: boolean;
       shardsLanded: boolean;
@@ -213,6 +238,8 @@ interface GameHUDPayload {
     }>;
   };
 }
+
+type GameOverStatKey = 'score' | 'distance' | 'shards' | 'coins' | 'kills' | 'momentum';
 
 interface LeaderboardEntry {
   playerId?: string;
@@ -283,6 +310,7 @@ const PLAYER_ID_KEY = 'portfolio-game-player-id-v1';
 const PLAYER_NAME_KEY = 'portfolio-game-player-name';
 const PLAYER_AVATAR_KEY = 'portfolio-game-player-avatar-v1';
 const PLAYER_LEADERBOARD_REGISTERED_KEY = 'portfolio-game-player-registered-v1';
+const PLAYER_AVATAR_UPDATED_EVENT = 'portfolio-game-avatar-updated';
 const GAME_HELP_SEEN_KEY = 'portfolio-game-help-seen-v1';
 const GAME_HELP_TUTORIAL_COMPLETED_KEY = 'portfolio-game-help-tutorial-complete-v2';
 
@@ -373,7 +401,8 @@ export class GameHUDSystem {
   private leaderboardList: HTMLDivElement;
   private leaderboardPreview: HTMLDivElement;
   private leaderboardHoverCard: HTMLDivElement;
-  private leaderboardRegisterCopy: HTMLParagraphElement;
+  private gameOverHoverCard: HTMLDivElement;
+  private leaderboardRegisterCopy: HTMLDivElement;
   private leaderboardNameInput: HTMLInputElement;
   private leaderboardSaveButton: HTMLButtonElement;
   private restartButton: HTMLButtonElement;
@@ -445,6 +474,32 @@ export class GameHUDSystem {
   private achievementFilter: AchievementFilterValue = 'all';
   private achievementSortMode: AchievementSortMode = 'acquired';
   private achievementSortMenuOpen = false;
+  private readonly handleAvatarSelectionBroadcast = (event: Event) => {
+    const customEvent = event as CustomEvent<{ selection?: AvatarSelection }>;
+    const nextSelection = customEvent.detail?.selection;
+    if (!nextSelection) {
+      return;
+    }
+    this.playerAvatarSelection = this.normalizeAvatarSelection(nextSelection, '', true);
+    if (!this.avatarEditorOpen) {
+      this.draftAvatarSelection = { ...this.playerAvatarSelection };
+    }
+    this.renderAvatarDependentViews();
+  };
+  private readonly handleWindowStorage = (event: StorageEvent) => {
+    if (event.key === PLAYER_AVATAR_KEY) {
+      this.playerAvatarSelection = this.readPlayerAvatarSelection();
+      if (!this.avatarEditorOpen) {
+        this.draftAvatarSelection = { ...this.playerAvatarSelection };
+      }
+      this.renderAvatarDependentViews();
+      return;
+    }
+    if (event.key === LEADERBOARD_KEY) {
+      this.leaderboardEntriesCache = this.readLocalLeaderboardCache();
+      this.renderLeaderboard();
+    }
+  };
 
   constructor(host: HTMLElement, private readonly i18n: I18nService, private readonly callbacks: GameHUDCallbacks) {
     this.element = document.createElement('div');
@@ -603,15 +658,16 @@ export class GameHUDSystem {
           <div class="game-hud__leaderboard" data-leaderboard-panel>
             <div class="game-hud__leaderboard-list" data-leaderboard-list></div>
             <div class="game-hud__leaderboard-preview" data-leaderboard-preview></div>
-            <p class="game-hud__leaderboard-register-copy" data-leaderboard-register-copy></p>
             <div class="game-hud__leaderboard-controls">
               <input type="text" maxlength="18" data-leaderboard-name />
               <button type="button" data-leaderboard-save></button>
             </div>
           </div>
+          <div class="game-hud__leaderboard-register-copy" data-leaderboard-register-copy hidden></div>
         </div>
       </div>
       <div class="game-hud__leaderboard-hover" data-leaderboard-hover hidden></div>
+      <div class="game-hud__game-over-hover" data-game-over-hover hidden></div>
     `;
 
     this.panel = this.element.querySelector<HTMLDivElement>('.game-hud__panel')!;
@@ -695,7 +751,8 @@ export class GameHUDSystem {
     this.leaderboardList = this.element.querySelector<HTMLDivElement>('[data-leaderboard-list]')!;
     this.leaderboardPreview = this.element.querySelector<HTMLDivElement>('[data-leaderboard-preview]')!;
     this.leaderboardHoverCard = this.element.querySelector<HTMLDivElement>('[data-leaderboard-hover]')!;
-    this.leaderboardRegisterCopy = this.element.querySelector<HTMLParagraphElement>('[data-leaderboard-register-copy]')!;
+    this.gameOverHoverCard = this.element.querySelector<HTMLDivElement>('[data-game-over-hover]')!;
+    this.leaderboardRegisterCopy = this.element.querySelector<HTMLDivElement>('[data-leaderboard-register-copy]')!;
     this.leaderboardNameInput = this.element.querySelector<HTMLInputElement>('[data-leaderboard-name]')!;
     this.leaderboardSaveButton = this.element.querySelector<HTMLButtonElement>('[data-leaderboard-save]')!;
     this.restartButton = this.element.querySelector<HTMLButtonElement>('[data-restart]')!;
@@ -744,6 +801,8 @@ export class GameHUDSystem {
     this.leaderboardPreview.addEventListener('click', (event) => this.handleLeaderboardClick(event));
     this.leaderboardList.addEventListener('mousemove', (event) => this.handleLeaderboardHover(event));
     this.leaderboardList.addEventListener('mouseleave', () => this.hideLeaderboardHover());
+    this.gameOverStats.addEventListener('mousemove', (event) => this.handleGameOverStatHover(event));
+    this.gameOverStats.addEventListener('mouseleave', () => this.hideGameOverStatHover());
     this.leaderboardNameInput.value = window.localStorage.getItem(PLAYER_NAME_KEY) ?? '';
     this.leaderboardNameInput.addEventListener('input', () => this.renderLeaderboard());
     this.leaderboardNameInput.addEventListener('keydown', (event) => {
@@ -933,6 +992,8 @@ export class GameHUDSystem {
     host.appendChild(this.element);
 
     this.i18n.onChange(() => this.renderStatic());
+    window.addEventListener(PLAYER_AVATAR_UPDATED_EVENT, this.handleAvatarSelectionBroadcast as EventListener);
+    window.addEventListener('storage', this.handleWindowStorage);
     this.closeHelp();
     this.leaderboardEntriesCache = this.readLocalLeaderboardCache();
     this.renderStatic();
@@ -946,6 +1007,8 @@ export class GameHUDSystem {
     this.element.style.pointerEvents = visible ? '' : 'none';
     document.body.classList.toggle('game-runtime-ui-active', visible);
     if (!visible) {
+      this.hideGameOverStatHover();
+      this.hideLeaderboardHover();
       this.closeHelp();
       this.closeAchievements();
       this.topRightCluster.toggle(false);
@@ -1060,8 +1123,8 @@ export class GameHUDSystem {
     return this.avatarAssetsPromise;
   }
 
-  private ensureLeaderboardLoaded(options?: { rerender?: boolean }) {
-    if (this.leaderboardLoaded && !options?.rerender) {
+  private ensureLeaderboardLoaded(options?: { rerender?: boolean; forceRefresh?: boolean }) {
+    if (this.leaderboardLoaded && !options?.forceRefresh && !options?.rerender) {
       return Promise.resolve();
     }
     if (this.leaderboardLoadPromise) {
@@ -1219,6 +1282,7 @@ export class GameHUDSystem {
     if (payload.state === 'game_over') {
       this.renderGameOverSummary(payload);
     } else {
+      this.hideGameOverStatHover();
       this.clearGameOverRevealTimers();
       this.currentRunSummary = null;
       this.currentGameOverSignature = '';
@@ -1752,7 +1816,7 @@ export class GameHUDSystem {
     }
     this.currentGameOverSignature = markup.signature;
     if (hasChanged) {
-      void this.ensureLeaderboardLoaded({ rerender: !this.leaderboardLoaded });
+      void this.ensureLeaderboardLoaded({ rerender: true, forceRefresh: true });
       void this.ensureAvatarAssetsLoaded();
       this.renderLeaderboard();
       if (this.avatarEditorOpen) {
@@ -3175,7 +3239,7 @@ export class GameHUDSystem {
           ? `
             <div class="game-hud__leaderboard-row" data-leaderboard-row data-entry-index="${index}" data-rank-tier="${this.getLeaderboardRankTier(index)}" style="--leaderboard-row-index:${index}">
               <span class="game-hud__leaderboard-rank">#${index + 1}</span>
-              <button type="button" class="game-hud__leaderboard-avatar" data-avatar-trigger aria-label="${entry.name}" title="${this.getLeaderboardEntryTitle(entry)}">
+              <button type="button" class="game-hud__leaderboard-avatar" data-avatar-trigger aria-label="${entry.name}">
                 ${this.renderAvatarMarkup(this.resolveAvatarSelection(entry), 'game-hud__leaderboard-avatar-stack')}
               </button>
               <span class="game-hud__leaderboard-copy">
@@ -3187,7 +3251,7 @@ export class GameHUDSystem {
           : `
             <div class="game-hud__leaderboard-row is-placeholder" data-leaderboard-row data-rank-tier="other" style="--leaderboard-row-index:${index}">
               <span class="game-hud__leaderboard-rank">#${index + 1}</span>
-              <button type="button" class="game-hud__leaderboard-avatar" data-avatar-trigger aria-label="???" title="???">
+              <button type="button" class="game-hud__leaderboard-avatar" data-avatar-trigger aria-label="???">
                 ${fallbackAvatar}
               </button>
               <span class="game-hud__leaderboard-copy">
@@ -3202,13 +3266,6 @@ export class GameHUDSystem {
     this.renderLeaderboardPreview(entries);
     this.updateLeaderboardSaveVisibility();
     this.maybeAutoSyncLeaderboardEntry();
-  }
-
-  private getLeaderboardEntryTitle(entry: LeaderboardEntry) {
-    const distance = Math.max(0, Math.round(entry.details?.distanceMeters ?? 0));
-    const coins = Math.max(0, Math.round(entry.details?.coinsCollected ?? 0));
-    const enemies = Math.max(0, Math.round(entry.details?.enemiesKilled ?? 0));
-    return `${entry.name} · ${entry.score} · D ${distance} · C ${coins} · M ${enemies}`;
   }
 
   private getLeaderboardRankTier(index: number) {
@@ -3325,6 +3382,7 @@ export class GameHUDSystem {
     this.leaderboardNameInput.classList.toggle('is-onboarding', onboardingVisible);
     this.leaderboardSaveButton.classList.toggle('is-onboarding', onboardingVisible);
     this.leaderboardRegisterCopy.hidden = !onboardingVisible;
+    this.leaderboardRegisterCopy.classList.toggle('is-visible', onboardingVisible);
     this.leaderboardRegisterCopy.innerHTML = onboardingVisible
       ? `<strong>${onboardingCopy.register}</strong><span>${onboardingCopy.avatar}</span>`
       : '';
@@ -3394,16 +3452,146 @@ export class GameHUDSystem {
       <span>${this.i18n.current === 'fr' ? 'Monstres' : 'Monsters'}: ${entry.details.enemiesKilled}</span>
       <span>${this.i18n.current === 'fr' ? 'Meilleur momentum' : 'Best momentum'}: ${entry.details.longestMomentumSeconds.toFixed(1)}s</span>
     `;
-    const offsetX = 18;
-    const offsetY = 14;
-    const maxLeft = window.innerWidth - 220;
-    const maxTop = window.innerHeight - 190;
-    this.leaderboardHoverCard.style.left = `${Math.max(12, Math.min(maxLeft, event.clientX + offsetX))}px`;
-    this.leaderboardHoverCard.style.top = `${Math.max(12, Math.min(maxTop, event.clientY + offsetY))}px`;
+    this.positionHoverCard(this.leaderboardHoverCard, event);
   }
 
   private hideLeaderboardHover() {
     this.leaderboardHoverCard.hidden = true;
+  }
+
+  private handleGameOverStatHover(event: MouseEvent) {
+    const stat = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-stat-key]');
+    if (!stat || !this.currentRunSummary) {
+      this.hideGameOverStatHover();
+      return;
+    }
+
+    const statKey = stat.dataset.statKey as GameOverStatKey | undefined;
+    if (!statKey) {
+      this.hideGameOverStatHover();
+      return;
+    }
+
+    this.gameOverHoverCard.hidden = false;
+    this.gameOverHoverCard.innerHTML = this.buildGameOverStatHoverMarkup(statKey, this.currentRunSummary);
+    this.positionHoverCard(this.gameOverHoverCard, event);
+  }
+
+  private hideGameOverStatHover() {
+    this.gameOverHoverCard.hidden = true;
+  }
+
+  private buildGameOverStatHoverMarkup(statKey: GameOverStatKey, summary: GameHUDPayload['runSummary']) {
+    const labels =
+      this.i18n.current === 'fr'
+        ? {
+            score: 'Score',
+            distance: 'Distance',
+            shards: 'Fragments',
+            coins: 'Pièces',
+            kills: 'Monstres',
+            momentum: 'Meilleur momentum',
+            bestScore: 'Meilleur score',
+            bestDistance: 'Meilleure distance',
+            bestShards: 'Meilleurs fragments',
+            bestCoins: 'Meilleures pièces',
+            bestKills: 'Meilleurs monstres',
+            bestMomentum: 'Meilleur momentum',
+            currentBreakdown: 'Détail du score',
+            landings: 'Atterrissages',
+            killsBreakdown: 'Kills',
+            coinsBreakdown: 'Pièces',
+            momentumBonus: 'Bonus momentum',
+            other: 'Autres',
+            total: 'Total'
+          }
+        : {
+            score: 'Score',
+            distance: 'Distance',
+            shards: 'Shards',
+            coins: 'Coins',
+            kills: 'Monsters',
+            momentum: 'Best momentum',
+            bestScore: 'Best score',
+            bestDistance: 'Best distance',
+            bestShards: 'Best shards',
+            bestCoins: 'Best coins',
+            bestKills: 'Best monsters',
+            bestMomentum: 'Best momentum',
+            currentBreakdown: 'Score breakdown',
+            landings: 'Landings',
+            killsBreakdown: 'Kills',
+            coinsBreakdown: 'Coins',
+            momentumBonus: 'Momentum bonus',
+            other: 'Other',
+            total: 'Total'
+          };
+
+    if (statKey === 'score') {
+      const lines = [
+        `<strong>${labels.score}</strong>`,
+        `<span>${labels.bestScore}: ${summary.bestScore}</span>`,
+        `<span class="game-hud__hover-section">${labels.currentBreakdown}</span>`,
+        `<span>${labels.landings}: ${summary.scoreBreakdown.landings.count} -> +${summary.scoreBreakdown.landings.score}</span>`,
+        `<span>${labels.killsBreakdown}: ${summary.scoreBreakdown.kills.count} -> +${summary.scoreBreakdown.kills.score}</span>`,
+        `<span>${labels.coinsBreakdown}: ${summary.scoreBreakdown.coins.count} -> +${summary.scoreBreakdown.coins.score}</span>`
+      ];
+      if (summary.scoreBreakdown.momentum.score > 0) {
+        lines.push(`<span>${labels.momentumBonus}: +${summary.scoreBreakdown.momentum.score}</span>`);
+      }
+      if (summary.scoreBreakdown.other.score > 0) {
+        lines.push(`<span>${labels.other}: +${summary.scoreBreakdown.other.score}</span>`);
+      }
+      lines.push(`<span>${labels.total}: ${summary.score}</span>`);
+      return lines.join('');
+    }
+
+    const bestValue =
+      statKey === 'distance'
+        ? `${Math.round(summary.bestDistanceMeters)}m`
+        : statKey === 'shards'
+          ? String(summary.bestShards)
+          : statKey === 'coins'
+            ? String(summary.bestCoinsCollected)
+            : statKey === 'kills'
+              ? String(summary.bestEnemiesKilled)
+              : `${summary.bestLongestMomentumSeconds.toFixed(1)}s`;
+
+    const title =
+      statKey === 'distance'
+        ? labels.distance
+        : statKey === 'shards'
+          ? labels.shards
+          : statKey === 'coins'
+            ? labels.coins
+            : statKey === 'kills'
+              ? labels.kills
+              : labels.momentum;
+
+    const bestLabel =
+      statKey === 'distance'
+        ? labels.bestDistance
+        : statKey === 'shards'
+          ? labels.bestShards
+          : statKey === 'coins'
+            ? labels.bestCoins
+            : statKey === 'kills'
+              ? labels.bestKills
+              : labels.bestMomentum;
+
+    return `
+      <strong>${title}</strong>
+      <span>${bestLabel}: ${bestValue}</span>
+    `;
+  }
+
+  private positionHoverCard(card: HTMLDivElement, event: MouseEvent) {
+    const offsetX = 18;
+    const offsetY = 14;
+    const maxLeft = window.innerWidth - card.offsetWidth - 12;
+    const maxTop = window.innerHeight - card.offsetHeight - 12;
+    card.style.left = `${Math.max(12, Math.min(maxLeft, event.clientX + offsetX))}px`;
+    card.style.top = `${Math.max(12, Math.min(maxTop, event.clientY + offsetY))}px`;
   }
 
   private openAvatarEditor() {
@@ -3414,6 +3602,15 @@ export class GameHUDSystem {
     void this.ensureAvatarAssetsLoaded();
     this.renderAvatarEditor();
     this.renderGameOverMode(null);
+  }
+
+  private renderAvatarDependentViews() {
+    this.renderLeaderboard();
+    this.renderAchievementsContent(this.currentAchievements, true);
+    this.renderGameOverMode(null);
+    if (this.avatarEditorOpen) {
+      this.renderAvatarEditor();
+    }
   }
 
   private saveAvatarSelection() {
@@ -3447,16 +3644,16 @@ export class GameHUDSystem {
             const nextEntries = this.normalizeLeaderboardEntries(payload.entries);
             this.leaderboardEntriesCache = nextEntries;
             this.persistLeaderboardCache(nextEntries);
-            this.renderLeaderboard();
+            this.renderAvatarDependentViews();
           })
           .catch((error) => {
             console.warn('[GameHUDSystem] Failed to sync avatar selection to shared leaderboard API.', error);
           });
       }
     }
-    this.renderAvatarEditor();
-    this.renderLeaderboard();
-    this.renderGameOverMode(null);
+    window.dispatchEvent(new CustomEvent(PLAYER_AVATAR_UPDATED_EVENT, { detail: { selection: this.playerAvatarSelection } }));
+    void this.ensureLeaderboardLoaded({ rerender: true, forceRefresh: true });
+    this.renderAvatarDependentViews();
   }
 
   private clearScoreFeed() {

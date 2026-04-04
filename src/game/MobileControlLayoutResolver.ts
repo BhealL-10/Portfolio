@@ -92,7 +92,7 @@ function isCooldownReady(ratio: number) {
 }
 
 function resolveIndicatorTheme() {
-  return (resolveDocumentTheme() === 'light' ? 'dark' : 'light') as 'light' | 'dark';
+  return resolveDocumentTheme();
 }
 
 export function getMobileControlAsset(kind: keyof typeof MOBILE_CONTROL_ASSETS, theme = resolveIndicatorTheme()) {

@@ -13,10 +13,35 @@ interface GameOverSummaryData {
   score: number;
   bestScore: number;
   shardsLanded: number;
+  bestShards: number;
   distanceMeters: number;
+  bestDistanceMeters: number;
   coinsCollected: number;
+  bestCoinsCollected: number;
   enemiesKilled: number;
+  bestEnemiesKilled: number;
   longestMomentumSeconds: number;
+  bestLongestMomentumSeconds: number;
+  scoreBreakdown: {
+    landings: {
+      count: number;
+      score: number;
+    };
+    kills: {
+      count: number;
+      score: number;
+    };
+    coins: {
+      count: number;
+      score: number;
+    };
+    momentum: {
+      score: number;
+    };
+    other: {
+      score: number;
+    };
+  };
   personalBests: {
     score: boolean;
     shardsLanded: boolean;
@@ -53,42 +78,42 @@ export function buildGameOverSummaryMarkup(options: GameOverSummaryMarkupOptions
   ].join(':');
 
   const statsMarkup = `
-    <div class="game-hud__game-over-stat" data-record="${summary.personalBests.score ? 'true' : 'false'}" data-shape="1" style="--game-over-stat-index:0">
+    <div class="game-hud__game-over-stat" data-stat-key="score" data-record="${summary.personalBests.score ? 'true' : 'false'}" data-shape="1" style="--game-over-stat-index:0">
       <div class="game-hud__game-over-stat-content">
         ${renderLabel('gameScore')}
         <strong class="game-hud__game-over-stat-value">${summary.score}</strong>
         ${summary.personalBests.score ? newBadge : ''}
       </div>
     </div>
-    <div class="game-hud__game-over-stat" data-record="${summary.personalBests.distanceMeters ? 'true' : 'false'}" data-shape="2" style="--game-over-stat-index:1">
+    <div class="game-hud__game-over-stat" data-stat-key="distance" data-record="${summary.personalBests.distanceMeters ? 'true' : 'false'}" data-shape="2" style="--game-over-stat-index:1">
       <div class="game-hud__game-over-stat-content">
         ${renderLabel('gameDistance')}
         <strong class="game-hud__game-over-stat-value">${Math.round(summary.distanceMeters)}m</strong>
         ${summary.personalBests.distanceMeters ? newBadge : ''}
       </div>
     </div>
-    <div class="game-hud__game-over-stat" data-record="${summary.personalBests.shardsLanded ? 'true' : 'false'}" data-shape="3" style="--game-over-stat-index:2">
+    <div class="game-hud__game-over-stat" data-stat-key="shards" data-record="${summary.personalBests.shardsLanded ? 'true' : 'false'}" data-shape="3" style="--game-over-stat-index:2">
       <div class="game-hud__game-over-stat-content">
         ${renderLabel('gameRunShards')}
         <strong class="game-hud__game-over-stat-value">${summary.shardsLanded}</strong>
         ${summary.personalBests.shardsLanded ? newBadge : ''}
       </div>
     </div>
-    <div class="game-hud__game-over-stat" data-record="${summary.personalBests.coinsCollected ? 'true' : 'false'}" data-shape="4" style="--game-over-stat-index:3">
+    <div class="game-hud__game-over-stat" data-stat-key="coins" data-record="${summary.personalBests.coinsCollected ? 'true' : 'false'}" data-shape="4" style="--game-over-stat-index:3">
       <div class="game-hud__game-over-stat-content">
         ${renderLabel('gameCoins')}
         <strong class="game-hud__game-over-stat-value">${summary.coinsCollected}</strong>
         ${summary.personalBests.coinsCollected ? newBadge : ''}
       </div>
     </div>
-    <div class="game-hud__game-over-stat" data-record="${summary.personalBests.enemiesKilled ? 'true' : 'false'}" data-shape="1" style="--game-over-stat-index:4">
+    <div class="game-hud__game-over-stat" data-stat-key="kills" data-record="${summary.personalBests.enemiesKilled ? 'true' : 'false'}" data-shape="1" style="--game-over-stat-index:4">
       <div class="game-hud__game-over-stat-content">
         ${renderLabel('gameRunKills')}
         <strong class="game-hud__game-over-stat-value">${summary.enemiesKilled}</strong>
         ${summary.personalBests.enemiesKilled ? newBadge : ''}
       </div>
     </div>
-    <div class="game-hud__game-over-stat" data-record="${summary.personalBests.longestMomentumSeconds ? 'true' : 'false'}" data-shape="2" style="--game-over-stat-index:5">
+    <div class="game-hud__game-over-stat" data-stat-key="momentum" data-record="${summary.personalBests.longestMomentumSeconds ? 'true' : 'false'}" data-shape="2" style="--game-over-stat-index:5">
       <div class="game-hud__game-over-stat-content">
         ${renderLabel('gameRunMomentum')}
         <strong class="game-hud__game-over-stat-value">${summary.longestMomentumSeconds.toFixed(1)}s</strong>

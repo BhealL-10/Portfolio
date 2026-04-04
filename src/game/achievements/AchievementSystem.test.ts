@@ -26,9 +26,9 @@ function consumeAllUnlockIds(system: AchievementSystem) {
 }
 
 describe('AchievementSystem', () => {
-  it('ships the full 144 achievement registry with 69 mysteries', () => {
-    expect(ACHIEVEMENT_REGISTRY).toHaveLength(144);
-    expect(ACHIEVEMENT_REGISTRY.filter((achievement) => achievement.hidden)).toHaveLength(69);
+  it('ships the full 114 achievement registry with 64 mysteries', () => {
+    expect(ACHIEVEMENT_REGISTRY).toHaveLength(114);
+    expect(ACHIEVEMENT_REGISTRY.filter((achievement) => achievement.hidden)).toHaveLength(64);
   });
 
   it('unlocks combat achievements cumulatively and queues unlock toasts once', () => {
@@ -63,7 +63,7 @@ describe('AchievementSystem', () => {
     const unlocked = system.getPanelSnapshot('en').entries.find((entry) => entry.id === 'shards_triangular_5');
     expect(unlocked?.unlocked).toBe(true);
     expect(unlocked?.name).toBe('Mirror Fangs');
-    expect(unlocked?.reward?.name).toBe('Face motif 11');
+    expect(unlocked?.reward?.name).toBe('Face motif 4');
   });
 
   it('surfaces unlocked skins in the profile snapshot', () => {
@@ -125,32 +125,32 @@ describe('AchievementSystem', () => {
     expect(unlockedEntry?.description).toBe('Réussir 300 atterrissages perfect.');
   });
 
-  it('maps the explicit manual rewards requested for perfect and front canon achievements', () => {
-    const firstPerfect = ACHIEVEMENT_REGISTRY.find((entry) => entry.id === 'skill_perfect_1');
+  it('maps the current registry rewards for perfect and front canon achievements', () => {
+    const firstRewardedPerfect = ACHIEVEMENT_REGISTRY.find((entry) => entry.id === 'skill_perfect_10');
     const frontCanonTrigger = ACHIEVEMENT_REGISTRY.find((entry) => entry.id === 'modules_front_canon_10');
-    const frontCanonKills = ACHIEVEMENT_REGISTRY.find((entry) => entry.id === 'combat_front_canon_kill_10');
 
-    expect(firstPerfect?.rewardId).toBe('avatar-facemotif-3');
-    expect(frontCanonTrigger?.name.fr).toBe('Radar déréglé');
-    expect(frontCanonTrigger?.name.en).toBe('ProgressFiles Strike 10');
-    expect(frontCanonTrigger?.rewardId).toBe('avatar-accessoire-17');
-    expect(frontCanonKills?.rewardId).toBe('avatar-accessoire-16');
+    expect(firstRewardedPerfect?.rewardId).toBe('avatar-face-7');
+    expect(frontCanonTrigger?.name.fr).toBe('Impulsion de Proue');
+    expect(frontCanonTrigger?.name.en).toBe('Prow Pulse');
+    expect(frontCanonTrigger?.rewardId).toBe('avatar-accessoire-11');
   });
 
-  it('unlocks the first perfect reward immediately on the first perfect landing', () => {
+  it('unlocks the first rewarded perfect achievement after 10 perfect landings', () => {
     const system = new AchievementSystem(createStorage());
     system.resetRun();
 
-    system.recordLanding({
-      grade: 'perfect',
-      twist: false,
-      shapeKind: 'round',
-      isMilestone: false
-    });
+    for (let index = 0; index < 10; index += 1) {
+      system.recordLanding({
+        grade: 'perfect',
+        twist: false,
+        shapeKind: 'round',
+        isMilestone: false
+      });
+    }
 
-    expect(consumeAllUnlockIds(system)).toContain('skill_perfect_1');
-    const reward = system.getPanelSnapshot('en').entries.find((entry) => entry.id === 'skill_perfect_1')?.reward;
-    expect(reward?.name).toBe('Face motif 3');
+    expect(consumeAllUnlockIds(system)).toContain('skill_perfect_10');
+    const reward = system.getPanelSnapshot('en').entries.find((entry) => entry.id === 'skill_perfect_10')?.reward;
+    expect(reward?.name).toBe('Eyes 7');
   });
 
   it('clears persisted achievements when the global reset token changes', () => {

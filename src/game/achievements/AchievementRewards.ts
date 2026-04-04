@@ -1,5 +1,7 @@
 import type { AchievementAvatarLayer, AchievementRewardDefinition } from './AchievementTypes';
 
+type AchievementRewardLayerAlias = AchievementAvatarLayer | 'background' | 'motif' | 'barbe';
+
 const AVATAR_LAYER_HUMAN_INDICES: Record<AchievementAvatarLayer, number[]> = {
   oreille: [1, 2, 3, 4, 5, 6, 7, 8, 9],
   face: [1, 2, 3, 4, 5],
@@ -24,8 +26,21 @@ const LEGACY_LAYER_ALIASES = {
   barbe: 'accessoire'
 } as const;
 
-export function createAchievementRewardId(layer: AchievementAvatarLayer, humanIndex: number) {
-  return `avatar-${layer}-${humanIndex}`;
+function normalizeAchievementRewardLayer(layer: AchievementRewardLayerAlias): AchievementAvatarLayer {
+  switch (layer) {
+    case 'background':
+      return LEGACY_LAYER_ALIASES.background;
+    case 'motif':
+      return LEGACY_LAYER_ALIASES.motif;
+    case 'barbe':
+      return LEGACY_LAYER_ALIASES.barbe;
+    default:
+      return layer;
+  }
+}
+
+export function createAchievementRewardId(layer: AchievementRewardLayerAlias, humanIndex: number) {
+  return `avatar-${normalizeAchievementRewardLayer(layer)}-${humanIndex}`;
 }
 
 function createAvatarReward(layer: AchievementAvatarLayer, index: number): AchievementRewardDefinition {

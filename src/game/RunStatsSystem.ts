@@ -1,5 +1,6 @@
 import type { GameHudSnapshot } from './gameSessionTypes';
 import { pathDistanceToMeters } from './difficultyScaler';
+import { clamp } from '../core/math';
 
 const SCORE_KEY = 'portfolio-game-best-score';
 const SHARDS_KEY = 'portfolio-game-best-shards';
@@ -35,6 +36,10 @@ export class RunStatsSystem {
   private baselineBestCoinsCollected = this.bestCoinsCollected;
   private baselineBestEnemiesKilled = this.bestEnemiesKilled;
   private baselineBestLongestMomentumSeconds = this.bestLongestMomentumSeconds;
+  private landingScore = 0;
+  private killScore = 0;
+  private coinScore = 0;
+  private momentumBonusScore = 0;
   private scoreFeedSerial = 0;
   private lastScoreFeedEvent: {
     serial: number;
@@ -61,6 +66,10 @@ export class RunStatsSystem {
     this.baselineBestCoinsCollected = this.bestCoinsCollected;
     this.baselineBestEnemiesKilled = this.bestEnemiesKilled;
     this.baselineBestLongestMomentumSeconds = this.bestLongestMomentumSeconds;
+    this.landingScore = 0;
+    this.killScore = 0;
+    this.coinScore = 0;
+    this.momentumBonusScore = 0;
     this.lastScoreFeedEvent = null;
   }
 
@@ -97,7 +106,10 @@ export class RunStatsSystem {
   addCoins(amount: number, momentumGauge: number) {
     this.coins += amount;
     this.coinsCollected += amount;
-    void momentumGauge;
+    const normalizedMomentum = clamp(momentumGauge, 0, 1);
+    if (amount > 0) {
+      this.awardCoinScore(amount * 2, normalizedMomentum);
+    }
     if (this.coinsCollected > this.bestCoinsCollected) {
       this.bestCoinsCollected = this.coinsCollected;
       this.persist();
@@ -106,7 +118,10 @@ export class RunStatsSystem {
 
   recordEnemyKill(amount = 1, momentumGauge = 0) {
     this.enemiesKilled += amount;
-    void momentumGauge;
+    const normalizedMomentum = clamp(momentumGauge, 0, 1);
+    const basePoints = Math.max(5, 5 * Math.max(1, amount));
+    const multiplier = 1 + normalizedMomentum;
+    this.awardKillScore(basePoints, multiplier, normalizedMomentum);
     if (this.enemiesKilled > this.bestEnemiesKilled) {
       this.bestEnemiesKilled = this.enemiesKilled;
       this.persist();
@@ -139,6 +154,7 @@ export class RunStatsSystem {
   }
 
   getSnapshot() {
+    const otherScore = Math.max(0, this.totalScore - this.landingScore - this.killScore - this.coinScore - this.momentumBonusScore);
     return {
       score: this.totalScore,
       bestScore: this.bestScore,
@@ -148,8 +164,31 @@ export class RunStatsSystem {
       bestDistanceMeters: this.bestDistanceMeters,
       coins: this.coins,
       coinsCollected: this.coinsCollected,
+      bestCoinsCollected: this.bestCoinsCollected,
       enemiesKilled: this.enemiesKilled,
+      bestEnemiesKilled: this.bestEnemiesKilled,
       longestMomentumSeconds: this.longestMomentumSeconds,
+      bestLongestMomentumSeconds: this.bestLongestMomentumSeconds,
+      scoreBreakdown: {
+        landings: {
+          count: this.shardsLanded,
+          score: this.landingScore
+        },
+        kills: {
+          count: this.enemiesKilled,
+          score: this.killScore
+        },
+        coins: {
+          count: this.coinsCollected,
+          score: this.coinScore
+        },
+        momentum: {
+          score: this.momentumBonusScore
+        },
+        other: {
+          score: otherScore
+        }
+      },
       personalBests: {
         score: this.totalScore > this.baselineBestScore,
         shardsLanded: this.shardsLanded > this.baselineBestShards,
@@ -194,21 +233,47 @@ export class RunStatsSystem {
   }
 
   private awardLandingFragment() {
-    const basePoints = 1;
-    const gained = 1;
+    const result = this.awardScore(1, 1, 0);
+    this.landingScore += result.basePoints;
+    this.momentumBonusScore += result.momentumBonus;
+    return result.gained;
+  }
+
+  private awardScore(basePoints: number, multiplier: number, momentumRatio: number) {
+    const safeBasePoints = Math.max(0, Math.round(basePoints));
+    const safeMultiplier = Math.max(1, multiplier);
+    const gained = Math.max(0, Math.round(safeBasePoints * safeMultiplier));
+    const momentumBonus = Math.max(0, gained - safeBasePoints);
     this.scoreFeedSerial += 1;
     this.lastScoreFeedEvent = {
       serial: this.scoreFeedSerial,
-      basePoints,
+      basePoints: safeBasePoints,
       gained,
-      multiplier: 1,
-      momentumRatio: 0
+      multiplier: safeMultiplier,
+      momentumRatio: clamp(momentumRatio, 0, 1)
     };
     this.totalScore += gained;
     if (this.totalScore > this.bestScore) {
       this.bestScore = this.totalScore;
       this.persist();
     }
-    return gained;
+    return {
+      basePoints: safeBasePoints,
+      gained,
+      momentumBonus
+    };
+  }
+
+  private awardKillScore(basePoints: number, multiplier: number, momentumRatio: number) {
+    const result = this.awardScore(basePoints, multiplier, momentumRatio);
+    this.killScore += result.basePoints;
+    this.momentumBonusScore += result.momentumBonus;
+    return result.gained;
+  }
+
+  private awardCoinScore(basePoints: number, momentumRatio: number) {
+    const result = this.awardScore(basePoints, 1, momentumRatio);
+    this.coinScore += result.basePoints;
+    return result.gained;
   }
 }

@@ -223,4 +223,12 @@ export class CameraRailController {
   getSafeRight() {
     return this.safeRight;
   }
+
+  getSafeTop() {
+    return this.safeTop;
+  }
+
+  getSafeBottom() {
+    return this.safeBottom;
+  }
 }

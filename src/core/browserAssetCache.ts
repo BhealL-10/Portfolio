@@ -12,6 +12,12 @@ interface SharedTextureOptions {
   anisotropy?: number;
 }
 
+interface RasterizedSvgTextureOptions extends SharedTextureOptions {
+  widthPx: number;
+  heightPx: number;
+  devicePixelRatio?: number;
+}
+
 interface SharedImageEntry {
   image: HTMLImageElement;
   loaded: boolean;
@@ -20,6 +26,7 @@ interface SharedImageEntry {
 
 const textureLoader = new THREE.TextureLoader();
 const textureCache = new Map<string, THREE.Texture>();
+const rasterizedTextureCache = new Map<string, Promise<THREE.Texture>>();
 const imageCache = new Map<string, SharedImageEntry>();
 
 function buildTextureCacheKey(src: string, options: SharedTextureOptions) {
@@ -147,4 +154,90 @@ export function preloadImageAsset(src: string, decoding: HTMLImageElement['decod
     }
     image.addEventListener('error', finish, { once: true });
   });
+}
+
+function buildRasterizedTextureCacheKey(src: string, options: RasterizedSvgTextureOptions) {
+  return JSON.stringify([
+    src,
+    Math.max(1, Math.round(options.widthPx)),
+    Math.max(1, Math.round(options.heightPx)),
+    options.devicePixelRatio ?? null,
+    options.colorSpace ?? null,
+    options.wrapS ?? null,
+    options.wrapT ?? null,
+    options.repeatX ?? null,
+    options.repeatY ?? null,
+    options.minFilter ?? null,
+    options.magFilter ?? null,
+    options.generateMipmaps ?? null,
+    options.anisotropy ?? null
+  ]);
+}
+
+export function getRasterizedSvgTextureAsset(src: string, options: RasterizedSvgTextureOptions) {
+  const cacheKey = buildRasterizedTextureCacheKey(src, options);
+  const cached = rasterizedTextureCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const promise = new Promise<THREE.Texture>((resolve) => {
+    let settled = false;
+
+    const resolveFallbackTexture = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      const fallbackTexture = textureLoader.load(src);
+      applyTextureOptions(fallbackTexture, options);
+      resolve(fallbackTexture);
+    };
+
+    const resolveRasterizedTexture = (image: HTMLImageElement) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      const dpr = Math.max(1, options.devicePixelRatio ?? window.devicePixelRatio ?? 1);
+      const rasterWidth = Math.max(1, Math.round(options.widthPx * dpr));
+      const rasterHeight = Math.max(1, Math.round(options.heightPx * dpr));
+      const canvas = document.createElement('canvas');
+      canvas.width = rasterWidth;
+      canvas.height = rasterHeight;
+      canvas.style.width = `${Math.max(1, Math.round(options.widthPx))}px`;
+      canvas.style.height = `${Math.max(1, Math.round(options.heightPx))}px`;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        resolveFallbackTexture();
+        return;
+      }
+      context.clearRect(0, 0, rasterWidth, rasterHeight);
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
+      context.drawImage(image, 0, 0, rasterWidth, rasterHeight);
+      const texture = new THREE.CanvasTexture(canvas);
+      applyTextureOptions(texture, options);
+      texture.needsUpdate = true;
+      resolve(texture);
+    };
+
+    const image = getSharedImageAsset(src, { decoding: 'sync' });
+    if (image.complete && image.naturalWidth > 0) {
+      resolveRasterizedTexture(image);
+      return;
+    }
+
+    getSharedImageAsset(src, {
+      decoding: 'sync',
+      onLoad: () => {
+        resolveRasterizedTexture(getSharedImageAsset(src, { decoding: 'sync' }));
+      }
+    });
+
+    image.addEventListener('error', resolveFallbackTexture, { once: true });
+  });
+
+  rasterizedTextureCache.set(cacheKey, promise);
+  return promise;
 }

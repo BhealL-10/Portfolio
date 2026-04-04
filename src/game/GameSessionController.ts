@@ -171,6 +171,18 @@ interface ActiveAchievementToast {
   serial: number;
 }
 
+type EnemyCollisionOutcome = 'player_dies' | 'enemy_dies' | 'both_survive' | 'collision_ignored';
+
+interface EnemyCollisionResolution {
+  outcome: EnemyCollisionOutcome;
+  source?: 'impact' | 'shield';
+  fromBehind?: boolean;
+  shieldSave?: boolean;
+  momentumBurst?: number;
+}
+
+type EnemyImpactSide = 'front' | 'back';
+
 type ShardHudImageKey = 'anchorLoad' | 'anchorFull' | 'boost';
 
 interface GameTickFrame {
@@ -290,10 +302,22 @@ export class GameSessionController {
       score: 0,
       bestScore: 0,
       shardsLanded: 0,
+      bestShards: 0,
       distanceMeters: 0,
+      bestDistanceMeters: 0,
       coinsCollected: 0,
+      bestCoinsCollected: 0,
       enemiesKilled: 0,
+      bestEnemiesKilled: 0,
       longestMomentumSeconds: 0,
+      bestLongestMomentumSeconds: 0,
+      scoreBreakdown: {
+        landings: { count: 0, score: 0 },
+        kills: { count: 0, score: 0 },
+        coins: { count: 0, score: 0 },
+        momentum: { score: 0 },
+        other: { score: 0 }
+      },
       personalBests: {
         score: false,
         shardsLanded: false,
@@ -341,6 +365,7 @@ export class GameSessionController {
   private lastLandingDirection: -1 | 1 | 0 = 0;
   private choiceMode: ChoiceMode = 'none';
   private activeChoices: BranchChoice[] = [];
+  private hiddenMilestoneChoice: BranchChoice | null = null;
   private activeShopAngles: number[] = [];
   private acquisition: AcquisitionFeedback | null = null;
   private landingFeedback: LandingFeedback | null = null;
@@ -376,8 +401,10 @@ export class GameSessionController {
   private shieldHitUntil = 0;
   private shieldRechargeFlashUntil = 0;
   private readonly moduleFlashUntil: Partial<Record<RogueliteModuleSlot, number>> = {};
-  private bigCanonFireUntil = 0;
-  private frontCanonFireUntil = 0;
+  private bigCanonAnimStartedAt = 0;
+  private bigCanonAnimUntil = 0;
+  private frontCanonAnimStartedAt = 0;
+  private frontCanonAnimUntil = 0;
   private grapState: 'idle' | 'launch' | 'hooked' | 'landing' = 'idle';
   private grapStateUntil = 0;
   private grapTargetIndex: number | null = null;
@@ -971,6 +998,7 @@ export class GameSessionController {
     this.wrapperCooldownPending = false;
     this.choiceMode = 'none';
     this.activeChoices = [];
+    this.hiddenMilestoneChoice = null;
     this.airborneFromMilestone = false;
     this.airborneStartedAt = 0;
     this.shop.reset();
@@ -1047,6 +1075,7 @@ export class GameSessionController {
     this.chargeMeter = 0;
     this.choiceMode = 'none';
     this.activeChoices = [];
+    this.hiddenMilestoneChoice = null;
     this.activeShopAngles = [];
     this.acquisition = null;
     this.landingFeedback = null;
@@ -1104,8 +1133,10 @@ export class GameSessionController {
     (Object.keys(this.moduleFlashUntil) as RogueliteModuleSlot[]).forEach((slot) => {
       delete this.moduleFlashUntil[slot];
     });
-    this.bigCanonFireUntil = 0;
-    this.frontCanonFireUntil = 0;
+    this.bigCanonAnimStartedAt = 0;
+    this.bigCanonAnimUntil = 0;
+    this.frontCanonAnimStartedAt = 0;
+    this.frontCanonAnimUntil = 0;
     this.resetPendingEnemyShot(this.frontCanonShot);
     this.resetPendingEnemyShot(this.bigCanonShot);
     this.grapState = 'idle';
@@ -1504,6 +1535,7 @@ export class GameSessionController {
     this.shop.reset();
     this.choiceMode = 'none';
     this.activeChoices = [];
+    this.hiddenMilestoneChoice = null;
     this.activeShopAngles = [];
   }
 
@@ -1513,6 +1545,7 @@ export class GameSessionController {
     }
     this.choiceMode = 'none';
     this.activeChoices = [];
+    this.hiddenMilestoneChoice = null;
     this.activeShopAngles = [];
   }
 
@@ -1527,6 +1560,63 @@ export class GameSessionController {
   getPlayerFocusPoint() {
     const source = this.player.visible ? this.player.position : this.playerPosition;
     return source.clone().add(new THREE.Vector3(0, 0.42, 0.04));
+  }
+
+  getParallaxAnchor(target = new THREE.Vector3()) {
+    const node = this.state === 'portal_preview' ? this.getPortalPreviewNode() : this.getResolvedNode(this.attachedIndex);
+    return target.set(node.resolvedX, node.resolvedY, node.resolvedZ);
+  }
+
+  getParallaxCoverageAnchorX() {
+    return this.getCameraPose().lookAt.x;
+  }
+
+  getParallaxViewState() {
+    const currentNode = this.state === 'portal_preview' ? this.getPortalPreviewNode() : this.getResolvedNode(this.attachedIndex);
+    const milestoneView = currentNode.isGigantic && this.playerState !== 'airborne';
+    const fixedCameraView =
+      milestoneView ||
+      (this.isShopInteractionLocked() && this.playerState !== 'airborne') ||
+      this.state === 'upgrade_branching' ||
+      this.state === 'upgrade_acquired' ||
+      this.state === 'game_over' ||
+      this.state === 'portal_preview' ||
+      this.state === 'transition_in' ||
+      this.state === 'transition_out';
+
+    const worldBounds = this.getParallaxWorldBounds();
+
+    return {
+      visibleMinY: this.camera.getSafeBottom(),
+      visibleMaxY: this.camera.getSafeTop(),
+      playableMinY: worldBounds.minY,
+      playableMaxY: worldBounds.maxY,
+      playerY: this.playerPosition.y,
+      cameraFollowsPlayer: !fixedCameraView,
+      isMilestoneView: milestoneView
+    };
+  }
+
+  getParallaxWorldBounds() {
+    const outerLaneExtent = 8.4 * 2.5;
+    const shardPadding = DEFAULT_COLUMN_DISTANCE * 0.95;
+    const maxCameraZoom =
+      (isMobileRuntime() ? 40.5 : 50.8) +
+      16.2 +
+      6.4 +
+      6.8 +
+      8.8 * 1.28 * 1.45;
+    const maxVisibleHalfHeight = Math.tan(THREE.MathUtils.degToRad(42 * 0.5)) * maxCameraZoom;
+    const halfPlayableHeight = Math.max(outerLaneExtent + shardPadding, maxVisibleHalfHeight + DEFAULT_COLUMN_DISTANCE * 0.9);
+    return {
+      minY: -halfPlayableHeight,
+      maxY: halfPlayableHeight,
+      maxCameraZoom
+    };
+  }
+
+  isMirrorModeActive() {
+    return this.getProgressionDirectionSign() < 0;
   }
 
   getHudState(): GameHudSnapshot {
@@ -1608,10 +1698,16 @@ export class GameSessionController {
       score: statsSnapshot.score,
       bestScore: statsSnapshot.bestScore,
       shardsLanded: statsSnapshot.shardsLanded,
+      bestShards: statsSnapshot.bestShards,
       distanceMeters: statsSnapshot.distanceMeters,
+      bestDistanceMeters: statsSnapshot.bestDistanceMeters,
       coinsCollected: statsSnapshot.coinsCollected,
+      bestCoinsCollected: statsSnapshot.bestCoinsCollected,
       enemiesKilled: statsSnapshot.enemiesKilled,
+      bestEnemiesKilled: statsSnapshot.bestEnemiesKilled,
       longestMomentumSeconds: statsSnapshot.longestMomentumSeconds,
+      bestLongestMomentumSeconds: statsSnapshot.bestLongestMomentumSeconds,
+      scoreBreakdown: statsSnapshot.scoreBreakdown,
       personalBests: statsSnapshot.personalBests,
       equipment: this.hudSnapshot.inventoryItems.map((item) => ({
         id: item.id,
@@ -2239,9 +2335,14 @@ export class GameSessionController {
 
   private updateWrapperSequence() {
     if (this.wrapperPendingTarget !== null && this.currentTime >= this.wrapperTeleportAt) {
-      const target = this.wrapperPendingTarget;
+      const target =
+        this.wrapperPendingTarget > this.attachedIndex && this.isTeleportTargetSafe(this.wrapperPendingTarget, this.getResolvedNode(this.wrapperPendingTarget))
+          ? this.wrapperPendingTarget
+          : this.findSafeTeleportTarget(Math.max(10, this.runUpgrades.modifiers.wrapperDistance), 2);
       this.wrapperPendingTarget = null;
-      this.attachToNode(target, false, null, null, null, null, this.getResolvedNode(target));
+      if (target > this.attachedIndex + 1) {
+        this.attachToNode(target, false, null, null, null, null, this.getResolvedNode(target));
+      }
     }
     if (this.wrapperVisualUntil > 0 && this.currentTime >= this.wrapperVisualUntil) {
       if (this.wrapperCooldownPending) {
@@ -2589,16 +2690,20 @@ export class GameSessionController {
   private getFrontCanonEffectiveRange() {
     const rarityFloor =
       this.getEquippedItem('front_canon')?.rarity === 'legendary'
-        ? 12.8
+        ? 17.4
         : this.getEquippedItem('front_canon')?.rarity === 'epic'
-          ? 11.6
+          ? 16
           : this.getEquippedItem('front_canon')?.rarity === 'rare'
-            ? 10.4
+            ? 14.6
             : this.getEquippedItem('front_canon')?.rarity === 'uncommon'
-              ? 9.2
-              : 8.4;
-    const momentumBoost = this.momentum.gauge * 4.6;
-    return Math.max(rarityFloor, this.runUpgrades.modifiers.frontCanonRange + momentumBoost + 4.4);
+              ? 13.4
+              : 12.2;
+    const momentumBoost = this.momentum.gauge * 6.2;
+    return Math.max(rarityFloor, this.runUpgrades.modifiers.frontCanonRange + momentumBoost + 7.8);
+  }
+
+  private getFrontCanonOriginOffset() {
+    return 0.96;
   }
 
   private getFrontCanonSpreadWidth() {
@@ -2760,6 +2865,7 @@ export class GameSessionController {
   }
 
   private updateAttached(deltaTime: number, currentNode: ResolvedGamePathNode) {
+    const previousPosition = this.scratchVectorC.set(this.playerPosition.x, this.playerPosition.y, this.playerPosition.z);
     const baselineAngular = (Math.PI * 2) / Math.max(1.6, currentNode.gameplayOrbitPeriod);
     const chargeBoost = this.chargeActive ? 0.64 + this.chargeMeter * 0.52 : 0;
     const usingSouffleurAttached =
@@ -2812,7 +2918,7 @@ export class GameSessionController {
 
     this.collectCoinsOnCurrentNode(currentNode);
     this.collectCoinsNearPlayer();
-    this.resolveEnemyContact(currentNode);
+    this.resolveEnemyContact(currentNode, previousPosition);
 
   }
 
@@ -2858,26 +2964,26 @@ export class GameSessionController {
         this.emitAudioEvent({ type: 'grapple_hit' });
       }
       if (this.grapState === 'launch') {
-        const launchRetractRate = holdingGrapple ? 4.4 + this.momentum.gauge * 1.8 : 0;
+        const launchRetractRate = holdingGrapple ? 6.8 + this.momentum.gauge * 2.4 : 0;
         const launchFloor = Math.max(0.88, distance * 0.82);
         this.grapRopeLength = Math.max(launchFloor, this.grapRopeLength - launchRetractRate * deltaTime);
         this.playerVelocity.addScaledVector(
           pull,
-          Math.min(10.4, 4.8 + distance * (holdingGrapple ? 0.42 : 0.24)) * deltaTime
+          Math.min(12.8, 5.8 + distance * (holdingGrapple ? 0.58 : 0.28)) * deltaTime
         );
       } else {
         const canPullWithHold = holdingGrapple;
         if (this.grapReleasePending && this.currentTime - this.grapReleasePressedAt >= 0.18) {
           this.grapReleasePending = false;
         }
-        const retractRate = canPullWithHold ? 8.1 + this.momentum.gauge * 2.9 : 0;
+        const retractRate = canPullWithHold ? 12.4 + this.momentum.gauge * 3.8 : 0;
         const contactLength = Math.max(0.72, this.getOrbitClearance(grapNode) + 0.22);
         this.grapRopeLength = Math.max(contactLength, this.grapRopeLength - retractRate * deltaTime);
         const ropeTension = Math.max(0, distance - this.grapRopeLength);
         if (canPullWithHold && ropeTension > -0.24) {
           this.playerVelocity.addScaledVector(
             pull,
-            Math.min(13.2, 4.2 + ropeTension * 7.2 + distance * 0.22) * deltaTime
+            Math.min(16.8, 5.4 + ropeTension * 8.8 + distance * 0.28) * deltaTime
           );
         }
         if (this.chargeActive && canPullWithHold) {
@@ -2887,7 +2993,7 @@ export class GameSessionController {
         if (canPullWithHold) {
           const radialSpeed = this.playerVelocity.dot(pull);
           if (radialSpeed > 0) {
-            this.playerVelocity.addScaledVector(pull, -radialSpeed * 0.28);
+            this.playerVelocity.addScaledVector(pull, -radialSpeed * 0.14);
           }
         }
       }
@@ -3003,7 +3109,7 @@ export class GameSessionController {
     }
 
     if (this.teleportReadyAt <= this.currentTime && this.runUpgrades.modifiers.teleportRange > 0) {
-      const teleportTarget = this.path.getTeleportTarget(this.attachedIndex, this.runUpgrades.modifiers.teleportRange);
+      const teleportTarget = this.findSafeTeleportTarget(this.runUpgrades.modifiers.teleportRange, 2);
       if (teleportTarget > this.attachedIndex + 1 && this.isNearCameraBackline(this.playerPosition.x, 2.4)) {
         this.teleportReadyAt = this.currentTime + this.runUpgrades.modifiers.teleportCooldown;
         this.attachToNode(teleportTarget, false, null, null, null, null, this.getResolvedNode(teleportTarget));
@@ -3011,7 +3117,7 @@ export class GameSessionController {
     }
 
     if (this.warpReadyAt <= this.currentTime && this.runUpgrades.modifiers.warpRange > 0) {
-      const warpTarget = this.path.getTeleportTarget(this.attachedIndex, this.runUpgrades.modifiers.warpRange);
+      const warpTarget = this.findSafeTeleportTarget(this.runUpgrades.modifiers.warpRange, 4);
       if (warpTarget > this.attachedIndex + 3 && this.isNearCameraBackline(this.playerPosition.x, 1.6)) {
         this.warpReadyAt = this.currentTime + this.runUpgrades.modifiers.warpCooldown;
         this.attachToNode(warpTarget, false, null, null, null, null, this.getResolvedNode(warpTarget));
@@ -3163,7 +3269,8 @@ export class GameSessionController {
   }
 
   private tryActivateGrappleFromCurrentState() {
-    if (this.playerState !== 'airborne') {
+    const gate = this.canAttemptGrapple();
+    if (!gate.canAttempt) {
       return false;
     }
     const candidate = this.findGrappleCandidate();
@@ -3174,89 +3281,72 @@ export class GameSessionController {
   }
 
   private findGrappleCandidate() {
-    if (!this.isGrappleAvailable() || this.playerState !== 'airborne') {
+    const gate = this.canAttemptGrapple();
+    if (!gate.canAttempt) {
       return null;
     }
     const headingVector = this.getMovementHeadingVector(this.scratchVector2);
     const grappleOrigin = this.getGrappleOrigin(headingVector);
-    const grapConeHalfAngle = this.getGrappleConeHalfAngle();
+    const coneDotMin = Math.cos(this.getGrappleConeHalfAngle());
     const minReach = 1.1;
     const effectiveReach = this.getGrappleEffectiveRange(grappleOrigin.x);
-    const searchNodes = new Map<number, ResolvedGamePathNode>();
-    this.getInteractableVisibleNodes().forEach((node) => {
-      searchNodes.set(node.index, node);
-    });
-    this.getDisplayNodes(Math.min(34, this.getRecommendedVisibleCount() + 10)).forEach((node) => {
+    let bestCandidate: { index: number; distance: number; angle: number; angleScore: number } | null = null;
+    for (const node of this.getInteractableVisibleNodes()) {
       if (node.index === this.attachedIndex) {
-        return;
+        continue;
       }
-      searchNodes.set(node.index, node);
-    });
-    let bestCandidate: { index: number; distance: number; angle: number; contactAngle: number; score: number } | null = null;
-    const evaluateWithCone = (allowedConeHalfAngle: number) => {
-      let found = false;
-      for (const node of searchNodes.values()) {
-        const centerX = node.resolvedX - grappleOrigin.x;
-        const centerY = node.resolvedY - grappleOrigin.y;
-        const centerDistance = Math.hypot(centerX, centerY);
-        const edgeDistance = Math.max(0, centerDistance - this.getPhysicalRadius(node) * 0.92);
-        if (edgeDistance < minReach || edgeDistance > effectiveReach) {
-          continue;
-        }
-        const centerNormalizedX = centerX / Math.max(0.001, centerDistance);
-        const centerNormalizedY = centerY / Math.max(0.001, centerDistance);
-        const centerDot = clamp(centerNormalizedX * headingVector.x + centerNormalizedY * headingVector.y, -1, 1);
-        if (centerDot <= -0.08) {
-          continue;
-        }
-        const centerAngle = Math.acos(centerDot);
-        if (centerAngle > allowedConeHalfAngle) {
-          continue;
-        }
-
-        const contact = this.findBestSurfaceContact(node, grappleOrigin, 120, 7);
-        const toNodeX = contact.surfaceWorldPosition.x - grappleOrigin.x;
-        const toNodeY = contact.surfaceWorldPosition.y - grappleOrigin.y;
-        const distance = Math.hypot(toNodeX, toNodeY);
-        if (distance < minReach || distance > effectiveReach + 0.4) {
-          continue;
-        }
-        const normalizedX = toNodeX / Math.max(0.001, distance);
-        const normalizedY = toNodeY / Math.max(0.001, distance);
-        const dot = clamp(normalizedX * headingVector.x + normalizedY * headingVector.y, -1, 1);
-        const contactAngle = Math.acos(dot);
-        const usedAngle = Math.min(centerAngle, contactAngle);
-        if (usedAngle > allowedConeHalfAngle) {
-          continue;
-        }
-        const score = usedAngle * 2.1 + edgeDistance / Math.max(3.2, effectiveReach);
-        if (
-          !bestCandidate ||
-          score < bestCandidate.score - 0.002 ||
-          (Math.abs(score - bestCandidate.score) <= 0.002 && edgeDistance < bestCandidate.distance - 0.02) ||
-          (Math.abs(edgeDistance - bestCandidate.distance) <= 0.02 && usedAngle < bestCandidate.angle)
-        ) {
-          bestCandidate = { index: node.index, distance: edgeDistance, angle: usedAngle, contactAngle: contact.angle, score };
-          found = true;
-        }
+      const centerX = node.resolvedX - grappleOrigin.x;
+      const centerY = node.resolvedY - grappleOrigin.y;
+      const centerDistance = Math.hypot(centerX, centerY);
+      if (centerDistance <= 0.001) {
+        continue;
       }
-      return found;
-    };
+      const nodeRadius = this.getPhysicalRadius(node) * 0.94;
+      const edgeDistance = Math.max(0, centerDistance - nodeRadius);
+      if (edgeDistance < minReach || edgeDistance > effectiveReach) {
+        continue;
+      }
+      const centerNormalizedX = centerX / centerDistance;
+      const centerNormalizedY = centerY / centerDistance;
+      const centerDot = clamp(centerNormalizedX * headingVector.x + centerNormalizedY * headingVector.y, -1, 1);
+      const silhouetteBonus = Math.min(0.24, nodeRadius / centerDistance);
+      const angleScore = centerDot + silhouetteBonus;
+      if (angleScore < coneDotMin) {
+        continue;
+      }
+      const contact = this.findBestSurfaceContact(node, grappleOrigin, 120, 7);
+      const toNodeX = contact.surfaceWorldPosition.x - grappleOrigin.x;
+      const toNodeY = contact.surfaceWorldPosition.y - grappleOrigin.y;
+      const distance = Math.hypot(toNodeX, toNodeY);
+      if (distance < minReach || distance > effectiveReach + 0.28) {
+        continue;
+      }
+      if (
+        !bestCandidate ||
+        angleScore > bestCandidate.angleScore + 0.0005 ||
+        (Math.abs(angleScore - bestCandidate.angleScore) <= 0.0005 && distance < bestCandidate.distance - 0.02)
+      ) {
+        bestCandidate = { index: node.index, distance, angle: contact.angle, angleScore };
+      }
+    }
+    return bestCandidate;
+  }
 
-    if (!evaluateWithCone(grapConeHalfAngle)) {
-      evaluateWithCone(grapConeHalfAngle * 1.35);
+  private canAttemptGrapple() {
+    if (this.playerState !== 'airborne') {
+      return { canAttempt: false, reason: 'invalid_player_state' } as const;
     }
-    const resolvedCandidate = bestCandidate as {
-      index: number;
-      distance: number;
-      angle: number;
-      contactAngle: number;
-      score: number;
-    } | null;
-    if (!resolvedCandidate) {
-      return null;
+    if (!this.getEquippedItem('grappin')) {
+      return { canAttempt: false, reason: 'missing_grapple_upgrade' } as const;
     }
-    return { index: resolvedCandidate.index, distance: resolvedCandidate.distance, angle: resolvedCandidate.contactAngle };
+    if (this.isGrappleBusy()) {
+      return { canAttempt: false, reason: 'grapple_busy' } as const;
+    }
+    const runtime = this.getModuleRuntime('grappin');
+    if (runtime && runtime.cooldownRemaining > 0) {
+      return { canAttempt: false, reason: 'cooldown' } as const;
+    }
+    return { canAttempt: true, reason: 'ok' } as const;
   }
 
   private armGrapple(index: number, distance: number, angle: number) {
@@ -3277,6 +3367,72 @@ export class GameSessionController {
     this.triggerModuleFlash('grappin', 0.5);
     this.emitAudioEvent({ type: 'grapple_cast' });
     return true;
+  }
+
+  private findSafeTeleportTarget(range: number, minimumAdvance = 2) {
+    const candidates = this.path
+      .getTeleportCandidates(this.attachedIndex, Math.max(0, Math.round(range)))
+      .filter((candidate) => candidate >= this.attachedIndex + minimumAdvance);
+    let bestTarget = -1;
+    let bestScore = Number.NEGATIVE_INFINITY;
+
+    for (const candidate of candidates) {
+      const node = this.getResolvedNode(candidate);
+      if (!this.isTeleportTargetSafe(candidate, node)) {
+        continue;
+      }
+      const score = this.getTeleportTargetSafetyScore(candidate, node);
+      if (score > bestScore) {
+        bestScore = score;
+        bestTarget = candidate;
+      }
+    }
+
+    return bestTarget;
+  }
+
+  private isTeleportTargetSafe(index: number, node: ResolvedGamePathNode) {
+    if (node.enemySlot?.alive) {
+      return false;
+    }
+
+    const clearance = Math.max(2.4, node.gameplayRadius + 0.9);
+    for (let offset = 0; offset <= 2; offset += 1) {
+      const nearbyNode = this.getResolvedNode(index + offset);
+      const nearbyEnemy = nearbyNode.enemySlot;
+      if (!nearbyEnemy?.alive) {
+        continue;
+      }
+      const enemyPosition = this.getEnemyWorldPosition(nearbyNode, nearbyEnemy.pole);
+      const distance = enemyPosition.distanceTo(this.scratchVector.set(node.resolvedX, node.resolvedY, node.resolvedZ));
+      if (distance <= clearance + this.getEnemyContactRadius(nearbyNode, nearbyEnemy, false)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private getTeleportTargetSafetyScore(index: number, node: ResolvedGamePathNode) {
+    let nearestHazardDistance = Number.POSITIVE_INFINITY;
+    for (let offset = 0; offset <= 3; offset += 1) {
+      const nearbyNode = this.getResolvedNode(index + offset);
+      const nearbyEnemy = nearbyNode.enemySlot;
+      if (!nearbyEnemy?.alive) {
+        continue;
+      }
+      const enemyDistance = this.getEnemyWorldPosition(nearbyNode, nearbyEnemy.pole).distanceTo(
+        this.scratchVector.set(node.resolvedX, node.resolvedY, node.resolvedZ)
+      );
+      nearestHazardDistance = Math.min(nearestHazardDistance, enemyDistance);
+    }
+
+    const hazardBonus = Number.isFinite(nearestHazardDistance) ? Math.min(12, nearestHazardDistance) : 12;
+    const advance = index - this.attachedIndex;
+    const sizeBonus = node.gameplayRadius * 2.1;
+    const lanePenalty = Math.abs(node.resolvedY) * 0.18;
+    const eventPenalty = node.eventType === 'shop' ? 0.4 : 0;
+    return advance * 1.8 + sizeBonus + hazardBonus - lanePenalty - eventPenalty;
   }
 
   private tryActivateWrapper(emergencyOnly: boolean, allowChoiceInterrupt = false) {
@@ -3309,7 +3465,7 @@ export class GameSessionController {
     if (!this.isWrapperAvailable()) {
       return false;
     }
-    const teleportTarget = this.path.getTeleportTarget(this.attachedIndex, Math.round(wrapperDistance));
+    const teleportTarget = this.findSafeTeleportTarget(wrapperDistance, 2);
     if (teleportTarget <= this.attachedIndex + 1) {
       return false;
     }
@@ -3419,10 +3575,11 @@ export class GameSessionController {
     }
 
     this.collectCoinsOnCurrentNode(node);
-    this.resolveEnemyContact(node);
+    this.resolveEnemyContact(node, landingSegmentStart ?? landingPosition ?? this.playerPosition);
     if (this.choiceMode === 'reward_branch' && !node.isMilestone && node.colorHint !== 'reward') {
       this.choiceMode = 'none';
       this.activeChoices = [];
+      this.hiddenMilestoneChoice = null;
       this.activeShopAngles = [];
       this.state = 'running_attached';
     }
@@ -3471,12 +3628,7 @@ export class GameSessionController {
       grade = 'good';
     }
 
-    let momentumGain = twist ? 0.1 : 0.024;
-    if (!twist && this.momentum.gauge >= 0.44) {
-      momentumGain = 0;
-    } else if (!twist && this.momentum.gauge + momentumGain > 0.44) {
-      momentumGain = Math.max(0, 0.44 - this.momentum.gauge);
-    }
+    let momentumGain = twist ? 0.084 : 0.02;
 
     let speedMultiplier = 1;
     if (grade === 'miss') {
@@ -3493,13 +3645,7 @@ export class GameSessionController {
       speedMultiplier = 1.24;
     }
 
-    const nextGauge = clamp(
-      this.momentum.gauge + momentumGain * (1 + this.runUpgrades.modifiers.momentumGain),
-      0,
-      Math.max(1, this.runUpgrades.modifiers.momentumCap)
-    );
-    this.momentum.fillRate = Math.max(0, nextGauge - this.momentum.gauge);
-    this.momentum.gauge = nextGauge;
+    this.applyMomentumDelta(momentumGain);
     this.lastLandingDirection = direction;
     this.achievements.recordLanding({
       grade,
@@ -3571,8 +3717,12 @@ export class GameSessionController {
   private resolveNodeEvent(node: ResolvedGamePathNode) {
     if (node.isMilestone) {
       if (!this.milestoneChoiceCache.has(node.index)) {
-        const offers = buildUpgradeOffers(node.index, this.runUpgrades);
-        this.milestoneChoiceCache.set(node.index, this.path.createUpgradeBranches(node.index, offers, this.score));
+        const offers = buildUpgradeOffers(node.index, this.runUpgrades, Math.random, 4);
+        this.milestoneChoiceCache.set(node.index, this.path.createUpgradeBranches(node.index, offers.slice(0, 3), this.score));
+        this.hiddenMilestoneChoice = offers[3] ? this.path.createHiddenMilestoneBackBranch(node.index, offers[3]) : null;
+      } else if (!this.hiddenMilestoneChoice) {
+        const offers = buildUpgradeOffers(node.index, this.runUpgrades, Math.random, 4);
+        this.hiddenMilestoneChoice = offers[3] ? this.path.createHiddenMilestoneBackBranch(node.index, offers[3]) : null;
       }
       this.activeChoices = (this.milestoneChoiceCache.get(node.index) ?? []).map((choice) => ({
         ...choice,
@@ -3626,7 +3776,10 @@ export class GameSessionController {
   private commitRewardBranch(index: number, viaFallback: boolean) {
     const choice = this.activeChoices[index];
     if (!choice) return false;
+    return this.commitRewardChoice(choice, viaFallback);
+  }
 
+  private commitRewardChoice(choice: BranchChoice, viaFallback: boolean) {
     this.path.replaceFuture(this.attachedIndex, choice.pathNodes);
     const branchTailIndex = this.attachedIndex + choice.pathNodes.length;
     this.path.ensureAhead(branchTailIndex, 78, 72);
@@ -3637,6 +3790,7 @@ export class GameSessionController {
     this.applyOffer(choice.offer, viaFallback ? 'Quick choice' : 'Path chosen');
     this.choiceMode = 'none';
     this.activeChoices = [];
+    this.hiddenMilestoneChoice = null;
     this.activeShopAngles = [];
     this.state = 'upgrade_acquired';
     this.eventCooldownUntil = this.currentTime + 0.35;
@@ -3871,12 +4025,21 @@ export class GameSessionController {
         return;
       }
 
-      if (slot === 'reacteur_front' || slot === 'reacteur_back' || slot === 'souffleur' || slot === 'big_canon' || slot === 'front_canon') {
+      if (slot === 'big_canon' || slot === 'front_canon') {
+        const animationActive =
+          slot === 'big_canon'
+            ? this.syncOneShotModuleAnimation(sprite, [1, 2, 3], this.bigCanonAnimStartedAt, this.bigCanonAnimUntil)
+            : this.syncOneShotModuleAnimation(sprite, [1, 2, 3], this.frontCanonAnimStartedAt, this.frontCanonAnimUntil);
+        if (!animationActive) {
+          sprite.setFrame((this.moduleFlashUntil[slot] ?? 0) > this.currentTime ? 1 : 0);
+        }
+        return;
+      }
+
+      if (slot === 'reacteur_front' || slot === 'reacteur_back' || slot === 'souffleur') {
         const isHot =
           (this.moduleFlashUntil[slot] ?? 0) > this.currentTime ||
-          (slot === 'souffleur' && this.souffleurActive) ||
-          (slot === 'big_canon' && this.bigCanonFireUntil > this.currentTime) ||
-          (slot === 'front_canon' && this.frontCanonFireUntil > this.currentTime);
+          (slot === 'souffleur' && this.souffleurActive);
         if (isHot) {
           sprite.playLoop([1, 2, 3], 10.6, elapsedTime);
         } else {
@@ -3933,6 +4096,22 @@ export class GameSessionController {
 
       sprite.setFrame(0);
     });
+  }
+
+  private syncOneShotModuleAnimation(
+    sprite: SpriteSheetPlane,
+    frames: number[],
+    startedAt: number,
+    until: number
+  ) {
+    if (until <= startedAt || this.currentTime >= until) {
+      return false;
+    }
+    const duration = Math.max(0.001, until - startedAt);
+    const progress = clamp((this.currentTime - startedAt) / duration, 0, 0.999);
+    const frameIndex = Math.min(frames.length - 1, Math.floor(progress * frames.length));
+    sprite.setFrame(frames[frameIndex] ?? frames[0] ?? 0);
+    return true;
   }
 
   private syncWorldModuleIndicators(heading: number) {
@@ -4004,7 +4183,7 @@ export class GameSessionController {
       const spreadWidth = this.getFrontCanonSpreadWidth();
       const forwardX = Math.cos(heading);
       const forwardY = Math.sin(heading);
-      const startOffset = 1.7;
+      const startOffset = this.getFrontCanonOriginOffset();
       const laserLength = Math.max(range, startOffset + 0.28);
       const centerOffset = startOffset + laserLength * 0.5;
       this.frontCanonLaser.material.color.set(this.getRarityColor(frontCanonItem?.rarity ?? 'common'));
@@ -4452,6 +4631,7 @@ export class GameSessionController {
     const visibleNodes = this.getDisplayNodes(Math.min(28, this.getRecommendedVisibleCount()));
     const coinMarkers: CoinMarker[] = [];
     const enemyMarkersById = new Map<string, EnemyMarker>();
+    const mirrored = this.isMirrorModeActive();
 
     visibleNodes.forEach((node) => {
       node.coinSlots.forEach((slot) => {
@@ -4489,7 +4669,8 @@ export class GameSessionController {
           position: this.getEnemyWorldPosition(node, node.enemySlot.pole),
           visible: true,
           tier: node.enemySlot.tier,
-          pole: node.enemySlot.pole
+          pole: node.enemySlot.pole,
+          mirrored
         });
       }
     });
@@ -4503,7 +4684,8 @@ export class GameSessionController {
         position: this.getEnemyWorldPosition(node, node.enemySlot.pole),
         visible: true,
         tier: node.enemySlot.tier,
-        pole: node.enemySlot.pole
+        pole: node.enemySlot.pole,
+        mirrored
       });
     }
 
@@ -4514,8 +4696,24 @@ export class GameSessionController {
   }
 
   private fillMomentumBurst(amount: number) {
-    this.momentum.gauge = clamp(this.momentum.gauge + amount * (1 + this.runUpgrades.modifiers.momentumGain), 0, Math.max(1, this.runUpgrades.modifiers.momentumCap));
-    this.momentum.fillRate = Math.max(this.momentum.fillRate, amount);
+    this.applyMomentumDelta(amount);
+  }
+
+  private applyMomentumDelta(amount: number) {
+    const momentumCap = Math.max(1, this.runUpgrades.modifiers.momentumCap);
+    const previousGauge = this.momentum.gauge;
+    const modifierScale = 1 + this.runUpgrades.modifiers.momentumGain;
+    let effectiveAmount = amount * modifierScale;
+
+    if (effectiveAmount > 0) {
+      const normalizedGauge = this.getNormalizedMomentumGauge();
+      const gainFalloff = THREE.MathUtils.lerp(1, 0.42, THREE.MathUtils.smoothstep(normalizedGauge, 0.28, 0.92));
+      effectiveAmount *= gainFalloff;
+    }
+
+    const nextGauge = clamp(previousGauge + effectiveAmount, 0, momentumCap);
+    this.momentum.gauge = nextGauge;
+    this.momentum.fillRate = Math.max(this.momentum.fillRate, Math.max(0, nextGauge - previousGauge));
   }
 
   private collectCoinsOnCurrentNode(node: ResolvedGamePathNode) {
@@ -4694,7 +4892,7 @@ export class GameSessionController {
       this.playerVelocity.addScaledVector(toPlayer, -outwardSpeed);
       const tangentialSpeed = this.playerVelocity.length();
       if (tangentialSpeed > 0.0001 && previousSpeed > tangentialSpeed) {
-        this.playerVelocity.multiplyScalar(THREE.MathUtils.lerp(1, previousSpeed / tangentialSpeed, 0.3));
+        this.playerVelocity.multiplyScalar(THREE.MathUtils.lerp(1, previousSpeed / tangentialSpeed, 0.68));
       }
     }
   }
@@ -4734,24 +4932,18 @@ export class GameSessionController {
     this.grapReleasePressedAt = 0;
   }
 
-  private resolveEnemyContact(node: ResolvedGamePathNode) {
+  private resolveEnemyContact(node: ResolvedGamePathNode, previousPosition: THREE.Vector3) {
     const enemy = node.enemySlot;
     if (!enemy || !enemy.alive) return;
     const enemyPosition = this.getEnemyWorldPosition(node, enemy.pole);
-    if (!this.isEnemyWithinContact(node, enemy, enemyPosition, this.playerPosition, false)) {
+    if (!this.isEnemyWithinContact(node, enemy, enemyPosition, previousPosition, false)) {
       return;
     }
-    const hitFromBehind = this.isEnemyHitFromBehind(node, enemy, enemyPosition, this.playerPosition);
-    if (hitFromBehind || this.runUpgrades.modifiers.spikeOrbit) {
-      enemy.alive = false;
-      this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
-      this.recordEnemyKill({ amount: 1, fromBehind: hitFromBehind, source: 'impact' });
-      this.emitScore();
-      this.fillMomentumBurst(0.05);
-      this.emitAudioEvent({ type: 'enemy_die' });
-      return;
-    }
-    this.consumeProtectionOrFail(enemy);
+    const resolution = this.resolveEnemyCollisionOutcome(node, enemyPosition, previousPosition, {
+      airborne: false,
+      allowShieldKill: true
+    });
+    this.applyEnemyCollisionResolution(enemy, resolution);
   }
 
   private resolveAirborneEnemyContact(previousPosition: THREE.Vector3, travelSpeed = this.playerVelocity.length()) {
@@ -4783,23 +4975,150 @@ export class GameSessionController {
       return;
     }
     const { node, enemy, enemyPosition } = bestContact;
-    const hitFromBehind = this.isEnemyHitFromBehind(node, enemy, enemyPosition, previousPosition);
-    const airborneImpactKill = this.isAirborneEnemyImpactKill(node, enemy, enemyPosition, previousPosition, travelSpeed);
-    if (this.runUpgrades.modifiers.spikeOrbit || hitFromBehind || airborneImpactKill) {
-      enemy.alive = false;
-      this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
-      this.recordEnemyKill({ amount: 1, fromBehind: hitFromBehind, source: 'impact' });
-      this.emitScore();
-      this.fillMomentumBurst(0.08);
-      this.emitAudioEvent({ type: 'enemy_die' });
-    } else {
-      this.consumeProtectionOrFail(enemy);
-    }
+    const resolution = this.resolveEnemyCollisionOutcome(node, enemyPosition, previousPosition, {
+      airborne: true,
+      allowShieldKill: true,
+      travelSpeed
+    });
+    this.applyEnemyCollisionResolution(enemy, resolution);
   }
 
-  private consumeProtectionOrFail(enemy?: ResolvedGamePathNode['enemySlot']) {
+  private resolveEnemyCollisionOutcome(
+    node: ResolvedGamePathNode,
+    enemyPosition: THREE.Vector3,
+    previousPosition: THREE.Vector3,
+    options: {
+      airborne: boolean;
+      allowShieldKill: boolean;
+      travelSpeed?: number;
+    }
+  ): EnemyCollisionResolution {
+    const impactSide = this.resolveEnemyImpactSide(enemyPosition, previousPosition);
+    const hitFromBehind = impactSide === 'back';
+    const spikeKill = Boolean(this.runUpgrades.modifiers.spikeOrbit);
+    void node;
+
     const shieldRuntime = this.ensureModuleRuntime('shield');
-    if (shieldRuntime && shieldRuntime.cooldownRemaining <= 0) {
+    const shieldReady = Boolean(options.allowShieldKill && shieldRuntime && shieldRuntime.cooldownRemaining <= 0);
+
+    if (hitFromBehind) {
+      return {
+        outcome: 'enemy_dies',
+        source: 'impact',
+        fromBehind: true,
+        momentumBurst: options.airborne ? 0.08 : 0.05
+      };
+    }
+
+    if (shieldReady) {
+      return {
+        outcome: 'enemy_dies',
+        source: 'shield',
+        shieldSave: true,
+        momentumBurst: 0.04
+      };
+    }
+
+    if (spikeKill) {
+      return {
+        outcome: 'enemy_dies',
+        source: 'impact',
+        fromBehind: hitFromBehind,
+        momentumBurst: options.airborne ? 0.08 : 0.05
+      };
+    }
+
+    if (!options.airborne) {
+      return {
+        outcome: 'player_dies'
+      };
+    }
+
+    return {
+      outcome: 'player_dies'
+    };
+  }
+
+  private resolveEnemyImpactSide(enemyPosition: THREE.Vector3, previousPosition: THREE.Vector3): EnemyImpactSide {
+    const currentFacingDot = this.resolveEnemyFacingDot(enemyPosition, previousPosition, this.playerPosition);
+    const previousFacingDot = this.resolveEnemyFacingDot(enemyPosition, previousPosition, previousPosition);
+    return Math.min(currentFacingDot, previousFacingDot) <= -0.005 ? 'back' : 'front';
+  }
+
+  private resolveEnemyFacingDot(
+    enemyPosition: THREE.Vector3,
+    segmentStart: THREE.Vector3,
+    samplePoint: THREE.Vector3
+  ) {
+    const segmentX = this.playerPosition.x - segmentStart.x;
+    const segmentY = this.playerPosition.y - segmentStart.y;
+    const segmentZ = this.playerPosition.z - segmentStart.z;
+    const segmentLengthSq = segmentX * segmentX + segmentY * segmentY + segmentZ * segmentZ;
+    let contactX = samplePoint.x;
+    let contactY = samplePoint.y;
+
+    if (segmentLengthSq > 0.0001) {
+      const toSampleX = samplePoint.x - segmentStart.x;
+      const toSampleY = samplePoint.y - segmentStart.y;
+      const toSampleZ = samplePoint.z - segmentStart.z;
+      const projection = clamp((toSampleX * segmentX + toSampleY * segmentY + toSampleZ * segmentZ) / segmentLengthSq, 0, 1);
+      contactX = segmentStart.x + segmentX * projection;
+      contactY = segmentStart.y + segmentY * projection;
+    }
+
+    const toPlayerX = contactX - enemyPosition.x;
+    const toPlayerY = contactY - enemyPosition.y;
+    const toPlayerLength = Math.hypot(toPlayerX, toPlayerY);
+    if (toPlayerLength <= 0.0001) {
+      return 1;
+    }
+
+    const normalizedToPlayerX = toPlayerX / toPlayerLength;
+    const normalizedToPlayerY = toPlayerY / toPlayerLength;
+    const enemyForwardX = this.isMirrorModeActive() ? 1 : -1;
+    return normalizedToPlayerX * enemyForwardX + normalizedToPlayerY * 0;
+  }
+
+  private applyEnemyCollisionResolution(
+    enemy: NonNullable<ResolvedGamePathNode['enemySlot']>,
+    resolution: EnemyCollisionResolution
+  ) {
+    if (resolution.outcome === 'collision_ignored' || resolution.outcome === 'both_survive') {
+      return;
+    }
+
+    if (resolution.outcome === 'enemy_dies') {
+      if (resolution.source === 'shield') {
+        this.consumeProtectionOrFail(enemy, { allowShieldKill: true });
+        return;
+      }
+      enemy.alive = false;
+      this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
+      this.recordEnemyKill({
+        amount: 1,
+        fromBehind: resolution.fromBehind,
+        shieldSave: resolution.shieldSave,
+        source: resolution.source ?? 'impact'
+      });
+      this.emitScore();
+      if (resolution.momentumBurst) {
+        this.fillMomentumBurst(resolution.momentumBurst);
+      }
+      this.emitAudioEvent({ type: 'enemy_die' });
+      return;
+    }
+
+    this.consumeProtectionOrFail(enemy, { allowShieldKill: false });
+  }
+
+  private consumeProtectionOrFail(
+    enemy?: ResolvedGamePathNode['enemySlot'],
+    options: {
+      allowShieldKill?: boolean;
+    } = {}
+  ) {
+    const shieldRuntime = this.ensureModuleRuntime('shield');
+    if (options.allowShieldKill !== false && shieldRuntime && shieldRuntime.cooldownRemaining <= 0) {
       const cooldownBase = 14;
       const cooldown = Math.max(4, cooldownBase * (1 - this.runUpgrades.modifiers.shieldCooldownFactor));
       shieldRuntime.cooldownRemaining = cooldown;
@@ -4875,6 +5194,44 @@ export class GameSessionController {
     return travelDuration;
   }
 
+  private findBestFrontCanonTarget(forward: THREE.Vector3, originX: number, originY: number, laserLength: number) {
+    let bestTarget: { node: ResolvedGamePathNode; along: number; sideDistance: number } | null = null;
+    for (const node of this.getInteractableVisibleNodes()) {
+      const enemy = node.enemySlot;
+      if (!enemy || !enemy.alive || enemy.tier === 'invincible') {
+        continue;
+      }
+      const position = this.getEnemyWorldPosition(node, enemy.pole);
+      const toEnemy = this.scratchVectorB.set(position.x - originX, position.y - originY, 0);
+      const distance = Math.hypot(toEnemy.x, toEnemy.y);
+      const enemyRadius = this.getEnemyScanRadius(enemy);
+      if (distance > laserLength + enemyRadius) {
+        continue;
+      }
+      const along = toEnemy.dot(forward);
+      if (along <= 0.14) {
+        continue;
+      }
+      const sideDistance = Math.abs(toEnemy.x * -forward.y + toEnemy.y * forward.x);
+      const hitHalfWidth = this.getFrontCanonSpreadWidth() * 0.5 + enemyRadius;
+      if (sideDistance > hitHalfWidth) {
+        continue;
+      }
+      const forwardDot = along / Math.max(0.0001, distance);
+      if (forwardDot <= 0.36) {
+        continue;
+      }
+      if (
+        !bestTarget ||
+        along < bestTarget.along - 0.02 ||
+        (Math.abs(along - bestTarget.along) <= 0.02 && sideDistance < bestTarget.sideDistance)
+      ) {
+        bestTarget = { node, along, sideDistance };
+      }
+    }
+    return bestTarget;
+  }
+
   private updateAutoFire(elapsedTime: number) {
     const hasBigCanon = Boolean(this.getEquippedItem('big_canon'));
     const hasFrontCanon = Boolean(this.getEquippedItem('front_canon'));
@@ -4897,7 +5254,7 @@ export class GameSessionController {
         }
         if (bestTarget?.node.enemySlot) {
           const targetEnemy = bestTarget.node.enemySlot;
-          const travelDuration = this.queueCanonShot(
+          this.queueCanonShot(
             this.bigCanonShot,
             'big_canon',
             bestTarget.node,
@@ -4911,7 +5268,8 @@ export class GameSessionController {
           }
           this.fillMomentumBurst(0.05);
           runtime.cooldownRemaining = Math.max(1.4, this.runUpgrades.modifiers.bigCanonCooldown || 4.5);
-          this.bigCanonFireUntil = elapsedTime + travelDuration;
+          this.bigCanonAnimStartedAt = elapsedTime;
+          this.bigCanonAnimUntil = elapsedTime + 0.24;
           this.triggerModuleFlash('big_canon', 0.24);
           this.achievements.recordModuleActivated('big_canon', this.currentTime);
           this.queueAchievementToastsIfNeeded();
@@ -4926,34 +5284,16 @@ export class GameSessionController {
     const forward2D = this.getMovementHeadingVector(this.scratchVector2);
     const forward = this.scratchVector.set(forward2D.x, forward2D.y, 0);
     const range = this.getFrontCanonEffectiveRange();
-    const frontStartOffset = 1.7;
+    const frontStartOffset = this.getFrontCanonOriginOffset();
     const laserOriginX = this.playerPosition.x + forward2D.x * frontStartOffset;
     const laserOriginY = this.playerPosition.y + forward2D.y * frontStartOffset;
     const laserLength = Math.max(range, frontStartOffset + 0.28);
-    let bestTarget: { node: ResolvedGamePathNode; along: number; sideDistance: number } | null = null;
-    for (const node of this.getInteractableVisibleNodes()) {
-      const enemy = node.enemySlot;
-      if (!enemy || !enemy.alive || enemy.tier === 'invincible') continue;
-      const position = this.getEnemyWorldPosition(node, enemy.pole);
-      const toEnemy = this.scratchVectorB.set(position.x - laserOriginX, position.y - laserOriginY, 0);
-      const along = toEnemy.dot(forward);
-      const sideDistance = Math.abs(toEnemy.x * -forward.y + toEnemy.y * forward.x);
-      const enemyRadius = this.getEnemyScanRadius(enemy);
-      const hitHalfWidth = this.getFrontCanonSpreadWidth() * 0.5 + enemyRadius;
-      if (along < -enemyRadius || along > laserLength + enemyRadius || sideDistance > hitHalfWidth) continue;
-      if (
-        !bestTarget ||
-        along < bestTarget.along - 0.02 ||
-        (Math.abs(along - bestTarget.along) <= 0.02 && sideDistance < bestTarget.sideDistance)
-      ) {
-        bestTarget = { node, along, sideDistance };
-      }
-    }
+    const bestTarget = this.findBestFrontCanonTarget(forward, laserOriginX, laserOriginY, laserLength);
     if (!bestTarget?.node.enemySlot) {
       return;
     }
     const targetEnemy = bestTarget.node.enemySlot;
-    const travelDuration = this.queueCanonShot(
+    this.queueCanonShot(
       this.frontCanonShot,
       'front_canon',
       bestTarget.node,
@@ -4966,12 +5306,10 @@ export class GameSessionController {
       24,
       0.16
     );
-    if (targetEnemy.alive) {
-      this.applyEnemyDefeat(bestTarget.node, targetEnemy, 'front_canon');
-    }
     this.fillMomentumBurst(0.04);
     frontRuntime.cooldownRemaining = Math.max(1, this.runUpgrades.modifiers.frontCanonCooldown || 2.4);
-    this.frontCanonFireUntil = elapsedTime + travelDuration;
+    this.frontCanonAnimStartedAt = elapsedTime;
+    this.frontCanonAnimUntil = elapsedTime + 0.18;
     this.triggerModuleFlash('front_canon', 0.22);
     this.achievements.recordModuleActivated('front_canon', this.currentTime);
     this.queueAchievementToastsIfNeeded();
@@ -4999,7 +5337,7 @@ export class GameSessionController {
     } = {}
   ) {
     const amount = Math.max(1, Math.trunc(event.amount ?? 1));
-    this.stats.recordEnemyKill(amount, this.momentum.gauge);
+    this.stats.recordEnemyKill(amount, clamp(this.momentum.gauge, 0, 1));
     this.achievements.recordEnemyKill({
       amount,
       fromBehind: event.fromBehind,
@@ -5045,6 +5383,20 @@ export class GameSessionController {
   }
 
   private toggleMirrorMode(anchorIndex: number) {
+    const hiddenMirrorReward = anchorIndex === this.attachedIndex && this.hiddenMilestoneChoice && this.getResolvedNode(anchorIndex).isMilestone
+      ? this.hiddenMilestoneChoice
+      : null;
+    if (hiddenMirrorReward) {
+      this.path.replaceFuture(anchorIndex, hiddenMirrorReward.pathNodes);
+      const branchTailIndex = anchorIndex + hiddenMirrorReward.pathNodes.length;
+      this.path.ensureAhead(branchTailIndex, 78, 72);
+      this.path.queuePostMilestoneEvents(branchTailIndex, branchTailIndex);
+      this.reconcileDisplayWindowAfterPathChange();
+      this.milestoneChoiceCache.delete(anchorIndex);
+      this.achievements.recordMilestoneRewardClaimed();
+      this.applyOffer(hiddenMirrorReward.offer, 'Mirror route');
+    }
+
     const rawAnchorNode = this.path.getNode(anchorIndex);
     if (!rawAnchorNode) {
       return;
@@ -5107,6 +5459,7 @@ export class GameSessionController {
     this.state = 'running_airborne';
     this.choiceMode = 'none';
     this.activeChoices = [];
+    this.hiddenMilestoneChoice = null;
     this.activeShopAngles = [];
     this.eventCooldownUntil = Math.max(this.eventCooldownUntil, this.currentTime + 0.22);
     this.camera.reset(mirroredAnchorNode, nextSign);
@@ -5136,6 +5489,7 @@ export class GameSessionController {
     this.chargeMeter = 0;
     this.choiceMode = 'none';
     this.activeChoices = [];
+    this.hiddenMilestoneChoice = null;
     this.playerVelocity.set(0, 0, 0);
     this.playerVelocityTarget.set(0, 0, 0);
     this.angularSpeed = 0;
@@ -5713,9 +6067,11 @@ export class GameSessionController {
     const orbit = this.getOrbitSample(node, angle);
     const clearance = this.getOrbitClearance(node);
     const orbitRadius = orbit.position.length() * orbitScale;
+    const gameplayOrbitRadius = 1.08 + node.gameplayRadius * 0.76;
     const coinRadius = Math.max(
-      this.getPhysicalRadius(node) + clearance * Math.max(0.92, orbitScale) + 0.26,
-      orbitRadius + 0.22
+      this.getPhysicalRadius(node) + clearance * Math.max(1, orbitScale) + 0.46,
+      orbitRadius + 0.38,
+      gameplayOrbitRadius + 0.32
     );
     return this.getSurfaceAnchorWorldPosition(node, angle, coinRadius);
   }
@@ -5748,10 +6104,6 @@ export class GameSessionController {
     const nodeBias = node.gameplayRadius * 0.22;
     const movementBias = airborne ? 0.42 : 0.28;
     return Math.max(enemyRadius + movementBias, nodeBias + (airborne ? 1.04 : 0.98));
-  }
-
-  private getAirborneEnemyImpactKillSpeed(enemy: NonNullable<ResolvedGamePathNode['enemySlot']>) {
-    return enemy.tier === 'elite' ? 8.9 : enemy.tier === 'armored' ? 8.1 : enemy.tier === 'light' ? 6.7 : 7.6;
   }
 
   private isEnemyWithinContact(
@@ -5809,101 +6161,6 @@ export class GameSessionController {
     };
   }
 
-  private isEnemyHitFromBehind(
-    node: ResolvedGamePathNode,
-    enemy: NonNullable<ResolvedGamePathNode['enemySlot']>,
-    enemyPosition: THREE.Vector3,
-    previousPosition: THREE.Vector3
-  ) {
-    const segmentX = this.playerPosition.x - previousPosition.x;
-    const segmentY = this.playerPosition.y - previousPosition.y;
-    const segmentZ = this.playerPosition.z - previousPosition.z;
-    const segmentLengthSq = segmentX * segmentX + segmentY * segmentY + segmentZ * segmentZ;
-    let contactX = this.playerPosition.x;
-    let contactY = this.playerPosition.y;
-
-    if (segmentLengthSq > 0.0001) {
-      const toEnemyX = enemyPosition.x - previousPosition.x;
-      const toEnemyY = enemyPosition.y - previousPosition.y;
-      const toEnemyZ = enemyPosition.z - previousPosition.z;
-      const projection = clamp(
-        (toEnemyX * segmentX + toEnemyY * segmentY + toEnemyZ * segmentZ) / segmentLengthSq,
-        0,
-        1
-      );
-      contactX = previousPosition.x + segmentX * projection;
-      contactY = previousPosition.y + segmentY * projection;
-    }
-
-    const outwardX = enemyPosition.x - node.resolvedX;
-    const outwardY = enemyPosition.y - node.resolvedY;
-    const outwardLength = Math.hypot(outwardX, outwardY);
-    if (outwardLength > 0.0001) {
-      const normalizedOutwardX = outwardX / outwardLength;
-      const normalizedOutwardY = outwardY / outwardLength;
-      const enemyToContactX = contactX - enemyPosition.x;
-      const enemyToContactY = contactY - enemyPosition.y;
-      const contactLength = Math.hypot(enemyToContactX, enemyToContactY);
-      if (contactLength > 0.0001) {
-        const normalizedContactX = enemyToContactX / contactLength;
-        const normalizedContactY = enemyToContactY / contactLength;
-        const rearDot = normalizedContactX * normalizedOutwardX + normalizedContactY * normalizedOutwardY;
-        if (rearDot <= -0.18) {
-          return true;
-        }
-        if (rearDot >= 0.08) {
-          return false;
-        }
-      }
-    }
-
-    const heading = segmentLengthSq > 0.0001
-      ? this.scratchVector2.set(segmentX, segmentY).normalize()
-      : this.getMovementHeadingVector(this.scratchVector2);
-    const toEnemyX = enemyPosition.x - contactX;
-    const toEnemyY = enemyPosition.y - contactY;
-    const distance = Math.hypot(toEnemyX, toEnemyY);
-    if (distance > 0.0001) {
-      const normalizedDot = (toEnemyX * heading.x + toEnemyY * heading.y) / distance;
-      if (normalizedDot <= -0.12) {
-        return true;
-      }
-      if (normalizedDot >= 0.18) {
-        return false;
-      }
-    }
-
-    return enemy.pole === 'north' ? this.orbitDirection === 1 : this.orbitDirection === -1;
-  }
-
-  private isAirborneEnemyImpactKill(
-    node: ResolvedGamePathNode,
-    enemy: NonNullable<ResolvedGamePathNode['enemySlot']>,
-    enemyPosition: THREE.Vector3,
-    previousPosition: THREE.Vector3,
-    travelSpeed: number
-  ) {
-    void node;
-    if (travelSpeed < this.getAirborneEnemyImpactKillSpeed(enemy)) {
-      return false;
-    }
-    const travelX = this.playerPosition.x - previousPosition.x;
-    const travelY = this.playerPosition.y - previousPosition.y;
-    const travelLength = Math.hypot(travelX, travelY);
-    if (travelLength <= 0.0001) {
-      return false;
-    }
-    const normalizedTravelX = travelX / travelLength;
-    const normalizedTravelY = travelY / travelLength;
-    const toEnemyX = enemyPosition.x - previousPosition.x;
-    const toEnemyY = enemyPosition.y - previousPosition.y;
-    const toEnemyLength = Math.hypot(toEnemyX, toEnemyY);
-    if (toEnemyLength <= 0.0001) {
-      return true;
-    }
-    const approachDot = (normalizedTravelX * toEnemyX + normalizedTravelY * toEnemyY) / toEnemyLength;
-    return approachDot >= -0.38;
-  }
 
   private prewarmUpcomingMilestones() {
     for (let index = this.attachedIndex + 1; index < this.attachedIndex + 48; index += 1) {

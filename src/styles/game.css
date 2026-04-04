@@ -3014,6 +3014,7 @@ html[data-theme='dark'] .game-hud__game-over-stat[data-shape='4'] {
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
 }
 
 .game-hud__game-over-rule-image {
@@ -3023,6 +3024,7 @@ html[data-theme='dark'] .game-hud__game-over-stat[data-shape='4'] {
   max-height: min(92vh, calc(var(--game-gameover-rule-image-max-height) * 1.3));
   object-fit: contain;
   margin: 0 auto;
+  pointer-events: none;
 }
 
 .game-hud__avatar-editor {
@@ -3322,24 +3324,45 @@ html[data-theme='dark'] .game-hud__leaderboard {
 
 .game-hud__leaderboard-register-copy {
   display: none;
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 12px;
   margin: 0;
-  gap: 2px;
+  gap: 3px;
+  justify-items: center;
+  padding: 10px 12px 12px;
+  border-radius: 14px;
   font-size: 0.72rem;
   line-height: 1.3;
-  color: rgb(var(--color-fg-rgb) / 0.84);
+  text-align: center;
+  color: rgb(var(--color-fg-rgb) / 0.92);
+  background: linear-gradient(180deg, rgb(var(--overlay-bg-rgb) / 0.92), rgb(var(--overlay-bg-rgb) / 0.82));
+  border: 1px solid rgb(var(--overlay-fg-rgb) / 0.14);
+  pointer-events: none;
+  z-index: 22;
 }
 
 .game-hud__leaderboard-register-copy[hidden] {
   display: none !important;
 }
 
-.game-hud__leaderboard.is-onboarding .game-hud__leaderboard-register-copy {
+.game-hud__leaderboard-register-copy.is-visible {
   display: grid;
 }
 
 .game-hud__leaderboard-register-copy strong,
 .game-hud__leaderboard-register-copy span {
   display: block;
+}
+
+.game-hud__leaderboard-register-copy::before {
+  content: '↘';
+  position: absolute;
+  right: 18px;
+  top: -16px;
+  font-size: 1.15rem;
+  color: rgb(var(--overlay-fg-rgb) / 0.58);
 }
 
 .game-hud__leaderboard-controls input.is-onboarding,
@@ -3909,28 +3932,72 @@ html[data-theme='dark'] .game-hud__leaderboard-preview-rank {
   position: fixed;
   z-index: 90;
   display: grid;
-  gap: 4px;
-  min-width: 184px;
-  max-width: 220px;
-  padding: 10px 12px;
-  border-radius: 16px;
+  gap: 8px;
+  min-width: 232px;
+  max-width: 292px;
+  padding: 16px 18px;
+  border-radius: 18px;
   border: 1px solid rgb(var(--overlay-fg-rgb) / 0.16);
   background: rgb(var(--overlay-fg-rgb) / 0.92);
   color: rgb(var(--overlay-bg-rgb));
   box-shadow: 0 14px 34px rgb(0 0 0 / 0.22);
   pointer-events: none;
-  text-align: left;
+  text-align: center;
+  font-family: var(--font-game);
+}
+
+.game-hud__game-over-hover {
+  position: fixed;
+  z-index: 91;
+  display: grid;
+  gap: 8px;
+  min-width: 228px;
+  max-width: 296px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgb(var(--overlay-fg-rgb) / 0.16);
+  background: rgb(var(--overlay-fg-rgb) / 0.92);
+  color: rgb(var(--overlay-bg-rgb));
+  box-shadow: 0 14px 34px rgb(0 0 0 / 0.22);
+  pointer-events: none;
+  text-align: center;
+  font-family: var(--font-game);
 }
 
 .game-hud__leaderboard-hover strong {
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
+  font-size: 1rem;
+  line-height: 1.1;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.game-hud__game-over-hover strong {
+  display: block;
+  font-size: 0.86rem;
+  line-height: 1.12;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 .game-hud__leaderboard-hover span {
-  font-size: 0.66rem;
-  line-height: 1.2;
+  font-size: 0.86rem;
+  line-height: 1.3;
+}
+
+.game-hud__game-over-hover span {
+  display: block;
+  font-size: 0.78rem;
+  line-height: 1.32;
+}
+
+.game-hud__hover-section {
+  margin-top: 2px;
+  font-size: 0.68rem;
+  line-height: 1.18;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.74;
+  text-align: center;
 }
 
 .game-hud__mobile-controls-anchor {

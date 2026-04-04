@@ -10,6 +10,7 @@ export interface EnemyMarker {
   visible: boolean;
   tier: GameEnemyTier;
   pole: 'north' | 'south';
+  mirrored: boolean;
 }
 
 const ENEMY_SPRITE_URL = new URL('../../assets/images/game/sprites/characters/enemies/basic-sheet.png', import.meta.url).href;
@@ -120,7 +121,7 @@ export class EnemySystem {
       entry.group.rotation.set(0, 0, 0);
       const scale = marker.tier === 'elite' ? 0.85 : marker.tier === 'armored' ? 0.74 : marker.tier === 'invincible' ? 0.91 : 0.67;
       entry.group.scale.setScalar(scale);
-      entry.body.group.scale.set(1, marker.pole === 'south' ? -1 : 1, 1);
+      entry.body.group.scale.set(marker.mirrored ? -1 : 1, marker.pole === 'south' ? -1 : 1, 1);
       entry.body.group.position.set(0, marker.pole === 'north' ? 0.46 : -0.46, 0);
       entry.backArrow.position.set(0, marker.pole === 'north' ? -1.34 : 1.34, 0.02);
       entry.backArrow.rotation.z = marker.pole === 'north' ? Math.PI : 0;

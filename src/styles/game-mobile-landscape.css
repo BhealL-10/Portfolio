@@ -361,6 +361,15 @@
     font-size: 0.56rem;
   }
 
+  .game-hud__leaderboard-register-copy {
+    left: 18px;
+    right: 18px;
+    bottom: 12px;
+    padding: 7px 9px 9px;
+    font-size: 0.54rem;
+    border-radius: 10px;
+  }
+
   .game-hud__leaderboard-save-button .game-hud__svg-button-image img {
     height: 28px;
   }

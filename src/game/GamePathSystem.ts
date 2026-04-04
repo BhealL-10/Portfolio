@@ -105,7 +105,7 @@ export class GamePathSystem {
         onboarding: true,
         isMilestone: false,
         isGigantic: false,
-        coinSlots: [{ angle: Math.PI * 0.4, value: 1, collected: false, orbitScale: 1 }],
+        coinSlots: [],
         enemySlot: null,
         motionSeed: this.nextRandom() * Math.PI * 2,
         visualStretch: { x: 1, y: 1, z: 1 }
@@ -289,19 +289,96 @@ export class GamePathSystem {
     });
   }
 
+  createHiddenMilestoneBackBranch(milestoneIndex: number, offer: RogueliteItemOffer) {
+    const milestone = this.getNode(milestoneIndex);
+    if (!milestone) return null;
+
+    const entrySizeTier: GameShardSizeTier = 'medium_small';
+    const entrySizeConfig = SIZE_TIER_CONFIG[entrySizeTier];
+    const entryGameplayRadius =
+      entrySizeConfig.radius[0] + this.nextRandom() * (entrySizeConfig.radius[1] - entrySizeConfig.radius[0]);
+    const entryVisualScale =
+      entrySizeConfig.visual[0] + this.nextRandom() * (entrySizeConfig.visual[1] - entrySizeConfig.visual[0]);
+    const entryOrbitPeriod =
+      entrySizeConfig.orbitPeriod[0] + this.nextRandom() * (entrySizeConfig.orbitPeriod[1] - entrySizeConfig.orbitPeriod[0]);
+    const entry = this.buildNode({
+      previous: milestone,
+      index: milestoneIndex + 1,
+      x: milestone.x - DEFAULT_COLUMN_DISTANCE * 2.8,
+      y: milestone.y + DEFAULT_COLUMN_DISTANCE * 0.22,
+      direction: 'up_left',
+      sizeTier: entrySizeTier,
+      shapeKind: 'round',
+      motionPattern: 'none',
+      spinDirection: 'ccw',
+      spinSpeed: 0.12 + this.nextRandom() * 0.04,
+      gameplayRadius: entryGameplayRadius,
+      visualScale: entryVisualScale,
+      gameplayOrbitPeriod: entryOrbitPeriod,
+      visualStretch: { x: 1, y: 1, z: 1 },
+      kind: 'branch',
+      branchSlot: 3,
+      offerId: offer.item.id,
+      onboarding: false,
+      eventType: 'none',
+      colorHint: 'reward',
+      isMilestone: false,
+      isGigantic: false,
+      coinSlots: [{ angle: Math.PI * 0.52, value: 1, collected: false, orbitScale: 1.14 }],
+      enemySlot: null
+    });
+
+    const exitSizeTier: GameShardSizeTier = 'medium_small';
+    const exitSizeConfig = SIZE_TIER_CONFIG[exitSizeTier];
+    const exitGameplayRadius =
+      exitSizeConfig.radius[0] + this.nextRandom() * (exitSizeConfig.radius[1] - exitSizeConfig.radius[0]);
+    const exitVisualScale =
+      exitSizeConfig.visual[0] + this.nextRandom() * (exitSizeConfig.visual[1] - exitSizeConfig.visual[0]);
+    const exitOrbitPeriod =
+      exitSizeConfig.orbitPeriod[0] + this.nextRandom() * (exitSizeConfig.orbitPeriod[1] - exitSizeConfig.orbitPeriod[0]);
+    const exit = this.buildNode({
+      previous: entry,
+      index: milestoneIndex + 2,
+      x: milestone.x + DEFAULT_COLUMN_DISTANCE * 4.8,
+      y: milestone.y,
+      direction: 'right',
+      sizeTier: exitSizeTier,
+      shapeKind: 'round',
+      motionPattern: 'none',
+      spinDirection: 'cw',
+      spinSpeed: 0.08 + this.nextRandom() * 0.04,
+      gameplayRadius: exitGameplayRadius,
+      visualScale: exitVisualScale,
+      gameplayOrbitPeriod: exitOrbitPeriod,
+      visualStretch: { x: 1, y: 1, z: 1 },
+      kind: 'normal',
+      branchSlot: null,
+      offerId: null,
+      onboarding: false,
+      eventType: 'none',
+      colorHint: 'none',
+      isMilestone: false,
+      isGigantic: false,
+      coinSlots: [],
+      enemySlot: null
+    });
+
+    return {
+      mode: 'reward_branch' as const,
+      offer,
+      entry,
+      previewNodes: [entry],
+      pathNodes: [entry, exit]
+    };
+  }
+
   getTeleportTarget(fromIndex: number, range: number) {
-    this.ensureAhead(fromIndex + range + 60);
-    const maxIndex = Math.min(this.nodes.length - 5, fromIndex + range);
     let bestIndex = -1;
     let bestRadius = Number.POSITIVE_INFINITY;
 
-    for (let candidate = fromIndex + 2; candidate <= maxIndex; candidate += 1) {
-      if (!validateTeleportTarget(this.nodes, fromIndex, candidate)) {
-        continue;
-      }
+    for (const candidate of this.getTeleportCandidates(fromIndex, range)) {
       const node = this.nodes[candidate];
-      if (!node) continue;
-      if (node.enemySlot?.alive) {
+      if (!node || node.enemySlot?.alive) {
         continue;
       }
       if (node.gameplayRadius < bestRadius - 0.001) {
@@ -315,6 +392,18 @@ export class GamePathSystem {
     }
 
     return bestIndex;
+  }
+
+  getTeleportCandidates(fromIndex: number, range: number) {
+    this.ensureAhead(fromIndex + range + 60);
+    const maxIndex = Math.min(this.nodes.length - 5, fromIndex + range);
+    const candidates: number[] = [];
+    for (let candidate = fromIndex + 2; candidate <= maxIndex; candidate += 1) {
+      if (validateTeleportTarget(this.nodes, fromIndex, candidate)) {
+        candidates.push(candidate);
+      }
+    }
+    return candidates;
   }
 
   sampleAtDistance(distance: number) {

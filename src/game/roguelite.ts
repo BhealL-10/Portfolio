@@ -727,7 +727,7 @@ function createDefaultModifiers(): PlayerModifierStack {
 }
 
 function allowedRaritiesForScore(score: number): RogueliteRarity[] {
-  if (score < 20) return ['common', 'uncommon'];
+  if (score < 20) return ['common', 'uncommon', 'rare'];
   if (score < 60) return ['common', 'uncommon', 'rare'];
   if (score < 100) return ['common', 'uncommon', 'rare', 'epic'];
   return ['common', 'uncommon', 'rare', 'epic', 'legendary'];
@@ -774,8 +774,9 @@ export function getModuleGaugeConfig(item: RogueliteItemDefinition | null) {
   return item.gaugeConfig[item.rarity] ?? null;
 }
 
-export function buildUpgradeOffers(score: number, runState: RunUpgradeState, rng = Math.random): RogueliteItemOffer[] {
+export function buildUpgradeOffers(score: number, runState: RunUpgradeState, rng = Math.random, count = 3): RogueliteItemOffer[] {
   const allowedRarities = allowedRaritiesForScore(score);
+  const rarityWeightMap = resolveOfferRarityWeights(score, runState);
   const offers: RogueliteItemOffer[] = [];
   const usedBaseIds = new Set<string>();
   const eligibleBlueprints = ITEM_BLUEPRINTS.filter((blueprint) => {
@@ -784,13 +785,13 @@ export function buildUpgradeOffers(score: number, runState: RunUpgradeState, rng
     return !current;
   });
 
-  while (offers.length < 3 && usedBaseIds.size < eligibleBlueprints.length) {
+  while (offers.length < count && usedBaseIds.size < eligibleBlueprints.length) {
     const blueprint = pickEligibleBlueprint(eligibleBlueprints, usedBaseIds, rng);
     if (!blueprint) break;
     usedBaseIds.add(blueprint.baseId);
     const current = getCurrentOwnedItemForBlueprint(runState, blueprint);
     const rarityPool = blueprint.kind === 'passive' ? (['common'] as RogueliteRarity[]) : allowedRarities;
-    const nextRarity = pickNextRarity(rarityPool, current?.rarity ?? null, rng);
+    const nextRarity = pickNextRarity(rarityPool, current?.rarity ?? null, rarityWeightMap, rng);
     if (!nextRarity) continue;
     const item = getItemByBaseId(blueprint.baseId, nextRarity);
     if (!item) continue;
@@ -915,16 +916,45 @@ function pickEligibleBlueprint(pool: RogueliteItemBlueprint[], used: Set<string>
   return eligible[Math.floor(rng() * eligible.length)] ?? null;
 }
 
-function pickNextRarity(allowed: RogueliteRarity[], current: RogueliteRarity | null, rng: () => number) {
+function pickNextRarity(
+  allowed: RogueliteRarity[],
+  current: RogueliteRarity | null,
+  weights: Record<RogueliteRarity, number>,
+  rng: () => number
+) {
   const options = allowed.filter((rarity) => current === null || rarityRank[rarity] > rarityRank[current]);
   if (options.length === 0) return null;
-  const total = options.reduce((sum, rarity) => sum + rarityWeights[rarity], 0);
+  const total = options.reduce((sum, rarity) => sum + weights[rarity], 0);
   let cursor = rng() * total;
   for (const rarity of options) {
-    cursor -= rarityWeights[rarity];
+    cursor -= weights[rarity];
     if (cursor <= 0) return rarity;
   }
   return options[options.length - 1] ?? null;
+}
+
+function resolveOfferRarityWeights(score: number, runState: RunUpgradeState) {
+  const weights = { ...rarityWeights };
+  const rareBias = Math.max(0, runState.modifiers.rareItemBias);
+
+  if (score < 20) {
+    weights.common = 48;
+    weights.uncommon = 32;
+    weights.rare = 6 + rareBias * 4;
+    weights.epic = 0;
+    weights.legendary = 0;
+  } else if (score < 60) {
+    weights.common = 46;
+    weights.uncommon = 30;
+    weights.rare = 16 + rareBias * 5;
+    weights.epic = 3 + rareBias * 2;
+    weights.legendary = 0;
+  } else if (score < 100) {
+    weights.rare += 2 + rareBias * 3;
+    weights.epic += 1 + rareBias * 2;
+  }
+
+  return weights;
 }
 
 function getCurrentOwnedItemForBlueprint(runState: RunUpgradeState, blueprint: RogueliteItemBlueprint) {

@@ -82,6 +82,8 @@ export class WorldRenderer {
     this.rimLight.position.z = this.cameraCurrent.z - 2;
     this.camera.position.copy(this.cameraCurrent);
     this.camera.lookAt(this.lookCurrent);
+    this.camera.updateMatrixWorld();
+    this.camera.matrixWorldInverse.copy(this.camera.matrixWorld).invert();
   }
 
   render() {

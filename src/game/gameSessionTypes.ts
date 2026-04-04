@@ -230,10 +230,35 @@ export interface GameHudSnapshot {
     score: number;
     bestScore: number;
     shardsLanded: number;
+    bestShards: number;
     distanceMeters: number;
+    bestDistanceMeters: number;
     coinsCollected: number;
+    bestCoinsCollected: number;
     enemiesKilled: number;
+    bestEnemiesKilled: number;
     longestMomentumSeconds: number;
+    bestLongestMomentumSeconds: number;
+    scoreBreakdown: {
+      landings: {
+        count: number;
+        score: number;
+      };
+      kills: {
+        count: number;
+        score: number;
+      };
+      coins: {
+        count: number;
+        score: number;
+      };
+      momentum: {
+        score: number;
+      };
+      other: {
+        score: number;
+      };
+    };
     personalBests: {
       score: boolean;
       shardsLanded: boolean;

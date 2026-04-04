@@ -24,9 +24,10 @@ describe('buildUpgradeOffers', () => {
     expect(new Set(offers.map((offer) => offer.item.id)).size).toBe(3);
   });
 
-  it('respects early rarity gates', () => {
+  it('allows an occasional rare item very early without unlocking epic tiers', () => {
     const offers = buildUpgradeOffers(10, createRunUpgradeState(), () => 0.98);
-    expect(offers.every((offer) => ['common', 'uncommon'].includes(offer.item.rarity))).toBe(true);
+    expect(offers.every((offer) => ['common', 'uncommon', 'rare'].includes(offer.item.rarity))).toBe(true);
+    expect(offers.some((offer) => offer.item.rarity === 'rare')).toBe(true);
   });
 
   it('unlocks epic and legendary later', () => {

@@ -2,7 +2,8 @@ import type { AchievementAvatarLayer, AchievementCategory, AchievementDefinition
 import { createAchievementRewardId } from './AchievementRewards';
 
 const loc = (fr: string, en: string) => ({ fr, en });
-const reward = (layer: AchievementAvatarLayer, humanIndex: number) => createAchievementRewardId(layer, humanIndex);
+const reward = (layer: AchievementAvatarLayer | 'background' | 'motif' | 'barbe', humanIndex: number) =>
+  createAchievementRewardId(layer, humanIndex);
 
 function achievement(
   id: string,
@@ -59,14 +60,14 @@ const progressionAchievements: AchievementDefinition[] = [
   achievement('progress_distance_3000', loc('Traversée des Miroirs', 'Mirror Crossing'), loc('Parcourir 3 000 m dans une run.', 'Travel 3,000m in a single run.'), 'progression', 'epic', 3000, { rewardId: reward('eyes', 2) }),
   achievement('progress_distance_4000', loc('Marée des Verrières', 'Glasshouse Tide'), loc('Parcourir 4 000 m dans une run.', 'Travel 4,000m in a single run.'), 'progression', 'epic', 4000, { hidden: true, rewardId: reward('eyes', 3) }),
   achievement('progress_distance_5000', loc('Horizon Primaterie', 'Primaterie Horizon'), loc('Parcourir 5 000 m dans une run.', 'Travel 5,000m in a single run.'), 'progression', 'legendary', 5000, { hidden: true }),
-  achievement('progress_survive_60', loc('Marée Vive', 'Spring Tide'), loc('Planer pendant 60 secondes.', 'Gliding for 60 seconds.'), 'progression', 'common', 60),
-  achievement('progress_survive_90', loc('Cale Silencieuse', 'Silent Hold'), loc('Planer pendant 90 secondes.', 'Gliding for 90 seconds.'), 'progression', 'common', 90, { hidden: true }),
-  achievement('progress_survive_120', loc('Quart d’Écume', 'Foam Watch'), loc('Planer pendant 120 secondes.', 'Gliding for 120 seconds.'), 'progression', 'common', 120, { rewardId: reward('face', 2) }),
-  achievement('progress_survive_180', loc('Quart de Nuit', 'Night Watch'), loc('Planer pendant 180 secondes.', 'Gliding for 180 seconds.'), 'progression', 'uncommon', 180, { rewardId: reward('face', 3) }),
-  achievement('progress_survive_300', loc('Veille Océane', 'Ocean Watch'), loc('Planer pendant 300 secondes.', 'Gliding for 300 seconds.'), 'progression', 'rare', 300, { rewardId: reward('barbe', 2) }),
-  achievement('progress_survive_900', loc('Traversée sans Port', 'Harborless Crossing'), loc('Planer pendant 900 secondes.', 'Gliding for 900 seconds.'), 'progression', 'legendary', 900, { hidden: true }),
+  achievement('progress_survive_60', loc('Marée Vive', 'Spring Tide'), loc('Cumuler 60 secondes réelles en l’air dans une run.', 'Accumulate 60 real airtime seconds in a run.'), 'progression', 'common', 60),
+  achievement('progress_survive_90', loc('Cale Silencieuse', 'Silent Hold'), loc('Cumuler 90 secondes réelles en l’air dans une run.', 'Accumulate 90 real airtime seconds in a run.'), 'progression', 'common', 90, { hidden: true }),
+  achievement('progress_survive_120', loc('Quart d’Écume', 'Foam Watch'), loc('Cumuler 120 secondes réelles en l’air dans une run.', 'Accumulate 120 real airtime seconds in a run.'), 'progression', 'common', 120, { rewardId: reward('face', 2) }),
+  achievement('progress_survive_180', loc('Quart de Nuit', 'Night Watch'), loc('Cumuler 180 secondes réelles en l’air dans une run.', 'Accumulate 180 real airtime seconds in a run.'), 'progression', 'uncommon', 180, { rewardId: reward('face', 3) }),
+  achievement('progress_survive_300', loc('Veille Océane', 'Ocean Watch'), loc('Cumuler 300 secondes réelles en l’air dans une run.', 'Accumulate 300 real airtime seconds in a run.'), 'progression', 'rare', 300, { rewardId: reward('barbe', 2) }),
+  achievement('progress_survive_900', loc('Traversée sans Port', 'Harborless Crossing'), loc('Cumuler 900 secondes réelles en l’air dans une run.', 'Accumulate 900 real airtime seconds in a run.'), 'progression', 'legendary', 900, { hidden: true }),
   achievement('progress_early_fail_streak_5', loc('Plane comme Pablo', 'Glider like Pablo'), loc('Mourir avant 10 m pendant 5 runs d’affilée.', 'Die before 10m in 5 runs in a row.'), 'progression', 'rare', 5, { hidden: true, rewardId: reward('barbe', 17) }),
-  achievement('progress_fail_streak_10', loc('Radeau des Ratés', 'Raft of Misfires'), loc('Enchaîner 10 game overs d’affilée.', 'Chain 10 game overs in a row.'), 'progression', 'epic', 10, { hidden: true, rewardId: reward('barbe', 8) })
+  achievement('progress_fail_streak_10', loc('Radeau des Ratés', 'Raft of Misfires'), loc('Enchaîner 5 game overs d’affilée.', 'Chain 5 game overs in a row.'), 'progression', 'epic', 5, { hidden: true, rewardId: reward('barbe', 8) })
 ];
 
 const shardAchievements: AchievementDefinition[] = [
@@ -175,7 +176,7 @@ const moduleAchievements: AchievementDefinition[] = [
   achievement('modules_grappin_40', loc('Liane des Éclats', 'Shard Vine'), loc('Réussir 40 grappins.', 'Land 40 successful grapples.'), 'modules', 'epic', 40, { hidden: true }),
   achievement('modules_wrapper_5', loc('Claquement d’Éclat', 'Shard Snap'), loc('Utiliser le Téléporteur 5 fois.', 'Use the Teleporter 5 times.'), 'modules', 'rare', 5, { rewardId: reward('eyes', 11) }),
   achievement('modules_wrapper_25', loc('Traverse-Miroir', 'Mirror Traverse'), loc('Utiliser le Téléporteur 25 fois.', 'Use the Teleporter 25 times.'), 'modules', 'epic', 25, { hidden: true }),
-  achievement('modules_front_canon_10', loc('Impulsion de Proue', 'Prow Pulse'), loc('Déclencher le Canon avant 10 fois.', 'Trigger the Front Cannon 10 times.'), 'modules', 'uncommon', 10, { rewardId: reward('accesoi', 11) }),
+  achievement('modules_front_canon_10', loc('Impulsion de Proue', 'Prow Pulse'), loc('Déclencher le Canon avant 10 fois.', 'Trigger the Front Cannon 10 times.'), 'modules', 'uncommon', 10, { rewardId: reward('accessoire', 11) }),
   achievement('modules_front_canon_25', loc('Percée de Proue', 'Prow Breakthrough'), loc('Déclencher le Canon avant 25 fois.', 'Trigger the Front Cannon 25 times.'), 'modules', 'epic', 25, { hidden: true }),
   achievement('modules_big_canon_10', loc('Tonnerre de Cale', 'Hold Thunder'), loc('Déclencher le Canon géant 10 fois.', 'Trigger the Big Cannon 10 times.'), 'modules', 'rare', 10),
   achievement('modules_big_canon_25', loc('Canon des Tempêtes', 'Storm Cannon'), loc('Déclencher le Canon géant 25 fois.', 'Trigger the Big Cannon 25 times.'), 'modules', 'epic', 25, { hidden: true }),
