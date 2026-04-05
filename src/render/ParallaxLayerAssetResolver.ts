@@ -48,6 +48,8 @@ const PARALLAX_LAYER_ASSET_REGISTRY = (() => {
   return registry;
 })();
 
+const PARALLAX_SOFT_FOCUS_RASTER_SCALE = 0.93;
+
 export async function loadParallaxLayerVariants(
   category: LayerCategory,
   gameTheme: ThemeMode,
@@ -70,9 +72,11 @@ export async function loadParallaxLayerVariants(
       const width = resolvedImage.naturalWidth || resolvedImage.width || 1;
       const height = resolvedImage.naturalHeight || resolvedImage.height || 1;
       const aspectRatio = width / Math.max(1, height);
+      const softenedHeightPx = Math.max(32, Math.round(targetHeightPx * PARALLAX_SOFT_FOCUS_RASTER_SCALE));
+      const softenedWidthPx = Math.max(32, Math.round(softenedHeightPx * aspectRatio));
       const texture = await getRasterizedSvgTextureAsset(url, {
-        widthPx: Math.max(32, Math.round(targetHeightPx * aspectRatio)),
-        heightPx: targetHeightPx,
+        widthPx: softenedWidthPx,
+        heightPx: softenedHeightPx,
         devicePixelRatio: dpr,
         colorSpace: THREE.SRGBColorSpace,
         minFilter: THREE.LinearMipmapLinearFilter,

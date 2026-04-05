@@ -10,6 +10,7 @@ import {
   PARALLAX_TOP_HORIZON_VERTICAL_OFFSET_PX,
   type LayerCategory
 } from './ParallaxLayerConfig';
+import { MomentumBoatLayer, preloadMomentumBoatAssets } from './MomentumBoatLayer';
 import { preloadParallaxLayerAssets } from './ParallaxLayerAssetResolver';
 import { ParallaxStrip } from './ParallaxStrip';
 
@@ -40,6 +41,7 @@ export class ParallaxLayerSystem {
   private readonly root = new THREE.Group();
   private readonly strips = new Map<LayerCategory, ParallaxStrip>();
   private readonly topHorizonStrip: ParallaxStrip;
+  private readonly momentumBoatLayer: MomentumBoatLayer;
   private readonly verticalOffsetPx: Record<LayerCategory, number> = { ...INITIAL_VERTICAL_OFFSET_PX };
   private topHorizonVerticalOffsetPx = 0;
   private visible = false;
@@ -62,10 +64,12 @@ export class ParallaxLayerSystem {
   private targetMid = 0;
   private targetMelody = 0;
   private targetEnergy = 0;
+  private targetMomentumRatio = 0;
   private smoothedBass = 0;
   private smoothedMid = 0;
   private smoothedMelody = 0;
   private smoothedEnergy = 0;
+  private smoothedMomentumRatio = 0;
   private hasPlayedLayerIntro = false;
   private introTransitionRequested = false;
   private introTransitionActive = false;
@@ -97,6 +101,7 @@ export class ParallaxLayerSystem {
       this.camera,
       initialTheme
     );
+    this.momentumBoatLayer = new MomentumBoatLayer(this.root, this.camera, initialTheme);
   }
 
   init() {
@@ -104,7 +109,7 @@ export class ParallaxLayerSystem {
       return this.initPromise;
     }
 
-    this.initPromise = preloadParallaxLayerAssets()
+    this.initPromise = Promise.all([preloadParallaxLayerAssets(), preloadMomentumBoatAssets()])
       .then(async () => {
         this.captureViewportSize();
         await Promise.all(
@@ -137,6 +142,7 @@ export class ParallaxLayerSystem {
     this.root.visible = visible && this.initialized;
     this.strips.forEach((strip) => strip.setVisible(visible && this.initialized));
     this.topHorizonStrip.setVisible(visible && this.initialized);
+    this.momentumBoatLayer.setVisible(visible && this.initialized);
     if (visible) {
       this.pendingCoverageRealign = true;
     }
@@ -147,6 +153,7 @@ export class ParallaxLayerSystem {
     this.captureViewportSize();
     this.strips.forEach((strip, category) => strip.setTheme(theme, this.resolveDisplayedHeightPx(PARALLAX_LAYER_CONFIG[category])));
     this.topHorizonStrip.setTheme(theme, this.resolveDisplayedHeightPx(PARALLAX_LAYER_CONFIG.horizon));
+    this.momentumBoatLayer.setTheme(theme);
   }
 
   setMirrorMode(enabled: boolean) {
@@ -176,12 +183,14 @@ export class ParallaxLayerSystem {
       this.targetMid = 0;
       this.targetMelody = 0;
       this.targetEnergy = 0;
+      this.targetMomentumRatio = 0;
       return;
     }
     this.targetBass = reactive.bassIntensity;
     this.targetMid = reactive.midIntensity;
     this.targetMelody = reactive.melodyIntensity;
     this.targetEnergy = reactive.overallEnergy;
+    this.targetMomentumRatio = reactive.momentumRatio;
   }
 
   resetForRun(worldX = this.coverageInputX) {
@@ -196,6 +205,9 @@ export class ParallaxLayerSystem {
     this.topHorizonVerticalOffsetPx = 0;
     this.strips.forEach((strip) => strip.resetLayout());
     this.topHorizonStrip.resetLayout();
+    this.targetMomentumRatio = 0;
+    this.smoothedMomentumRatio = 0;
+    this.momentumBoatLayer.resetForRun();
   }
 
   rearmAdventureIntro() {
@@ -242,6 +254,8 @@ export class ParallaxLayerSystem {
     this.topHorizonStrip.setVisible(this.visible);
     this.topHorizonStrip.setMirrorMode(this.mirrorMode);
     this.topHorizonStrip.setTheme(this.currentTheme, this.resolveDisplayedHeightPx(PARALLAX_LAYER_CONFIG.horizon));
+    this.momentumBoatLayer.setVisible(this.visible);
+    this.momentumBoatLayer.setTheme(this.currentTheme);
   }
 
   update(deltaTime: number) {
@@ -260,6 +274,7 @@ export class ParallaxLayerSystem {
     this.smoothedMid = damp(this.smoothedMid, this.targetMid, 9, deltaTime);
     this.smoothedMelody = damp(this.smoothedMelody, this.targetMelody, 9, deltaTime);
     this.smoothedEnergy = damp(this.smoothedEnergy, this.targetEnergy, 9, deltaTime);
+    this.smoothedMomentumRatio = damp(this.smoothedMomentumRatio, this.targetMomentumRatio, 4.5, deltaTime);
     if (this.pendingCoverageRealign) {
       this.coverageAnchorX = this.coverageInputX;
       this.coverageAnchorOriginX = this.coverageInputX;
@@ -274,8 +289,6 @@ export class ParallaxLayerSystem {
     const worldTravelX = this.coverageAnchorX - this.coverageAnchorOriginX;
     const playerHeightSignal = this.resolvePlayerHeightSignal();
     const puppetActive = this.cameraFollowsPlayer && !this.milestoneView;
-    const horizonMusicVerticalOffsetPx = -(this.smoothedBass * 55.4 + this.smoothedEnergy * 50.1);
-
     PARALLAX_LAYER_ORDER.forEach((category) => {
       const strip = this.strips.get(category);
       const config = PARALLAX_LAYER_CONFIG[category];
@@ -287,21 +300,15 @@ export class ParallaxLayerSystem {
       const directionalDrift = config.staticLayer ? 0 : this.accumulatedDriftSeconds * config.driftSpeedPx * (this.mirrorMode ? -1 : 1);
       const progressionParallaxPx = worldTravelX * config.parallaxFactor * (this.mirrorMode ? 1 : -1);
       const travelOffsetPx = directionalDrift + progressionParallaxPx;
-      const musicVerticalOffsetPx =
-        category === 'horizon'
-          ? horizonMusicVerticalOffsetPx
-          : category === 'far'
-            ? this.smoothedMelody * 72.4 + this.smoothedMid * 60.9 - this.smoothedBass * 50.2
-            : category === 'mid'
-              ? this.smoothedMid * 46.6 + this.smoothedMelody * 40.2 - this.smoothedBass * 50.4
-              : this.smoothedBass * 50.2 + this.smoothedEnergy *51.1 - this.smoothedMelody * 40.6;
-      const targetVerticalOffsetPx = (puppetActive ? playerHeightSignal * config.playerHeightInfluencePx : 0) + musicVerticalOffsetPx;
+      const targetVerticalOffsetPx = this.resolveLayerTargetVerticalOffsetPx(category, puppetActive, playerHeightSignal);
       this.verticalOffsetPx[category] = damp(this.verticalOffsetPx[category], targetVerticalOffsetPx, PUPPET_HEIGHT_RESPONSE, deltaTime);
       const introOffsetPx = this.resolveIntroOffsetPx(category);
+      const atmosphereOffsetPx = this.resolveAtmosphereOffsetPx(category);
       const unclampedBottomScreenY =
         this.viewportHeightPx * config.bottomScreenRatio +
         PARALLAX_GLOBAL_Y_OFFSET_PX +
         this.verticalOffsetPx[category] +
+        atmosphereOffsetPx +
         introOffsetPx;
       const bottomScreenY = Math.max(this.viewportHeightPx + config.minimumBottomCoveragePx, unclampedBottomScreenY);
 
@@ -322,17 +329,19 @@ export class ParallaxLayerSystem {
       : this.accumulatedDriftSeconds * horizonConfig.driftSpeedPx * (this.mirrorMode ? -1 : 1);
     const horizonProgressionParallaxPx = worldTravelX * horizonConfig.parallaxFactor * (this.mirrorMode ? 1 : -1);
     const topTravelOffsetPx = horizonDirectionalDrift + horizonProgressionParallaxPx;
-    this.topHorizonVerticalOffsetPx = -this.verticalOffsetPx.horizon;
-    const topIntroOffsetPx = -(this.resolveIntroOffsetPx('horizon') + topHorizonDisplayedHeightPx * 1.14);
+    this.topHorizonVerticalOffsetPx = this.resolveTopHorizonVerticalOffsetPx();
+    const topIntroOffsetPx = this.resolveTopHorizonIntroOffsetPx(topHorizonDisplayedHeightPx);
     const unclampedTopBottomScreenY =
       this.viewportHeightPx * PARALLAX_TOP_HORIZON_BOTTOM_SCREEN_RATIO +
       PARALLAX_TOP_HORIZON_VERTICAL_OFFSET_PX +
       this.topHorizonVerticalOffsetPx +
+      this.resolveAtmosphereOffsetPx('horizon') +
       topIntroOffsetPx;
+    const topHorizonCoverageCeilingPx = topHorizonDisplayedHeightPx - 12;
     const topBottomScreenY =
       this.introTransitionRequested || this.introTransitionActive
         ? unclampedTopBottomScreenY
-        : THREE.MathUtils.clamp(unclampedTopBottomScreenY, topHorizonDisplayedHeightPx * 0.52, this.viewportHeightPx * 0.42);
+        : Math.min(topHorizonCoverageCeilingPx, Math.max(topHorizonDisplayedHeightPx * 0.64, unclampedTopBottomScreenY));
 
     this.topHorizonStrip.update({
       viewportWidthPx: this.viewportWidthPx,
@@ -343,12 +352,28 @@ export class ParallaxLayerSystem {
       mirrorMode: this.mirrorMode,
       verticalFlip: true
     });
+
+    const boatTravelOffsetPx =
+      this.accumulatedDriftSeconds * 27.5 * (this.mirrorMode ? -1 : 1) +
+      worldTravelX * 7.1 * (this.mirrorMode ? 1 : -1);
+    this.momentumBoatLayer.update({
+      deltaTime,
+      viewportWidthPx: this.viewportWidthPx,
+      viewportHeightPx: this.viewportHeightPx,
+      travelOffsetPx: boatTravelOffsetPx,
+      momentumRatio: this.smoothedMomentumRatio,
+      bassIntensity: this.smoothedBass,
+      midIntensity: this.smoothedMid,
+      melodyIntensity: this.smoothedMelody,
+      overallEnergy: this.smoothedEnergy
+    });
   }
 
   dispose() {
     this.strips.forEach((strip) => strip.dispose());
     this.strips.clear();
     this.topHorizonStrip.dispose();
+    this.momentumBoatLayer.dispose();
     if (this.root.parent) {
       this.root.parent.remove(this.root);
     }
@@ -368,6 +393,60 @@ export class ParallaxLayerSystem {
     const playableHeight = Math.max(0.001, this.playableWorldMaxY - this.playableWorldMinY);
     const normalizedHeight = THREE.MathUtils.clamp((this.playerWorldY - this.playableWorldMinY) / playableHeight, 0, 1);
     return (normalizedHeight - 0.5) * 2;
+  }
+
+  private resolveSharedHorizonMusicVerticalOffsetPx() {
+    return -(this.smoothedBass * 55.4 + this.smoothedEnergy * 50.1);
+  }
+
+  private resolveLayerMusicVerticalOffsetPx(category: LayerCategory) {
+    if (category === 'horizon') {
+      return this.resolveSharedHorizonMusicVerticalOffsetPx();
+    }
+    if (category === 'far') {
+      return this.smoothedMelody * 72.4 + this.smoothedMid * 60.9 - this.smoothedBass * 50.2;
+    }
+    if (category === 'mid') {
+      return this.smoothedMid * 46.6 + this.smoothedMelody * 40.2 - this.smoothedBass * 50.4;
+    }
+    return this.smoothedBass * 50.2 + this.smoothedEnergy * 51.1 - this.smoothedMelody * 40.6;
+  }
+
+  private resolveLayerTargetVerticalOffsetPx(category: LayerCategory, puppetActive: boolean, playerHeightSignal: number) {
+    const config = PARALLAX_LAYER_CONFIG[category];
+    const playerOffsetPx = puppetActive ? playerHeightSignal * config.playerHeightInfluencePx : 0;
+    return playerOffsetPx + this.resolveLayerMusicVerticalOffsetPx(category);
+  }
+
+  private resolveTopHorizonVerticalOffsetPx() {
+    return -this.verticalOffsetPx.horizon;
+  }
+
+  private resolveTopHorizonIntroOffsetPx(displayedHeightPx: number) {
+    if (!this.introTransitionRequested && !this.introTransitionActive) {
+      return 0;
+    }
+    return -(this.resolveIntroOffsetPx('horizon') + displayedHeightPx * 1.14);
+  }
+
+  private resolveAtmosphereStrengthPx(category: LayerCategory) {
+    if (category === 'horizon') {
+      return 1.6 + this.smoothedEnergy * 2.4 + this.smoothedMelody * 1.1;
+    }
+    if (category === 'far') {
+      return 1.8 + this.smoothedMelody * 2.8 + this.smoothedMid * 0.9;
+    }
+    if (category === 'mid') {
+      return 2.2 + this.smoothedMid * 3.1 + this.smoothedEnergy * 1.1;
+    }
+    return 2.6 + this.smoothedBass * 3.6 + this.smoothedEnergy * 1.4;
+  }
+
+  private resolveAtmosphereOffsetPx(category: LayerCategory) {
+    const strength = this.resolveAtmosphereStrengthPx(category);
+    const phase = category === 'horizon' ? 0.8 : category === 'far' ? 0.9 : category === 'mid' ? 1.7 : 2.4;
+    const frequency = category === 'horizon' ? 0.82 : category === 'far' ? 0.94 : category === 'mid' ? 1.08 : 1.2;
+    return Math.sin(this.accumulatedDriftSeconds * frequency + phase) * strength;
   }
 
   private resolveIntroOffsetPx(category: LayerCategory) {

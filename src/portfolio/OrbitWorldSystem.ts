@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { getSharedTextureAsset } from '../core/browserAssetCache';
 import { isMobilePortraitRuntime, isMobileRuntime } from '../core/device';
 import { damp, wrapIndex } from '../core/math';
-import { getThemeForegroundHex } from '../core/themePalette';
+import { getThemeNonShardHex } from '../core/themePalette';
 import type { AppMode } from '../core/ModeController';
 import { SpriteSheetPlane } from '../game/SpriteSheetPlane';
 import type { PortfolioProject, ThemeMode } from '../types/content';
@@ -196,15 +196,15 @@ export class OrbitWorldSystem {
     this.entityList.forEach((entity) => {
       setDeformMaterialTheme(entity.core.material, theme);
       this.updateLogoTexture(entity);
-      entity.slotIndicator.material.color.set(getThemeForegroundHex(theme));
+      entity.slotIndicator.material.color.set(getThemeNonShardHex(theme));
       entity.slotIndicator.visible = false;
       entity.iconPlane.visible = false;
     });
     this.gameFieldEntities.forEach((entity) => {
       setDeformMaterialTheme(entity.core.material, theme);
     });
-    this.backgroundPoints.material.color.set(getThemeForegroundHex(theme));
-    this.constellationLines.forEach((line) => line.material.color.set(getThemeForegroundHex(theme)));
+    this.backgroundPoints.material.color.set(getThemeNonShardHex(theme));
+    this.constellationLines.forEach((line) => line.material.color.set(getThemeNonShardHex(theme)));
   }
 
   setActiveIndex(index: number) {
@@ -850,21 +850,8 @@ export class OrbitWorldSystem {
           entity.group.scale.x = damp(entity.group.scale.x, externalVisual.scale.x, 6, deltaTime);
           entity.group.scale.y = damp(entity.group.scale.y, externalVisual.scale.y, 6, deltaTime);
           entity.group.scale.z = damp(entity.group.scale.z, externalVisual.scale.z, 6, deltaTime);
-          if (externalVisual.tint) {
-            entity.core.material.color.set(externalVisual.tint);
-            entity.core.material.emissive.set(externalVisual.tint);
-          } else {
-            setDeformMaterialTheme(entity.core.material, this.theme);
-          }
-          if (externalVisual.ringTint) {
-            entity.accentRing.visible = true;
-            entity.accentRing.material.color.set(externalVisual.ringTint);
-            entity.accentRing.material.opacity = 0.58 + (externalVisual.pulse ?? 0) * 0.3;
-            const ringScale = externalVisual.ringScale ?? Math.max(externalVisual.scale.x, externalVisual.scale.y) * 1.4;
-            entity.accentRing.scale.setScalar(ringScale);
-          } else {
-            entity.accentRing.visible = false;
-          }
+          setDeformMaterialTheme(entity.core.material, this.theme);
+          entity.accentRing.visible = false;
           this.syncIconPlane(entity.iconPlane, externalVisual, externalVisual.scale);
         } else if (entity.core.geometry !== this.roundGeometry) {
           entity.core.geometry = this.roundGeometry;
@@ -1028,20 +1015,13 @@ export class OrbitWorldSystem {
       entity.core.material.opacity = entity.opacity;
       if (!this.externalLayoutActive) {
         if (entity.snapped || isSlotPreview) {
-          const slotTint = this.theme === 'dark' ? '#D8C3A0' : '#4F68A0';
-          entity.core.material.color.set(slotTint);
-          entity.core.material.emissive.set(slotTint);
+          setDeformMaterialTheme(entity.core.material, this.theme);
           entity.accentRing.visible = false;
         } else {
           setDeformMaterialTheme(entity.core.material, this.theme);
         }
       }
-      entity.core.material.emissiveIntensity =
-        0.08 +
-        entity.hoverAmount * 0.18 +
-        (isActive ? 0.08 : 0) +
-        entity.slotPulse * 0.06 +
-        (this.externalLayoutVisuals?.[index]?.pulse ?? 0);
+      entity.core.material.emissiveIntensity = 0.12;
       const externalShape = this.externalLayoutVisuals?.[index]?.shapeKind ?? null;
       updateDeformUniforms(entity.core.material, {
         time: elapsedTime,
@@ -1086,7 +1066,7 @@ export class OrbitWorldSystem {
         stripePhase:
           this.externalLayoutVisuals?.[index]?.stripePhase ??
           elapsedTime * 3.2 + index * 0.38 + entity.facetAnimation.direction * entity.facetAnimation.progress * 8.5,
-        stripeColor: this.externalLayoutVisuals?.[index]?.stripeTint ?? undefined
+        stripeColor: undefined
       });
 
       entity.logoPlanes.forEach((plane, planeIndex) => {
@@ -1149,8 +1129,8 @@ export class OrbitWorldSystem {
           entity.group.scale.x = damp(entity.group.scale.x, targetScale, 6.2, deltaTime);
           entity.group.scale.y = damp(entity.group.scale.y, targetScale, 6.2, deltaTime);
           entity.group.scale.z = damp(entity.group.scale.z, targetScale * 0.92, 6.2, deltaTime);
-          entity.core.material.opacity = 0.82 + slotStrength * 0.1;
-          entity.core.material.emissiveIntensity = 0.08 + slotStrength * 0.06;
+          entity.core.material.opacity = 1;
+          entity.core.material.emissiveIntensity = 0.12;
           entity.accentRing.visible = false;
           entity.iconPlane.visible = false;
           setDeformMaterialTheme(entity.core.material, this.theme);
@@ -1226,25 +1206,13 @@ export class OrbitWorldSystem {
         entity.core.geometry = geometry;
       }
 
-      if (visual?.tint) {
-        entity.core.material.color.set(visual.tint);
-        entity.core.material.emissive.set(visual.tint);
-      } else {
-        setDeformMaterialTheme(entity.core.material, this.theme);
-      }
-      if (visual?.ringTint) {
-        entity.accentRing.visible = true;
-        entity.accentRing.material.color.set(visual.ringTint);
-        entity.accentRing.material.opacity = 0.62 + (visual.pulse ?? 0.06) * 0.32;
-        entity.accentRing.scale.setScalar(visual.ringScale ?? Math.max(targetScale.x, targetScale.y) * 1.42);
-      } else {
-        entity.accentRing.visible = false;
-      }
+      setDeformMaterialTheme(entity.core.material, this.theme);
+      entity.accentRing.visible = false;
       this.syncMiniLogoPlanes(entity, null, 0, 0);
       this.syncIconPlane(entity.iconPlane, visual, targetScale);
 
       entity.core.material.opacity = 1;
-      entity.core.material.emissiveIntensity = 0.08 + (visual?.pulse ?? 0.06);
+      entity.core.material.emissiveIntensity = 0.12;
       updateDeformUniforms(entity.core.material, {
         time: elapsedTime,
         hover: 0,
@@ -1255,9 +1223,9 @@ export class OrbitWorldSystem {
         orbitAngle: visual?.deformAngle ?? 0,
         orbitPulse: visual?.deformStrength ?? 0,
         waveDensity: visual?.deformDensity ?? 0.72,
-        stripeMix: visual?.stripeMix ?? 0,
+        stripeMix: 0,
         stripePhase: visual?.stripePhase ?? 0,
-        stripeColor: visual?.stripeTint ?? undefined
+        stripeColor: undefined
       });
     });
   }
@@ -1419,7 +1387,7 @@ export class OrbitWorldSystem {
     const slotIndicator = new THREE.Mesh(
       new THREE.RingGeometry(1.0, 1.18, 36),
       new THREE.MeshBasicMaterial({
-        color: getThemeForegroundHex(this.theme),
+        color: getThemeNonShardHex(this.theme),
         transparent: true,
         opacity: 0,
         side: THREE.DoubleSide,
@@ -1924,7 +1892,7 @@ export class OrbitWorldSystem {
     return new THREE.Points(
       geometry,
       new THREE.PointsMaterial({
-        color: getThemeForegroundHex(this.theme),
+        color: getThemeNonShardHex(this.theme),
         size: 0.08,
         transparent: true,
         opacity: 0.35
@@ -1937,7 +1905,7 @@ export class OrbitWorldSystem {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
       const material = new THREE.LineBasicMaterial({
-        color: getThemeForegroundHex(this.theme),
+        color: getThemeNonShardHex(this.theme),
         transparent: true,
         opacity: 0.9
       });

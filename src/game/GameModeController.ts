@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { clamp, damp } from '../core/math';
-import { getThemeForegroundHex } from '../core/themePalette';
+import { getThemeNonShardHex } from '../core/themePalette';
 import type { ThemeMode } from '../types/content';
 import {
   applyItemToRunState,
@@ -91,7 +91,7 @@ export class GameModeController {
     this.playerBody = new THREE.Mesh(
       new THREE.ConeGeometry(0.42, 1.2, 6),
       new THREE.MeshBasicMaterial({
-        color: getThemeForegroundHex(theme)
+        color: getThemeNonShardHex(theme)
       })
     );
     this.playerBody.rotation.z = -Math.PI / 2;
@@ -102,7 +102,7 @@ export class GameModeController {
 
   setTheme(theme: ThemeMode) {
     this.pool.forEach((platform) => setDeformMaterialTheme(platform.mesh.material, theme));
-    this.playerBody.material.color.set(getThemeForegroundHex(theme));
+    this.playerBody.material.color.set(getThemeNonShardHex(theme));
   }
 
   get currentState() {

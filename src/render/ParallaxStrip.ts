@@ -259,7 +259,7 @@ export class ParallaxStrip {
       const localX = centerScreenX * unitsPerPixel;
       const localY = (context.viewportHeightPx * 0.5 - centerScreenY) * unitsPerPixel;
       panel.mesh.position.set(localX, localY, this.config.localZ);
-      panel.mesh.scale.set(this.mirrorMode ? -worldWidth : worldWidth, (context.verticalFlip ? -1 : 1) * worldHeight, 1);
+      panel.mesh.scale.set((this.mirrorMode ? -1 : 1) * worldWidth, (context.verticalFlip ? -1 : 1) * worldHeight, 1);
     }
   }
 

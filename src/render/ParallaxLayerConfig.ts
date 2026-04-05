@@ -23,8 +23,8 @@ export interface ParallaxLayerConfig {
 
 export const PARALLAX_LAYER_ORDER: LayerCategory[] = ['horizon', 'far', 'mid', 'foreground'];
 export const PARALLAX_GLOBAL_Y_OFFSET_PX = 20;
-export const PARALLAX_TOP_HORIZON_BOTTOM_SCREEN_RATIO = 0.22;
-export const PARALLAX_TOP_HORIZON_VERTICAL_OFFSET_PX = -12;
+export const PARALLAX_TOP_HORIZON_BOTTOM_SCREEN_RATIO = 0.36;
+export const PARALLAX_TOP_HORIZON_VERTICAL_OFFSET_PX = -99;
 
 export const PARALLAX_LAYER_CONFIG: Record<LayerCategory, ParallaxLayerConfig> = {
   horizon: {

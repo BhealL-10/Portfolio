@@ -6,12 +6,10 @@ import type { ThemeMode } from '../types/content';
 
 const PALETTE = {
   dark: {
-    background: new THREE.Color(getThemeBackgroundHex('dark')),
-    foreground: new THREE.Color(getThemeForegroundHex('dark'))
+    background: new THREE.Color(getThemeBackgroundHex('dark'))
   },
   light: {
-    background: new THREE.Color(getThemeBackgroundHex('light')),
-    foreground: new THREE.Color(getThemeForegroundHex('light'))
+    background: new THREE.Color(getThemeBackgroundHex('light'))
   }
 } as const;
 
@@ -31,7 +29,9 @@ export class WorldRenderer {
   private readonly projectionScratch = new THREE.Vector3();
   private readonly ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
   private readonly keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
+  private readonly fillLight = new THREE.DirectionalLight(0xffffff, 0.48);
   private readonly rimLight = new THREE.PointLight(0xffffff, 25, 80, 2);
+  private readonly underLight = new THREE.PointLight(0xffffff, 12, 60, 2);
   private cameraPositionResponse = 8;
   private lookResponse = 8;
 
@@ -42,9 +42,11 @@ export class WorldRenderer {
     this.host.appendChild(this.renderer.domElement);
 
     this.keyLight.position.set(12, 10, 16);
+    this.fillLight.position.set(-10, 6, 10);
     this.rimLight.position.set(0, -6, 22);
+    this.underLight.position.set(0, -9, 14);
 
-    this.scene.add(this.ambientLight, this.keyLight, this.rimLight);
+    this.scene.add(this.ambientLight, this.keyLight, this.fillLight, this.rimLight, this.underLight);
 
     this.resize();
     this.setTheme('dark');
@@ -55,9 +57,11 @@ export class WorldRenderer {
   setTheme(theme: ThemeMode) {
     const palette = PALETTE[theme];
     this.scene.background = palette.background.clone();
-    this.ambientLight.color.copy(palette.foreground);
-    this.keyLight.color.copy(palette.foreground);
-    this.rimLight.color.copy(palette.foreground);
+    this.ambientLight.color.set('#ffffff');
+    this.keyLight.color.set(getThemeForegroundHex(theme));
+    this.fillLight.color.set(getThemeBackgroundHex(theme));
+    this.rimLight.color.set(getThemeForegroundHex(theme));
+    this.underLight.color.set(getThemeBackgroundHex(theme));
   }
 
   setCameraTarget(position: THREE.Vector3, lookAt: THREE.Vector3) {
@@ -80,6 +84,9 @@ export class WorldRenderer {
     this.lookCurrent.z = damp(this.lookCurrent.z, this.lookTarget.z, this.lookResponse, deltaTime);
 
     this.rimLight.position.z = this.cameraCurrent.z - 2;
+    this.rimLight.position.x = this.cameraCurrent.x + 1.8;
+    this.underLight.position.x = this.cameraCurrent.x - 1.6;
+    this.underLight.position.z = this.cameraCurrent.z - 10;
     this.camera.position.copy(this.cameraCurrent);
     this.camera.lookAt(this.lookCurrent);
     this.camera.updateMatrixWorld();

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getThemeShardContrastHex, getThemeShardHex } from '../core/themePalette';
 import type { ThemeMode } from '../types/content';
 
 export interface DeformMaterial extends THREE.MeshStandardMaterial {
@@ -30,24 +31,25 @@ export interface FragmentedGeometry extends THREE.BufferGeometry {
   };
 }
 
-const themePalette = {
-  dark: {
-    color: new THREE.Color('#c4baad'),
-    emissive: new THREE.Color('#ddceb4')
-  },
-  light: {
-    color: new THREE.Color('#4f68a0'),
-    emissive: new THREE.Color('#778091')
-  }
-} as const;
+export function getSharedShardVisualPalette(theme: ThemeMode) {
+  const color = new THREE.Color(getThemeShardHex(theme));
+  const contrast = new THREE.Color(getThemeShardContrastHex(theme));
+  const emissive = color.clone().lerp(contrast, 0.16);
+  return {
+    color,
+    emissive,
+    contrast
+  };
+}
 
 export function createDeformMaterial(theme: ThemeMode, seed: number) {
+  const palette = getSharedShardVisualPalette(theme);
   const material = new THREE.MeshStandardMaterial({
-    color: themePalette[theme].color.clone(),
-    emissive: themePalette[theme].emissive.clone(),
-    emissiveIntensity: 0.12,
-    roughness: 0.48,
-    metalness: 0.18,
+    color: palette.color.clone(),
+    emissive: palette.emissive.clone(),
+    emissiveIntensity: 0.92,
+    roughness: 0.30,
+    metalness: 0.1,
     flatShading: true,
     transparent: true,
     opacity: 1
@@ -64,12 +66,12 @@ export function createDeformMaterial(theme: ThemeMode, seed: number) {
       uSeed: { value: seed },
       uOrbitAngle: { value: 0 },
       uOrbitPulse: { value: 0 },
-      uWaveDensity: { value: 0.72 },
+      uWaveDensity: { value: 0.92 },
       uFacetWave: { value: 0 },
       uFacetDirection: { value: 1 },
       uStripeMix: { value: 0 },
       uStripePhase: { value: 0 },
-      uStripeColor: { value: themePalette[theme].color.clone() }
+      uStripeColor: { value: palette.color.clone() }
     };
 
     material.userData.shaderUniforms = uniforms;
@@ -176,7 +178,7 @@ diffuseColor.rgb *= 1.0 - vFacetShade * 0.12;
 }
 
 export function setDeformMaterialTheme(material: DeformMaterial, theme: ThemeMode) {
-  const palette = themePalette[theme];
+  const palette = getSharedShardVisualPalette(theme);
   material.color.copy(palette.color);
   material.emissive.copy(palette.emissive);
   const uniforms = material.userData.shaderUniforms;
@@ -275,7 +277,7 @@ export function createFragmentedRoundedRectGeometry(width: number, height: numbe
     depth,
     steps: 1,
     bevelEnabled: false,
-    curveSegments: 18
+    curveSegments: 208
   }).translate(0, 0, -depth * 0.5);
 
   const fragmentedGeometry = toNonIndexedIfNeeded(geometry) as FragmentedGeometry;

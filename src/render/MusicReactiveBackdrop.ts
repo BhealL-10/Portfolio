@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { getThemeForegroundHex } from '../core/themePalette';
+import { getThemeBackgroundHex, getThemeNonShardHex } from '../core/themePalette';
 import type { MusicReactiveState } from '../game/GameAudioSystem';
 import type { ThemeMode } from '../types/content';
 
 const MOMENTUM_COLORS = {
-  themeDark: getThemeForegroundHex('dark'),
-  themeLight: getThemeForegroundHex('light'),
+  themeDark: getThemeNonShardHex('dark'),
+  themeLight: getThemeNonShardHex('light'),
   uncommon: '#75AF80',
   cyan: '#8AEBEF',
   rare: '#49BCFF',
@@ -60,14 +60,16 @@ export class MusicReactiveBackdrop {
   private readonly tempQuaternionB = new THREE.Quaternion();
   private readonly currentColor = new THREE.Color();
   private readonly targetColor = new THREE.Color();
+  private readonly softFocusColor = new THREE.Color();
   private theme: ThemeMode;
   private visible = false;
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
     this.theme = theme;
     this.shards = this.createShards();
+    this.softFocusColor.set(resolveBackdropThemeColor(theme));
     this.material = new THREE.MeshBasicMaterial({
-      color: getThemeForegroundHex(theme),
+      color: resolveBackdropThemeColor(theme),
       transparent: false,
       opacity: 1,
       side: THREE.DoubleSide,
@@ -77,8 +79,8 @@ export class MusicReactiveBackdrop {
     this.mesh = new THREE.InstancedMesh(createShardGeometry(), this.material, this.shards.length);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.frustumCulled = false;
-    this.hazeInner = createHazeSprite(getThemeForegroundHex(theme), 0.11);
-    this.hazeOuter = createHazeSprite(getThemeForegroundHex(theme), 0.076);
+    this.hazeInner = createHazeSprite(resolveBackdropThemeColor(theme), 0.11);
+    this.hazeOuter = createHazeSprite(resolveBackdropThemeColor(theme), 0.076);
     this.hazeInner.position.set(ORB_CENTER.x, ORB_CENTER.y, ORB_CENTER.z - 0.8);
     this.hazeOuter.position.set(ORB_CENTER.x, ORB_CENTER.y, ORB_CENTER.z - 1.7);
     this.hazeInner.renderOrder = -5;
@@ -101,8 +103,9 @@ export class MusicReactiveBackdrop {
 
   setTheme(theme: ThemeMode) {
     this.theme = theme;
-    this.currentColor.set(getThemeForegroundHex(theme));
+    this.currentColor.set(resolveBackdropThemeColor(theme));
     this.targetColor.copy(this.currentColor);
+    this.softFocusColor.set(resolveBackdropThemeColor(theme));
     this.material.color.copy(this.currentColor);
     this.hazeInner.material.color.copy(this.currentColor);
     this.hazeOuter.material.color.copy(this.currentColor);
@@ -129,6 +132,13 @@ export class MusicReactiveBackdrop {
     this.root.rotation.z = elapsedTime * spinSpeed;
     this.root.rotation.x = Math.sin(elapsedTime * (0.18 + reactive.difficultyRatio * 0.16)) * (0.08 + reactive.difficultyRatio * 0.06);
     this.root.rotation.y = Math.cos(elapsedTime * (0.24 + reactive.difficultyRatio * 0.18)) * (0.12 + reactive.difficultyRatio * 0.08);
+    const hazePulse = 0.006 + reactive.overallEnergy * 0.01 + reactive.melodyIntensity * 0.006;
+    this.root.scale.set(
+      1 + Math.sin(elapsedTime * 0.78) * hazePulse * 0.55,
+      1 + Math.cos(elapsedTime * 1.02) * hazePulse,
+      1
+    );
+    this.waveGroup.position.y = Math.sin(elapsedTime * 0.92) * (0.06 + reactive.overallEnergy * 0.09);
     this.applyMatrices(elapsedTime, reactive);
   }
 
@@ -168,7 +178,7 @@ export class MusicReactiveBackdrop {
       const positions = new Float32Array((WAVE_SEGMENTS + 1) * 3);
       geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       const material = new THREE.LineBasicMaterial({
-        color: getThemeForegroundHex(theme),
+        color: getThemeNonShardHex(theme),
         transparent: true,
         opacity: 0.38,
         depthWrite: false,
@@ -200,7 +210,7 @@ export class MusicReactiveBackdrop {
     const globalGather = 0.35 + Math.sin(elapsedTime * 0.7) * 0.08 + energy * 0.12 + momentum * 0.3;
     const orbScale = 1 + momentum * 0.38 + difficulty * 0.12;
     const movementBoost = 1 + momentum * 1.25 + difficulty * 0.44;
-    this.targetColor.copy(resolveMomentumColor(this.theme, momentum));
+    this.targetColor.copy(resolveMomentumColor(this.theme, momentum)).lerp(this.softFocusColor, 0.24);
     this.currentColor.lerp(this.targetColor, 0.045);
     this.material.color.copy(this.currentColor);
     this.hazeInner.material.color.copy(this.currentColor);
@@ -208,8 +218,8 @@ export class MusicReactiveBackdrop {
     const blurFade = 1 - THREE.MathUtils.smoothstep(momentum, 0.8, 1);
     this.hazeInner.scale.setScalar(35 + momentum * 10 + energy * 4.2);
     this.hazeOuter.scale.setScalar(50 + momentum * 14 + bass * 5.2);
-    this.hazeInner.material.opacity = (0.08 + energy * 0.04) * blurFade;
-    this.hazeOuter.material.opacity = (0.055 + bass * 0.032) * blurFade;
+    this.hazeInner.material.opacity = (0.092 + energy * 0.044) * blurFade;
+    this.hazeOuter.material.opacity = (0.066 + bass * 0.036) * blurFade;
 
     for (let index = 0; index < this.shards.length; index += 1) {
       const shard = this.shards[index]!;
@@ -245,7 +255,7 @@ export class MusicReactiveBackdrop {
 
     const audioDrive = (bass * 0.42 + mid * 0.55 + melody * 0.75) * 1.5;
     const lineBaseLength = WAVE_BASE_LENGTH + momentum * 12 + energy * 18 + difficulty * 8;
-    const lineOpacity = THREE.MathUtils.clamp(0.18 + momentum * 0.38 + energy * 0.12 + (bass + mid + melody) * 0.22, 0.18, 0.97);
+    const lineOpacity = THREE.MathUtils.clamp(0.16 + momentum * 0.31 + energy * 0.1 + (bass + mid + melody) * 0.18, 0.16, 0.84);
 
     for (let index = 0; index < this.waves.length; index += 1) {
       const wave = this.waves[index]!;
@@ -306,6 +316,10 @@ function resolveMomentumColor(theme: ThemeMode, momentum: number) {
     }
   }
   return stops[stops.length - 1]!.color.clone();
+}
+
+function resolveBackdropThemeColor(theme: ThemeMode) {
+  return theme === 'dark' ? getThemeBackgroundHex('light') : getThemeBackgroundHex('dark');
 }
 
 function fibonacciSpherePoint(index: number, count: number) {

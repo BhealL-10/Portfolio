@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { getSharedImageAsset, getSharedTextureAsset, preloadImageAsset } from '../core/browserAssetCache';
 import { isMobileRuntime } from '../core/device';
 import { clamp, damp } from '../core/math';
-import { getThemeForegroundHex, getThemeShardContrastHex, getThemeShardHex } from '../core/themePalette';
+import { getThemeNonShardHex, getThemeShardContrastHex, getThemeShardHex } from '../core/themePalette';
 import type { ThemeMode } from '../types/content';
 import { CameraRailController } from './CameraRailController';
 import { CoinSystem, type CoinMarker } from './CoinSystem';
@@ -59,7 +59,6 @@ interface WorldHudBillboard {
   sprite: THREE.Sprite;
 }
 
-const DANGER_ACCENT = '#F06A5A';
 const ITEM_PLACEHOLDER_ICON = '/assets/images/shared/branding/ape-prod-mark-dark.svg';
 const PLAYER_MAIN_SPRITE_URL = new URL('../../assets/images/game/sprites/characters/player/boat-airborne-sheet.png', import.meta.url).href;
 const PLAYER_BOOST_SPRITE_URL = new URL('../../assets/images/game/sprites/characters/player/boat-boost-sheet.png', import.meta.url).href;
@@ -522,7 +521,7 @@ export class GameSessionController {
     this.milestonePlayerIndicator = new THREE.Mesh(
       new THREE.ConeGeometry(1.0, 1.95, 3),
       new THREE.MeshBasicMaterial({
-        color: getThemeForegroundHex(theme),
+        color: getThemeNonShardHex(theme),
         transparent: true,
         opacity: 0.94,
         depthWrite: false,
@@ -535,7 +534,7 @@ export class GameSessionController {
     this.frontCanonLaser = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 0.24),
       new THREE.MeshBasicMaterial({
-        color: getThemeForegroundHex(theme),
+        color: getThemeNonShardHex(theme),
         transparent: true,
         opacity: 0.4,
         depthWrite: false,
@@ -549,7 +548,7 @@ export class GameSessionController {
     this.grapRope = new THREE.Mesh(
       new THREE.PlaneGeometry(0.03, 1),
       new THREE.MeshBasicMaterial({
-        color: getThemeForegroundHex(theme),
+        color: getThemeNonShardHex(theme),
         transparent: true,
         opacity: 0.85,
         depthWrite: false,
@@ -578,7 +577,7 @@ export class GameSessionController {
     this.playerTrail = new THREE.Line(
       trailGeometry,
       new THREE.LineBasicMaterial({
-        color: getThemeForegroundHex(theme),
+        color: getThemeNonShardHex(theme),
         transparent: true,
         opacity: 0.42
       })
@@ -810,11 +809,11 @@ export class GameSessionController {
 
   setTheme(theme: ThemeMode) {
     this.theme = theme;
-    this.playerTrail.material.color.set(getThemeForegroundHex(theme));
+    this.playerTrail.material.color.set(getThemeNonShardHex(theme));
     this.coins.setTheme(theme);
     this.enemies.setTheme(theme);
     this.shop.setTheme(theme);
-    const uiColor = getThemeForegroundHex(theme);
+    const uiColor = getThemeNonShardHex(theme);
     this.grapRope.material.color.set(uiColor);
     this.frontCanonLaser.material.color.set(uiColor);
     this.milestonePlayerIndicator.material.color.set(uiColor);
@@ -1265,7 +1264,6 @@ export class GameSessionController {
           )
         : 0;
     const maskedByMilestone = false;
-    const stripeMix = clamp((node.isMilestone ? 0.08 : 0.12) + fragmentAmount * 0.18 + (isCurrent ? orbitRamp * 0.1 : 0), 0, 0.42);
     const stripePhase = this.currentTime * (node.isMilestone ? 1.1 : 1.95) + localAngle * 1.6;
 
     return {
@@ -1278,22 +1276,11 @@ export class GameSessionController {
       spinDirection: node.spinDirection,
       spinSpeed: node.spinSpeed,
       spinPhase: node.resolvedSpinPhase,
-      tint:
-        node.colorHint === 'danger'
-          ? DANGER_ACCENT
-          : isGuaranteedShopShard
-            ? this.getThemeShardColor()
-            : node.colorHint === 'reward' || isRandomRewardShard
-            ? this.getThemeShardColor()
-            : null,
-      ringTint: gravityBeltRadius > 0.02 ? this.getThemeContrastColor() : null,
-      ringScale:
-        gravityBeltRadius > 0.02
-          ? Math.max(node.visualScale * node.visualStretch.x, node.visualScale * node.visualStretch.y) *
-            (1.14 + this.runUpgrades.modifiers.gravityCentering * 0.06 + gravityBeltRadius * 0.14)
-          : 0,
-      stripeTint: this.getThemeContrastColor(),
-      stripeMix: gravityBeltRadius > 0.02 ? stripeMix * 0.72 : stripeMix,
+      tint: null,
+      ringTint: null,
+      ringScale: 0,
+      stripeTint: null,
+      stripeMix: 0,
       stripePhase,
       pulse:
         node.isMilestone
@@ -2314,8 +2301,8 @@ export class GameSessionController {
       tint: null,
       ringTint: null,
       ringScale: 0,
-      stripeTint: this.getThemeContrastColor(),
-      stripeMix: 0.06,
+      stripeTint: null,
+      stripeMix: 0,
       stripePhase: this.currentTime * 1.12,
       pulse,
       deformAngle: this.orbitAngle,
