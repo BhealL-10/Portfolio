@@ -86,6 +86,22 @@ const RARITY_COLORS: Record<RogueliteRarity, string> = {
   legendary: '#727C91'
 };
 
+const MOMENTUM_GAIN_BY_GRADE: Record<LandingGrade, number> = {
+  miss: 0,
+  good: 0.08,
+  super: 0.16,
+  perfect: 0.28
+};
+const MISS_MOMENTUM_PENALTY = -0.02;
+const TWIST_CHAIN_BASE_BONUS = 0.05;
+const TWIST_CHAIN_INCREMENT = 0.012;
+const TWIST_CHAIN_MAX_BONUS = 0.08;
+const BASE_MOMENTUM_DECAY_RATE = 0.1;
+
+function computeTwistChainBonus(chainLength: number) {
+  return Math.min(TWIST_CHAIN_MAX_BONUS, TWIST_CHAIN_BASE_BONUS + TWIST_CHAIN_INCREMENT * (chainLength - 1));
+}
+
 function wrapAngle(angle: number) {
   const tau = Math.PI * 2;
   return ((angle % tau) + tau) % tau;
@@ -331,7 +347,7 @@ export class GameSessionController {
   private readonly momentum: MomentumState = {
     gauge: 0,
     fillRate: 0,
-    decayRate: 0.12,
+    decayRate: BASE_MOMENTUM_DECAY_RATE,
     speedMultiplier: 1,
     jumpMultiplier: 1,
     cameraZoomMultiplier: 0
@@ -362,6 +378,7 @@ export class GameSessionController {
   private mirrorLaunchSpeedThreshold = 0;
   private mirrorThemeBase: ThemeMode | null = null;
   private lastLandingDirection: -1 | 1 | 0 = 0;
+  private twistStreak = 0;
   private choiceMode: ChoiceMode = 'none';
   private activeChoices: BranchChoice[] = [];
   private hiddenMilestoneChoice: BranchChoice | null = null;
@@ -1155,7 +1172,7 @@ export class GameSessionController {
     this.momentumLossActive = false;
     this.momentum.gauge = 0;
     this.momentum.fillRate = 0;
-    this.momentum.decayRate = 0.12;
+    this.momentum.decayRate = BASE_MOMENTUM_DECAY_RATE;
     this.momentum.speedMultiplier = 1;
     this.momentum.jumpMultiplier = 1;
     this.momentum.cameraZoomMultiplier = 0;
@@ -3618,18 +3635,24 @@ export class GameSessionController {
       grade = 'good';
     }
 
-    let momentumGain = twist ? 0.084 : 0.02;
+    if (twist && grade !== 'miss') {
+      this.twistStreak += 1;
+    } else {
+      this.twistStreak = 0;
+    }
+
+    const gradeMomentumGain = grade === 'miss' ? 0 : MOMENTUM_GAIN_BY_GRADE[grade];
+    const twistChainBonus = twist && grade !== 'miss' ? computeTwistChainBonus(this.twistStreak) : 0;
+    let momentumGain = grade === 'miss' ? 0 : gradeMomentumGain + twistChainBonus;
 
     let speedMultiplier = 1;
     if (grade === 'miss') {
       const penaltyScale = 1 - Math.min(0.72, this.runUpgrades.modifiers.landingPenaltyReduction);
-      momentumGain = -0.03 * penaltyScale;
+      momentumGain = MISS_MOMENTUM_PENALTY * penaltyScale;
       speedMultiplier = 1 - 0.16 * penaltyScale;
     } else if (grade === 'super') {
-      momentumGain += twist ? 0.022 : 0.009;
       speedMultiplier = twist ? 1.34 : 1.1;
     } else if (grade === 'perfect') {
-      momentumGain += twist ? 0.036 : 0.014;
       speedMultiplier = twist ? 1.48 : 1.16;
     } else if (twist) {
       speedMultiplier = 1.24;

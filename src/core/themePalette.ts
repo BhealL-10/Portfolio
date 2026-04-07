@@ -2,12 +2,12 @@ import * as THREE from 'three';
 import type { ThemeMode } from '../types/content';
 
 const THEME_FOREGROUND_HEX = {
-  dark: '#d8ccb9',
-  light: '#6b7586'
+  dark: '#c5b79d',
+  light: '#393f4a'
 } as const;
 
 const THEME_BACKGROUND_HEX = {
-  dark: '#2E3644',
+  dark: '#2E3644', 
   light: '#A5977F'
 } as const;
 
