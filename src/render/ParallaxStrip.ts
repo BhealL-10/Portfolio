@@ -20,6 +20,7 @@ export interface ParallaxStripUpdateContext {
   bottomScreenY: number;
   displayedHeightPx: number;
   travelOffsetPx: number;
+  opacity?: number;
   mirrorMode: boolean;
   verticalFlip?: boolean;
 }
@@ -250,6 +251,7 @@ export class ParallaxStrip {
   private positionPanels(context: ParallaxStripUpdateContext) {
     const depth = Math.abs(this.config.localZ);
     const unitsPerPixel = this.getUnitsPerPixelAtDepth(depth, context.viewportHeightPx);
+    const opacity = THREE.MathUtils.clamp(context.opacity ?? 1, 0, 1);
 
     for (const panel of this.panels) {
       const worldWidth = panel.widthPx * unitsPerPixel;
@@ -260,6 +262,7 @@ export class ParallaxStrip {
       const localY = (context.viewportHeightPx * 0.5 - centerScreenY) * unitsPerPixel;
       panel.mesh.position.set(localX, localY, this.config.localZ);
       panel.mesh.scale.set((this.mirrorMode ? -1 : 1) * worldWidth, (context.verticalFlip ? -1 : 1) * worldHeight, 1);
+      panel.mesh.material.opacity = opacity;
     }
   }
 

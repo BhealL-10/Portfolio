@@ -9,12 +9,33 @@ const difficultyWeights = {
   expert: { easy: 0, medium: 10, hard: 55, expert: 35 }
 } as const;
 
-export function selectPattern(score: number, rng: () => number, recentPatternIds: string[]) {
+const INTRO_PATTERN_DISTANCE_METERS = 200;
+const RECOVERY_WINDOW_METERS = 28;
+
+export interface PatternSelectionContext {
+  score: number;
+  distanceMeters: number;
+  recentPatternIds: string[];
+  rng: () => number;
+}
+
+export function selectPattern({ score, distanceMeters, recentPatternIds, rng }: PatternSelectionContext) {
   const profile = getDifficultyProfile(score);
   const weights = difficultyWeights[profile.band];
   const recent = new Set(recentPatternIds.slice(-3));
-  const eligible = PATTERN_LIBRARY.filter((pattern) => !recent.has(pattern.id) && weights[pattern.difficulty] > 0);
-  const pool = eligible.length > 0 ? eligible : PATTERN_LIBRARY.filter((pattern) => weights[pattern.difficulty] > 0);
+  const previousMilestone = getPreviousMilestone(distanceMeters);
+  const earlyGame = distanceMeters < INTRO_PATTERN_DISTANCE_METERS;
+  const recoveryWindow = earlyGame && previousMilestone !== null && distanceMeters - previousMilestone <= RECOVERY_WINDOW_METERS;
+  const stagePool = PATTERN_LIBRARY.filter((pattern) => {
+    if (earlyGame) {
+      return recoveryWindow ? pattern.stage === 'recovery' || pattern.stage === 'intro' : pattern.stage === 'intro' || pattern.stage === 'recovery';
+    }
+    return pattern.stage === 'standard';
+  });
+  const weightedPool = stagePool.filter((pattern) => weights[pattern.difficulty] > 0);
+  const fallbackStagePool = weightedPool.length > 0 ? weightedPool : PATTERN_LIBRARY.filter((pattern) => weights[pattern.difficulty] > 0);
+  const eligible = fallbackStagePool.filter((pattern) => !recent.has(pattern.id));
+  const pool = eligible.length > 0 ? eligible : fallbackStagePool;
   const totalWeight = pool.reduce((sum, pattern) => sum + weights[pattern.difficulty], 0);
 
   let cursor = rng() * totalWeight;
@@ -26,4 +47,14 @@ export function selectPattern(score: number, rng: () => number, recentPatternIds
   }
 
   return pool[pool.length - 1] as GamePathPattern;
+}
+
+function getPreviousMilestone(distanceMeters: number) {
+  if (distanceMeters < 10) {
+    return null;
+  }
+  if (distanceMeters < 100) {
+    return 10;
+  }
+  return Math.floor(distanceMeters / 100) * 100;
 }

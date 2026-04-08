@@ -84,6 +84,11 @@ export const SHOP_ICON_ASSETS = {
   light: new URL('../../assets/images/game/ui/buttons/icons/shop-light.svg', import.meta.url).href
 } as const;
 
+export const SHARD_DIRECTION_ICON_ASSETS = {
+  dark: new URL('../../assets/images/game/ui/buttons/icons/shard-direction-dark.svg', import.meta.url).href,
+  light: new URL('../../assets/images/game/ui/buttons/icons/shard-direction-light.svg', import.meta.url).href
+} as const;
+
 export const SECONDARY_NAV_ASSETS = {
   left: {
     dark: new URL('../../assets/images/game/ui/buttons/icons/arrow-left-dark.svg', import.meta.url).href,

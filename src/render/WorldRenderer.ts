@@ -56,7 +56,9 @@ export class WorldRenderer {
 
   setTheme(theme: ThemeMode) {
     const palette = PALETTE[theme];
-    this.scene.background = palette.background.clone();
+    this.scene.background = null;
+    this.renderer.setClearColor(palette.background, 0);
+    this.host.style.background = getThemeBackgroundHex(theme);
     this.ambientLight.color.set('#ffffff');
     this.keyLight.color.set(getThemeForegroundHex(theme));
     this.fillLight.color.set(getThemeBackgroundHex(theme));

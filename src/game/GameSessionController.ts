@@ -11,7 +11,8 @@ import { AchievementSystem } from './achievements/AchievementSystem';
 import { createEmptyAchievementPanelSnapshot } from './achievements/AchievementTypes';
 import { createMiniGamePortalNode, MINI_GAME_PORTAL_LAUNCH_ANGLE } from './MiniGamePortalLayout';
 import { DEFAULT_COLUMN_DISTANCE } from './difficultyScaler';
-import { HELP_ICON_ASSETS, SHOP_ICON_ASSETS } from './GameUiAssetResolver';
+import { getPathVerticalExtent } from './pathLayout';
+import { HELP_ICON_ASSETS, SHARD_DIRECTION_ICON_ASSETS, SHOP_ICON_ASSETS } from './GameUiAssetResolver';
 import { GamePathSystem } from './GamePathSystem';
 import type {
   AcquisitionFeedback,
@@ -57,6 +58,28 @@ interface WorldHudBillboard {
   canvas: HTMLCanvasElement;
   texture: THREE.CanvasTexture;
   sprite: THREE.Sprite;
+}
+
+function getMotionDirectionAngle(direction: NonNullable<ResolvedGamePathNode['motionDirection']>) {
+  switch (direction) {
+    case 'left':
+      return Math.PI;
+    case 'right':
+      return 0;
+    case 'up':
+      return -Math.PI * 0.5;
+    case 'down':
+      return Math.PI * 0.5;
+    case 'up_left':
+      return -Math.PI * 0.75;
+    case 'up_right':
+      return -Math.PI * 0.25;
+    case 'down_left':
+      return Math.PI * 0.75;
+    case 'down_right':
+    default:
+      return Math.PI * 0.25;
+  }
 }
 
 const ITEM_PLACEHOLDER_ICON = '/assets/images/shared/branding/ape-prod-mark-dark.svg';
@@ -631,6 +654,7 @@ export class GameSessionController {
       ...Object.values(SHARD_HUD_ANCHOR_LOAD_ASSETS),
       ...Object.values(SHARD_HUD_ANCHOR_FULL_ASSETS),
       ...Object.values(SHARD_HUD_BOOST_ASSETS),
+      ...Object.values(SHARD_DIRECTION_ICON_ASSETS),
       ...Object.values(SHOP_ICON_ASSETS),
       ...Object.values(HELP_ICON_ASSETS),
       ...rogueliteItems.flatMap((item) => [item.hudIconSrc, item.rarityIconSrc]),
@@ -1275,6 +1299,8 @@ export class GameSessionController {
     const rewardItem = node.offerId ? getItemById(node.offerId) : null;
     const isGuaranteedShopShard = Boolean(node.guaranteedShopIcon);
     const isRandomRewardShard = node.eventVisualKind === 'question' || node.eventType === 'gift' || node.eventType === 'rare_item';
+    const movingShardPreview = node.motionMode === 'landing_once' && node.motionActivatedAt === null && Boolean(node.motionDirection);
+    const movingShardDirectionAngle = movingShardPreview ? getMotionDirectionAngle(node.motionDirection!) : 0;
     const gravityBeltRadius =
       this.runUpgrades.modifiers.gravityCentering > 0 && !node.isMilestone
         ? clamp(
@@ -1321,7 +1347,9 @@ export class GameSessionController {
       deformDensity: liveDensity,
       fragmentAmount,
       iconSrc:
-        node.colorHint === 'reward' && rewardItem
+        movingShardPreview
+          ? SHARD_DIRECTION_ICON_ASSETS[this.theme]
+          : node.colorHint === 'reward' && rewardItem
           ? rewardItem.hudIconSrc
           : isGuaranteedShopShard
             ? SHOP_ICON_ASSETS[this.theme]
@@ -1331,13 +1359,17 @@ export class GameSessionController {
       iconText: null,
       iconTint: null,
       iconScale:
-        node.colorHint === 'reward' && rewardItem
+        movingShardPreview
+          ? clamp(1.9 + Math.max(node.gameplayRadius, node.visualScale) * 0.34, 2.35, 4.35)
+          : node.colorHint === 'reward' && rewardItem
           ? clamp(1.76 + Math.max(node.gameplayRadius, node.visualScale) * 0.36, 2.36, 4.2)
           : isGuaranteedShopShard
             ? 4.2
             : isRandomRewardShard
               ? 2.28
-            : 0.34
+              : 0.34,
+      iconOffsetY: movingShardPreview ? clamp(node.visualScale * 1.18 + Math.max(node.visualStretch.y - 1, 0) * 0.5, 1.65, 4.4) : 0,
+      iconRotation: movingShardPreview ? movingShardDirectionAngle : 0
     };
   }
 
@@ -1607,8 +1639,8 @@ export class GameSessionController {
   }
 
   getParallaxWorldBounds() {
-    const outerLaneExtent = 8.4 * 2.5;
-    const shardPadding = DEFAULT_COLUMN_DISTANCE * 0.95;
+    const outerLaneExtent = getPathVerticalExtent(200);
+    const shardPadding = DEFAULT_COLUMN_DISTANCE * 1.2;
     const maxCameraZoom =
       (isMobileRuntime() ? 40.5 : 50.8) +
       16.2 +
@@ -1616,7 +1648,7 @@ export class GameSessionController {
       6.8 +
       8.8 * 1.28 * 1.45;
     const maxVisibleHalfHeight = Math.tan(THREE.MathUtils.degToRad(42 * 0.5)) * maxCameraZoom;
-    const halfPlayableHeight = Math.max(outerLaneExtent + shardPadding, maxVisibleHalfHeight + DEFAULT_COLUMN_DISTANCE * 0.9);
+    const halfPlayableHeight = Math.max(outerLaneExtent + shardPadding, maxVisibleHalfHeight + DEFAULT_COLUMN_DISTANCE * 1.15);
     return {
       minY: -halfPlayableHeight,
       maxY: halfPlayableHeight,
@@ -2373,6 +2405,9 @@ export class GameSessionController {
     if (!attachedAnchor || attachedAnchor.index !== resolvedNode.index || resolvedNode.index !== this.attachedIndex) {
       return resolvedNode;
     }
+    if (resolvedNode.motionMode === 'landing_once' && resolvedNode.motionActivatedAt !== null) {
+      return resolvedNode;
+    }
     return {
       ...resolvedNode,
       resolvedX: attachedAnchor.resolvedX,
@@ -2505,7 +2540,7 @@ export class GameSessionController {
       hasGrapple ? this.getGrappleEffectiveRange(this.playerPosition.x) + 5.8 : 0
     );
     const directionSign = this.getProgressionDirectionSign();
-    const backwardReach = Math.max(4.8, maxReach * 0.32);
+    const backwardReach = Math.max(7.2, maxReach * 0.44);
     const leftLimit =
       directionSign > 0
         ? this.playerPosition.x - backwardReach
@@ -2517,7 +2552,7 @@ export class GameSessionController {
     const searchLimit = this.attachedIndex + Math.max(32, Math.ceil(maxReach / Math.max(0.001, DEFAULT_COLUMN_DISTANCE)) * 14);
     const result: ResolvedGamePathNode[] = [];
 
-    for (let index = Math.max(0, this.attachedIndex - 2); index <= searchLimit; index += 1) {
+    for (let index = Math.max(0, this.attachedIndex - 6); index <= searchLimit; index += 1) {
       const node = this.getResolvedNode(index);
       const radius = this.getPhysicalRadius(node);
       if (node.resolvedX + radius < leftLimit) {
@@ -3515,6 +3550,9 @@ export class GameSessionController {
     this.mirrorLaunchSpeedThreshold = 0;
     this.setAttachedNodeRuntimeAnchor(resolvedNodeSnapshot ?? this.getResolvedNode(index));
     const node = this.getResolvedNode(index);
+    if (preserveMomentum && landingPosition && incomingVelocity) {
+      this.path.activateLandingTriggeredMotion(index, this.currentTime);
+    }
     if (!this.lastLandingWasJudged) {
       this.twistStreak = 0;
     }
@@ -5055,6 +5093,15 @@ export class GameSessionController {
       };
     }
 
+    if (options.airborne) {
+      return {
+        outcome: 'enemy_dies',
+        source: 'impact',
+        fromBehind: hitFromBehind,
+        momentumBurst: Math.max(0.08, (options.travelSpeed ?? 0) > 12 ? 0.1 : 0.08)
+      };
+    }
+
     if (!options.airborne) {
       return {
         outcome: 'player_dies'
@@ -5062,7 +5109,10 @@ export class GameSessionController {
     }
 
     return {
-      outcome: 'player_dies'
+      outcome: 'enemy_dies',
+      source: 'impact',
+      fromBehind: hitFromBehind,
+      momentumBurst: 0.08
     };
   }
 
@@ -5236,16 +5286,12 @@ export class GameSessionController {
         continue;
       }
       const along = toEnemy.dot(forward);
-      if (along <= 0.14) {
+      if (along < -enemyRadius * 0.1 || along > laserLength + enemyRadius) {
         continue;
       }
       const sideDistance = Math.abs(toEnemy.x * -forward.y + toEnemy.y * forward.x);
       const hitHalfWidth = this.getFrontCanonSpreadWidth() * 0.5 + enemyRadius;
       if (sideDistance > hitHalfWidth) {
-        continue;
-      }
-      const forwardDot = along / Math.max(0.0001, distance);
-      if (forwardDot <= 0.36) {
         continue;
       }
       if (
@@ -5333,6 +5379,9 @@ export class GameSessionController {
       24,
       0.16
     );
+    if (targetEnemy.alive) {
+      this.applyEnemyDefeat(bestTarget.node, targetEnemy, 'front_canon');
+    }
     this.fillMomentumBurst(0.04);
     frontRuntime.cooldownRemaining = Math.max(1, this.runUpgrades.modifiers.frontCanonCooldown || 2.4);
     this.frontCanonAnimStartedAt = elapsedTime;
@@ -5538,8 +5587,9 @@ export class GameSessionController {
   }
 
   private isOutsidePlayableField(position: THREE.Vector3) {
-    const verticalLimit = 32;
-    return position.y <= -verticalLimit || position.y >= verticalLimit;
+    const bounds = this.getParallaxWorldBounds();
+    const verticalPadding = DEFAULT_COLUMN_DISTANCE * 0.42;
+    return position.y <= bounds.minY - verticalPadding || position.y >= bounds.maxY + verticalPadding;
   }
 
   private getCaptureRadius(node: ResolvedGamePathNode) {
@@ -5633,13 +5683,16 @@ export class GameSessionController {
   ) {
     let best: CaptureCandidate | null = null;
     const directionSign = this.getProgressionDirectionSign();
+    const safeLeft = this.camera.getSafeLeft();
     for (let index = this.attachedIndex + 1; index <= searchLimit; index += 1) {
       const node = this.getResolvedNode(index);
+      const radius = this.getPhysicalRadius(node);
       const directionalOffset = (node.resolvedX - previousPosition.x) * directionSign;
       if (directionalOffset > 64) {
         break;
       }
-      if (directionalOffset < -8) {
+      const stillVisibleMilestone = node.isGigantic && node.resolvedX + radius >= safeLeft;
+      if (directionalOffset < -8 && !stillVisibleMilestone) {
         continue;
       }
       if (rewardChoiceLayout && this.isNodeInsideActiveRewardReserve(node, rewardChoiceLayout)) {
@@ -5728,7 +5781,11 @@ export class GameSessionController {
     travelSpeed: number
   ): OrbitAttachment | null {
     const segmentLength = Math.hypot(segmentEnd.x - segmentStart.x, segmentEnd.y - segmentStart.y);
-    const contactTolerance = clamp(Math.max(0.12, segmentLength * 0.12, node.visualScale * 0.028), 0.12, 0.46);
+    const contactTolerance = clamp(
+      Math.max(0.12, segmentLength * 0.12, node.visualScale * 0.028, node.isGigantic ? this.getPhysicalRadius(node) * 0.035 : 0),
+      0.12,
+      node.isGigantic ? 1.04 : 0.46
+    );
     const contactToleranceSq = contactTolerance * contactTolerance;
     const isBetterAttachment = (
       candidate: {

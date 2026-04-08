@@ -19,6 +19,9 @@ const PARALLAX_INTRO_BASE_START = 0.12;
 const PARALLAX_INTRO_STAGGER_PROGRESS = 0.12;
 const PARALLAX_INTRO_LAYER_PROGRESS = 0.24;
 const PARALLAX_INTRO_OVERSHOOT = 0.045;
+const VERTICAL_INDICATOR_NEUTRAL_MIN = 0.4;
+const VERTICAL_INDICATOR_NEUTRAL_MAX = 0.6;
+const VERTICAL_INDICATOR_EXTREME_MIN = 0.94;
 
 const INITIAL_VERTICAL_OFFSET_PX: Record<LayerCategory, number> = {
   horizon: 0,
@@ -288,6 +291,8 @@ export class ParallaxLayerSystem {
 
     const worldTravelX = this.coverageAnchorX - this.coverageAnchorOriginX;
     const playerHeightSignal = this.resolvePlayerHeightSignal();
+    const bottomIndicatorBlend = this.resolveVerticalIndicatorBlend('bottom');
+    const topIndicatorBlend = this.resolveVerticalIndicatorBlend('top');
     const puppetActive = this.cameraFollowsPlayer && !this.milestoneView;
     PARALLAX_LAYER_ORDER.forEach((category) => {
       const strip = this.strips.get(category);
@@ -310,7 +315,13 @@ export class ParallaxLayerSystem {
         this.verticalOffsetPx[category] +
         atmosphereOffsetPx +
         introOffsetPx;
-      const bottomScreenY = Math.max(this.viewportHeightPx + config.minimumBottomCoveragePx, unclampedBottomScreenY);
+      const visibleBottomScreenY = Math.max(this.viewportHeightPx + config.minimumBottomCoveragePx, unclampedBottomScreenY);
+      const indicatorBlend =
+        category === 'horizon' && !this.introTransitionRequested && !this.introTransitionActive ? bottomIndicatorBlend : 1;
+      const bottomScreenY =
+        category === 'horizon'
+          ? THREE.MathUtils.lerp(this.viewportHeightPx + displayedHeightPx * 1.16, visibleBottomScreenY, indicatorBlend)
+          : visibleBottomScreenY;
 
       strip.update({
         viewportWidthPx: this.viewportWidthPx,
@@ -318,6 +329,7 @@ export class ParallaxLayerSystem {
         bottomScreenY,
         displayedHeightPx,
         travelOffsetPx,
+        opacity: category === 'horizon' ? indicatorBlend : 1,
         mirrorMode: this.mirrorMode
       });
     });
@@ -338,10 +350,12 @@ export class ParallaxLayerSystem {
       this.resolveAtmosphereOffsetPx('horizon') +
       topIntroOffsetPx;
     const topHorizonCoverageCeilingPx = topHorizonDisplayedHeightPx - 12;
-    const topBottomScreenY =
+    const visibleTopBottomScreenY =
       this.introTransitionRequested || this.introTransitionActive
         ? unclampedTopBottomScreenY
         : Math.min(topHorizonCoverageCeilingPx, Math.max(topHorizonDisplayedHeightPx * 0.64, unclampedTopBottomScreenY));
+    const topIndicatorOpacity = this.introTransitionRequested || this.introTransitionActive ? 1 : topIndicatorBlend;
+    const topBottomScreenY = THREE.MathUtils.lerp(-topHorizonDisplayedHeightPx * 0.24, visibleTopBottomScreenY, topIndicatorOpacity);
 
     this.topHorizonStrip.update({
       viewportWidthPx: this.viewportWidthPx,
@@ -349,6 +363,7 @@ export class ParallaxLayerSystem {
       bottomScreenY: topBottomScreenY,
       displayedHeightPx: topHorizonDisplayedHeightPx,
       travelOffsetPx: topTravelOffsetPx,
+      opacity: topIndicatorOpacity,
       mirrorMode: this.mirrorMode,
       verticalFlip: true
     });
@@ -393,6 +408,16 @@ export class ParallaxLayerSystem {
     const playableHeight = Math.max(0.001, this.playableWorldMaxY - this.playableWorldMinY);
     const normalizedHeight = THREE.MathUtils.clamp((this.playerWorldY - this.playableWorldMinY) / playableHeight, 0, 1);
     return (normalizedHeight - 0.5) * 2;
+  }
+
+  private resolveVerticalIndicatorBlend(direction: 'top' | 'bottom') {
+    const playableHeight = Math.max(0.001, this.playableWorldMaxY - this.playableWorldMinY);
+    const normalizedHeight = THREE.MathUtils.clamp((this.playerWorldY - this.playableWorldMinY) / playableHeight, 0, 1);
+    const proximity =
+      direction === 'top'
+        ? THREE.MathUtils.clamp((normalizedHeight - VERTICAL_INDICATOR_NEUTRAL_MAX) / (VERTICAL_INDICATOR_EXTREME_MIN - VERTICAL_INDICATOR_NEUTRAL_MAX), 0, 1)
+        : THREE.MathUtils.clamp((VERTICAL_INDICATOR_NEUTRAL_MIN - normalizedHeight) / VERTICAL_INDICATOR_NEUTRAL_MIN, 0, 1);
+    return THREE.MathUtils.smootherstep(proximity, 0, 1);
   }
 
   private resolveSharedHorizonMusicVerticalOffsetPx() {

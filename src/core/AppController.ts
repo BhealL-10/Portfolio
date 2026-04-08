@@ -10,6 +10,7 @@ import { IntroVoronoiSystem } from '../portfolio/IntroVoronoiSystem';
 import { OrbitWorldSystem } from '../portfolio/OrbitWorldSystem';
 import { SecretSlotSystem } from '../portfolio/SecretSlotSystem';
 import { ShardInteractionSystem } from '../portfolio/ShardInteractionSystem';
+import { VoronoiRevealSystem } from '../portfolio/VoronoiRevealSystem';
 import { MusicReactiveBackdrop } from '../render/MusicReactiveBackdrop';
 import { ParallaxLayerSystem } from '../render/ParallaxLayerSystem';
 import { WorldRenderer } from '../render/WorldRenderer';
@@ -68,6 +69,7 @@ export class AppController {
   private readonly parallaxLayers: ParallaxLayerSystem;
   private readonly slotSystem: SecretSlotSystem;
   private readonly world: OrbitWorldSystem;
+  private readonly voronoiReveal: VoronoiRevealSystem;
   private readonly intro: IntroVoronoiSystem;
   private readonly guide: GuideBubbleSystem;
   private readonly hud: NavigationHUD;
@@ -148,6 +150,7 @@ export class AppController {
         .map((project) => project.id)
     );
     this.world = new OrbitWorldSystem(this.renderer.scene, this.portfolioHubProjects, this.slotSystem, this.theme.current);
+    this.voronoiReveal = new VoronoiRevealSystem(this.root, this.theme.current);
     this.hud = new NavigationHUD(this.uiHost, this.i18n, this.portfolioHubProjects, {
       onThemeToggle: () => this.theme.toggle(),
       onLanguageToggle: () => this.i18n.toggle(),
@@ -162,7 +165,7 @@ export class AppController {
       onNextFacet: () => this.changeFacet(1)
     });
     this.guide = new GuideBubbleSystem(this.uiHost, this.i18n);
-    this.intro = new IntroVoronoiSystem(this.uiHost, this.i18n, this.theme);
+    this.intro = new IntroVoronoiSystem(this.uiHost, this.i18n, this.theme, this.voronoiReveal);
     this.rotateOverlay = document.createElement('div');
     this.rotateOverlay.className = 'game-rotate-overlay';
     this.rotateOverlay.innerHTML = `
@@ -538,6 +541,7 @@ export class AppController {
       this.musicBackdrop.setTheme(theme);
       this.parallaxLayers.setTheme(theme);
       this.world.setTheme(theme);
+      this.voronoiReveal.setTheme(theme);
       if (this.gameRuntime) {
         this.game.setTheme(theme);
         this.primateriePortal.setLocale(this.i18n.current);
@@ -1400,6 +1404,8 @@ export class AppController {
     this.transitions.update(deltaTime);
     const accentColor = this.getAccentColor(elapsedTime);
     document.documentElement.style.setProperty('--accent-color', accentColor);
+    this.voronoiReveal.setEnabled(!isGameRuntimeMode(this.mode.current));
+    this.voronoiReveal.update(deltaTime);
     const cameraOrbitPose = this.cameraOrbit.update(deltaTime, this.world.getPivot());
     if (this.mode.is('game_transition')) {
       this.syncWorldCameraReferenceFromRenderer();
@@ -1565,7 +1571,14 @@ export class AppController {
     ) {
       this.gameHud.update(this.getGameHudPayload());
     }
+    const rawRenderer = this.renderer.renderer;
+    const previousAutoClear = rawRenderer.autoClear;
+    rawRenderer.autoClear = false;
+    rawRenderer.clear();
+    this.voronoiReveal.render(rawRenderer);
+    rawRenderer.clearDepth();
     this.renderer.render();
+    rawRenderer.autoClear = previousAutoClear;
     this.intro.update(deltaTime);
     this.updateRotateOverlay();
 
@@ -1595,7 +1608,7 @@ export class AppController {
       this.world.setHovered(null);
     }
     this.hud.element.classList.toggle('is-hidden', primaterieMode || isGameMode);
-    this.guide.element.classList.toggle('is-hidden', isGameMode || primaterieMode);
+    this.guide.element.classList.toggle('is-hidden', isGameMode || portfolioBlocked);
     this.uiHost.dataset.appMode = primaterieMode ? 'primaterie' : isGameMode ? 'game' : 'portfolio';
     this.gameRuntime?.gameHud.setVisible(showGameHud);
     if (showGameHud) {
@@ -1616,7 +1629,17 @@ export class AppController {
   }
 
   private updateGuide() {
-    if (isGameRuntimeMode(this.mode.current) || isprimaterieMode(this.mode.current)) {
+    if (isGameRuntimeMode(this.mode.current) || this.isPortfolioOrientationBlocked()) {
+      return;
+    }
+
+    if (this.about.opened) {
+      this.guide.setStep('about');
+      return;
+    }
+
+    if (isprimaterieMode(this.mode.current)) {
+      this.guide.setStep('primaterie');
       return;
     }
 

@@ -33,6 +33,7 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --accent-color: #75AF80;
+  --guide-dialogue-art: url('../../assets/images/shared/branding/guide/dialogue-light.svg');
   --hud-shape-1: url('../../assets/images/game/ui/backgrounds/hud-dark-1.svg');
   --hud-shape-2: url('../../assets/images/game/ui/backgrounds/hud-dark-2.svg');
   --hud-shape-3: url('../../assets/images/game/ui/backgrounds/hud-dark-3.svg');
@@ -100,6 +101,7 @@ html[data-theme='dark'] {
   --color-fg: var(--color-sand);
   --color-bg-rgb: 57 63 74;
   --color-fg-rgb: 212 191 155;
+  --guide-dialogue-art: url('../../assets/images/shared/branding/guide/dialogue-dark.svg');
   --hud-shape-1: url('../../assets/images/game/ui/backgrounds/hud-light-1.svg');
   --hud-shape-2: url('../../assets/images/game/ui/backgrounds/hud-light-2.svg');
   --hud-shape-3: url('../../assets/images/game/ui/backgrounds/hud-light-3.svg');
@@ -275,7 +277,6 @@ body {
 .navigation-hud__button,
 .navigation-hud__dot,
 .focus-layer__panel,
-.guide-bubble,
 .about-layer__panel,
 .intro-layer__progress {
   backdrop-filter: blur(18px);
@@ -390,9 +391,11 @@ body {
   left: calc(var(--safe-left) + 18px);
   bottom: calc(var(--safe-bottom) + 18px);
   z-index: 45;
-  max-width: min(360px, calc(100vw - 36px));
-  border-radius: 28px;
-  padding: 16px 18px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  gap: 8px;
+  width: min(470px, calc(100vw - 28px));
   pointer-events: none;
   transition: opacity 220ms ease, transform 220ms ease;
 }
@@ -407,6 +410,23 @@ body {
   margin: 0;
 }
 
+.guide-bubble__character {
+  display: block;
+  width: clamp(90px, 10vw, 118px);
+  height: auto;
+  filter: drop-shadow(0 12px 30px rgb(0 0 0 / 0.18));
+}
+
+.guide-bubble__panel {
+  align-self: stretch;
+  min-height: 168px;
+  padding: 26px 32px 34px 34px;
+  background-image: var(--guide-dialogue-art);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
 .guide-bubble__title {
   font-size: 0.76rem;
   letter-spacing: 0.08em;
@@ -415,8 +435,9 @@ body {
 }
 
 .guide-bubble__body {
-  margin-top: 10px;
-  line-height: 1.6;
+  margin-top: 8px;
+  max-width: 240px;
+  line-height: 1.5;
 }
 
 .intro-layer {

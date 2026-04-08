@@ -1,12 +1,7 @@
 import { clamp } from '../core/math';
 import { I18nService } from '../ui/I18nService';
 import { ThemeService } from '../ui/ThemeService';
-
-interface Site {
-  x: number;
-  y: number;
-  fractureId: number;
-}
+import type { VoronoiRevealSystem } from './VoronoiRevealSystem';
 
 interface Fragment {
   points: Array<{ x: number; y: number }>;
@@ -20,24 +15,27 @@ interface Fragment {
 
 export class IntroVoronoiSystem {
   readonly element: HTMLDivElement;
-  private canvas: HTMLCanvasElement;
-  private context: CanvasRenderingContext2D;
-  private content: HTMLDivElement;
-  private progress: HTMLDivElement;
-  private logo: HTMLImageElement;
-  private sites: Site[] = [];
-  private cellCache: Array<Array<{ x: number; y: number }>> = [];
+  private readonly canvas: HTMLCanvasElement;
+  private readonly context: CanvasRenderingContext2D;
+  private readonly content: HTMLDivElement;
+  private readonly progress: HTMLDivElement;
+  private readonly logo: HTMLImageElement;
+  private readonly fracturedCellIds = new Set<number>();
   private fragments: Fragment[] = [];
   private clickCount = 0;
   private readonly clickThreshold = 8;
-  private fractureIndex = 0;
   private state: 'idle' | 'shattering' | 'hidden' = 'idle';
   private opacity = 1;
   private shatterElapsed = 0;
   onBroken: (() => void) | null = null;
   onHidden: (() => void) | null = null;
 
-  constructor(host: HTMLElement, private readonly i18n: I18nService, private readonly theme: ThemeService) {
+  constructor(
+    host: HTMLElement,
+    private readonly i18n: I18nService,
+    private readonly theme: ThemeService,
+    private readonly revealSystem: VoronoiRevealSystem
+  ) {
     this.element = document.createElement('div');
     this.element.className = 'intro-layer';
 
@@ -67,8 +65,14 @@ export class IntroVoronoiSystem {
     host.appendChild(this.element);
 
     this.element.addEventListener('pointerdown', this.onPointerDown);
-    this.i18n.onChange(() => this.renderText());
-    this.theme.onChange(() => this.renderText());
+    this.i18n.onChange(() => {
+      this.renderText();
+      this.draw();
+    });
+    this.theme.onChange(() => {
+      this.renderText();
+      this.draw();
+    });
     window.addEventListener('resize', this.resize);
 
     this.resize();
@@ -88,6 +92,10 @@ export class IntroVoronoiSystem {
   }
 
   update(deltaTime: number) {
+    if (this.state === 'hidden') {
+      return;
+    }
+
     if (this.state === 'shattering') {
       this.shatterElapsed += deltaTime;
       this.opacity = clamp(1 - this.shatterElapsed / 1.35, 0, 1);
@@ -103,6 +111,7 @@ export class IntroVoronoiSystem {
         this.state = 'hidden';
         this.element.classList.add('is-hidden');
         this.onHidden?.();
+        return;
       }
     }
 
@@ -110,13 +119,23 @@ export class IntroVoronoiSystem {
   }
 
   private onPointerDown = (event: PointerEvent) => {
-    if (this.state !== 'idle') return;
+    if (this.state !== 'idle') {
+      return;
+    }
 
     const rect = this.canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
-    this.addFractureCluster(x, y);
+    this.revealSystem.pulseAt(x, y, {
+      radiusPx: Math.max(220, Math.min(this.canvas.width, this.canvas.height) * 0.24),
+      strength: 1.2,
+      durationSeconds: 2.3
+    });
+    this.revealSystem
+      .collectCellsNear(x, y, Math.max(180, Math.min(this.canvas.width, this.canvas.height) * 0.18), 8)
+      .forEach((cell) => this.fracturedCellIds.add(cell.id));
+
     this.clickCount += 1;
     this.progress.style.setProperty('--intro-progress', String(this.clickCount / this.clickThreshold));
     this.progress.textContent = `${this.clickCount}/${this.clickThreshold}`;
@@ -128,75 +147,36 @@ export class IntroVoronoiSystem {
     }
   };
 
-  private addFractureCluster(originX: number, originY: number) {
-    const pointsPerClick = 9;
-    const seed = this.fractureIndex + 1;
-    this.fractureIndex += 1;
-
-    for (let index = 0; index < pointsPerClick; index += 1) {
-      const angle = (index / pointsPerClick) * Math.PI * 2;
-      const radius = 18 + ((seed * 37 + index * 17) % 44);
-      const jitterX = Math.sin(seed + index * 0.7) * 18;
-      const jitterY = Math.cos(seed * 1.3 + index * 0.5) * 18;
-
-      this.sites.push({
-        x: originX + Math.cos(angle) * radius + jitterX,
-        y: originY + Math.sin(angle) * radius + jitterY,
-        fractureId: seed
-      });
-    }
-
-    this.cellCache = this.sites.map((site) => this.computeCell(site));
-  }
-
-  private computeCell(site: Site) {
-    const points: Array<{ x: number; y: number }> = [];
-    const maxRadius = 44;
-    const sampleCount = 18;
-
-    for (let sample = 0; sample < sampleCount; sample += 1) {
-      const angle = (sample / sampleCount) * Math.PI * 2;
-      let radius = maxRadius;
-
-      for (const neighbor of this.sites) {
-        if (neighbor === site) continue;
-        const dx = Math.cos(angle);
-        const dy = Math.sin(angle);
-        const nx = neighbor.x - site.x;
-        const ny = neighbor.y - site.y;
-        const denominator = 2 * (dx * nx + dy * ny);
-        const distanceSq = nx * nx + ny * ny;
-
-        if (denominator > 0.001) {
-          radius = Math.min(radius, distanceSq / denominator);
-        }
-      }
-
-      points.push({
-        x: site.x + Math.cos(angle) * Math.max(8, radius),
-        y: site.y + Math.sin(angle) * Math.max(8, radius)
-      });
-    }
-
-    return points;
-  }
-
   private startShatter() {
-    if (this.state !== 'idle') return;
+    if (this.state !== 'idle') {
+      return;
+    }
+
+    const viewportCells = this.revealSystem
+      .getCells()
+      .filter((cell) => cell.reveal > 0.08 || this.fracturedCellIds.has(cell.id));
+    const sourceCells =
+      viewportCells.length > 0
+        ? viewportCells
+        : this.revealSystem.collectCellsNear(this.canvas.width * 0.5, this.canvas.height * 0.5, Math.max(this.canvas.width, this.canvas.height), 18);
+
+    this.revealSystem.pulseAt(this.canvas.width * 0.5, this.canvas.height * 0.5, {
+      radiusPx: Math.hypot(this.canvas.width, this.canvas.height) * 0.76,
+      strength: 1.15,
+      durationSeconds: 1.8
+    });
+
     this.state = 'shattering';
     this.shatterElapsed = 0;
-
-    this.fragments = this.cellCache.map((points, index) => {
-      const centerX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
-      const centerY = points.reduce((sum, point) => sum + point.y, 0) / points.length;
-      const angle = Math.atan2(centerY - this.canvas.height / 2, centerX - this.canvas.width / 2);
+    this.fragments = sourceCells.map((cell, index) => {
+      const angle = Math.atan2(cell.centerY - this.canvas.height / 2, cell.centerX - this.canvas.width / 2);
 
       return {
-        points,
-        centerX,
-        centerY,
-        velocityX: Math.cos(angle) * (60 + index * 2.5),
-        velocityY: Math.sin(angle) * (40 + index * 1.5) - 20,
+        points: cell.points.map((point) => ({ x: point.x, y: point.y })),
+        centerX: cell.centerX,
+        centerY: cell.centerY,
+        velocityX: Math.cos(angle) * (60 + index * 2.4),
+        velocityY: Math.sin(angle) * (40 + index * 1.5) - 22,
         angularVelocity: (Math.random() - 0.5) * 4,
         rotation: 0
       };
@@ -209,16 +189,17 @@ export class IntroVoronoiSystem {
     const width = this.canvas.width;
     const height = this.canvas.height;
     const { context } = this;
+    const backgroundColor = getComputedStyle(document.documentElement).getPropertyValue('--color-bg').trim();
+    const foregroundColor = getComputedStyle(document.documentElement).getPropertyValue('--color-fg').trim();
 
     context.clearRect(0, 0, width, height);
-    context.save();
-    context.globalAlpha = this.opacity;
-    context.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-bg').trim();
-    context.fillRect(0, 0, width, height);
 
     if (this.state === 'shattering') {
-      context.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-fg').trim();
+      context.save();
+      context.globalAlpha = this.opacity;
+      context.strokeStyle = foregroundColor;
       context.lineWidth = 1.1;
+
       this.fragments.forEach((fragment) => {
         context.save();
         context.translate(fragment.centerX, fragment.centerY);
@@ -227,30 +208,72 @@ export class IntroVoronoiSystem {
         fragment.points.forEach((point, index) => {
           const px = point.x - fragment.centerX;
           const py = point.y - fragment.centerY;
-          if (index === 0) context.moveTo(px, py);
-          else context.lineTo(px, py);
+          if (index === 0) {
+            context.moveTo(px, py);
+          } else {
+            context.lineTo(px, py);
+          }
         });
         context.closePath();
-        context.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-bg').trim();
+        context.fillStyle = backgroundColor;
         context.fill();
         context.stroke();
         context.restore();
       });
-    } else {
-      context.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-fg').trim();
-      context.fillStyle = 'rgba(0, 0, 0, 0)';
-      context.lineWidth = 1.2;
 
-      this.cellCache.forEach((points) => {
-        context.beginPath();
-        points.forEach((point, index) => {
-          if (index === 0) context.moveTo(point.x, point.y);
-          else context.lineTo(point.x, point.y);
-        });
-        context.closePath();
-        context.stroke();
-      });
+      context.restore();
+      return;
     }
+
+    context.save();
+    context.globalAlpha = this.opacity;
+    context.fillStyle = backgroundColor;
+    context.fillRect(0, 0, width, height);
+
+    context.save();
+    context.globalCompositeOperation = 'destination-out';
+    this.revealSystem.getCells().forEach((cell) => {
+      if (cell.reveal <= 0.001 || cell.points.length < 3) {
+        return;
+      }
+
+      context.beginPath();
+      cell.points.forEach((point, index) => {
+        if (index === 0) {
+          context.moveTo(point.x, point.y);
+        } else {
+          context.lineTo(point.x, point.y);
+        }
+      });
+      context.closePath();
+      context.fillStyle = `rgba(0, 0, 0, ${clamp(cell.reveal * 0.94, 0, 0.94)})`;
+      context.shadowBlur = 18;
+      context.shadowColor = `rgba(0, 0, 0, ${clamp(cell.reveal * 0.55, 0, 0.55)})`;
+      context.fill();
+    });
+    context.restore();
+
+    context.strokeStyle = foregroundColor;
+    this.revealSystem.getCells().forEach((cell) => {
+      const fractured = this.fracturedCellIds.has(cell.id);
+      const revealAlpha = fractured ? Math.max(cell.reveal, 0.5) : cell.reveal * 0.28;
+      if (revealAlpha <= 0.01 || cell.points.length < 3) {
+        return;
+      }
+
+      context.beginPath();
+      cell.points.forEach((point, index) => {
+        if (index === 0) {
+          context.moveTo(point.x, point.y);
+        } else {
+          context.lineTo(point.x, point.y);
+        }
+      });
+      context.closePath();
+      context.globalAlpha = clamp(revealAlpha, 0, 1);
+      context.lineWidth = fractured ? 1.3 : 0.9;
+      context.stroke();
+    });
 
     context.restore();
   }

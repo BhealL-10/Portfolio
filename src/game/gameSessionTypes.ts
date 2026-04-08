@@ -18,6 +18,8 @@ export type GameShardSizeTier =
 export type GameShardShapeKind = 'round' | 'oval' | 'triangular';
 export type GameShardSpinDirection = 'cw' | 'ccw';
 export type GameShardMotionPattern = 'none' | 'vertical' | 'horizontal' | 'micro_orbit' | 'drift';
+export type GameShardMotionMode = 'none' | 'landing_once';
+export type GameShardMotionDirection = 'left' | 'right' | 'up' | 'down' | 'up_right' | 'up_left' | 'down_right' | 'down_left';
 export type GameEventType = 'none' | 'shop' | 'gift' | 'rare_item';
 export type GameEventVisualKind = 'default' | 'question' | 'shop';
 export type GameEnemyTier = 'light' | 'armored' | 'elite' | 'invincible';
@@ -70,6 +72,11 @@ export interface GamePathNode {
   spinDirection: GameShardSpinDirection;
   spinSpeed: number;
   motionPattern: GameShardMotionPattern;
+  motionMode?: GameShardMotionMode;
+  motionDirection?: GameShardMotionDirection | null;
+  motionDistance?: number;
+  motionDuration?: number;
+  motionActivatedAt?: number | null;
   eventType: GameEventType;
   eventVisualKind?: GameEventVisualKind;
   guaranteedShopIcon?: boolean;
@@ -95,6 +102,7 @@ export interface ResolvedGamePathNode extends GamePathNode {
   resolvedY: number;
   resolvedZ: number;
   resolvedSpinPhase: number;
+  resolvedMotionProgress?: number;
 }
 
 export interface BranchChoice {
@@ -160,6 +168,8 @@ export interface VisiblePlatformVisual {
   iconText?: string | null;
   iconTint?: string | null;
   iconScale?: number;
+  iconOffsetY?: number;
+  iconRotation?: number;
 }
 
 export interface GameHudSnapshot {

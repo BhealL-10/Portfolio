@@ -67,8 +67,7 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   }
 
   html[data-runtime-device='desktop'] .guide-bubble {
-    max-width: min(348px, calc(100vw - 28px));
-    padding: 16px 18px;
+    width: min(470px, calc(100vw - 28px));
   }
 
   html[data-runtime-device='desktop'] .primaterie-portal__chrome {
@@ -279,6 +278,21 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
 
   .guide-bubble {
     bottom: calc(var(--safe-bottom) + 80px);
+    width: min(420px, calc(100vw - 24px));
+    gap: 4px;
+  }
+
+  .guide-bubble__character {
+    width: clamp(76px, 18vw, 98px);
+  }
+
+  .guide-bubble__panel {
+    min-height: 152px;
+    padding: 22px 26px 31px 28px;
+  }
+
+  .guide-bubble__body {
+    max-width: 212px;
   }
 
   :root {

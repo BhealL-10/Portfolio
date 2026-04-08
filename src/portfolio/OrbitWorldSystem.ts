@@ -81,17 +81,52 @@ interface GameFieldEntity {
 const ORBIT_CAMERA_POSITION = new THREE.Vector3(0, 0.88, 28.8);
 const MINI_SHARDS_PER_SLOT = 4;
 const DEFAULT_MINI_LOGO_TEXTURE = new URL('../../assets/images/shared/branding/ape-prod-mark-dark.svg', import.meta.url).href;
-const SHARDLOCK_BASE_TEXTURE = new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-base.png', import.meta.url).href;
+const SHARDLOCK_BASE_TEXTURES = {
+  dark: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-base-dark.png', import.meta.url).href,
+  light: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-base-light.png', import.meta.url).href
+} as const;
 const SHARDLOCK_SLOT_SPRITES = {
-  1: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-sprite-1.png', import.meta.url).href,
-  2: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-sprite-2.png', import.meta.url).href,
-  3: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-sprite-3.png', import.meta.url).href,
-  4: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-sprite-4.png', import.meta.url).href
+  dark: {
+    1: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-sprite-dark-1.png', import.meta.url).href,
+    2: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-sprite-dark-2.png', import.meta.url).href,
+    3: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-sprite-dark-3.png', import.meta.url).href,
+    4: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-sprite-dark-4.png', import.meta.url).href
+  },
+  light: {
+    1: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-sprite-light-1.png', import.meta.url).href,
+    2: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-sprite-light-2.png', import.meta.url).href,
+    3: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-sprite-light-3.png', import.meta.url).href,
+    4: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-sprite-light-4.png', import.meta.url).href
+  }
+} as const;
+const SHARDLOCK_SLOT_OVERLAYS = {
+  dark: {
+    5: {
+      hidden: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-lock-dark-5.png', import.meta.url).href,
+      reveal: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-reveal-dark-5.png', import.meta.url).href
+    },
+    6: {
+      hidden: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-lock-dark-6.png', import.meta.url).href,
+      reveal: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-reveal-dark-6.png', import.meta.url).href
+    }
+  },
+  light: {
+    5: {
+      hidden: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-lock-light-5.png', import.meta.url).href,
+      reveal: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-reveal-light-5.png', import.meta.url).href
+    },
+    6: {
+      hidden: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-lock-light-6.png', import.meta.url).href,
+      reveal: new URL('../../assets/images/portfolio/projects/shardlogolock/shardlock-reveal-light-6.png', import.meta.url).href
+    }
+  }
 } as const;
 const SHARDLOCK_BASE_SIZE = 14.6;
 const SHARDLOCK_BASE_POSITION = new THREE.Vector3(0, 0.8, 0.18);
 const SLOT_PREVIEW_FRAME_DURATION = 0.58;
 const SLOT_UNLOCK_FRAME_DURATION = 0.14;
+const CENTER_SLOT_TRANSITION_DURATION = SLOT_PREVIEW_FRAME_DURATION * 2;
+const CENTER_SLOT_REVERSE_DURATION = SLOT_UNLOCK_FRAME_DURATION * 2;
 const SLOT_MINI_SHARD_COUNT = MINI_SHARDS_PER_SLOT;
 const ORBITING_SHARD_SCALE = 0.68;
 const ACTIVE_ORBITING_SHARD_SCALE = 0.76;
@@ -99,10 +134,16 @@ const DRAGGING_SHARD_SCALE = 0.82;
 const SLOT_PREVIEW_SHARD_SCALE = 0.64;
 const SNAPPED_SHARD_SCALE = 0.58;
 
+interface SlotOverlayRuntime {
+  hiddenPlane: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  revealPlane: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+}
+
 interface SlotVisualRuntime {
   shardId: string;
   anchor: THREE.Object3D;
   sprite: SpriteSheetPlane | null;
+  overlay: SlotOverlayRuntime | null;
   state: 'hidden' | 'preview_forward' | 'locked' | 'unlocking_reverse';
   stateElapsed: number;
   wasActivated: boolean;
@@ -205,6 +246,23 @@ export class OrbitWorldSystem {
     });
     this.backgroundPoints.material.color.set(getThemeNonShardHex(theme));
     this.constellationLines.forEach((line) => line.material.color.set(getThemeNonShardHex(theme)));
+    this.shardLockBase.material.map = this.getShardLockBaseTexture(theme);
+    this.shardLockBase.material.needsUpdate = true;
+    this.shardLockSlots.forEach((runtime) => {
+      const slot = this.slotSystem.getSlotForShard(runtime.shardId);
+      if (!slot) {
+        return;
+      }
+      if (runtime.sprite && slot.animated) {
+        runtime.sprite.setTexture(this.getShardLockSpriteTexture(slot.slotIndex as 1 | 2 | 3 | 4, theme));
+      }
+      if (runtime.overlay && !slot.animated) {
+        runtime.overlay.hiddenPlane.material.map = this.getShardLockOverlayTexture(slot.slotIndex as 5 | 6, 'hidden', theme);
+        runtime.overlay.revealPlane.material.map = this.getShardLockOverlayTexture(slot.slotIndex as 5 | 6, 'reveal', theme);
+        runtime.overlay.hiddenPlane.material.needsUpdate = true;
+        runtime.overlay.revealPlane.material.needsUpdate = true;
+      }
+    });
   }
 
   setActiveIndex(index: number) {
@@ -646,7 +704,9 @@ export class OrbitWorldSystem {
       iconSrc: visual.iconSrc,
       iconText: visual.iconText,
       iconTint: visual.iconTint,
-      iconScale: visual.iconScale
+      iconScale: visual.iconScale,
+      iconOffsetY: visual.iconOffsetY,
+      iconRotation: visual.iconRotation
     })) : null;
     this.externalTransitionFrom = previousExternalPositions ?? this.getCurrentShardPositions();
     this.externalTransitionTo = targets.map((target) => target.clone());
@@ -686,7 +746,9 @@ export class OrbitWorldSystem {
       iconSrc: visual.iconSrc,
       iconText: visual.iconText,
       iconTint: visual.iconTint,
-      iconScale: visual.iconScale
+      iconScale: visual.iconScale,
+      iconOffsetY: visual.iconOffsetY,
+      iconRotation: visual.iconRotation
     })) : null;
     this.externalTransitionDelays = [];
   }
@@ -1273,7 +1335,9 @@ export class OrbitWorldSystem {
             iconSrc: visual.iconSrc,
             iconText: visual.iconText,
             iconTint: visual.iconTint,
-            iconScale: visual.iconScale
+            iconScale: visual.iconScale,
+            iconOffsetY: visual.iconOffsetY,
+            iconRotation: visual.iconRotation
           }
         : {
             scale: new THREE.Vector3(scales[index], scales[index], scales[index] * 0.72),
@@ -1290,7 +1354,9 @@ export class OrbitWorldSystem {
             iconSrc: null,
             iconText: null,
             iconTint: null,
-            iconScale: 0.34
+            iconScale: 0.34,
+            iconOffsetY: 0,
+            iconRotation: 0
           }
     );
 
@@ -1401,7 +1467,15 @@ export class OrbitWorldSystem {
     group.add(accentRing);
     const iconPlane = new THREE.Mesh(
       new THREE.PlaneGeometry(0.3, 0.3),
-      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, depthTest: false })
+      new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        depthTest: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+        alphaTest: 0.04
+      })
     );
     iconPlane.visible = false;
     iconPlane.renderOrder = 42;
@@ -1451,12 +1525,8 @@ export class OrbitWorldSystem {
   }
 
   private createShardLockBase() {
-    const texture = getSharedTextureAsset(SHARDLOCK_BASE_TEXTURE, {
-      colorSpace: THREE.SRGBColorSpace,
-      anisotropy: 8
-    });
     const material = new THREE.MeshBasicMaterial({
-      map: texture,
+      map: this.getShardLockBaseTexture(this.theme),
       transparent: true,
       alphaTest: 0.04,
       depthWrite: true,
@@ -1465,6 +1535,41 @@ export class OrbitWorldSystem {
     });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(SHARDLOCK_BASE_SIZE, SHARDLOCK_BASE_SIZE), material);
     mesh.position.z = 0.02;
+    return mesh;
+  }
+
+  private getShardLockBaseTexture(theme: ThemeMode) {
+    return getSharedTextureAsset(SHARDLOCK_BASE_TEXTURES[theme], {
+      colorSpace: THREE.SRGBColorSpace,
+      anisotropy: 8
+    });
+  }
+
+  private getShardLockSpriteTexture(slotIndex: 1 | 2 | 3 | 4, theme: ThemeMode) {
+    return SHARDLOCK_SLOT_SPRITES[theme][slotIndex];
+  }
+
+  private getShardLockOverlayTexture(slotIndex: 5 | 6, variant: 'hidden' | 'reveal', theme: ThemeMode) {
+    return getSharedTextureAsset(SHARDLOCK_SLOT_OVERLAYS[theme][slotIndex][variant], {
+      colorSpace: THREE.SRGBColorSpace,
+      anisotropy: 8
+    });
+  }
+
+  private createShardLockOverlayPlane(slotIndex: 5 | 6, variant: 'hidden' | 'reveal') {
+    const material = new THREE.MeshBasicMaterial({
+      map: this.getShardLockOverlayTexture(slotIndex, variant, this.theme),
+      transparent: true,
+      opacity: variant === 'hidden' ? 1 : 0,
+      alphaTest: 0.04,
+      depthWrite: false,
+      depthTest: true,
+      toneMapped: false
+    });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(SHARDLOCK_BASE_SIZE, SHARDLOCK_BASE_SIZE), material);
+    mesh.position.z = -0.16;
+    mesh.renderOrder = 2;
+    mesh.visible = variant === 'hidden';
     return mesh;
   }
 
@@ -1481,9 +1586,10 @@ export class OrbitWorldSystem {
       this.shardLockGroup.add(anchor);
 
       let sprite: SpriteSheetPlane | null = null;
+      let overlay: SlotOverlayRuntime | null = null;
       if (slot.animated) {
         sprite = new SpriteSheetPlane({
-          textureUrl: SHARDLOCK_SLOT_SPRITES[slot.slotIndex as 1 | 2 | 3 | 4],
+          textureUrl: this.getShardLockSpriteTexture(slot.slotIndex as 1 | 2 | 3 | 4, this.theme),
           layout: { columns: 2, rows: 2 },
           width: SHARDLOCK_BASE_SIZE,
           height: SHARDLOCK_BASE_SIZE,
@@ -1493,12 +1599,18 @@ export class OrbitWorldSystem {
         sprite.group.position.z = -0.16;
         sprite.setVisible(false);
         this.shardLockGroup.add(sprite.group);
+      } else {
+        const hiddenPlane = this.createShardLockOverlayPlane(slot.slotIndex as 5 | 6, 'hidden');
+        const revealPlane = this.createShardLockOverlayPlane(slot.slotIndex as 5 | 6, 'reveal');
+        this.shardLockGroup.add(hiddenPlane, revealPlane);
+        overlay = { hiddenPlane, revealPlane };
       }
 
       this.shardLockSlots.set(slot.shardId, {
         shardId: slot.shardId,
         anchor,
         sprite,
+        overlay,
         state: 'hidden',
         stateElapsed: 0,
         wasActivated: slot.activated,
@@ -1521,7 +1633,15 @@ export class OrbitWorldSystem {
     group.add(accentRing);
     const iconPlane = new THREE.Mesh(
       new THREE.PlaneGeometry(0.3, 0.3),
-      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, depthTest: false })
+      new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        depthTest: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+        alphaTest: 0.04
+      })
     );
     iconPlane.visible = false;
     iconPlane.renderOrder = 42;
@@ -1607,37 +1727,70 @@ export class OrbitWorldSystem {
       runtime.wasActivated = slot.activated;
       runtime.stateElapsed += deltaTime;
 
-      if (!runtime.sprite) {
-        continue;
-      }
-      if (runtime.state === 'hidden') {
-        runtime.sprite.setVisible(false);
+      if (runtime.sprite) {
+        if (runtime.state === 'hidden') {
+          runtime.sprite.setVisible(false);
+          continue;
+        }
+
+        runtime.sprite.setVisible(true);
+        if (runtime.state === 'preview_forward') {
+          runtime.currentFrame = Math.min(3, Math.floor(runtime.stateElapsed / SLOT_PREVIEW_FRAME_DURATION));
+          runtime.sprite.setFrame(runtime.currentFrame);
+          continue;
+        }
+        if (runtime.state === 'locked') {
+          runtime.currentFrame = 3;
+          runtime.sprite.setFrame(3);
+          continue;
+        }
+
+        const reverseStep = Math.floor(runtime.stateElapsed / SLOT_UNLOCK_FRAME_DURATION);
+        const reverseFrame = Math.max(0, runtime.currentFrame - reverseStep);
+        runtime.sprite.setFrame(reverseFrame);
+        if (runtime.stateElapsed >= SLOT_UNLOCK_FRAME_DURATION * (runtime.currentFrame + 1)) {
+          runtime.state = 'hidden';
+          runtime.stateElapsed = 0;
+          runtime.currentFrame = 0;
+          runtime.sprite.setVisible(false);
+          this.slotSystem.hide(slot.shardId);
+        }
         continue;
       }
 
-      runtime.sprite.setVisible(true);
+      if (!runtime.overlay) {
+        continue;
+      }
+
+      let revealProgress = 0;
       if (runtime.state === 'preview_forward') {
-        runtime.currentFrame = Math.min(3, Math.floor(runtime.stateElapsed / SLOT_PREVIEW_FRAME_DURATION));
-        runtime.sprite.setFrame(runtime.currentFrame);
-        continue;
-      }
-      if (runtime.state === 'locked') {
-        runtime.currentFrame = 3;
-        runtime.sprite.setFrame(3);
-        continue;
+        revealProgress = THREE.MathUtils.clamp(runtime.stateElapsed / CENTER_SLOT_TRANSITION_DURATION, 0, 1);
+      } else if (runtime.state === 'locked') {
+        revealProgress = 1;
+      } else if (runtime.state === 'unlocking_reverse') {
+        revealProgress = 1 - THREE.MathUtils.clamp(runtime.stateElapsed / CENTER_SLOT_REVERSE_DURATION, 0, 1);
       }
 
-      const reverseStep = Math.floor(runtime.stateElapsed / SLOT_UNLOCK_FRAME_DURATION);
-      const reverseFrame = Math.max(0, runtime.currentFrame - reverseStep);
-      runtime.sprite.setFrame(reverseFrame);
-      if (runtime.stateElapsed >= SLOT_UNLOCK_FRAME_DURATION * (runtime.currentFrame + 1)) {
+      runtime.currentFrame = revealProgress >= 0.5 ? 1 : 0;
+      this.applyShardLockOverlayState(runtime.overlay, revealProgress);
+
+      if (runtime.state === 'unlocking_reverse' && runtime.stateElapsed >= CENTER_SLOT_REVERSE_DURATION) {
         runtime.state = 'hidden';
         runtime.stateElapsed = 0;
         runtime.currentFrame = 0;
-        runtime.sprite.setVisible(false);
+        this.applyShardLockOverlayState(runtime.overlay, 0);
         this.slotSystem.hide(slot.shardId);
       }
     }
+  }
+
+  private applyShardLockOverlayState(overlay: SlotOverlayRuntime, revealProgress: number) {
+    const revealOpacity = THREE.MathUtils.clamp(revealProgress, 0, 1);
+    const hiddenOpacity = 1 - revealOpacity;
+    overlay.hiddenPlane.visible = hiddenOpacity > 0.001;
+    overlay.revealPlane.visible = revealOpacity > 0.001;
+    overlay.hiddenPlane.material.opacity = hiddenOpacity;
+    overlay.revealPlane.material.opacity = revealOpacity;
   }
 
   private createAccentRing() {
@@ -1688,6 +1841,7 @@ export class OrbitWorldSystem {
       } else {
         plane.quaternion.copy(cameraQuaternion);
       }
+      plane.rotateZ((plane.userData.iconRotation as number | undefined) ?? 0);
     };
   }
 
@@ -1742,14 +1896,16 @@ export class OrbitWorldSystem {
     plane.material.map = this.getIconTexture(visual.iconSrc, visual.iconText, visual.iconTint);
     plane.material.opacity = 1;
     plane.material.needsUpdate = true;
+    plane.userData.iconRotation = visual.iconRotation ?? 0;
     const baseScale = (visual.iconScale ?? 0.34) * 1.22;
     const dominantScale = Math.max(scale.x, scale.y);
+    const elevatedIcon = (visual.iconOffsetY ?? 0) > 0.001;
     plane.scale.set(
       baseScale * dominantScale / Math.max(0.001, scale.x),
       baseScale * dominantScale / Math.max(0.001, scale.y),
       1
     );
-    plane.position.set(0, 0, Math.max(0.18, dominantScale * 0.26));
+    plane.position.set(0, visual.iconOffsetY ?? 0, Math.max(elevatedIcon ? 0.4 : 0.18, dominantScale * (elevatedIcon ? 0.42 : 0.26)));
   }
 
   private getGameFieldAnchor(index: number) {
