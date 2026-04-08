@@ -201,6 +201,7 @@ interface GameHUDPayload {
     bestEnemiesKilled: number;
     longestMomentumSeconds: number;
     bestLongestMomentumSeconds: number;
+    twistChainMax: number;
     scoreBreakdown: {
       landings: {
         count: number;
@@ -3503,7 +3504,9 @@ export class GameHUDSystem {
             coinsBreakdown: 'Pièces',
             momentumBonus: 'Bonus momentum',
             other: 'Autres',
-            total: 'Total'
+            total: 'Total',
+            twistChainMax: 'Twist chain max',
+            bonusTwists: 'Bonus twists'
           }
         : {
             score: 'Score',
@@ -3524,7 +3527,9 @@ export class GameHUDSystem {
             coinsBreakdown: 'Coins',
             momentumBonus: 'Momentum bonus',
             other: 'Other',
-            total: 'Total'
+            total: 'Total',
+            twistChainMax: 'Twist chain max',
+            bonusTwists: 'Bonus twists'
           };
 
     if (statKey === 'score') {
@@ -3532,15 +3537,18 @@ export class GameHUDSystem {
         `<strong>${labels.score}</strong>`,
         `<span>${labels.bestScore}: ${summary.bestScore}</span>`,
         `<span class="game-hud__hover-section">${labels.currentBreakdown}</span>`,
-        `<span>${labels.landings}: ${summary.scoreBreakdown.landings.count} -> +${summary.scoreBreakdown.landings.score}</span>`,
-        `<span>${labels.killsBreakdown}: ${summary.scoreBreakdown.kills.count} -> +${summary.scoreBreakdown.kills.score}</span>`,
-        `<span>${labels.coinsBreakdown}: ${summary.scoreBreakdown.coins.count} -> +${summary.scoreBreakdown.coins.score}</span>`
+        `<span>${labels.landings}: ${summary.scoreBreakdown.landings.count} -> +${summary.scoreBreakdown.landings.score} pts</span>`,
+        `<span>${labels.coinsBreakdown}: ${summary.scoreBreakdown.coins.count} -> +${summary.scoreBreakdown.coins.score} pts</span>`,
+        `<span>${labels.killsBreakdown}: ${summary.scoreBreakdown.kills.count} -> +${summary.scoreBreakdown.kills.score} pts</span>`
       ];
+      if (summary.twistChainMax > 1) {
+        lines.push(`<span>${labels.twistChainMax}: X${summary.twistChainMax}</span>`);
+      }
       if (summary.scoreBreakdown.momentum.score > 0) {
-        lines.push(`<span>${labels.momentumBonus}: +${summary.scoreBreakdown.momentum.score}</span>`);
+        lines.push(`<span>${labels.bonusTwists}: +${summary.scoreBreakdown.momentum.score} pts</span>`);
       }
       if (summary.scoreBreakdown.other.score > 0) {
-        lines.push(`<span>${labels.other}: +${summary.scoreBreakdown.other.score}</span>`);
+        lines.push(`<span>${labels.other}: +${summary.scoreBreakdown.other.score} pts</span>`);
       }
       lines.push(`<span>${labels.total}: ${summary.score}</span>`);
       return lines.join('');
@@ -3613,13 +3621,30 @@ export class GameHUDSystem {
     }
   }
 
+  private areAvatarSelectionsEqual(a: AvatarSelection, b: AvatarSelection) {
+    return (
+      a.oreille === b.oreille &&
+      a.face === b.face &&
+      a.eyes === b.eyes &&
+      a.facemotif === b.facemotif &&
+      a.accessoire === b.accessoire
+    );
+  }
+
   private saveAvatarSelection() {
     this.playerAvatarSelection = this.normalizeAvatarSelection(this.draftAvatarSelection, '', true);
     this.draftAvatarSelection = { ...this.playerAvatarSelection };
     window.localStorage.setItem(PLAYER_AVATAR_KEY, JSON.stringify(this.playerAvatarSelection));
     const currentName = this.getLeaderboardPlayerName();
     const entries = this.readLeaderboard();
-    if (entries.some((entry) => this.isCurrentPlayerEntry(entry, currentName))) {
+    const existingEntry = entries.find((entry) => this.isCurrentPlayerEntry(entry, currentName));
+    const avatarChanged = Boolean(
+      existingEntry &&
+        (!existingEntry.avatar ||
+          !this.areAvatarSelectionsEqual(existingEntry.avatar, this.playerAvatarSelection))
+    );
+
+    if (existingEntry && avatarChanged) {
       const updatedEntries = entries.map((entry) =>
         this.isCurrentPlayerEntry(entry, currentName)
           ? { ...entry, playerId: this.getLeaderboardPlayerId(), avatar: { ...this.playerAvatarSelection } }
@@ -3651,8 +3676,8 @@ export class GameHUDSystem {
           });
       }
     }
+
     window.dispatchEvent(new CustomEvent(PLAYER_AVATAR_UPDATED_EVENT, { detail: { selection: this.playerAvatarSelection } }));
-    void this.ensureLeaderboardLoaded({ rerender: true, forceRefresh: true });
     this.renderAvatarDependentViews();
   }
 
@@ -3677,9 +3702,11 @@ export class GameHUDSystem {
     };
     entry.style.setProperty('--score-feed-rgb', `${accent.r} ${accent.g} ${accent.b}`);
     entry.style.setProperty('--score-feed-scale', (1 + momentumRatio * 0.3).toFixed(3));
+    const multiplierText = showMultiplier
+      ? ` X${Number.isInteger(roundedMultiplier) ? roundedMultiplier.toFixed(0) : roundedMultiplier.toFixed(1)}`
+      : '';
     entry.innerHTML = `
-      <strong>${showMultiplier ? `+${event.basePoints}` : `+${event.gained}`}</strong>
-      ${showMultiplier ? `<span>x${Number.isInteger(roundedMultiplier) ? roundedMultiplier.toFixed(0) : roundedMultiplier.toFixed(1)}</span>` : ''}
+      <strong>+${event.gained}${multiplierText}</strong>
     `;
     this.scoreFeed.prepend(entry);
     while (this.scoreFeed.childElementCount > 4) {

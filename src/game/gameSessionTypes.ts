@@ -239,6 +239,7 @@ export interface GameHudSnapshot {
     bestEnemiesKilled: number;
     longestMomentumSeconds: number;
     bestLongestMomentumSeconds: number;
+    twistChainMax: number;
     scoreBreakdown: {
       landings: {
         count: number;

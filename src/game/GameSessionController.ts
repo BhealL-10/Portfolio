@@ -378,6 +378,7 @@ export class GameSessionController {
   private mirrorLaunchSpeedThreshold = 0;
   private mirrorThemeBase: ThemeMode | null = null;
   private lastLandingDirection: -1 | 1 | 0 = 0;
+  private lastLandingWasJudged = false;
   private twistStreak = 0;
   private choiceMode: ChoiceMode = 'none';
   private activeChoices: BranchChoice[] = [];
@@ -3510,7 +3511,11 @@ export class GameSessionController {
     this.mirrorLaunchSpeedThreshold = 0;
     this.setAttachedNodeRuntimeAnchor(resolvedNodeSnapshot ?? this.getResolvedNode(index));
     const node = this.getResolvedNode(index);
-    this.stats.recordLanding(node.pathDistance, performance.now());
+    if (!this.lastLandingWasJudged) {
+      this.twistStreak = 0;
+    }
+    this.stats.recordLanding(node.pathDistance, performance.now(), clamp(this.momentum.gauge, 0, 1), this.twistStreak);
+    this.lastLandingWasJudged = false;
     this.score = this.stats.getSnapshot().score;
     if (preserveMomentum) {
       this.achievements.recordDistance(this.stats.getSnapshot().distanceMeters);
@@ -3640,6 +3645,7 @@ export class GameSessionController {
     } else {
       this.twistStreak = 0;
     }
+    this.lastLandingWasJudged = true;
 
     const gradeMomentumGain = grade === 'miss' ? 0 : MOMENTUM_GAIN_BY_GRADE[grade];
     const twistChainBonus = twist && grade !== 'miss' ? computeTwistChainBonus(this.twistStreak) : 0;
@@ -5335,7 +5341,7 @@ export class GameSessionController {
   }
 
   private awardCoins(amount: number) {
-    this.stats.addCoins(amount, this.momentum.gauge);
+    this.stats.addCoins(amount, this.momentum.gauge, this.twistStreak);
     this.achievements.recordCoinsCollected(amount);
     this.score = this.stats.getSnapshot().score;
     this.queueAchievementToastsIfNeeded();
@@ -5350,7 +5356,7 @@ export class GameSessionController {
     } = {}
   ) {
     const amount = Math.max(1, Math.trunc(event.amount ?? 1));
-    this.stats.recordEnemyKill(amount, clamp(this.momentum.gauge, 0, 1));
+    this.stats.recordEnemyKill(amount, clamp(this.momentum.gauge, 0, 1), this.twistStreak);
     this.achievements.recordEnemyKill({
       amount,
       fromBehind: event.fromBehind,

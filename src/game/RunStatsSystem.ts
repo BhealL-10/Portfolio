@@ -2,6 +2,15 @@ import type { GameHudSnapshot } from './gameSessionTypes';
 import { pathDistanceToMeters } from './difficultyScaler';
 import { clamp } from '../core/math';
 
+type ScoreEventType = 'landing' | 'coin' | 'kill';
+const SCORE_MOMENTUM_REFERENCE_POINTS = [0, 0.25, 0.5, 1] as const;
+const SCORE_BASE_VALUES: Record<ScoreEventType, readonly [number, number, number, number]> = {
+  landing: [10, 15, 30, 100],
+  coin: [20, 25, 50, 175],
+  kill: [50, 75, 100, 250]
+};
+const MAX_TWIST_CHAIN_MULTIPLIER = 10;
+
 const SCORE_KEY = 'portfolio-game-best-score';
 const SHARDS_KEY = 'portfolio-game-best-shards';
 const DISTANCE_KEY = 'portfolio-game-best-distance';
@@ -40,6 +49,7 @@ export class RunStatsSystem {
   private killScore = 0;
   private coinScore = 0;
   private momentumBonusScore = 0;
+  private maxTwistChainLength = 0;
   private scoreFeedSerial = 0;
   private lastScoreFeedEvent: {
     serial: number;
@@ -70,14 +80,20 @@ export class RunStatsSystem {
     this.killScore = 0;
     this.coinScore = 0;
     this.momentumBonusScore = 0;
+    this.maxTwistChainLength = 0;
     this.lastScoreFeedEvent = null;
   }
 
-  recordLanding(pathDistance: number, elapsedTime: number) {
+  recordLanding(pathDistance: number, elapsedTime: number, momentumGauge = 0, twistChainLength = 0) {
     const previousDistanceMeters = this.distanceMeters;
     this.shardsLanded += 1;
     this.distanceMeters = Math.max(this.distanceMeters, Math.abs(pathDistanceToMeters(pathDistance)));
-    this.awardLandingFragment();
+    const normalizedMomentum = clamp(momentumGauge, 0, 1);
+    const basePoints = this.getScoreForEvent('landing', normalizedMomentum);
+    this.awardLandingScore(basePoints, this.getTwistChainMultiplier(twistChainLength), normalizedMomentum);
+    if (twistChainLength > this.maxTwistChainLength) {
+      this.maxTwistChainLength = twistChainLength;
+    }
 
     for (const milestone of [10, 100, 1000] as const) {
       if (previousDistanceMeters >= milestone || this.distanceMeters < milestone || this.splitTimes[milestone] !== undefined) {
@@ -103,12 +119,13 @@ export class RunStatsSystem {
     }
   }
 
-  addCoins(amount: number, momentumGauge: number) {
+  addCoins(amount: number, momentumGauge: number, twistChainLength = 0) {
     this.coins += amount;
     this.coinsCollected += amount;
     const normalizedMomentum = clamp(momentumGauge, 0, 1);
     if (amount > 0) {
-      this.awardCoinScore(amount * 2, normalizedMomentum);
+      const basePoints = amount * this.getScoreForEvent('coin', normalizedMomentum);
+      this.awardCoinScore(basePoints, this.getTwistChainMultiplier(twistChainLength), normalizedMomentum);
     }
     if (this.coinsCollected > this.bestCoinsCollected) {
       this.bestCoinsCollected = this.coinsCollected;
@@ -116,12 +133,11 @@ export class RunStatsSystem {
     }
   }
 
-  recordEnemyKill(amount = 1, momentumGauge = 0) {
+  recordEnemyKill(amount = 1, momentumGauge = 0, twistChainLength = 0) {
     this.enemiesKilled += amount;
     const normalizedMomentum = clamp(momentumGauge, 0, 1);
-    const basePoints = Math.max(5, 5 * Math.max(1, amount));
-    const multiplier = 1 + normalizedMomentum;
-    this.awardKillScore(basePoints, multiplier, normalizedMomentum);
+    const basePoints = amount * this.getScoreForEvent('kill', normalizedMomentum);
+    this.awardKillScore(basePoints, this.getTwistChainMultiplier(twistChainLength), normalizedMomentum);
     if (this.enemiesKilled > this.bestEnemiesKilled) {
       this.bestEnemiesKilled = this.enemiesKilled;
       this.persist();
@@ -169,6 +185,7 @@ export class RunStatsSystem {
       bestEnemiesKilled: this.bestEnemiesKilled,
       longestMomentumSeconds: this.longestMomentumSeconds,
       bestLongestMomentumSeconds: this.bestLongestMomentumSeconds,
+      twistChainMax: this.maxTwistChainLength,
       scoreBreakdown: {
         landings: {
           count: this.shardsLanded,
@@ -232,8 +249,8 @@ export class RunStatsSystem {
     window.localStorage.setItem(SPLITS_KEY, JSON.stringify(this.bestSplitTimes));
   }
 
-  private awardLandingFragment() {
-    const result = this.awardScore(1, 1, 0);
+  private awardLandingScore(basePoints: number, multiplier: number, momentumRatio: number) {
+    const result = this.awardScore(basePoints, multiplier, momentumRatio);
     this.landingScore += result.basePoints;
     this.momentumBonusScore += result.momentumBonus;
     return result.gained;
@@ -264,6 +281,37 @@ export class RunStatsSystem {
     };
   }
 
+  private getScoreForEvent(eventType: ScoreEventType, momentumRatio: number) {
+    const ratio = clamp(momentumRatio, 0, 1);
+    return this.interpolateMomentumScore(ratio, SCORE_BASE_VALUES[eventType]);
+  }
+
+  private interpolateMomentumScore(ratio: number, values: readonly [number, number, number, number]) {
+    if (ratio <= SCORE_MOMENTUM_REFERENCE_POINTS[1]) {
+      const segment = ratio / SCORE_MOMENTUM_REFERENCE_POINTS[1];
+      return this.lerp(values[0], values[1], segment);
+    }
+    if (ratio <= SCORE_MOMENTUM_REFERENCE_POINTS[2]) {
+      const segment = (ratio - SCORE_MOMENTUM_REFERENCE_POINTS[1]) /
+        (SCORE_MOMENTUM_REFERENCE_POINTS[2] - SCORE_MOMENTUM_REFERENCE_POINTS[1]);
+      return this.lerp(values[1], values[2], segment);
+    }
+    const segment = (ratio - SCORE_MOMENTUM_REFERENCE_POINTS[2]) /
+      (SCORE_MOMENTUM_REFERENCE_POINTS[3] - SCORE_MOMENTUM_REFERENCE_POINTS[2]);
+    return this.lerp(values[2], values[3], segment);
+  }
+
+  private lerp(start: number, end: number, t: number) {
+    return start + (end - start) * t;
+  }
+
+  private getTwistChainMultiplier(chainLength: number) {
+    if (chainLength <= 1) {
+      return 1;
+    }
+    return Math.min(chainLength, MAX_TWIST_CHAIN_MULTIPLIER);
+  }
+
   private awardKillScore(basePoints: number, multiplier: number, momentumRatio: number) {
     const result = this.awardScore(basePoints, multiplier, momentumRatio);
     this.killScore += result.basePoints;
@@ -271,8 +319,8 @@ export class RunStatsSystem {
     return result.gained;
   }
 
-  private awardCoinScore(basePoints: number, momentumRatio: number) {
-    const result = this.awardScore(basePoints, 1, momentumRatio);
+  private awardCoinScore(basePoints: number, multiplier: number, momentumRatio: number) {
+    const result = this.awardScore(basePoints, multiplier, momentumRatio);
     this.coinScore += result.basePoints;
     return result.gained;
   }
