@@ -68,7 +68,7 @@ const progressionAchievements: AchievementDefinition[] = [
   achievement('progress_survive_900', loc('T’as oublié d’atterrir', 'You forgot to land'), loc('Cumuler 900 secondes réelles en l’air dans une run.', 'Accumulate 900 real airtime seconds in a run.'), 'progression', 'legendary', 900, { hidden: true }),
   achievement('progress_early_fail_streak_5', loc('Plan très court', 'Very short flight plan'), loc('Mourir avant 10 m pendant 5 runs d’affilée.', 'Die before 10m in 5 runs in a row.'), 'progression', 'rare', 5, { hidden: true, rewardId: reward('barbe', 17) }),
   achievement('progress_fail_streak_10', loc('Persévérer dans l’échec', 'Consistently terrible'), loc('Enchaîner 5 game overs d’affilée.', 'Chain 5 game overs in a row.'), 'progression', 'epic', 5, { hidden: true, rewardId: reward('barbe', 8) }),
-  achievement('progress_leaderboard_first', loc('Numéro 1', 'Number 1'), loc('Être premier du leaderboard.', 'Be first on the leaderboard.'), 'progression', 'legendary', 1, { hidden: true })
+  achievement('progress_leaderboard_first', loc('Tié le boss tu le sais sa ?', 'Number 1'), loc('Être premier du leaderboard.', 'Be first on the leaderboard.'), 'progression', 'legendary', 1, { hidden: true, rewardId: reward('barbe', 13) })
 ];
 
 const shardAchievements: AchievementDefinition[] = [
