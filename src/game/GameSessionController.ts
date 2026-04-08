@@ -862,6 +862,10 @@ export class GameSessionController {
     return true;
   }
 
+  recordLeaderboardPosition(position: number) {
+    this.achievements.recordLeaderboardPosition(position);
+  }
+
   private getProgressionDirectionSign() {
     return this.path.getWorldDirectionSign();
   }

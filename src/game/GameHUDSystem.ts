@@ -100,6 +100,7 @@ interface GameHUDCallbacks {
   onSelectUpgrade: (index: number) => void;
   onCloseShop: () => void;
   onLeaderboardResetToken: (token: string | null | undefined) => void;
+  onLeaderboardPosition: (position: number) => void;
   onThemeToggle: () => void;
   onLanguageToggle: () => void;
   onAudioMuteToggle: () => void;
@@ -3117,6 +3118,10 @@ export class GameHUDSystem {
       this.leaderboardEntriesCache = nextEntries;
       this.persistLeaderboardCache(nextEntries);
       this.markLeaderboardRegistrationCompleted();
+      const playerIndex = nextEntries.findIndex(e => e.playerName === name);
+      if (playerIndex >= 0) {
+        this.callbacks.onLeaderboardPosition(playerIndex + 1);
+      }
     } catch (error) {
       console.warn('[GameHUDSystem] Failed to save leaderboard entry remotely, falling back to local cache.', error);
       if (existingIndex >= 0) {
@@ -3128,6 +3133,10 @@ export class GameHUDSystem {
       this.leaderboardEntriesCache = fallbackEntries;
       this.persistLeaderboardCache(fallbackEntries);
       this.markLeaderboardRegistrationCompleted();
+      const playerIndex = fallbackEntries.findIndex(e => e.playerName === name);
+      if (playerIndex >= 0) {
+        this.callbacks.onLeaderboardPosition(playerIndex + 1);
+      }
       this.leaderboardSyncState = 'error';
     }
     this.lastSavedGameOverSignature = this.currentGameOverSignature;

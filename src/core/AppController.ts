@@ -306,6 +306,7 @@ export class AppController {
               this.refreshUI();
             }
           },
+          onLeaderboardPosition: (position) => game.recordLeaderboardPosition(position),
           onThemeToggle: () => this.theme.toggle(),
           onLanguageToggle: () => this.i18n.toggle(),
           onAudioMuteToggle: () => audio.toggleMute(),

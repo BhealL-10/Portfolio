@@ -470,6 +470,12 @@ export class AchievementSystem {
     });
   }
 
+  recordLeaderboardPosition(position: number) {
+    if (position === 1) {
+      this.raiseProgress('progress_leaderboard_first', 1);
+    }
+  }
+
   recordMilestoneRewardClaimed() {
     this.runState.milestoneRewardClaimed = true;
   }

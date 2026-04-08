@@ -34,13 +34,18 @@ export function getDifficultyProfile(level: number): DifficultyProfile {
   const normalized = clamp(level / 200, 0, 1);
   const band = level < 50 ? 'easy' : level < 100 ? 'medium' : level < 160 ? 'hard' : 'expert';
 
+  // Progressive camera speed: slow until 200m, then really fast to 500m
+  const slowPhase = Math.min(level, 200) / 200 * 0.85;
+  const fastPhase = level > 200 ? Math.min((level - 200) / 300, 1) * 5.5 : 0;
+  const cameraSpeed = 1.65 + slowPhase + fastPhase;
+
   return {
     normalized,
     band,
     spacing: DEFAULT_COLUMN_DISTANCE + normalized * 7.8,
     movementAmplitude: 0.08 + normalized * 1.05,
     movementSpeed: 0.22 + normalized * 0.88,
-    cameraSpeed: 1.65 + normalized * 3.55,
+    cameraSpeed,
     cameraCatchupSpeed: 2.6 + normalized * 2.2,
     maxJumpDistance: 17.8 + normalized * 9.2,
     maxVerticalDelta: 5.2 + normalized * 3.8,
