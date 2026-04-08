@@ -12,7 +12,7 @@ interface CameraFocusLock {
 interface CameraRailUpdateConfig {
   deltaTime: number;
   state: GameSessionState;
-  score: number;
+  distanceMeters: number;
   directionSign: 1 | -1;
   currentNode: ResolvedGamePathNode;
   nextNode: ResolvedGamePathNode;
@@ -66,7 +66,7 @@ export class CameraRailController {
 
   update(config: CameraRailUpdateConfig) {
     this.directionSign = config.directionSign;
-    const profile = getDifficultyProfile(config.score);
+    const profile = getDifficultyProfile(config.distanceMeters);
     const lockMode = config.focusLock?.mode ?? 'none';
     this.advanceRail(profile, config, lockMode);
     const focusTarget = this.resolveFocusTarget(profile, config, lockMode);
@@ -84,7 +84,7 @@ export class CameraRailController {
     const running =
       (config.state === 'running_attached' || config.state === 'running_charging' || config.state === 'running_airborne') &&
       lockMode === 'none';
-    const runPressure = 1 + Math.min(0.65, config.score / 420);
+    const runPressure = 1 + Math.min(0.65, config.distanceMeters / 42);
     if (running) {
       this.railX += profile.cameraSpeed * config.speedPressure * runPressure * config.deltaTime * this.directionSign;
     }

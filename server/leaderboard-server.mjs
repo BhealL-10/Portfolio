@@ -38,12 +38,17 @@ function normalizeAvatar(avatar) {
   if (!avatar || typeof avatar !== 'object') {
     return undefined;
   }
+  const oreille = normalizeNumber(avatar.oreille ?? avatar.background);
+  const face = normalizeNumber(avatar.face ?? avatar.motif);
+  const eyes = normalizeNumber(avatar.eyes ?? avatar.face);
+  const facemotif = normalizeNumber(avatar.facemotif ?? avatar.eyes);
+  const accessoire = normalizeNumber(avatar.accessoire ?? avatar.barbe);
   return {
-    background: normalizeNumber(avatar.background),
-    motif: normalizeNumber(avatar.motif),
-    face: normalizeNumber(avatar.face),
-    eyes: normalizeNumber(avatar.eyes),
-    barbe: normalizeNumber(avatar.barbe)
+    oreille,
+    face,
+    eyes,
+    facemotif,
+    accessoire
   };
 }
 
@@ -85,9 +90,26 @@ function dedupeAndSort(entries) {
   for (const entry of entries.map(normalizeEntry)) {
     const key = getEntryIdentity(entry);
     const existing = map.get(key);
-    if (!existing || entry.score > existing.score || (entry.score === existing.score && entry.recordedAt < existing.recordedAt)) {
+    if (!existing) {
       map.set(key, entry);
+      continue;
     }
+
+    const sameScore = entry.score === existing.score;
+    const entryWinsByScore = entry.score > existing.score;
+    const merged = {
+      playerId: existing.playerId || entry.playerId,
+      name: entry.name || existing.name,
+      score: entryWinsByScore ? entry.score : existing.score,
+      recordedAt: entryWinsByScore
+        ? entry.recordedAt
+        : sameScore
+          ? Math.min(existing.recordedAt, entry.recordedAt)
+          : existing.recordedAt,
+      avatar: entry.avatar || existing.avatar,
+      details: entry.details || existing.details
+    };
+    map.set(key, merged);
   }
   return [...map.values()]
     .sort((a, b) => b.score - a.score || a.recordedAt - b.recordedAt)

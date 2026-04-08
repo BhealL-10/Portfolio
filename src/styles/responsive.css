@@ -134,9 +134,9 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
 
   html[data-runtime-device='desktop'] .game-hud__score-feed {
     top: calc(var(--safe-top) + 95px);
-    left: calc(var(--safe-left) + 165px);
+    left: calc(var(--safe-left) + 191px);
     gap: 5px;
-    padding-left: 16px;
+    padding-left: 20px;
   }
 
   html[data-runtime-device='desktop'] .game-hud__score-feed-entry strong {

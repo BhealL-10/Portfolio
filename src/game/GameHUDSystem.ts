@@ -3084,7 +3084,12 @@ export class GameHUDSystem {
     const entry = this.buildCurrentLeaderboardEntry(name);
     const existingIndex = entries.findIndex((candidate) => this.isCurrentPlayerEntry(candidate, name));
     const existingEntry = existingIndex >= 0 ? entries[existingIndex] : null;
-    if (existingEntry && existingEntry.score >= entry.score) {
+    const avatarChanged = Boolean(
+      existingEntry &&
+        (!existingEntry.avatar ||
+          !this.areAvatarSelectionsEqual(existingEntry.avatar, this.playerAvatarSelection))
+    );
+    if (existingEntry && existingEntry.score >= entry.score && !avatarChanged) {
       if (!automatic) {
         this.lastSavedGameOverSignature = this.currentGameOverSignature;
       }

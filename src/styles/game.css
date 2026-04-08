@@ -165,7 +165,7 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
   justify-content: flex-start;
   gap: 6px;
   min-width: 0;
-  padding-left: 14px;
+  padding-left: 19px;
   pointer-events: none;
   text-align: left;
 }

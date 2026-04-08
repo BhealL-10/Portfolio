@@ -3514,19 +3514,12 @@ export class GameSessionController {
     if (!this.lastLandingWasJudged) {
       this.twistStreak = 0;
     }
-    this.stats.recordLanding(node.pathDistance, performance.now(), clamp(this.momentum.gauge, 0, 1), this.twistStreak);
     this.lastLandingWasJudged = false;
-    this.score = this.stats.getSnapshot().score;
-    if (preserveMomentum) {
-      this.achievements.recordDistance(this.stats.getSnapshot().distanceMeters);
-      this.queueAchievementToastsIfNeeded();
-    }
-    this.emitScore();
-
     let nextAngle = this.orbitAngle;
     let nextDirection: -1 | 1 = index === 0 ? -1 : this.orbitDirection;
     let nextAngularSpeed = (Math.PI * 2) / Math.max(1.4, node.gameplayOrbitPeriod);
     let landingAttachment: OrbitAttachment | null = null;
+    let landingTwistChainLength = this.twistStreak;
 
     if (preserveMomentum && landingPosition && incomingVelocity) {
       const attachment =
@@ -3547,12 +3540,22 @@ export class GameSessionController {
         (Math.PI * 2) / Math.max(1.4, node.gameplayOrbitPeriod) * 0.72,
         (Math.PI * 2) / Math.max(1.1, node.gameplayOrbitPeriod) * 2.2
       );
-      nextAngularSpeed = this.applyLandingJudgement(nextDirection, tangentialSpeed, node, attachment, incomingVelocity, nextAngularSpeed);
+      const landingJudgement = this.applyLandingJudgement(nextDirection, tangentialSpeed, node, attachment, incomingVelocity, nextAngularSpeed);
+      nextAngularSpeed = landingJudgement.angularSpeed;
+      landingTwistChainLength = landingJudgement.twistChainLength;
       this.registerImpactWave(node, attachment.angle, incomingVelocity.length());
     } else {
       nextAngle = index === 0 ? Math.PI * 0.18 : 0;
       nextDirection = index === 0 ? -1 : this.orbitDirection;
     }
+
+    this.stats.recordLanding(node.pathDistance, performance.now(), clamp(this.momentum.gauge, 0, 1), landingTwistChainLength);
+    this.score = this.stats.getSnapshot().score;
+    if (preserveMomentum) {
+      this.achievements.recordDistance(this.stats.getSnapshot().distanceMeters);
+      this.queueAchievementToastsIfNeeded();
+    }
+    this.emitScore();
 
     this.orbitAngle = nextAngle;
     this.orbitDirection = nextDirection;
@@ -3608,13 +3611,13 @@ export class GameSessionController {
     attachment: ReturnType<GameSessionController['findBestOrbitAttachment']>,
     incomingVelocity: THREE.Vector3,
     angularSpeed: number
-  ) {
+  ): { angularSpeed: number; twistChainLength: number } {
     if (
       node.isGigantic &&
       this.lastLandingFeedbackConsumedSerial === this.landingFeedbackAirborneSerial &&
       this.lastLandingFeedbackTriggerNodeIndex === node.index
     ) {
-      return angularSpeed;
+      return { angularSpeed, twistChainLength: this.twistStreak };
     }
 
     const incoming2D = this.scratchVector2.set(incomingVelocity.x, incomingVelocity.y);
@@ -3640,6 +3643,7 @@ export class GameSessionController {
       grade = 'good';
     }
 
+    const twistChainLength = twist && grade !== 'miss' ? this.twistStreak + 1 : 0;
     if (twist && grade !== 'miss') {
       this.twistStreak += 1;
     } else {
@@ -3682,7 +3686,7 @@ export class GameSessionController {
     this.queueAchievementToastsIfNeeded();
     void tangentialSpeed;
     void node;
-    return angularSpeed * speedMultiplier;
+    return { angularSpeed: angularSpeed * speedMultiplier, twistChainLength };
   }
 
   private getLandingAudioKind(node: ResolvedGamePathNode): 'normal' | 'milestone' | 'reward' | 'shop' {
@@ -3895,7 +3899,7 @@ export class GameSessionController {
     this.camera.update({
       deltaTime,
       state: this.state,
-      score: this.score,
+      distanceMeters: this.stats.getSnapshot().distanceMeters,
       directionSign,
       currentNode: cameraCurrentNode,
       nextNode: cameraNextNode,
