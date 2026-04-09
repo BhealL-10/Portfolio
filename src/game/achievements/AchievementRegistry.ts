@@ -68,16 +68,16 @@ const progressionAchievements: AchievementDefinition[] = [
   achievement('progress_survive_900', loc('T’as oublié d’atterrir', 'You forgot to land'), loc('Cumuler 900 secondes réelles en l’air dans une run.', 'Accumulate 900 real airtime seconds in a run.'), 'progression', 'legendary', 900, { hidden: true }),
   achievement('progress_early_fail_streak_5', loc('Plan très court', 'Very short flight plan'), loc('Mourir avant 10 m pendant 5 runs d’affilée.', 'Die before 10m in 5 runs in a row.'), 'progression', 'rare', 5, { hidden: true, rewardId: reward('barbe', 17) }),
   achievement('progress_fail_streak_10', loc('Persévérer dans l’échec', 'Consistently terrible'), loc('Enchaîner 5 game overs d’affilée.', 'Chain 5 game overs in a row.'), 'progression', 'epic', 5, { hidden: true, rewardId: reward('barbe', 8) }),
-  achievement('progress_leaderboard_first', loc('Tié le boss tu le sais sa ?', 'Number 1'), loc('Être premier du leaderboard.', 'Be first on the leaderboard.'), 'progression', 'legendary', 1, { hidden: true, rewardId: reward('barbe', 13) })
+  achievement('progress_leaderboard_first', loc('Tiens, le boss, tu le sais ça ?', 'You’re the boss at the top, you know that?'), loc('Être premier du leaderboard.', 'Be first on the leaderboard.'), 'progression', 'legendary', 1, { hidden: true, rewardId: reward('barbe', 13) })
 ];
 
 const shardAchievements: AchievementDefinition[] = [
   achievement('shards_land_1', loc('Bon, déjà ça', 'Well, that’s one'), loc('Atterrir une première fois.', 'Land once.'), 'shards', 'common', 1),
-  achievement('shards_land_10', loc('Continue !! Avec ta tête la !', 'You almost land on purpose'), loc('Atterrir 10 fois.', 'Land 10 times.'), 'shards', 'common', 10, { rewardId: reward('background', 4) }),
+  achievement('shards_land_10', loc('Continue, t’es sur la bonne voie', 'You’re landing on purpose'), loc('Atterrir 10 fois.', 'Land 10 times.'), 'shards', 'common', 10, { rewardId: reward('background', 4) }),
   achievement('shards_land_25', loc('Ça devient une habitude', 'Starting to look intentional'), loc('Atterrir 25 fois.', 'Land 25 times.'), 'shards', 'uncommon', 25, { rewardId: reward('face', 4) }),
   achievement('shards_land_50', loc('Tu connais le pont maintenant', 'You know the drill now'), loc('Atterrir 50 fois.', 'Land 50 times.'), 'shards', 'uncommon', 50, { rewardId: reward('background', 5) }),
   achievement('shards_land_100', loc('Tu retombes toujours sur tes pattes', 'You keep sticking the landing'), loc('Atterrir 100 fois.', 'Land 100 times.'), 'shards', 'rare', 100, { hidden: true }),
-  achievement('shards_land_200', loc('bsartek le chat tu veux une médaille ?', 'At this point you’re parking'), loc('Atterrir 200 fois.', 'Land 200 times.'), 'shards', 'epic', 200, { hidden: true }),
+  achievement('shards_land_200', loc('À ce stade, tu te gares', 'At this point you’re parking'), loc('Atterrir 200 fois.', 'Land 200 times.'), 'shards', 'epic', 200, { hidden: true }),
   achievement('shards_land_300', loc('T’atterris mieux que tu vis', 'You land better than you live'), loc('Réussir 300 atterrissages perfect.', 'Land 300 perfects.'), 'shards', 'legendary', 300, { hidden: true }),
   achievement('shards_chain_8', loc('Ça s’enchaîne pas mal', 'That’s a nice streak'), loc('Enchaîner 3 atterrissages Super ou Perfect.', 'Chain 3 Super or Perfect landings.'), 'shards', 'uncommon', 3, { rewardId: reward('face', 5) }),
   achievement('shards_chain_12', loc('Ne casse pas le rythme', 'Don’t ruin it now'), loc('Enchaîner 5 atterrissages Super ou Perfect.', 'Chain 5 Super or Perfect landings.'), 'shards', 'uncommon', 5, { hidden: true }),
@@ -85,11 +85,11 @@ const shardAchievements: AchievementDefinition[] = [
   achievement('shards_chain_30', loc('Tu te la racontes un peu', 'You’re showing off now'), loc('Enchaîner 3 atterrissages Perfect.', 'Chain 3 Perfect landings.'), 'shards', 'epic', 3, { hidden: true }),
   achievement('shards_chain_40', loc('On a compris, t’es précis', 'Okay, we get it, you’re precise'), loc('Enchaîner 5 atterrissages Perfect.', 'Chain 5 Perfect landings.'), 'shards', 'legendary', 5, { hidden: true }),
   achievement('shards_milestone_1', loc('Tiens, un gros caillou', 'Oh look, a big one'), loc('Atteindre une shard milestone.', 'Reach a milestone shard.'), 'shards', 'uncommon', 1, { rewardId: reward('face', 6) }),
-  achievement('shards_milestone_3', loc('Ta choper le timing j’espere ?', 'You’re seeing the pattern'), loc('Atteindre 3 shards milestone.', 'Reach 3 milestone shards.'), 'shards', 'rare', 3, { hidden: true }),
-  achievement('shards_milestone_5', loc('Sa devient génant si ta pas compris le truc la ?!', 'Are you reading the secret map?'), loc('Atteindre 5 shards milestone.', 'Reach 5 milestone shards.'), 'shards', 'epic', 5, { hidden: true }),
-  achievement('shards_triangular_5', loc('Mince.. il es pas mort', 'These ones bite back'), loc('Dompter 5 shards triangulaires.', 'Master 5 triangular shards.'), 'shards', 'epic', 5, { hidden: true, rewardId: reward('eyes', 4) }),
+  achievement('shards_milestone_3', loc('T’as chopé le timing, j’espère ?', 'You’re seeing the pattern'), loc('Atteindre 3 shards milestone.', 'Reach 3 milestone shards.'), 'shards', 'rare', 3, { hidden: true }),
+  achievement('shards_milestone_5', loc('Ça devient gênant si t’as pas compris le truc, là ?', 'Are you reading the secret map?'), loc('Atteindre 5 shards milestone.', 'Reach 5 milestone shards.'), 'shards', 'epic', 5, { hidden: true }),
+  achievement('shards_triangular_5', loc('Elles ne lâchent pas l’affaire', 'These ones bite back'), loc('Dompter 5 shards triangulaires.', 'Master 5 triangular shards.'), 'shards', 'epic', 5, { hidden: true, rewardId: reward('eyes', 4) }),
   achievement('shards_triangular_15', loc('Tu cherches les ennuis', 'You do pick bad ideas'), loc('Dompter 15 shards triangulaires.', 'Master 15 triangular shards.'), 'shards', 'rare', 15, { hidden: true }),
-  achievement('shards_triangular_30', loc('ta vaincu les illuminati', 'Bite them before they bite you'), loc('Dompter 30 shards triangulaires.', 'Master 30 triangular shards.'), 'shards', 'epic', 30, { hidden: true }),
+  achievement('shards_triangular_30', loc('Tu mords avant qu’elles mordent', 'Bite them before they bite you'), loc('Dompter 30 shards triangulaires.', 'Master 30 triangular shards.'), 'shards', 'epic', 30, { hidden: true }),
   achievement('shards_100_without_milestone_reward', loc('Même pas tenté', 'You didn’t even peek'), loc('Atteindre 100 m sans prendre de récompense de milestone.', 'Reach 100m without taking a milestone reward.'), 'shards', 'epic', 1, { hidden: true, rewardId: reward('barbe', 9) })
 ];
 
@@ -144,12 +144,12 @@ const combatAchievements: AchievementDefinition[] = [
 ];
 
 const economyAchievements: AchievementDefinition[] = [
-  achievement('economy_coins_20', loc('Ça paie son grec', 'That buys soup'), loc('Ramasser 20 pièces.', 'Collect 20 coins.'), 'economy', 'common', 20),
-  achievement('economy_coins_100', loc('C’est bon tes devenu un libéral', 'Now you check price tags'), loc('Ramasser 100 pièces.', 'Collect 100 coins.'), 'economy', 'uncommon', 100, { rewardId: reward('background', 8) }),
-  achievement('economy_coins_300', loc('Le capitalisme ta eu', 'Certified loot goblin'), loc('Ramasser 300 pièces.', 'Collect 300 coins.'), 'economy', 'rare', 300, { hidden: true }),
-  achievement('economy_coins_500', loc('Tu veux des bon plan d’exile fiscal ?', 'Your hold is jingling'), loc('Ramasser 500 pièces.', 'Collect 500 coins.'), 'economy', 'rare', 500, { rewardId: reward('barbe', 5) }),
-  achievement('economy_coins_700', loc('Tu peu stopper la faim dans le monde, mais tu joue et c’est bien', 'This is becoming taxable'), loc('Ramasser 700 pièces.', 'Collect 700 coins.'), 'economy', 'epic', 700, { hidden: true }),
-  achievement('economy_coins_1200', loc('Bernard Arnaud ?', 'Trump ?'), loc('Ramasser 1 200 pièces.', 'Collect 1,200 coins.'), 'economy', 'legendary', 1200, { hidden: true }),
+  achievement('economy_coins_20', loc('Ça paie une soupe', 'That buys soup'), loc('Ramasser 20 pièces.', 'Collect 20 coins.'), 'economy', 'common', 20),
+  achievement('economy_coins_100', loc('C’est bon, t’es devenu un libéral', 'Now you check price tags'), loc('Ramasser 100 pièces.', 'Collect 100 coins.'), 'economy', 'uncommon', 100, { rewardId: reward('background', 8) }),
+  achievement('economy_coins_300', loc('Le capitalisme t’a eu', 'Certified loot goblin'), loc('Ramasser 300 pièces.', 'Collect 300 coins.'), 'economy', 'rare', 300, { hidden: true }),
+  achievement('economy_coins_500', loc('Tu veux un bon plan d’exil fiscal ?', 'Your hold is jingling'), loc('Ramasser 500 pièces.', 'Collect 500 coins.'), 'economy', 'rare', 500, { rewardId: reward('barbe', 5) }),
+  achievement('economy_coins_700', loc('Tu peux arrêter la faim dans le monde, mais tu joues, et c’est bien', 'This is becoming taxable'), loc('Ramasser 700 pièces.', 'Collect 700 coins.'), 'economy', 'epic', 700, { hidden: true }),
+  achievement('economy_coins_1200', loc('Bernard Arnault ?', 'Pirate-sector millionaire'), loc('Ramasser 1 200 pièces.', 'Collect 1,200 coins.'), 'economy', 'legendary', 1200, { hidden: true }),
   achievement('economy_buy_1', loc('Bon, allez, un petit achat', 'Fine, one little purchase'), loc('Acheter un item en boutique.', 'Buy an item in the shop.'), 'economy', 'common', 1),
   achievement('economy_buy_5', loc('Tu prends goût aux dépenses', 'You enjoy spending, huh'), loc('Acheter 5 items en boutique.', 'Buy 5 shop items.'), 'economy', 'rare', 5),
   achievement('economy_buy_15', loc('La boutique te connaît par ton prénom', 'The shopkeeper knows you now'), loc('Acheter 15 items en boutique.', 'Buy 15 shop items.'), 'economy', 'rare', 15, { hidden: true }),
@@ -157,8 +157,8 @@ const economyAchievements: AchievementDefinition[] = [
   achievement('modules_rare_1', loc('Oh, ça brille un peu', 'Ooh, a shiny one'), loc('Obtenir un module rare.', 'Collect a rare module.'), 'modules', 'uncommon', 1, { rewardId: reward('background', 9) }),
   achievement('modules_rare_10', loc('Tu fouilles bien les débris', 'You really dig through scraps'), loc('Obtenir 10 modules rares au total.', 'Collect 10 rare modules total.'), 'modules', 'rare', 10, { hidden: true }),
   achievement('modules_epic_1', loc('Là, ça sent la bonne pioche', 'Now that’s a good pull'), loc('Obtenir un module epic.', 'Collect an epic module.'), 'modules', 'rare', 1, { hidden: true }),
-  achievement('modules_legendary_1', loc('Oulalala !!!', 'Oulalala !!!'), loc('Obtenir un module légendaire.', 'Collect a legendary module.'), 'modules', 'epic', 1, { hidden: true, rewardId: reward('eyes', 10) }),
-  achievement('modules_legendary_5', loc('Dans la vie y a ceux qui galèrent, et y a toi...', 'Hoarder of impossible things'), loc('Obtenir 5 modules légendaires au total.', 'Collect 5 legendary modules total.'), 'modules', 'legendary', 5, { hidden: true })
+  achievement('modules_legendary_1', loc('Ça, fallait le toucher', 'That one was worth finding'), loc('Obtenir un module légendaire.', 'Collect a legendary module.'), 'modules', 'epic', 1, { hidden: true, rewardId: reward('eyes', 10) }),
+  achievement('modules_legendary_5', loc('T’es dans une autre catégorie', 'You’re in another league'), loc('Obtenir 5 modules légendaires au total.', 'Collect 5 legendary modules total.'), 'modules', 'legendary', 5, { hidden: true })
 ];
 
 const moduleAchievements: AchievementDefinition[] = [

@@ -16,10 +16,12 @@ import { ParallaxLayerSystem } from '../render/ParallaxLayerSystem';
 import { WorldRenderer } from '../render/WorldRenderer';
 import { AboutSectionSystem } from '../ui/AboutSectionSystem';
 import { FocusPresentationSystem } from '../ui/FocusPresentationSystem';
+import type { GuideTarget } from '../ui/GuideBubbleSystem';
 import { GuideBubbleSystem } from '../ui/GuideBubbleSystem';
 import { I18nService } from '../ui/I18nService';
 import { NavigationHUD } from '../ui/NavigationHUD';
 import { ThemeService } from '../ui/ThemeService';
+import { AUDIO_STORAGE_KEYS } from '../game/audioConstants';
 import { ModeController } from './ModeController';
 import {
   isFocusMode,
@@ -42,6 +44,9 @@ const PORTFOLIO_TO_GAME_HOLD_PHASE_END = 0.16;
 const PORTFOLIO_TO_GAME_SHARD_DRIFT_START = 0.04;
 const primaterie_TO_GAME_CINEMATIC_FOCUS_END = 0.12;
 const primaterie_TO_GAME_CINEMATIC_HOLD_END = 0.28;
+const PLAYER_AVATAR_KEY = 'portfolio-game-player-avatar-v1';
+const PLAYER_LEADERBOARD_REGISTERED_KEY = 'portfolio-game-player-registered-v1';
+const GAME_HELP_TUTORIAL_COMPLETED_KEY = 'portfolio-game-help-tutorial-complete-v2';
 
 type ProjectGameHudPayload = typeof import('../game/projectGameHudPayload').projectGameHudPayload;
 
@@ -88,9 +93,6 @@ export class AppController {
   private gameTransitionProgress = 0;
   private activeIndex = 0;
   private lastWheelAt = 0;
-  private hasFocused = false;
-  private hasChangedFacet = false;
-  private hasDragged = false;
   private readonly seenFacetsByProject = new Map<string, Set<number>>();
   private pendingPostFocusExit: (() => void) | null = null;
   private gameTransitionTweenId: number | null = null;
@@ -111,6 +113,13 @@ export class AppController {
   private primaterieHubPreloaded = false;
   private primaterieHubPreloadPromise: Promise<void> | null = null;
   private hasObservedUserGesture = false;
+  private hoveredShardId: string | null = null;
+  private hoveredGuideUiElement: HTMLElement | null = null;
+  private hoveredGuideUiKey: string | null = null;
+  private guideMirrorModeActive = false;
+  private guideSettingsIntroShown = false;
+  private showGameSettingsGuideUntil = 0;
+  private showMirrorGuideUntil = 0;
   private primateriePendingAction: {
     execute: () => void;
   } | null = null;
@@ -200,13 +209,35 @@ export class AppController {
             this.exitFocus();
           }
         },
-        onHover: (shardId) => this.world.setHovered(shardId),
+        onHover: (shardId) => {
+          const previousHoveredId = this.hoveredShardId;
+          this.hoveredShardId = shardId;
+          if (previousHoveredId && previousHoveredId !== shardId) {
+            this.guide.resetProjectHoverCooldown(previousHoveredId);
+          }
+          this.world.setHovered(shardId);
+          if (shardId && shardId !== previousHoveredId && (this.mode.is('orbit') || this.mode.is('constellation_complete'))) {
+            const project = this.content.getProjectById(shardId);
+            const target = this.getGuideTargetForProject(shardId);
+            if (project && target) {
+              this.guide.trigger({ type: 'orbit_hover', project }, target);
+            }
+          }
+          if (!shardId) {
+            if (previousHoveredId) {
+              this.guide.resetProjectHoverCooldown(previousHoveredId);
+            }
+            this.updateGuide();
+          }
+        },
         onDragStart: (shardId, point) => {
           if (!(this.mode.is('orbit') || this.mode.is('constellation_complete'))) return false;
           const started = this.world.beginDrag(shardId, point);
           if (started) {
             this.mode.setMode('dragging');
             this.world.setHovered(null);
+            this.hoveredShardId = null;
+            this.guide.trigger({ type: 'drag_first' }, this.getGuideTargetForProject(shardId));
           }
           return started;
         },
@@ -216,7 +247,17 @@ export class AppController {
         onDragEnd: () => {
           const result = this.world.endDrag();
           if (result.shardId) {
-            this.hasDragged = true;
+            const project = this.content.getProjectById(result.shardId);
+            const target = this.getGuideTargetForProject(result.shardId) ?? this.getGuideConstellationTarget();
+          if (result.snapped && project && target) {
+            const remainingSlots = this.slotSystem.getSlots().filter((slot) => !slot.activated).length;
+            this.guide.trigger({ type: 'slot_placed', project, remainingSlots }, target);
+            if (remainingSlots === 2) {
+              this.guide.trigger({ type: 'two_slots_left' }, target);
+            } else if (remainingSlots === 1) {
+              this.guide.trigger({ type: 'one_slot_left' }, target);
+            }
+          }
           }
           if (!result.unlocked && this.mode.is('dragging')) {
             this.resumeOrbitMode();
@@ -536,6 +577,19 @@ export class AppController {
   }
 
   private bindEvents() {
+    this.mode.onChange((next, previous) => {
+      if (next === 'orbit' && (previous === 'intro_transition' || previous === 'intro_shattering' || previous === 'intro')) {
+        this.guide.trigger({ type: 'hub_arrival' }, this.getGuideConstellationTarget());
+      }
+      if (next === 'primaterie_portal') {
+        this.guide.trigger({ type: 'primaterie_arrival' }, this.getGuidePrimaterieAnchorTarget());
+      }
+      if (next === 'game_over') {
+        this.guide.trigger({ type: 'game_over_intro' }, this.getGuideUiTargetByKey('game-save') ?? this.getGuideUiTargetByKey('game-leaderboard'));
+      }
+      this.updateGuide();
+    });
+
     this.theme.onChange((theme) => {
       this.renderer.setTheme(theme);
       this.musicBackdrop.setTheme(theme);
@@ -626,6 +680,7 @@ export class AppController {
 
       this.refreshUI();
       this.updateGuide();
+      this.guide.trigger({ type: 'slots_complete' }, this.getGuideConstellationTarget());
 
       this.transitions.animate({
         from: 0,
@@ -655,6 +710,8 @@ export class AppController {
     canvas.addEventListener('pointerdown', this.onGamePointerDown);
     canvas.addEventListener('pointerup', this.onGamePointerUp);
     canvas.addEventListener('pointercancel', this.onGamePointerCancel);
+    this.uiHost.addEventListener('pointerover', this.onGuideUiPointerOver);
+    this.uiHost.addEventListener('pointerout', this.onGuideUiPointerOut);
   }
 
   private onWheel = (event: WheelEvent) => {
@@ -862,6 +919,117 @@ export class AppController {
     this.game.setChargeActive(false);
   };
 
+  private onGuideUiPointerOver = (event: PointerEvent) => {
+    const nextElement = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-guide-hover]') ?? null;
+    if (nextElement === this.hoveredGuideUiElement) {
+      return;
+    }
+    this.hoveredGuideUiElement = nextElement;
+    this.hoveredGuideUiKey = nextElement?.dataset.guideHover ?? null;
+    this.handleGuideUiHoverChange();
+  };
+
+  private onGuideUiPointerOut = (event: PointerEvent) => {
+    if (!this.hoveredGuideUiElement) {
+      return;
+    }
+    const previousKey = this.hoveredGuideUiKey;
+    const relatedTarget = event.relatedTarget as HTMLElement | null;
+    if (relatedTarget && this.hoveredGuideUiElement.contains(relatedTarget)) {
+      return;
+    }
+    if (relatedTarget?.closest<HTMLElement>('[data-guide-hover]') === this.hoveredGuideUiElement) {
+      return;
+    }
+    this.hoveredGuideUiElement = null;
+    this.hoveredGuideUiKey = null;
+    this.guide.resetHoverCooldown(previousKey);
+    this.updateGuide();
+  };
+
+  private handleGuideUiHoverChange() {
+    const key = this.hoveredGuideUiKey;
+    const target = this.getGuideUiTargetByKey(key) ?? this.getGuideTargetFromElement(this.hoveredGuideUiElement);
+    if (!key || !target) {
+      this.updateGuide();
+      return;
+    }
+
+    if (key === 'primaterie-portfolio') {
+      this.guide.trigger({ type: 'primaterie_hover', item: 'portfolio' }, target);
+    } else if (key === 'primaterie-adventure') {
+      this.guide.trigger({ type: 'primaterie_hover', item: 'adventure' }, target);
+    } else if (key === 'primaterie-discord') {
+      this.guide.trigger({ type: 'primaterie_hover', item: 'discord' }, target);
+    } else if (key === 'primaterie-patreon') {
+      this.guide.trigger({ type: 'primaterie_hover', item: 'patreon' }, target);
+    } else if (key === 'primaterie-theme') {
+      this.guide.trigger({ type: 'primaterie_hover', item: 'theme' }, target);
+    } else if (key === 'primaterie-language') {
+      this.guide.trigger({ type: 'primaterie_hover', item: 'language' }, target);
+    } else if (key === 'game-score') {
+      this.guide.trigger({ type: 'game_over_hover', item: 'score' }, target);
+    } else if (key === 'game-avatar') {
+      if (!this.hasCompletedGuideObjective('avatar')) {
+        this.guide.trigger({ type: 'game_over_hover', item: 'avatar' }, target);
+      }
+    } else if (key === 'game-avatar-ears') {
+      this.guide.trigger({ type: 'avatar_hover', item: 'ears' }, target);
+    } else if (key === 'game-avatar-parts') {
+      this.guide.trigger({ type: 'avatar_hover', item: 'parts' }, target);
+    } else if (key === 'game-avatar-save') {
+      if (!this.hasCompletedGuideObjective('avatar')) {
+        this.guide.trigger({ type: 'avatar_hover', item: 'save' }, target);
+      }
+    } else if (key === 'game-avatar-close') {
+      this.guide.trigger({ type: 'avatar_hover', item: 'close' }, target);
+    } else if (key === 'game-save') {
+      if (!this.hasCompletedGuideObjective('register-score')) {
+        this.guide.trigger({ type: 'game_over_hover', item: 'save' }, target);
+      }
+    } else if (key === 'game-leaderboard') {
+      this.guide.trigger({ type: 'game_over_hover', item: 'leaderboard' }, target);
+    } else if (key === 'game-replay') {
+      this.guide.trigger({ type: 'game_over_hover', item: 'replay' }, target);
+    } else if (key === 'game-menu') {
+      this.guide.trigger({ type: 'game_over_hover', item: 'menu' }, target);
+    } else if (key === 'game-tutorial') {
+      if (!this.hasCompletedGuideObjective('tutorial')) {
+        this.guide.trigger({ type: 'tutorial_hover', item: 'entry' }, target);
+      }
+    } else if (key === 'game-tutorial-nav') {
+      if (!this.hasCompletedGuideObjective('tutorial')) {
+        this.guide.trigger({ type: 'tutorial_hover', item: 'nav' }, target);
+      }
+    } else if (key === 'game-tutorial-close') {
+      this.guide.trigger({ type: 'tutorial_hover', item: 'close' }, target);
+    } else if (key === 'game-achievements') {
+      this.guide.trigger({ type: 'achievements_hover', item: 'entry' }, target);
+    } else if (key === 'game-achievements-filters') {
+      this.guide.trigger({ type: 'achievements_hover', item: 'filters' }, target);
+    } else if (key === 'game-achievements-close') {
+      this.guide.trigger({ type: 'achievements_hover', item: 'close' }, target);
+    } else if (key === 'game-settings-toggle') {
+      if (!this.hasCompletedGuideObjective('sound')) {
+        this.guide.trigger({ type: 'settings_hover', item: 'entry' }, target);
+      }
+    } else if (key === 'game-settings-help') {
+      this.guide.trigger({ type: 'settings_hover', item: 'help' }, target);
+    } else if (key === 'game-settings-theme') {
+      this.guide.trigger({ type: 'settings_hover', item: 'theme' }, target);
+    } else if (key === 'game-settings-language') {
+      this.guide.trigger({ type: 'settings_hover', item: 'language' }, target);
+    } else if (key === 'game-settings-fullscreen') {
+      this.guide.trigger({ type: 'settings_hover', item: 'fullscreen' }, target);
+    } else if (key === 'game-settings-mute') {
+      this.guide.trigger({ type: 'settings_hover', item: 'mute' }, target);
+    } else if (key === 'game-settings-volume') {
+      this.guide.trigger({ type: 'settings_hover', item: 'volume' }, target);
+    }
+
+    this.updateGuide();
+  }
+
   private stepActiveIndex(direction: number) {
     this.activeIndex = wrapIndex(this.activeIndex + direction, this.portfolioHubProjects.length);
     this.world.setActiveIndex(this.activeIndex);
@@ -888,6 +1056,10 @@ export class AppController {
     }
     this.activeIndex = nextIndex;
     this.world.setActiveIndex(this.activeIndex);
+    const project = this.portfolioHubProjects[this.activeIndex] || null;
+    if (project) {
+      this.guide.trigger({ type: 'portfolio_scroll', project, direction: direction > 0 ? 1 : -1 }, this.getGuidePortfolioCenterTarget());
+    }
     this.refreshUI();
   }
 
@@ -1025,7 +1197,10 @@ export class AppController {
         if (focusedProject) {
           this.markFacetSeen(focusedProject.id, this.world.getFocusedFacetIndex());
           this.focus.updateFacet(this.world.getFocusedFacetIndex());
-          this.hasChangedFacet = true;
+          this.guide.trigger(
+            { type: 'focus_enter', project: focusedProject, facetIndex: this.world.getFocusedFacetIndex() },
+            this.getGuideFocusTarget() ?? this.getGuideTargetForProject(focusedProject.id)
+          );
           this.updateGuide();
         }
       }
@@ -1448,6 +1623,25 @@ export class AppController {
           this.game.getVisiblePlatformVisuals(gameFieldCount)
         );
       }
+
+      if (this.mode.is('game') && this.isSettingsMenuOpen() && !this.guideSettingsIntroShown && !this.hasCompletedGuideObjective('sound')) {
+        const settingsTarget = this.getGuideUiTargetByKey('game-settings-toggle');
+        if (settingsTarget) {
+          this.guideSettingsIntroShown = true;
+          this.showGameSettingsGuideUntil = performance.now() + 4200;
+          this.guide.trigger({ type: 'settings_hover', item: 'entry' }, settingsTarget);
+        }
+      }
+
+      const mirrorActive = this.mode.is('game') && this.game.isMirrorModeActive();
+      if (mirrorActive && !this.guideMirrorModeActive) {
+        this.guideMirrorModeActive = true;
+        const mirrorTarget = this.getGuideMirrorTarget();
+        this.showMirrorGuideUntil = performance.now() + 3600;
+        this.guide.trigger({ type: 'mirror_reveal' }, mirrorTarget);
+      } else if (!mirrorActive) {
+        this.guideMirrorModeActive = false;
+      }
     }
 
     if (this.mode.is('focus_enter') && this.world.isFocusSettled()) {
@@ -1456,7 +1650,10 @@ export class AppController {
       if (focusedProject) {
         this.markFacetSeen(focusedProject.id, this.world.getFocusedFacetIndex());
         this.focus.show(focusedProject, this.world.getFocusedFacetIndex());
-        this.hasFocused = true;
+        this.guide.trigger(
+          { type: 'focus_enter', project: focusedProject, facetIndex: this.world.getFocusedFacetIndex() },
+          this.getGuideFocusTarget() ?? this.getGuideTargetForProject(focusedProject.id)
+        );
         this.updateGuide();
       }
     }
@@ -1583,6 +1780,7 @@ export class AppController {
     this.updateRotateOverlay();
 
     this.refreshUI();
+    this.guide.update(deltaTime);
   }
 
   private refreshUI() {
@@ -1606,9 +1804,9 @@ export class AppController {
     this.interaction.setEnabled(isPortfolioInteractionMode(this.mode.current) && !primaterieMode && !isGameMode && !portfolioBlocked);
     if (isGameMode || primaterieMode || portfolioBlocked) {
       this.world.setHovered(null);
+      this.hoveredShardId = null;
     }
     this.hud.element.classList.toggle('is-hidden', primaterieMode || isGameMode);
-    this.guide.element.classList.toggle('is-hidden', isGameMode || portfolioBlocked);
     this.uiHost.dataset.appMode = primaterieMode ? 'primaterie' : isGameMode ? 'game' : 'portfolio';
     this.gameRuntime?.gameHud.setVisible(showGameHud);
     if (showGameHud) {
@@ -1617,6 +1815,7 @@ export class AppController {
     this.world.setActiveIndex(this.activeIndex);
     this.refreshRotateOverlayCopy();
     this.updateRotateOverlay();
+    this.updateGuide();
   }
 
   private getGameFieldCount() {
@@ -1629,46 +1828,308 @@ export class AppController {
   }
 
   private updateGuide() {
-    if (isGameRuntimeMode(this.mode.current) || this.isPortfolioOrientationBlocked()) {
-      return;
-    }
+    const now = performance.now();
+    const portfolioBlocked = this.isPortfolioOrientationBlocked();
+    const isGameMode = isGameRuntimeMode(this.mode.current);
+    const activeMiniGameOverlayTarget = this.getActiveMiniGameOverlayTarget();
+    const gameSettingsIntroActive = isGameMode && now < this.showGameSettingsGuideUntil;
+    const mirrorGuideActive = isGameMode && now < this.showMirrorGuideUntil;
+    this.guide.setSuspended(portfolioBlocked);
 
-    if (this.about.opened) {
-      this.guide.setStep('about');
-      return;
-    }
-
-    if (isprimaterieMode(this.mode.current)) {
-      this.guide.setStep('primaterie');
-      return;
-    }
-
-    if (this.slotSystem.isUnlocked()) {
-      this.guide.setStep('unlocked');
+    if (portfolioBlocked) {
+      this.guide.setPresence({
+        visible: false,
+        target: null,
+        zone: 'hidden'
+      });
       return;
     }
 
     if (this.mode.is('intro') || this.mode.is('intro_shattering') || this.mode.is('intro_transition')) {
-      this.guide.setStep('intro');
+      const target = this.getGuideIntroTarget();
+      this.guide.setPresence({
+        visible: true,
+        target,
+        zone: 'intro'
+      });
+      this.guide.trigger({ type: 'intro_mirror' }, target);
       return;
     }
 
-    if (!this.hasFocused) {
-      this.guide.setStep('orbit');
+    if (this.about.opened) {
+      this.guide.setPresence({
+        visible: false,
+        target: null,
+        zone: 'about'
+      });
       return;
     }
 
-    if (!this.hasChangedFacet) {
-      this.guide.setStep('focus');
+    if (this.mode.is('game_over')) {
+      this.guide.setPresence({
+        visible: true,
+        target:
+          this.getGuideUiTargetByKey(this.hoveredGuideUiKey) ??
+          this.getGuideTargetFromElement(this.hoveredGuideUiElement) ??
+          activeMiniGameOverlayTarget ??
+          this.getGuideUiTargetByKey('game-save') ??
+          this.getGuideUiTargetByKey('game-leaderboard'),
+        zone: 'game_over'
+      });
       return;
     }
 
-    if (!this.hasDragged) {
-      this.guide.setStep('drag');
+    if (mirrorGuideActive) {
+      this.guide.setPresence({
+        visible: true,
+        target: this.getGuideMirrorTarget(),
+        zone: 'game_over'
+      });
       return;
     }
 
-    this.guide.setStep('slots');
+    if (isGameMode && activeMiniGameOverlayTarget) {
+      this.guide.setPresence({
+        visible: true,
+        target: this.getGuideUiTargetByKey(this.hoveredGuideUiKey) ?? this.getGuideTargetFromElement(this.hoveredGuideUiElement) ?? activeMiniGameOverlayTarget,
+        zone: 'game_over'
+      });
+      return;
+    }
+
+    if (isGameMode) {
+      const settingsTarget =
+        this.getGuideUiTargetByKey(this.hoveredGuideUiKey) ??
+        ((this.isSettingsMenuOpen() || gameSettingsIntroActive) ? this.getGuideUiTargetByKey('game-settings-toggle') : null);
+      this.guide.setPresence({
+        visible: this.isSettingsMenuOpen() || gameSettingsIntroActive,
+        target: settingsTarget,
+        zone: 'game'
+      });
+      return;
+    }
+
+    if (isprimaterieMode(this.mode.current)) {
+      this.guide.setPresence({
+        visible: true,
+        target: this.getGuideUiTargetByKey(this.hoveredGuideUiKey) ?? this.getGuidePrimaterieAnchorTarget(),
+        zone: 'primaterie'
+      });
+      return;
+    }
+
+    if (this.mode.is('dragging')) {
+      this.guide.setPresence({
+        visible: true,
+        target: this.getGuideConstellationTarget(),
+        zone: 'drag'
+      });
+      return;
+    }
+
+    if (this.mode.is('focus') || this.mode.is('focus_enter') || this.mode.is('focus_facet_transition') || this.mode.is('focus_exit')) {
+      const focusedProject = this.world.getFocusedProject();
+      this.guide.setPresence({
+        visible: true,
+        target: this.getGuideFocusTarget() ?? (focusedProject ? this.getGuideTargetForProject(focusedProject.id) : this.getGuidePortfolioCenterTarget()),
+        zone: 'focus'
+      });
+      return;
+    }
+
+    if (this.slotSystem.isUnlocked()) {
+      this.guide.setPresence({
+        visible: true,
+        target: this.getGuideConstellationTarget(),
+        zone: 'slots'
+      });
+      return;
+    }
+
+    const hoveredTarget = this.hoveredShardId ? this.getGuideTargetForProject(this.hoveredShardId) : null;
+    this.guide.setPresence({
+      visible: true,
+      target: hoveredTarget ?? this.getGuidePortfolioCenterTarget(),
+      zone: this.hoveredShardId ? 'orbit' : 'slots'
+    });
+  }
+
+  private getGuideTargetFromElement(element: HTMLElement | null, hints?: Partial<GuideTarget>): GuideTarget | null {
+    if (!element) {
+      return null;
+    }
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 && rect.height <= 0) {
+      return null;
+    }
+    return this.createGuideTarget(rect.left + rect.width * 0.5, rect.top + rect.height * 0.5, Math.max(40, rect.width), Math.max(32, rect.height), hints);
+  }
+
+  private getGuideUiTargetByKey(key: string | null) {
+    if (!key) {
+      return null;
+    }
+    const element = this.uiHost.querySelector<HTMLElement>(`[data-guide-hover="${key}"]`);
+    return this.getGuideTargetFromElement(element, this.getGuideHintsForUiKey(key));
+  }
+
+  private getGuideTargetForProject(projectId: string | null) {
+    if (!projectId) {
+      return null;
+    }
+    const worldPosition = this.world.getProjectWorldPosition(projectId);
+    if (!worldPosition) {
+      return null;
+    }
+    const projected = this.renderer.projectWorldToScreen(worldPosition);
+    if (!projected.visible) {
+      return null;
+    }
+    return this.createGuideTarget(projected.x, projected.y, 74, 74);
+  }
+
+  private getGuideIntroTarget() {
+    return this.createGuideTarget(window.innerWidth * 0.5, window.innerHeight * 0.44, 220, 220);
+  }
+
+  private getGuidePortfolioCenterTarget() {
+    return this.createGuideTarget(window.innerWidth * 0.5, window.innerHeight * 0.72, 240, 140, {
+      guidePlacementHint: 'bottom-right',
+      bubblePlacementHint: 'upper-right',
+      flipGuideX: true
+    });
+  }
+
+  private getGuideFocusTarget() {
+    const media = this.uiHost.querySelector<HTMLElement>('.focus-layer__media');
+    if (media) {
+      return this.getGuideTargetFromElement(media);
+    }
+    const panel = this.uiHost.querySelector<HTMLElement>('.focus-layer__panel');
+    return this.getGuideTargetFromElement(panel);
+  }
+
+  private getGuideConstellationTarget() {
+    return this.createGuideTarget(window.innerWidth * 0.5, window.innerHeight * 0.4, 280, 200);
+  }
+
+  private getGuidePrimaterieAnchorTarget() {
+    if (!this.gameRuntime) {
+      return this.createGuideTarget(window.innerWidth * 0.5, window.innerHeight * 0.52, 220, 220);
+    }
+    const anchor = this.primateriePortal.element.querySelector<HTMLElement>('.primaterie-portal__anchor');
+    return this.getGuideTargetFromElement(anchor) ?? this.createGuideTarget(window.innerWidth * 0.5, window.innerHeight * 0.52, 220, 220);
+  }
+
+  private getGuideMirrorTarget() {
+    return this.createGuideTarget(window.innerWidth * 0.55, window.innerHeight * 0.46, 220, 180, {
+      guidePlacementHint: 'bottom-left',
+      bubblePlacementHint: 'upper-left',
+      flipGuideX: false
+    });
+  }
+
+  private getActiveMiniGameOverlayTarget() {
+    const avatarEditorVisible = this.getGuideUiTargetByKey('game-avatar-close') ?? this.getGuideUiTargetByKey('game-avatar-save');
+    return this.getGuideUiTargetByKey('game-tutorial') ?? this.getGuideUiTargetByKey('game-achievements') ?? (avatarEditorVisible ? this.getGuideUiTargetByKey('game-avatar') : null);
+  }
+
+  private createGuideTarget(x: number, y: number, width: number, height: number, hints: Partial<GuideTarget> = {}): GuideTarget {
+    return {
+      x,
+      y,
+      width,
+      height,
+      ...hints
+    };
+  }
+
+  private getGuideHintsForUiKey(key: string): Partial<GuideTarget> {
+    if (key === 'primaterie-adventure' || key === 'primaterie-portfolio') {
+      return {
+        guidePlacementHint: 'bottom-left',
+        bubblePlacementHint: 'upper-left',
+        flipGuideX: false
+      };
+    }
+    if (key === 'primaterie-discord') {
+      return {
+        guidePlacementHint: 'bottom-right',
+        bubblePlacementHint: 'upper-right',
+        flipGuideX: true
+      };
+    }
+    if (key === 'game-achievements' || key === 'game-achievements-filters' || key === 'game-achievements-close') {
+      return {
+        guidePlacementHint: 'bottom-left',
+        bubblePlacementHint: 'upper-left',
+        flipGuideX: false
+      };
+    }
+    if (
+      key === 'game-avatar' ||
+      key === 'game-avatar-ears' ||
+      key === 'game-avatar-parts' ||
+      key === 'game-avatar-save' ||
+      key === 'game-avatar-close'
+    ) {
+      return {
+        guidePlacementHint: 'right',
+        bubblePlacementHint: 'upper-right',
+        flipGuideX: true
+      };
+    }
+    if (
+      key === 'game-score' ||
+      key === 'game-save' ||
+      key === 'game-leaderboard' ||
+      key === 'game-replay' ||
+      key === 'game-menu'
+    ) {
+      return {
+        guidePlacementHint: key === 'game-save' || key === 'game-leaderboard' ? 'left' : 'bottom-left',
+        bubblePlacementHint: 'upper-left',
+        flipGuideX: false
+      };
+    }
+    if (key.startsWith('game-settings-') || key === 'primaterie-theme' || key === 'primaterie-language') {
+      const prefersFlipped = key !== 'game-settings-toggle';
+      return prefersFlipped
+        ? {
+            guidePlacementHint: 'right',
+            bubblePlacementHint: 'upper-right',
+            flipGuideX: true
+          }
+        : {
+            guidePlacementHint: 'right',
+            bubblePlacementHint: 'upper-right',
+            flipGuideX: true
+          };
+    }
+    return {};
+  }
+
+  private isSettingsMenuOpen() {
+    return this.uiHost.querySelector('.game-hud__panel.is-settings-open') !== null;
+  }
+
+  private hasCompletedGuideObjective(objective: 'register-score' | 'avatar' | 'tutorial' | 'sound') {
+    try {
+      if (objective === 'register-score') {
+        return window.localStorage.getItem(PLAYER_LEADERBOARD_REGISTERED_KEY) === '1';
+      }
+      if (objective === 'avatar') {
+        return Boolean(window.localStorage.getItem(PLAYER_AVATAR_KEY));
+      }
+      if (objective === 'tutorial') {
+        return window.localStorage.getItem(GAME_HELP_TUTORIAL_COMPLETED_KEY) === '1';
+      }
+      const muted = window.localStorage.getItem(AUDIO_STORAGE_KEYS.muted) === '1';
+      const volume = Number.parseFloat(window.localStorage.getItem(AUDIO_STORAGE_KEYS.volume) ?? '1');
+      return !muted && Number.isFinite(volume) && volume > 0.01;
+    } catch {
+      return false;
+    }
   }
 
   private markFacetSeen(projectId: string, facetIndex: number) {

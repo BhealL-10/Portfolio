@@ -34,6 +34,9 @@
   --safe-left: env(safe-area-inset-left, 0px);
   --accent-color: #75AF80;
   --guide-dialogue-art: url('../../assets/images/shared/branding/guide/dialogue-light.svg');
+  --guide-copy-strong: rgb(36 32 29 / 0.98);
+  --guide-copy-muted: rgb(58 49 41 / 0.86);
+  --guide-copy-shadow: rgb(248 238 214 / 0.38);
   --hud-shape-1: url('../../assets/images/game/ui/backgrounds/hud-dark-1.svg');
   --hud-shape-2: url('../../assets/images/game/ui/backgrounds/hud-dark-2.svg');
   --hud-shape-3: url('../../assets/images/game/ui/backgrounds/hud-dark-3.svg');
@@ -102,6 +105,9 @@ html[data-theme='dark'] {
   --color-bg-rgb: 57 63 74;
   --color-fg-rgb: 212 191 155;
   --guide-dialogue-art: url('../../assets/images/shared/branding/guide/dialogue-dark.svg');
+  --guide-copy-strong: rgb(241 225 195 / 0.99);
+  --guide-copy-muted: rgb(226 208 177 / 0.88);
+  --guide-copy-shadow: rgb(24 23 20 / 0.48);
   --hud-shape-1: url('../../assets/images/game/ui/backgrounds/hud-light-1.svg');
   --hud-shape-2: url('../../assets/images/game/ui/backgrounds/hud-light-2.svg');
   --hud-shape-3: url('../../assets/images/game/ui/backgrounds/hud-light-3.svg');
@@ -388,21 +394,15 @@ body {
 
 .guide-bubble {
   position: absolute;
-  left: calc(var(--safe-left) + 18px);
-  bottom: calc(var(--safe-bottom) + 18px);
-  z-index: 45;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: end;
-  gap: 8px;
-  width: min(470px, calc(100vw - 28px));
+  inset: 0;
+  z-index: 1100;
   pointer-events: none;
-  transition: opacity 220ms ease, transform 220ms ease;
+  opacity: 0;
+  transition: opacity 180ms ease;
 }
 
-.guide-bubble.is-hidden {
-  opacity: 0;
-  transform: translateY(8px);
+.guide-bubble[data-visible='true'] {
+  opacity: 1;
 }
 
 .guide-bubble__title,
@@ -410,34 +410,95 @@ body {
   margin: 0;
 }
 
+.guide-bubble__character-shell,
+.guide-bubble__panel {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+}
+
+.guide-bubble__character-shell {
+  filter: drop-shadow(0 16px 30px rgb(0 0 0 / 0.22));
+  pointer-events: auto;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: opacity 180ms ease, filter 180ms ease, transform 180ms ease;
+}
+
+.guide-bubble__character-shell:active {
+  cursor: grabbing;
+}
+
+.guide-bubble[data-disabled='true'] .guide-bubble__character-shell {
+  filter: drop-shadow(0 14px 24px rgb(0 0 0 / 0.18));
+}
+
 .guide-bubble__character {
   display: block;
-  width: clamp(90px, 10vw, 118px);
-  height: auto;
-  filter: drop-shadow(0 12px 30px rgb(0 0 0 / 0.18));
+  width: 100%;
+  height: 100%;
+  background-repeat: no-repeat;
+  background-size: 500% 100%;
+  background-position: 0% 50%;
+  image-rendering: auto;
 }
 
 .guide-bubble__panel {
-  align-self: stretch;
-  min-height: 168px;
-  padding: 26px 32px 34px 34px;
+  opacity: 0;
+  transition: opacity 140ms ease;
+  pointer-events: none;
+}
+
+.guide-bubble__panel[data-visible='true'] {
+  opacity: 1;
+}
+
+.guide-bubble[data-disabled='true'] .guide-bubble__panel {
+  opacity: 0 !important;
+}
+
+.guide-bubble__panel-art,
+.guide-bubble__copy {
+  position: absolute;
+  inset: 0;
+}
+
+.guide-bubble__panel-art {
   background-image: var(--guide-dialogue-art);
   background-position: center;
   background-repeat: no-repeat;
   background-size: 100% 100%;
+  transform-origin: center;
+}
+
+.guide-bubble__copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 19% 16% 24% 18%;
+  box-sizing: border-box;
 }
 
 .guide-bubble__title {
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgb(var(--color-fg-rgb) / 0.78);
+  color: var(--guide-copy-muted);
+  text-shadow: 0 1px 0 var(--guide-copy-shadow);
 }
 
 .guide-bubble__body {
-  margin-top: 8px;
-  max-width: 240px;
-  line-height: 1.5;
+  margin-top: 4px;
+  max-width: none;
+  line-height: 1.42;
+  font-size: clamp(0.9rem, 1vw, 1rem);
+  color: var(--guide-copy-strong);
+  text-shadow: 0 1px 0 var(--guide-copy-shadow);
+  text-wrap: pretty;
 }
 
 .intro-layer {

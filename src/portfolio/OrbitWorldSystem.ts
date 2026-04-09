@@ -552,6 +552,11 @@ export class OrbitWorldSystem {
     return this.focusedId;
   }
 
+  getProjectWorldPosition(projectId: string) {
+    const entity = this.entities.get(projectId);
+    return entity ? entity.group.position.clone() : null;
+  }
+
   isShardSnapped(shardId: string) {
     return this.entities.get(shardId)?.snapped ?? false;
   }

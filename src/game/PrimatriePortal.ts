@@ -11,6 +11,22 @@ const HUB_LOGO_ASSETS = {
   light: new URL('../../assets/images/shared/branding/primaterie-mark-dark.svg', import.meta.url).href
 } as const;
 
+const COMMUNITY_BUTTON_ASSETS = {
+  discord: {
+    dark: new URL('../../assets/images/portfolio/projects/shared/discord-btn-dark.png', import.meta.url).href,
+    light: new URL('../../assets/images/portfolio/projects/shared/discord-btn-light.png', import.meta.url).href
+  },
+  patreon: {
+    dark: new URL('../../assets/images/portfolio/projects/shared/patreon-btn-dark.png', import.meta.url).href,
+    light: new URL('../../assets/images/portfolio/projects/shared/patreon-btn-light.png', import.meta.url).href
+  }
+} as const;
+
+const COMMUNITY_LINKS = {
+  discord: 'https://discord.gg/primaterie',
+  patreon: 'https://www.patreon.com/apeprod'
+} as const;
+
 export type primaterieModeId = 'adventure' | '3v3' | '10v10' | 'portfolio';
 
 export class primateriePortal {
@@ -25,6 +41,10 @@ export class primateriePortal {
   private readonly singlePlayerButton: HTMLButtonElement;
   private readonly threeVsThreeButton: HTMLButtonElement;
   private readonly tenVsTenButton: HTMLButtonElement;
+  private readonly discordButton: HTMLButtonElement;
+  private readonly discordButtonImage: HTMLImageElement;
+  private readonly patreonButton: HTMLButtonElement;
+  private readonly patreonButtonImage: HTMLImageElement;
   private visible = false;
   private busy = false;
   private loading = false;
@@ -43,18 +63,24 @@ export class primateriePortal {
     this.element.className = 'primaterie-portal';
     this.element.innerHTML = `
       <div class="primaterie-portal__chrome">
-        <img class="primaterie-portal__chrome-button primaterie-portal__chrome-button--theme" data-primaterie-theme alt="" role="button" tabindex="0" />
-        <img class="primaterie-portal__chrome-button primaterie-portal__chrome-button--language" data-primaterie-language alt="" role="button" tabindex="0" />
+        <img class="primaterie-portal__chrome-button primaterie-portal__chrome-button--theme" data-guide-hover="primaterie-theme" data-primaterie-theme alt="" role="button" tabindex="0" />
+        <img class="primaterie-portal__chrome-button primaterie-portal__chrome-button--language" data-guide-hover="primaterie-language" data-primaterie-language alt="" role="button" tabindex="0" />
       </div>
       <div class="primaterie-portal__logo-wrap">
         <img class="primaterie-portal__logo" data-primaterie-logo alt="primaterie" />
       </div>
+      <button type="button" class="primaterie-portal__social primaterie-portal__social--discord" data-guide-hover="primaterie-discord" data-primaterie-discord>
+        <img data-primaterie-discord-image alt="" />
+      </button>
+      <button type="button" class="primaterie-portal__social primaterie-portal__social--patreon" data-guide-hover="primaterie-patreon" data-primaterie-patreon>
+        <img data-primaterie-patreon-image alt="" />
+      </button>
       <div class="primaterie-portal__anchor">
         <div class="primaterie-portal__actions" data-primaterie-actions>
-          <button type="button" data-primaterie-single></button>
+          <button type="button" data-guide-hover="primaterie-adventure" data-primaterie-single></button>
           <button type="button" data-primaterie-3v3 disabled></button>
           <button type="button" data-primaterie-10v10 disabled></button>
-          <button type="button" data-primaterie-portfolio></button>
+          <button type="button" data-guide-hover="primaterie-portfolio" data-primaterie-portfolio></button>
         </div>
         <div class="primaterie-portal__loading" data-primaterie-loading></div>
       </div>
@@ -70,11 +96,17 @@ export class primateriePortal {
     this.singlePlayerButton = this.element.querySelector<HTMLButtonElement>('[data-primaterie-single]')!;
     this.threeVsThreeButton = this.element.querySelector<HTMLButtonElement>('[data-primaterie-3v3]')!;
     this.tenVsTenButton = this.element.querySelector<HTMLButtonElement>('[data-primaterie-10v10]')!;
+    this.discordButton = this.element.querySelector<HTMLButtonElement>('[data-primaterie-discord]')!;
+    this.discordButtonImage = this.element.querySelector<HTMLImageElement>('[data-primaterie-discord-image]')!;
+    this.patreonButton = this.element.querySelector<HTMLButtonElement>('[data-primaterie-patreon]')!;
+    this.patreonButtonImage = this.element.querySelector<HTMLImageElement>('[data-primaterie-patreon-image]')!;
 
     this.portfolioButton.addEventListener('click', callbacks.onPortfolio);
     this.singlePlayerButton.addEventListener('click', callbacks.onSinglePlayer);
     this.themeButton.addEventListener('click', callbacks.onThemeToggle);
     this.languageButton.addEventListener('click', callbacks.onLanguageToggle);
+    this.discordButton.addEventListener('click', () => this.openExternalLink(COMMUNITY_LINKS.discord));
+    this.patreonButton.addEventListener('click', () => this.openExternalLink(COMMUNITY_LINKS.patreon));
     this.themeButton.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
@@ -147,6 +179,8 @@ export class primateriePortal {
     this.logo.src = HUB_LOGO_ASSETS[theme];
     this.themeButton.src = THEME_TOGGLE_ASSETS[theme];
     this.languageButton.src = LANGUAGE_BUTTON_ASSETS[this.locale];
+    this.discordButtonImage.src = COMMUNITY_BUTTON_ASSETS.discord[theme];
+    this.patreonButtonImage.src = COMMUNITY_BUTTON_ASSETS.patreon[theme];
     this.singlePlayerButton.textContent = this.locale === 'fr' ? 'Aventure' : 'Adventure';
     this.portfolioButton.textContent = 'Portfolio';
     this.threeVsThreeButton.textContent = '3v3';
@@ -154,6 +188,8 @@ export class primateriePortal {
     this.loadingLabel.textContent = this.locale === 'fr' ? 'Chargement' : 'Loading';
     this.themeButton.setAttribute('aria-label', this.locale === 'fr' ? 'Changer le theme' : 'Change theme');
     this.languageButton.setAttribute('aria-label', this.locale === 'fr' ? 'Changer la langue' : 'Change language');
+    this.discordButton.setAttribute('aria-label', this.locale === 'fr' ? 'Rejoindre le Discord' : 'Join the Discord');
+    this.patreonButton.setAttribute('aria-label', this.locale === 'fr' ? 'Ouvrir Patreon' : 'Open Patreon');
     this.actions.setAttribute('aria-hidden', String(this.loading));
     this.loadingLabel.setAttribute('aria-hidden', String(!this.loading));
     this.setBusy(this.busy);
@@ -168,5 +204,9 @@ export class primateriePortal {
     this.tenVsTenButton.disabled = true;
     this.actions.setAttribute('aria-hidden', String(this.loading));
     this.loadingLabel.setAttribute('aria-hidden', String(!this.loading));
+  }
+
+  private openExternalLink(url: string) {
+    window.open(url, '_blank', 'noopener,noreferrer');
   }
 }

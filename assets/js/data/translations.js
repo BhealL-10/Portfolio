@@ -5,135 +5,135 @@
 
 export const projectTranslations = {
   fr: [
-    // SHARD 1 - PRÉSENTATION
+    // SHARD 1 - IDENTITÉ
     {
       id: 1,
-      title: "PRÉSENTATION",
+      title: "IDENTITÉ",
       facettes: [
-        { 
-          category: "presentation", 
-          longDescription: "On dit souvent qu'un restaurant avec une carte trop fournie peine à exceller dans chaque plat. Ape Prod propose plusieurs services MAIS qui convergent vers une seule spécialité : le design et le brainstorming de projets. Direction artistique, identité visuelle, game design, prototypage technique et scénarisation — chaque compétence sert un objectif commun : transformer vos idées en concepts solides à votre image et innovants.", 
-          technologies: ["Direction Artistique", "Conception", "Stratégie Créative", "Innovation", "Vision Globale"]
+        {
+          category: "presentation",
+          longDescription: "Moi, BhealL. Depuis toujours, je suis guidé par deux choses : la créativité et la curiosité. Je n’ai jamais suivi un chemin classique, et je n’ai jamais voulu me limiter à un seul domaine. J’ai toujours créé. De tout. Depuis deux ans, j’ai décidé de ne plus m’adapter à un cadre existant, mais de construire le mien. Aujourd’hui, je transforme mes idées en projets réels.",
+          technologies: ["Identité", "Créativité", "Curiosité", "Vision", "Projets"]
         },
-        { 
-          category: "services", 
-          longDescription: "Designer polyvalent, je travaille avec de nombreux logiciels pour donner vie à mes idées et créer des DA et designs adaptés à n'importe quel projet. Ma valeur ajoutée réside dans ma polyvalence — sans être un expert de chaque domaine — qui me permet de créer des prototypes précis facilement reprenables et améliorables.\n\nAvoir des idées, c'est facile. Les affiner, les structurer et les concrétiser, c'est une autre histoire. Mon rôle est de transformer l'intention en projet viable, avec méthode et créativité.", 
-          technologies: ["Identité Visuelle", "Game Design", "Prototypage", "Narration", "UX Design"]
+        {
+          category: "services",
+          longDescription: "Je suis polyvalent. Genre vraiment polyvalent. J’ai appris à toucher à plusieurs domaines selon ce que j’avais en tête. Mais mon vrai terrain d’expertise, ce sont les idées. Penser un projet dans sa globalité, du fond à la forme, jusqu’à concevoir un prototype si besoin pour prouver que c’est possible.",
+          technologies: ["Polyvalence", "Idées", "Prototype", "Concept", "Adaptation"]
         },
-        { 
-          category: "about", 
-          longDescription: "Je m'appelle Bilel, 27 ans. Designer et brainstormer passionné par la conception de projets cohérents et impactants.\n\nMon objectif : donner forme à vos idées en alliant réflexion stratégique, créativité et exécution concrète.", 
-          technologies: ["Design", "Brainstorming", "Créativité", "Polyvalence", "Exécution"]
+        {
+          category: "about",
+          longDescription: "Je ne cherche pas les moyens parfaits. Pour moi, la création n’est pas une recette. Ce n’est pas une question d’argent, d’ingrédients ou d’outils. C’est une question d’idée. De vision. Et c’est souvent au moment où l’idée se confronte à la réalité que je deviens le plus efficace. Je trouve des solutions. Et j’essaie d’en faire une force.",
+          technologies: ["Réflexion", "Structuration", "Construction", "Collaboration", "Vision"]
         }
       ]
     },
-    // SHARD 2 - TONO DISCORD BOT
+    // SHARD 2 - DIRECTION ARTISTIQUE / STICK MONKEY
     {
       id: 2,
-      title: "TON0.D API",
+      title: "DIRECTION ARTISTIQUE / STICK MONKEY",
       facettes: [
-        { 
-          category: "dev", 
-          longDescription: "TON0.D est une API de jeu complète, pensée dès le départ pour être réutilisable sur n'importe quelle plateforme : application mobile, site web, ou bot Discord et pour être facilement améliorée et réutilisée sur un projet futur.\n\nL'objectif était de créer un système de jeu sur une application comme Discord qui n'est logiquement pas faite pour. Je voulais que les gens soient incités, via l'envie de jouer, à aller sur Discord et donc créer des opportunités pour que l'utilisateur participe davantage sur le serveur.", 
-          technologies: ["Discord.js", "Node.js", "API Design", "Architecture Modulaire", "Ruby on Rails"]
+        {
+          category: "design",
+          longDescription: "Tout est parti d’un storyboard. À la base, je voulais simplement créer une animation avec des stickmen. Mais je ne voulais pas rester sur quelque chose de simple. J’ai toujours eu une fascination pour les singes, et j’aime intégrer du fond et de la réflexion dans ce que je crée. C’est comme ça qu’est né le Stick Monkey : un simple stickman avec un masque de primate qui le différencie des autres.",
+          technologies: ["Direction Artistique", "Storyboarding", "Identité Visuelle", "Symbolisme", "Primate"]
         },
-        { 
-          category: "dev", 
-          longDescription: "L'une des innovations majeures de TON0.D réside dans son système de dialogue basé sur l'IA prêt à être intégré qui génère des dialogues dynamiques et uniques. Chaque interaction avec les personnages non-joueurs génère des réponses uniques et contextuelles, rendant chaque conversation authentique et imprévisible, avec une cohérence narrative et des réponses adaptées au contexte de la situation.\n\nFini les dialogues scriptés et répétitifs : l'IA s'adapte aux choix du joueur, à l'historique de ses interactions et au contexte de la situation. Cette approche crée une véritable immersion narrative où aucune partie ne ressemble à la précédente.", 
-          technologies: ["IA Générative", "NLP", "Systèmes Conversationnels", "Narration Dynamique", "Contextualisation"]
+        {
+          category: "design",
+          longDescription: "J’ai pris le temps de développer et de perfectionner ma direction artistique. Je m’adapte aux demandes et aux styles. Mais mon objectif reste toujours le même : créer quelque chose de cohérent avec le besoin. Et dans chaque projet, j’essaie d’ajouter du fond. De la réflexion. Même là où on ne l’attend pas.",
+          technologies: ["Style", "Cohérence", "Adaptation", "Fond", "Direction Artistique"]
         },
-        { 
-          category: "dev", 
-          longDescription: "Le but de TON0.D est de permettre aux utilisateurs de devenir créateurs avec moi de cet univers. Le système de quêtes est conçu pour que les joueurs puissent créer des quêtes qui, après validation par moi, seront ajoutées à l'univers, rendant ces ajouts accessibles à l'ensemble de la communauté et que les joueurs ajoutent leur histoire à l'univers.\n\nCette approche collaborative transforme chaque joueur en partie de l'univers du jeu et en pouvant canoniser des quêtes et des histoires dans le lore de ce nouveau monde, créant un écosystème vivant où le contenu se renouvelle organiquement. C'est la fusion entre développement technique avancé, IA générative et game design participatif.", 
-          technologies: ["UGC", "Game Design", "Systèmes Collaboratifs", "Éditeur de Contenu", "Community Building"]
+        {
+          category: "design",
+          longDescription: "Ma direction artistique évolue avec moi, avec le temps. Chaque version du Stick Monkey porte une nouvelle étape de ce parcours créatif. J’explore, je révise, je fais grandir un personnage qui incarne une liberté assumée dans un monde fracturé.",
+          technologies: ["Évolution", "Visuel", "Versioning", "Créativité", "Expérimentation"]
         }
       ]
     },
-    // SHARD 3 - DAVINCI RESOLVE & FUSION
+    // SHARD 3 - CINÉMA / POWER ROGER
     {
       id: 3,
-      title: "DAVINCI RESOLVE & FUSION",
+      title: "CINÉMA / POWER ROGER",
       facettes: [
-        { 
-          category: "video", 
-          longDescription: "Ma maîtrise de Fusion me permet de créer des animations complexes, des effets visuels sur mesure et des transitions narratives qui élèvent chaque projet. Là où d'autres voient des contraintes techniques, je vois des opportunités créatives.", 
-          technologies: ["DaVinci Resolve", "Fusion", "Compositing", "VFX", "Motion Design"]
+        {
+          category: "film",
+          longDescription: "En 2024, j’ai réalisé mon premier court-métrage pour le Nikon Festival (thème imposé : “Super pouvoir”). Je rêve depuis petit de réaliser des films. Je me suis lancé avec une contrainte simple : zéro budget, zéro contact. Seulement moi, un ami, ma conjointe, et un acteur formidable que j’ai casté moi-même : Adrien Daquin dans le rôle de Roger. Damien Carré à la prise vidéo, et moi-même à la réalisation, mais aussi en acting.",
+          technologies: ["Cinéma", "Courtmétrage", "Réalisation", "Casting", "Autoproduction"]
         },
-        { 
-          category: "video", 
-          longDescription: "Du node-based compositing aux systèmes de particules, en passant par le tracking 3D, Fusion offre une liberté créative immense. J'exploite cette puissance pour construire des visuels impactants.", 
-          technologies: ["Node-Based Compositing", "Tracking 3D", "Color Grading", "Particle Systems", "Workflows Avancés"]
+        {
+          category: "film",
+          longDescription: "Ce projet a été une fierté, mais aussi une blessure. Rien ne s’est passé comme prévu. Je n’avais aucune compétence en montage, et j’ai dû apprendre en moins de quatre semaines. Certains accessoires sont arrivés le lendemain du tournage et je ne pouvais pas reprendre le magasin, donc on a dû faire sans. Les rushs n’étaient pas bons, le son non plus, et le résultat ne correspondait pas à ce que j’avais en tête (film muet). Alors je me suis adapté. J’ai transformé ce que j’avais en quelque chose d’exploitable. J’ai tout fait : écriture, découpage, tournage, montage, casting, repérage du lieu, négociation du tournage.",
+          technologies: ["Adaptation", "Montage", "Production", "Résilience", "Apprentissage"]
         },
-        { 
-          category: "video", 
-          longDescription: "J'ai déjà réalisé des projets complexes avec Fusion réutilisables sur plusieurs projets. Je peux créer un prototype de composition Fusion avec votre direction artistique facilement réutilisable.", 
-          technologies: ["Animation", "Storytelling Visuel", "Post-Production", "Effets Créatifs", "Templates"]
+        {
+          category: "film",
+          longDescription: "Ce projet m’a débloqué. Il m’a prouvé que je pouvais aller au bout de mes idées même sans argent. Je ne suis pas le meilleur dans chaque domaine. Mais je suis le meilleur quand il faut s’adapter, créer et brainstormer des concepts avec différentes contraintes, jusqu’à en faire une force.",
+          technologies: ["Déblocage", "Créativité", "Contraintes", "Force", "Vision"]
         }
       ]
     },
-    // SHARD 4 - MON PREMIER COURT-MÉTRAGE
+    // SHARD 4 - JEUX VIDÉO
     {
       id: 4,
-      title: "MON PREMIER COURT-MÉTRAGE",
+      title: "JEUX VIDÉO",
       facettes: [
-        { 
-          category: "video", 
-          longDescription: "J'ai réalisé un court-métrage de A à Z.\n\nJ'ai endossé tous les rôles : scénariste, réalisateur, directeur de casting, repéreur de lieux, monteur. De l'écriture du scénario au découpage technique, au casting, au tournage, au montage. Cette expérience m'a appris à comprendre les différents rôles sur un tournage et les erreurs à ne pas reproduire.", 
-          technologies: ["Réalisation", "Scénarisation", "Direction", "Casting", "Production"]
+        {
+          category: "game",
+          longDescription: "TON0.D est un RPG roguelite textuel. Le gameplay repose sur plusieurs systèmes interconnectés : énergie, exploration procédurale, narration avec un vrai système multichoix dans les dialogues, combat technique et progression, et un système de capture de primate unique.",
+          technologies: ["RPG", "Roguelite", "Narration", "Système Multichoix", "Exploration"]
         },
-        { 
-          category: "video", 
-          longDescription: "Du découpage technique au dérushage, chaque phase a présenté ses défis. Trouver les bons acteurs, négocier les lieux de tournage, gérer les imprévus du jour J, et le montage final alors que je n'avais jamais fait de montage : la production audiovisuelle est un exercice d'adaptation permanente, et on peut dire que ça m'a plu malgré mon insatisfaction du résultat final.", 
-          technologies: ["Découpage Technique", "Gestion de Production", "Montage", "Adaptation", "Résolution de Problèmes"]
+        {
+          category: "game",
+          longDescription: "TON0 est un mini-jeu qui explore une expérience arcade basée sur le momentum et l’interaction. C’est un prototype jouable pensé pour tester une direction de gameplay simple et nerveuse.",
+          technologies: ["Mini-jeu", "Gameplay", "Prototype", "Momentum", "Interaction"]
         },
-        { 
-          category: "video", 
-          longDescription: "Cette expérience m'a confirmé une conviction : j'ai les idées et un univers à partager. Mais sans budget, sans ressources, sans équipe, je ne peux pas les mettre en place comme je les ai dans mon esprit.", 
-          technologies: ["Direction de Projet", "Vision Artistique", "Gestion d'Équipe", "Créativité", "Storytelling"]
+        {
+          category: "game",
+          longDescription: "Je conçois mes jeux à partir d’un message. Je les vois comme une continuité : TON0.D → jeu 100 % textuel, TON1.D → jeu arcade basé sur le momentum, TON??? → évolution. Chaque jeu est une étape d’un même univers.",
+          technologies: ["Game Design", "Vision", "Message", "Progression", "Univers"]
         }
       ]
     },
-    // SHARD 5 - INTELLIGENCE ARTIFICIELLE GÉNÉRATIVE
+    // SHARD 5 - COLLABORATIONS
     {
       id: 5,
-      title: "INTELLIGENCE ARTIFICIELLE GÉNÉRATIVE",
+      title: "COLLABORATIONS",
       facettes: [
-        { 
-          category: "tech", 
-          longDescription: "J'ai fait par le passé une école de développement informatique, et aujourd'hui il faut savoir travailler avec l'IA pour développer des projets. J'ai rapidement appris à utiliser l'IA pour développer des prototypes sur mesure.", 
-          technologies: ["IA Générative", "Claude Sonnet", "Stable Diffusion", "IA Locale", "Workflows IA"]
+        {
+          category: "business",
+          longDescription: "Création du site web et de l’identité visuelle pour une entreprise de nettoyage. Direction : symbole validé, nature, propreté, écologique, confiance. J’ai réalisé : design, logo, site complet.",
+          technologies: ["Identité Visuelle", "Design Web", "Logo", "Confiance", "Écologie"]
         },
-        { 
-          category: "tech", 
-          longDescription: "La vraie maîtrise de l'IA générative ne réside pas dans l'utilisation basique de l'outil, mais dans leur orchestration intelligente. J'ai créé mon workflow avec l'IA pour obtenir des résultats sur mesure.", 
-          technologies: ["Pipelines IA", "Génération d'Images", "Création de Contenu", "Brainstorming Assisté", "Orchestration"]
+        {
+          category: "business",
+          longDescription: "Réalisation de plusieurs motion designs pour des collaborations YouTube. Travail sur : animation, rythme, lisibilité.",
+          technologies: ["Motion Design", "Animation", "Rythme", "Lisibilité", "Contenu"]
         },
-        { 
-          category: "tech", 
-          longDescription: "Avec une gestion avancée des IA génératives, je peux prototyper rapidement, explorer des directions créatives multiples et matérialiser des concepts complexes en un temps record.", 
-          technologies: ["Prototypage Rapide", "Exploration Créative", "Concepts Complexes", "Innovation", "Itération"]
+        {
+          category: "tools",
+          longDescription: "Maîtrise avancée de DaVinci Resolve Fusion. De nombreuses heures de pratique sur : montage, animation, 3D, structuration de projets. Capacité à produire des contenus complets, propres et livrables.",
+          technologies: ["DaVinci Resolve", "Fusion", "Montage", "Animation", "Production"]
         }
       ]
     },
-    // SHARD 6 - BOTS DISCORD PERSONNALISÉS
+    // SHARD 6 - PROJETS / VISION
     {
       id: 6,
-      title: "BOTS DISCORD PERSONNALISÉS",
+      title: "PROJETS / VISION",
       facettes: [
-        { 
-          category: "dev", 
-          longDescription: "Je conçois des bots entièrement personnalisés, pensés pour répondre à des besoins spécifiques. Qu'il s'agisse de modération avancée, de systèmes de gamification, de gestion d'événements ou de fonctionnalités ludiques, chaque bot est unique et taillé sur mesure.", 
-          technologies: ["Discord.js", "Bot Development", "Personnalisation", "Modération", "Gamification"]
+        {
+          category: "vision",
+          longDescription: "Je travaille actuellement sur plusieurs projets vidéo. Écriture, tournage, structuration. Cela me demande du temps, car je veux faire les choses correctement.",
+          technologies: ["Projets en Cours", "Écriture", "Tournage", "Structuration", "Qualité"]
         },
-        { 
-          category: "dev", 
-          longDescription: "De l'architecture back-end à l'interface utilisateur (via les interactions Discord), mes bots intègrent :\n\n- Gestion de bases de données pour la persistance\n- Intégrations API pour étendre les possibilités\n- Affichage Discord Container V2", 
-          technologies: ["Node.js", "PostgreSQL", "API Integration", "Automation", "Architecture"]
+        {
+          category: "vision",
+          longDescription: "Beaucoup de projets sont encore en construction. Je pense mes projets comme un ensemble. Et je sais que je finirai par atteindre ce que je construis. Les idées évoluent, mais la direction reste.",
+          technologies: ["Futur", "Construction", "Cohérence", "Direction", "Évolution"]
         },
-        { 
-          category: "dev", 
-          longDescription: "Les nouveaux modules Discord Container V2 permettent beaucoup de choses que les anciennes versions ne donnaient pas.", 
-          technologies: ["Discord Container V2", "UX Design", "Community Management", "Engagement", "Simplicité"]
+        {
+          category: "secret",
+          longDescription: "Sur ce site, j’ai laissé une expérimentation de ce que je sais créer. Certains éléments peuvent être manipulés. Certains agencements ouvrent des choses inattendues. Laisse-moi les projets en main, et soutiens-moi. La Primaterie a commencé.",
+          technologies: ["Expérimentation", "Interactivité", "Soutien", "Aventure", "Primaterie"]
         }
       ]
     },
@@ -227,135 +227,135 @@ export const projectTranslations = {
     }
   ],
   en: [
-    // SHARD 1 - INTRODUCTION
+    // SHARD 1 - IDENTITY
     {
       id: 1,
-      title: "INTRODUCTION",
+      title: "IDENTITY",
       facettes: [
-        { 
-          category: "presentation", 
-          longDescription: "They say a restaurant with too extensive a menu struggles to excel at every dish. Ape Prod offers multiple services BUT converge toward a single specialty: design and project brainstorming. Art direction, visual identity, game design, technical prototyping, and storytelling—each skill serves one common goal: transforming your ideas into solid concepts that reflect your vision and are innovative.", 
-          technologies: ["Art Direction", "Conception", "Creative Strategy", "Innovation", "Global Vision"]
+        {
+          category: "presentation",
+          longDescription: "My name is BhealL. Since always, I have been guided by two things: creativity and curiosity. I never followed a classic path, and I never wanted to limit myself to a single field. I have always created. Everything. For two years, I decided to stop adapting to an existing frame and to build my own. Today, I turn my ideas into real projects.",
+          technologies: ["Identity", "Creativity", "Curiosity", "Vision", "Projects"]
         },
-        { 
-          category: "services", 
-          longDescription: "As a versatile designer, I work with numerous software tools to bring my ideas to life and create art direction and designs adapted to any project. My added value lies in my versatility—without being an expert in every field—which allows me to create precise prototypes that are easily handed off and improved upon.\n\nHaving ideas is easy. Refining them, structuring them, and making them real is another story. My role is to transform intent into viable projects, with method and creativity.", 
-          technologies: ["Visual Identity", "Game Design", "Prototyping", "Storytelling", "UX Design"]
+        {
+          category: "services",
+          longDescription: "I am versatile. Really versatile. I learned to work across several domains depending on what I had in mind. But my real field of expertise is ideas. To think a project as a whole, from substance to form, and to design a prototype when needed to prove that it is possible.",
+          technologies: ["Versatility", "Ideas", "Prototype", "Concept", "Adaptation"]
         },
-        { 
-          category: "about", 
-          longDescription: "My name is Bilel, 27 years old. Designer and brainstormer passionate about crafting coherent, impactful projects.\n\nMy goal: give shape to your ideas by combining strategic thinking, creativity, and concrete execution.", 
-          technologies: ["Design", "Brainstorming", "Creativity", "Versatility", "Execution"]
+        {
+          category: "about",
+          longDescription: "I do not seek perfect means. For me, creation is not a recipe. It is not a matter of having money, the right ingredients, or the right tools. It is a matter of idea. Of vision. And it is often when the idea meets reality that I become most effective. I find solutions. And I try to make them a strength.",
+          technologies: ["Thinking", "Structuring", "Building", "Collaboration", "Vision"]
         }
       ]
     },
-    // SHARD 2 - TONO DISCORD BOT
+    // SHARD 2 - ART DIRECTION / STICK MONKEY
     {
       id: 2,
-      title: "TON0.D API",
+      title: "ART DIRECTION / STICK MONKEY",
       facettes: [
-        { 
-          category: "dev", 
-          longDescription: "TON0.D is a complete game API, designed from the start to be reusable across any platform: mobile applications, websites, or Discord bots, and to be easily improved and reused in future projects.\n\nThe goal was to create a game system on an application like Discord that isn't logically designed for it. I wanted people to be motivated, through the desire to play, to go to Discord and thus create opportunities for users to participate more actively on the server.", 
-          technologies: ["Discord.js", "Node.js", "API Design", "Modular Architecture", "Ruby on Rails"]
+        {
+          category: "design",
+          longDescription: "It all started with a storyboard. At first, I simply wanted to create an animation with stickmen. But I did not want to stay on something simple. I have always been fascinated by monkeys, and I like to add depth and thought into what I create. That is how Stick Monkey was born: a simple stickman with a primate mask that sets him apart from the others.",
+          technologies: ["Art Direction", "Storyboarding", "Visual Identity", "Symbolism", "Primate"]
         },
-        { 
-          category: "dev", 
-          longDescription: "One of TON0.D's major innovations is its AI-based dialogue system, ready to integrate, which generates dynamic and unique dialogues. Each interaction with non-player characters generates unique, contextual responses, making every conversation authentic and unpredictable, with narrative coherence and responses adapted to the situation's context.\n\nNo more scripted, repetitive dialogues: the AI adapts to player choices, interaction history, and situational context. This approach creates genuine narrative immersion where no two playthroughs are alike.", 
-          technologies: ["Generative AI", "NLP", "Conversational Systems", "Dynamic Narrative", "Contextualization"]
+        {
+          category: "design",
+          longDescription: "I took the time to develop and refine my art direction. I adapt to requests and styles. But my goal always remains the same: create something coherent with the need. And in every project, I try to add depth. Thoughtfulness. Even where it is not expected.",
+          technologies: ["Style", "Coherence", "Adaptation", "Substance", "Art Direction"]
         },
-        { 
-          category: "dev", 
-          longDescription: "TON0.D's purpose is to enable users to become creators of this universe alongside me. The quest system is designed so players can create quests that, after my validation, will be added to the universe, making these additions accessible to the entire community and allowing players to add their story to the universe.\n\nThis collaborative approach transforms each player into part of the game's universe, allowing them to canonize quests and stories into the lore of this new world, creating a living ecosystem where content renews organically. It's the fusion of advanced technical development, generative AI, and participatory game design.", 
-          technologies: ["UGC", "Game Design", "Collaborative Systems", "Content Editor", "Community Building"]
+        {
+          category: "design",
+          longDescription: "My art direction evolves with me over time. Each version of Stick Monkey reflects a new step in this creative journey. I explore, revise, and grow a character that embodies a free mindset in a fractured world.",
+          technologies: ["Evolution", "Visual", "Versioning", "Creativity", "Experimentation"]
         }
       ]
     },
-    // SHARD 3 - DAVINCI RESOLVE & FUSION
+    // SHARD 3 - CINEMA / POWER ROGER
     {
       id: 3,
-      title: "DAVINCI RESOLVE & FUSION",
+      title: "CINEMA / POWER ROGER",
       facettes: [
-        { 
-          category: "video", 
-          longDescription: "My mastery of Fusion allows me to create complex animations, custom visual effects, and narrative transitions that elevate every project. Where others see technical constraints, I see creative opportunities.", 
-          technologies: ["DaVinci Resolve", "Fusion", "Compositing", "VFX", "Motion Design"]
+        {
+          category: "film",
+          longDescription: "In 2024, I made my first short film for the Nikon Festival (theme: “Superpower”). I have dreamed of making films since I was young. I launched with a simple constraint: zero budget, zero contacts. Just me, a friend, my partner, and a great actor I cast myself: Adrien Daquin as Roger. Damien Carré handled the camera, and I directed while also acting.",
+          technologies: ["Cinema", "Short Film", "Directing", "Casting", "Self-Production"]
         },
-        { 
-          category: "video", 
-          longDescription: "From node-based compositing to particle systems, including 3D tracking, Fusion offers immense creative freedom. I leverage this power to build impactful visuals.", 
-          technologies: ["Node-Based Compositing", "3D Tracking", "Color Grading", "Particle Systems", "Advanced Workflows"]
+        {
+          category: "film",
+          longDescription: "This project was both pride and a wound. Nothing went as planned. I had no editing skills, and I had to learn in less than four weeks. Some props arrived the day after shooting and I could not rebook the location, so we had to do without. The rushes were not good, the sound was not good, and the result did not match what I had in mind (a silent film). So I adapted. I turned what I had into something usable. I did everything: writing, breakdown, shooting, editing, casting, scouting, negotiating the location.",
+          technologies: ["Adaptation", "Editing", "Production", "Resilience", "Learning"]
         },
-        { 
-          category: "video", 
-          longDescription: "I've already completed complex projects with Fusion that are reusable across multiple projects. I can create a Fusion composition prototype with your art direction that's easily reusable.", 
-          technologies: ["Animation", "Visual Storytelling", "Post-Production", "Creative Effects", "Templates"]
+        {
+          category: "film",
+          longDescription: "This project unlocked me. It proved that I could see my ideas through even without money. I am not the best in every field. But I am the best when I have to adapt, create, and brainstorm concepts with different constraints until I make them a strength.",
+          technologies: ["Breakthrough", "Creativity", "Constraints", "Strength", "Vision"]
         }
       ]
     },
-    // SHARD 4 - MY FIRST SHORT FILM
+    // SHARD 4 - VIDEO GAMES
     {
       id: 4,
-      title: "MY FIRST SHORT FILM",
+      title: "VIDEO GAMES",
       facettes: [
-        { 
-          category: "video", 
-          longDescription: "I made a short film from A to Z.\n\nI took on all roles: screenwriter, director, casting director, location scout, editor. From writing the screenplay to technical breakdown, casting, shooting, editing. This experience taught me to understand the different roles on a film set and the mistakes not to repeat.", 
-          technologies: ["Directing", "Screenwriting", "Direction", "Casting", "Production"]
+        {
+          category: "game",
+          longDescription: "TON0.D is a text-based roguelite RPG. The gameplay relies on several interconnected systems: energy, procedural exploration, narrative with a real branching dialogue system, tactical combat and progression, and a unique primate capture system.",
+          technologies: ["RPG", "Roguelite", "Narrative", "Branching Dialogue", "Exploration"]
         },
-        { 
-          category: "video", 
-          longDescription: "From technical breakdown to rushes review, each phase presented its challenges. Finding the right actors, negotiating shooting locations, managing day-of surprises, and final editing when I'd never edited before: audiovisual production is a constant exercise in adaptation, and I can say I enjoyed it despite my dissatisfaction with the final result.", 
-          technologies: ["Technical Breakdown", "Production Management", "Editing", "Adaptation", "Problem Solving"]
+        {
+          category: "game",
+          longDescription: "TON0 is a mini-game that explores an arcade experience based on momentum and interaction. It is a playable prototype designed to test a simple, sharp gameplay direction.",
+          technologies: ["Mini-Game", "Gameplay", "Prototype", "Momentum", "Interaction"]
         },
-        { 
-          category: "video", 
-          longDescription: "This experience confirmed a conviction: I have ideas and a universe to share. But without budget, without resources, without a team, I can't implement them as I have them in my mind.", 
-          technologies: ["Project Direction", "Artistic Vision", "Team Management", "Creativity", "Storytelling"]
+        {
+          category: "game",
+          longDescription: "I design my games from a message. I see them as a continuum: TON0.D → 100% text game, TON1.D → arcade game based on momentum, TON??? → evolution. Each game is a step in the same universe.",
+          technologies: ["Game Design", "Vision", "Message", "Progression", "Universe"]
         }
       ]
     },
-    // SHARD 5 - GENERATIVE ARTIFICIAL INTELLIGENCE
+    // SHARD 5 - COLLABORATIONS
     {
       id: 5,
-      title: "GENERATIVE ARTIFICIAL INTELLIGENCE",
+      title: "COLLABORATIONS",
       facettes: [
-        { 
-          category: "tech", 
-          longDescription: "I previously attended a computer development school, and today you need to know how to work with AI to develop projects. I quickly learned to use AI to develop custom prototypes.", 
-          technologies: ["Generative AI", "Claude Sonnet", "Stable Diffusion", "Local AI", "AI Workflows"]
+        {
+          category: "business",
+          longDescription: "Created the website and visual identity for a cleaning company. Direction: approved symbol, nature, cleanliness, ecology, trust. I delivered design, logo, and a complete website.",
+          technologies: ["Visual Identity", "Web Design", "Logo", "Trust", "Ecology"]
         },
-        { 
-          category: "tech", 
-          longDescription: "True mastery of generative AI doesn't lie in basic tool usage, but in their intelligent orchestration. I've created my workflow with AI to obtain custom results.", 
-          technologies: ["AI Pipelines", "Image Generation", "Content Creation", "Assisted Brainstorming", "Orchestration"]
+        {
+          category: "business",
+          longDescription: "Produced several motion designs for YouTube collaborations. Worked on animation, rhythm, and readability.",
+          technologies: ["Motion Design", "Animation", "Rhythm", "Readability", "Content"]
         },
-        { 
-          category: "tech", 
-          longDescription: "With advanced management of generative AIs, I can prototype quickly, explore multiple creative directions, and materialize complex concepts in record time.", 
-          technologies: ["Rapid Prototyping", "Creative Exploration", "Complex Concepts", "Innovation", "Iteration"]
+        {
+          category: "tools",
+          longDescription: "Advanced mastery of DaVinci Resolve Fusion. Many hours of practice in editing, animation, 3D, and project structuring. Able to produce complete, polished, deliverable content.",
+          technologies: ["DaVinci Resolve", "Fusion", "Editing", "Animation", "Production"]
         }
       ]
     },
-    // SHARD 6 - CUSTOM DISCORD BOTS
+    // SHARD 6 - PROJECTS / VISION
     {
       id: 6,
-      title: "CUSTOM DISCORD BOTS",
+      title: "PROJECTS / VISION",
       facettes: [
-        { 
-          category: "dev", 
-          longDescription: "I design fully customized bots, designed to meet specific needs. Whether it's advanced moderation, gamification systems, event management, or playful features, each bot is unique and tailor-made.", 
-          technologies: ["Discord.js", "Bot Development", "Customization", "Moderation", "Gamification"]
+        {
+          category: "vision",
+          longDescription: "I am currently working on several video projects. Writing, shooting, structuring. It takes time because I want to do things correctly.",
+          technologies: ["Ongoing Projects", "Writing", "Shooting", "Structure", "Quality"]
         },
-        { 
-          category: "dev", 
-          longDescription: "From back-end architecture to user interface (via Discord interactions), my bots integrate:\n\n- Database management for persistence\n- API integrations to extend possibilities\n- Discord Container V2 display", 
-          technologies: ["Node.js", "PostgreSQL", "API Integration", "Automation", "Architecture"]
+        {
+          category: "vision",
+          longDescription: "Many projects are still under construction. I think of my projects as a whole. And I know I will eventually reach what I am building. Ideas evolve, but the direction stays.",
+          technologies: ["Future", "Construction", "Coherence", "Direction", "Evolution"]
         },
-        { 
-          category: "dev", 
-          longDescription: "The new Discord Container V2 modules allow many things that older versions didn't provide.", 
-          technologies: ["Discord Container V2", "UX Design", "Community Management", "Engagement", "Simplicity"]
+        {
+          category: "secret",
+          longDescription: "On this site, I left an experiment of what I know how to create. Some elements can be manipulated. Some arrangements open unexpected things. Leave the projects in my hands and support me. La Primaterie has begun.",
+          technologies: ["Experimentation", "Interactivity", "Support", "Adventure", "Primaterie"]
         }
       ]
     },

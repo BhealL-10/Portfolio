@@ -765,6 +765,29 @@ export class GameHUDSystem {
     this.avatarEditorLayers = this.element.querySelector<HTMLDivElement>('[data-avatar-editor-layers]')!;
     this.avatarEditorCloseButton = this.element.querySelector<HTMLButtonElement>('[data-avatar-close]')!;
     this.avatarEditorSaveButton = this.element.querySelector<HTMLButtonElement>('[data-avatar-save]')!;
+    this.gameOverStats.setAttribute('data-guide-hover', 'game-score');
+    this.leaderboardPanel.setAttribute('data-guide-hover', 'game-leaderboard');
+    this.leaderboardPreview.setAttribute('data-guide-hover', 'game-avatar');
+    this.leaderboardSaveButton.setAttribute('data-guide-hover', 'game-save');
+    this.restartButton.setAttribute('data-guide-hover', 'game-replay');
+    this.returnButton.setAttribute('data-guide-hover', 'game-menu');
+    this.avatarEditor.setAttribute('data-guide-hover', 'game-avatar');
+    this.avatarEditorCloseButton.setAttribute('data-guide-hover', 'game-avatar-close');
+    this.avatarEditorSaveButton.setAttribute('data-guide-hover', 'game-avatar-save');
+    this.helpStage.setAttribute('data-guide-hover', 'game-tutorial');
+    this.helpPrevButton.setAttribute('data-guide-hover', 'game-tutorial-nav');
+    this.helpNextButton.setAttribute('data-guide-hover', 'game-tutorial-nav');
+    this.helpCloseButton.setAttribute('data-guide-hover', 'game-tutorial-close');
+    this.achievementsSummary.setAttribute('data-guide-hover', 'game-achievements');
+    this.achievementsScroll.setAttribute('data-guide-hover', 'game-achievements');
+    this.achievementsControls.setAttribute('data-guide-hover', 'game-achievements-filters');
+    this.achievementsCloseButton.setAttribute('data-guide-hover', 'game-achievements-close');
+    this.settingsHelpButton.setAttribute('data-guide-hover', 'game-settings-help');
+    this.settingsThemeButton.setAttribute('data-guide-hover', 'game-settings-theme');
+    this.settingsLanguageButton.setAttribute('data-guide-hover', 'game-settings-language');
+    this.settingsMuteButton.setAttribute('data-guide-hover', 'game-settings-mute');
+    this.settingsVolumeButton.setAttribute('data-guide-hover', 'game-settings-volume');
+    this.settingsFullscreenButton.setAttribute('data-guide-hover', 'game-settings-fullscreen');
     this.landingFeedbackDisplay = new LandingGradeDisplay();
     this.element.appendChild(this.landingFeedbackDisplay.element);
     this.playerAvatarSelection = this.readPlayerAvatarSelection();
@@ -778,6 +801,7 @@ export class GameHUDSystem {
     this.achievementsButton.type = 'button';
     this.achievementsButton.className = 'game-hud__settings-toggle game-hud__settings-toggle--achievement';
     this.topRightCluster.element.insertBefore(this.achievementsButton, this.topRightCluster.settingsButton.element);
+    this.topRightCluster.settingsButton.element.setAttribute('data-guide-hover', 'game-settings-toggle');
     this.topRightCluster.settingsButton.element.addEventListener('click', () => {
       this.closeAchievements();
       this.topRightCluster.toggle();
@@ -3816,6 +3840,10 @@ export class GameHUDSystem {
     this.avatarEditorPreview = this.avatarEditorStage.querySelector<HTMLDivElement>('[data-avatar-editor-preview]')!;
     this.avatarEditorLayers.innerHTML = '';
     this.avatarEditorLayers.hidden = true;
+    this.avatarEditorStage.querySelectorAll<HTMLButtonElement>('[data-avatar-layer][data-avatar-step]').forEach((button) => {
+      const layer = button.dataset.avatarLayer;
+      button.setAttribute('data-guide-hover', layer === 'oreille' ? 'game-avatar-ears' : 'game-avatar-parts');
+    });
   }
 
   private renderAvatarMarkup(
