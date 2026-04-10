@@ -1899,18 +1899,28 @@ export class OrbitWorldSystem {
     }
     plane.visible = true;
     plane.material.map = this.getIconTexture(visual.iconSrc, visual.iconText, visual.iconTint);
-    plane.material.opacity = 1;
+    plane.material.opacity = visual.iconSrc?.includes('shard-direction') ? 0.98 : 1;
     plane.material.needsUpdate = true;
     plane.userData.iconRotation = visual.iconRotation ?? 0;
     const baseScale = (visual.iconScale ?? 0.34) * 1.22;
     const dominantScale = Math.max(scale.x, scale.y);
     const elevatedIcon = (visual.iconOffsetY ?? 0) > 0.001;
+    const movingDirectionIndicator = Boolean(visual?.iconSrc?.includes('shard-direction'));
+    const iconScaleBoost = movingDirectionIndicator ? 1.28 : 1;
+    plane.renderOrder = movingDirectionIndicator ? 44 : 42;
     plane.scale.set(
-      baseScale * dominantScale / Math.max(0.001, scale.x),
-      baseScale * dominantScale / Math.max(0.001, scale.y),
+      (baseScale * iconScaleBoost * dominantScale) / Math.max(0.001, scale.x),
+      (baseScale * iconScaleBoost * dominantScale) / Math.max(0.001, scale.y),
       1
     );
-    plane.position.set(0, visual.iconOffsetY ?? 0, Math.max(elevatedIcon ? 0.4 : 0.18, dominantScale * (elevatedIcon ? 0.42 : 0.26)));
+    plane.position.set(
+      0,
+      visual.iconOffsetY ?? 0,
+      Math.max(
+        movingDirectionIndicator ? 0.96 : elevatedIcon ? 0.4 : 0.18,
+        dominantScale * (movingDirectionIndicator ? 0.72 : elevatedIcon ? 0.42 : 0.26)
+      )
+    );
   }
 
   private getGameFieldAnchor(index: number) {

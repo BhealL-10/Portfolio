@@ -4023,12 +4023,16 @@ export class GameHUDSystem {
       SOUND_BUTTON_ASSETS.off.light,
       SOUND_BUTTON_ASSETS.sprite
     ];
+    const headerAssets = Object.values(GAME_OVER_HEADER_ASSETS);
+    const achievementRarityAssets = Object.values(ACHIEVEMENT_RARITY_ICON_ASSETS);
     const preloadedAssets = [
       ...Object.values(GRADE_SPRITE_ASSET_URLS).flatMap((assetSet) => Object.values(assetSet)),
       ...Object.values(MOMENTUM_BAR_ASSETS),
       COIN_ICON_URL,
       EQUIPMENT_UI_ASSETS.bgBoat,
       ...itemAssets,
+      ...headerAssets,
+      ...achievementRarityAssets,
       ...Object.values(EQUIPMENT_UI_ASSETS.charges),
       ...Object.values(MOBILE_CONTROL_ASSETS).flatMap((assetSet) => Object.values(assetSet)),
       ...MOBILE_CHARGE_ASSETS.flatMap((assetSet) => Object.values(assetSet)),
@@ -4040,13 +4044,13 @@ export class GameHUDSystem {
     this.preloadShapeTemplate(EQUIPMENT_UI_ASSETS.bgBoat);
 
     const deferredPreload = this.ensureDeferredAssetsModule()
-      .then(async ({ loadAvatarLayerSets, loadHelpPagesFor }) => {
+      .then(async ({ preloadAvatarLayerSets, preloadHelpPagesFor }) => {
         await Promise.all([
-          loadAvatarLayerSets(),
-          loadHelpPagesFor('fr', 'dark'),
-          loadHelpPagesFor('fr', 'light'),
-          loadHelpPagesFor('en', 'dark'),
-          loadHelpPagesFor('en', 'light')
+          preloadAvatarLayerSets(),
+          preloadHelpPagesFor('fr', 'dark'),
+          preloadHelpPagesFor('fr', 'light'),
+          preloadHelpPagesFor('en', 'dark'),
+          preloadHelpPagesFor('en', 'light')
         ]);
       })
       .catch((error) => {

@@ -9,6 +9,14 @@ const GUIDE_FRAME_COUNT = 5;
 const GUIDE_DRAG_THRESHOLD = 10;
 const MOBILE_GUIDE_BREAKPOINT = 680;
 const TABLET_GUIDE_BREAKPOINT = 900;
+const GUIDE_CURSOR_OFFSET_X = 18;
+const GUIDE_CURSOR_OFFSET_Y = 16;
+const GUIDE_BUBBLE_GAP_X = 12;
+const GUIDE_BUBBLE_GAP_Y = 10;
+const GUIDE_EDGE_ZONE = 0.18;
+const GUIDE_TEXT_REVEAL_MS_PER_CHARACTER = 24;
+const GUIDE_TEXT_REVEAL_MIN_DURATION_MS = 280;
+const GUIDE_TEXT_REVEAL_MAX_DURATION_MS = 1800;
 
 const GUIDE_SPRITES = {
   arrive: new URL('../../assets/images/shared/branding/guide/guide-arrive.png', import.meta.url).href,
@@ -54,6 +62,7 @@ export interface GuideTarget {
   guidePlacementHint?: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right' | 'left' | 'right' | 'top' | 'bottom';
   bubblePlacementHint?: 'upper-left' | 'upper-right';
   flipGuideX?: boolean;
+  fixedPlacementMode?: 'achievements';
 }
 
 export interface GuidePresenceContext {
@@ -93,6 +102,8 @@ export type GuideCue =
   | { type: 'achievements_hover'; item: 'entry' | 'filters' | 'close' }
   | { type: 'settings_hover'; item: 'entry' | 'help' | 'theme' | 'language' | 'fullscreen' | 'mute' | 'volume' };
 
+type DialogueAnimation = 'static' | 'wiggle' | 'shake' | 'pulse' | 'subtle-bounce';
+
 interface GuideMessage {
   id: string;
   priority: number;
@@ -101,6 +112,10 @@ interface GuideMessage {
   body: LocalizedText;
   target: GuideTarget | null;
   createdAt: number;
+  parts?: LocalizedText[];
+  currentPartIndex?: number;
+  partStartedAt?: number;
+  animation?: DialogueAnimation;
 }
 
 interface GuidePlacement {
@@ -114,6 +129,8 @@ interface GuidePlacement {
   panelHeight: number;
   flipX: boolean;
   flipY: boolean;
+  bubbleX: 'left' | 'right';
+  bubbleY: 'above' | 'below';
 }
 
 interface GuideAnchor {
@@ -127,6 +144,58 @@ function loc(fr: string, en: string): LocalizedText {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function splitDialogueIntoParts(text: LocalizedText): LocalizedText[] {
+  const idealWordsPerPart = 12;
+  const maxLength = 85;
+  
+  const splitText = (line: string): string[] => {
+    if (line.length <= maxLength) {
+      return [line];
+    }
+    
+    const words = line.split(/\s+/);
+    const parts: string[] = [];
+    let currentPart = '';
+    
+    for (const word of words) {
+      const testLine = currentPart ? `${currentPart} ${word}` : word;
+      
+      if (testLine.length <= maxLength && (currentPart.split(/\s+/).length < idealWordsPerPart || currentPart === '')) {
+        currentPart = testLine;
+      } else {
+        if (currentPart) {
+          parts.push(currentPart);
+        }
+        currentPart = word;
+      }
+    }
+    
+    if (currentPart) {
+      parts.push(currentPart);
+    }
+    
+    return parts.length > 1 ? parts : [line];
+  };
+  
+  const frParts = splitText(text.fr);
+  const enParts = splitText(text.en);
+  const maxParts = Math.max(frParts.length, enParts.length);
+  
+  if (maxParts <= 1) {
+    return [text];
+  }
+  
+  const result: LocalizedText[] = [];
+  for (let i = 0; i < maxParts; i++) {
+    result.push({
+      fr: frParts[i] || frParts[frParts.length - 1],
+      en: enParts[i] || enParts[enParts.length - 1]
+    });
+  }
+  
+  return result;
 }
 
 function rectsOverlap(a: { left: number; top: number; right: number; bottom: number }, b: { left: number; top: number; right: number; bottom: number }) {
@@ -525,6 +594,10 @@ export class GuideBubbleSystem {
   private currentPanelHeight = 304 / GUIDE_PANEL_ASPECT_RATIO;
   private currentPanelFlipX = false;
   private currentPanelFlipY = false;
+  private currentPanelBubbleX: GuidePlacement['bubbleX'] = 'left';
+  private currentPanelBubbleY: GuidePlacement['bubbleY'] = 'above';
+  private renderedMessageId: string | null = null;
+  private renderedMessageRevealCount = 0;
   private anchor: GuideAnchor = { x: 0.08, y: 0.7 };
   private dragPointerId: number | null = null;
   private dragMoved = false;
@@ -564,6 +637,7 @@ export class GuideBubbleSystem {
 
     this.titleElement = document.createElement('p');
     this.titleElement.className = 'guide-bubble__title';
+    this.titleElement.hidden = true;
 
     this.bodyElement = document.createElement('p');
     this.bodyElement.className = 'guide-bubble__body';
@@ -618,9 +692,16 @@ export class GuideBubbleSystem {
       return;
     }
 
-    if (this.currentMessage && message.priority > this.currentMessage.priority) {
-      this.queue.unshift(message);
-      this.currentMessage = null;
+    if (this.currentMessage && message.priority >= this.currentMessage.priority) {
+      const now = performance.now();
+      this.currentMessage = {
+        ...message,
+        createdAt: now,
+        currentPartIndex: 0,
+        partStartedAt: now
+      };
+      this.queue.length = 0;
+      this.render();
       return;
     }
 
@@ -635,6 +716,31 @@ export class GuideBubbleSystem {
 
   update(deltaTime: number) {
     const now = performance.now();
+    
+    // Handle multi-part dialogue advancement
+    if (this.currentMessage && this.currentMessage.parts && (this.currentMessage.currentPartIndex ?? 0) < (this.currentMessage.parts.length - 1)) {
+      const currentPart = this.currentMessage.parts[this.currentMessage.currentPartIndex ?? 0];
+      const revealDuration = clamp(
+        Array.from(currentPart[this.i18n.current]).length * GUIDE_TEXT_REVEAL_MS_PER_CHARACTER,
+        GUIDE_TEXT_REVEAL_MIN_DURATION_MS,
+        GUIDE_TEXT_REVEAL_MAX_DURATION_MS
+      );
+      const partDuration = revealDuration + 800; // Hold for 800ms after reveal
+      const partStartedAt = this.currentMessage.partStartedAt ?? now;
+      
+      if (now >= partStartedAt + partDuration) {
+        // Advance to next part
+        this.currentMessage = {
+          ...this.currentMessage,
+          currentPartIndex: (this.currentMessage.currentPartIndex ?? 0) + 1,
+          partStartedAt: now
+        };
+        this.renderedMessageRevealCount = 0;
+        this.renderedMessageId = null;
+        this.render();
+      }
+    }
+    
     if (this.currentMessage && !this.manuallyDisabled && now >= this.currentMessage.createdAt + this.currentMessage.durationMs) {
       this.currentMessage = null;
       this.render();
@@ -645,8 +751,17 @@ export class GuideBubbleSystem {
       if (nextMessage) {
         this.currentMessage = {
           ...nextMessage,
-          createdAt: now
+          createdAt: now,
+          currentPartIndex: 0,
+          partStartedAt: now
         };
+        this.render();
+      }
+    }
+
+    if (this.currentMessage) {
+      const revealCount = this.getRevealCharacterCount(this.currentMessage, now);
+      if (this.renderedMessageId !== this.currentMessage.id || revealCount !== this.renderedMessageRevealCount) {
         this.render();
       }
     }
@@ -691,6 +806,7 @@ export class GuideBubbleSystem {
         firstTimeKey?: string;
         cooldownKey?: string;
         cooldownMs?: number;
+        animation?: DialogueAnimation;
       } = {}
     ) => {
       const firstTimeKey = options.firstTimeKey;
@@ -708,6 +824,9 @@ export class GuideBubbleSystem {
       if (cooldownKey) {
         this.cooldowns.set(cooldownKey, now + (options.cooldownMs ?? 9000));
       }
+      
+      const parts = splitDialogueIntoParts(body);
+      
       return {
         id,
         priority: options.priority ?? 2,
@@ -715,7 +834,11 @@ export class GuideBubbleSystem {
         title: options.title ?? DEFAULT_SPEAKER_TITLE,
         body,
         target,
-        createdAt: now
+        createdAt: now,
+        parts,
+        currentPartIndex: 0,
+        partStartedAt: now,
+        animation: options.animation ?? 'static'
       } satisfies GuideMessage;
     };
 
@@ -724,15 +847,16 @@ export class GuideBubbleSystem {
         return enqueue(
           'intro-mirror',
           loc(
-            'Allez. Touche encore. Si tu veux entrer dans mon bazar, il faut déranger le miroir.',
-            'Go on. Touch it again. If you want into my mess, you need to bother the mirror first.'
+            'Touch the mirror!',
+            'Touche le miroir!'
           ),
           {
             title: loc('Miroir', 'Mirror'),
             priority: 4,
             durationMs: 4200,
             cooldownKey: 'guide:intro-mirror-cooldown',
-            cooldownMs: 1800
+            cooldownMs: 1800,
+            animation: 'wiggle'
           }
         );
       case 'hub_arrival':
@@ -773,9 +897,8 @@ export class GuideBubbleSystem {
             title: loc('Profondeur', 'Depth'),
             priority: 3,
             durationMs: 3600,
-            firstTimeKey: 'guide:portfolio-scroll',
-            cooldownKey: 'guide:portfolio-scroll-cooldown',
-            cooldownMs: 14000
+            cooldownKey: `guide:portfolio-scroll-cooldown:${cue.project.id}:${cue.direction > 0 ? 'next' : 'prev'}`,
+            cooldownMs: 1000
           }
         );
       case 'focus_enter':
@@ -798,7 +921,8 @@ export class GuideBubbleSystem {
             priority: 5,
             durationMs: 3200,
             cooldownKey: 'guide:mirror-reveal-cooldown',
-            cooldownMs: 3000
+            cooldownMs: 3000,
+            animation: 'shake'
           }
         );
       case 'drag_first':
@@ -812,26 +936,46 @@ export class GuideBubbleSystem {
             title: loc('Traque', 'Hunt'),
             priority: 4,
             durationMs: 3600,
-            firstTimeKey: 'guide:drag-first'
+            firstTimeKey: 'guide:drag-first',
+            animation: 'wiggle'
           }
         );
       case 'slot_placed':
         return enqueue(
-          `slot-placed:${cue.project.id}`,
-          cue.remainingSlots > 0
+          `slot-placed:${cue.project.id}:${cue.remainingSlots}`,
+          cue.remainingSlots >= 5
             ? loc(
-                'Ok, t’as trouvé un des trucs cachés. C’est exactement comme ça que j’avais planqué le passage.',
-                'Okay, you found one of the hidden pieces. That is exactly how I buried the way forward.'
+                'Ok, t’as trouvé un des trucs cachés. Il en reste un paquet, mais au moins tu as compris le principe.',
+                'Okay, you found one of the hidden pieces. There are still plenty left, but at least you got the idea.'
               )
-            : loc(
-                'Le dernier a claqué juste. Là, oui, tu viens de réveiller quelque chose.',
-                'That last one clicked. Yes, that definitely woke something up.'
-              ),
+            : cue.remainingSlots >= 4
+              ? loc(
+                  'Là, ça commence à bouger. Tu remets doucement mon bazar dans le bon ordre.',
+                  'Now things are starting to move. You are slowly putting my mess back in the right order.'
+                )
+              : cue.remainingSlots === 3
+                ? loc(
+                    'Ah, là tu tiens quelque chose. On est à mi-chemin entre fouille et cambriolage propre.',
+                    'Ah, now you are onto something. We are halfway between exploring and a very tidy break-in.'
+                  )
+                : cue.remainingSlots === 2
+                  ? loc(
+                      'Plus que deux morceaux à replacer. Là, tu lis vraiment dans mon désordre.',
+                      'Only two pieces left to place. You are actually reading through my mess now.'
+                    )
+                  : cue.remainingSlots === 1
+                    ? loc(
+                        'Encore un et tout s’aligne. Ne tremble pas maintenant.',
+                        'One more and the whole thing lines up. Do not get shaky now.'
+                      )
+                    : loc(
+                        'Le dernier a claqué juste. Là, oui, tu viens de réveiller quelque chose.',
+                        'That last one clicked. Yes, that definitely woke something up.'
+                      ),
           {
             title: loc('Déclic', 'Click'),
             priority: 4,
-            durationMs: 3400,
-            firstTimeKey: 'guide:first-slot-placement'
+            durationMs: 3400
           }
         );
       case 'two_slots_left':
@@ -873,7 +1017,8 @@ export class GuideBubbleSystem {
             title: loc('Passage', 'Passage'),
             priority: 5,
             durationMs: 3000,
-            firstTimeKey: 'guide:slots-complete'
+            firstTimeKey: 'guide:slots-complete',
+            animation: 'pulse'
           }
         );
       case 'primaterie_arrival':
@@ -920,7 +1065,8 @@ export class GuideBubbleSystem {
             title: loc('Retour des morts', 'Back From The Dead'),
             priority: 5,
             durationMs: 4600,
-            firstTimeKey: 'guide:first-game-over'
+            firstTimeKey: 'guide:first-game-over',
+            animation: 'shake'
           }
         );
       case 'game_over_hover':
@@ -993,8 +1139,8 @@ export class GuideBubbleSystem {
       ? null
       : this.currentPresence.zone === 'focus'
         ? this.resolvePlacement(this.currentMessage?.target ?? this.currentPresence.target ?? this.resolveCursorTarget())
-        : this.currentPresence.zone === 'game' || this.currentPresence.zone === 'game_over'
-          ? this.resolveGameMenuPlacement(this.currentMessage?.target ?? this.currentPresence.target)
+        : (this.currentMessage?.target ?? this.currentPresence.target)?.fixedPlacementMode === 'achievements'
+          ? this.resolvePlacement(this.currentMessage?.target ?? this.currentPresence.target ?? this.resolveCursorTarget())
         : isMobile
           ? this.resolveMobilePlacement()
           : this.currentMessage
@@ -1016,6 +1162,8 @@ export class GuideBubbleSystem {
     this.desiredPanelHeight = placement.panelHeight;
     this.currentPanelFlipX = placement.flipX;
     this.currentPanelFlipY = placement.flipY;
+    this.currentPanelBubbleX = placement.bubbleX;
+    this.currentPanelBubbleY = placement.bubbleY;
 
     if (this.dragPointerId !== null) {
       this.currentCharacterLeft = this.desiredCharacterLeft;
@@ -1046,31 +1194,24 @@ export class GuideBubbleSystem {
     const characterSize = clamp(Math.min(viewportWidth * (isMobile ? 0.18 : 0.12), viewportHeight * (isMobile ? 0.14 : 0.18)), isMobile ? 72 : 88, isMobile ? 104 : 132);
     const panelWidth = clamp(Math.min(viewportWidth * (isMobile ? 0.62 : 0.34), isMobile ? 248 : 340), isMobile ? 188 : 236, isMobile ? 268 : 320);
     const panelHeight = panelWidth / GUIDE_PANEL_ASPECT_RATIO;
-    const pairPanelOffsetX = panelWidth - characterSize * 0.16;
-    const pairPanelOffsetY = panelHeight * 0.76;
-    const minCharacterLeft = VIEWPORT_MARGIN + pairPanelOffsetX;
+    const minCharacterLeft = VIEWPORT_MARGIN;
     const maxCharacterLeft = Math.max(minCharacterLeft, viewportWidth - characterSize - VIEWPORT_MARGIN);
-    const minCharacterTop = Math.max(VIEWPORT_MARGIN + pairPanelOffsetY, VIEWPORT_MARGIN);
+    const minCharacterTop = VIEWPORT_MARGIN;
     const maxCharacterTop = Math.max(minCharacterTop, viewportHeight - characterSize - VIEWPORT_MARGIN);
     const availableWidth = Math.max(1, maxCharacterLeft - minCharacterLeft);
     const availableHeight = Math.max(1, maxCharacterTop - minCharacterTop);
     const characterLeft = clamp(minCharacterLeft + this.anchor.x * availableWidth, minCharacterLeft, maxCharacterLeft);
     const characterTop = clamp(minCharacterTop + this.anchor.y * availableHeight, minCharacterTop, maxCharacterTop);
-    const panelLeft = characterLeft - pairPanelOffsetX;
-    const panelTop = characterTop - pairPanelOffsetY;
-
-    return {
+    return this.buildUnifiedPlacement({
       characterLeft,
       characterTop,
       characterSize,
-      characterFlipX: false,
-      panelLeft,
-      panelTop,
       panelWidth,
       panelHeight,
-      flipX: true,
-      flipY: false
-    };
+      viewportWidth,
+      viewportHeight,
+      characterFlipX: false
+    });
   }
 
   private resolveMobilePlacement(): GuidePlacement {
@@ -1081,21 +1222,18 @@ export class GuideBubbleSystem {
     const panelHeight = panelWidth / GUIDE_PANEL_ASPECT_RATIO;
     const characterLeft = VIEWPORT_MARGIN + 6;
     const characterTop = VIEWPORT_MARGIN + 8;
-    const panelLeft = clamp(characterLeft + characterSize * 0.34, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportWidth - panelWidth - VIEWPORT_MARGIN));
-    const panelTop = clamp(characterTop, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportHeight - panelHeight - VIEWPORT_MARGIN));
-
-    return {
+    return this.buildUnifiedPlacement({
       characterLeft,
       characterTop,
       characterSize,
-      characterFlipX: true,
-      panelLeft,
-      panelTop,
       panelWidth,
       panelHeight,
-      flipX: false,
-      flipY: false
-    };
+      viewportWidth,
+      viewportHeight,
+      forceBubbleX: 'right',
+      forceBubbleY: 'below',
+      characterFlipX: true
+    });
   }
 
   private resolveCursorTarget(): GuideTarget {
@@ -1113,95 +1251,27 @@ export class GuideBubbleSystem {
     const characterSize = clamp(Math.min(viewportWidth * 0.12, viewportHeight * 0.18), 88, 132);
     const panelWidth = clamp(Math.min(viewportWidth * 0.34, 340), 236, 320);
     const panelHeight = panelWidth / GUIDE_PANEL_ASPECT_RATIO;
-    const isLeftZone = this.cursorX < viewportWidth * 0.34;
-    const isBottomZone = this.cursorY > viewportHeight * 0.72;
-    const isTopZone = this.cursorY < viewportHeight * 0.18;
-    const guideLeft = this.cursorX + (isLeftZone ? 18 : -characterSize - 18);
-    const guideTop = this.cursorY + 16;
+    const targetRect = target ? expandRect(buildRectFromTarget(target), 12) : null;
+    const shouldFlip = target ? target.x <= viewportWidth * 0.42 : this.cursorX < viewportWidth * 0.34;
+    const guideLeft = targetRect
+      ? shouldFlip
+        ? targetRect.right + TARGET_GAP
+        : targetRect.left - characterSize - TARGET_GAP
+      : this.cursorX + (shouldFlip ? GUIDE_CURSOR_OFFSET_X : -characterSize - GUIDE_CURSOR_OFFSET_X);
+    const guideTop = targetRect ? targetRect.bottom + TARGET_GAP : this.cursorY + GUIDE_CURSOR_OFFSET_Y;
     const guideLeftClamped = clamp(guideLeft, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportWidth - characterSize - VIEWPORT_MARGIN));
     const guideTopClamped = clamp(guideTop, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportHeight - characterSize - VIEWPORT_MARGIN));
-
-    let panelLeft = isLeftZone
-      ? guideLeftClamped + characterSize * 0.22
-      : guideLeftClamped - panelWidth + characterSize * 0.78;
-    let panelTop = isBottomZone ? guideTopClamped - panelHeight * 0.92 : guideTopClamped + (isTopZone ? characterSize * 0.12 : -panelHeight * 0.92);
-
-    panelLeft = clamp(panelLeft, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportWidth - panelWidth - VIEWPORT_MARGIN));
-    panelTop = clamp(panelTop, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportHeight - panelHeight - VIEWPORT_MARGIN));
-
-    if (target) {
-      const targetRect = expandRect(buildRectFromTarget(target), 12);
-      let pairRect = buildRect(
-        Math.min(guideLeftClamped, panelLeft),
-        Math.min(guideTopClamped, panelTop),
-        Math.max(guideLeftClamped + characterSize, panelLeft + panelWidth) - Math.min(guideLeftClamped, panelLeft),
-        Math.max(guideTopClamped + characterSize, panelTop + panelHeight) - Math.min(guideTopClamped, panelTop)
-      );
-
-      if (rectsOverlap(pairRect, targetRect)) {
-        const verticalEscape = targetRect.top - panelHeight - TARGET_GAP;
-        const downwardEscape = targetRect.bottom + TARGET_GAP;
-        if (verticalEscape >= VIEWPORT_MARGIN) {
-          panelTop = verticalEscape;
-        } else if (downwardEscape + panelHeight <= viewportHeight - VIEWPORT_MARGIN) {
-          panelTop = downwardEscape;
-        }
-        pairRect = buildRect(
-          Math.min(guideLeftClamped, panelLeft),
-          Math.min(guideTopClamped, panelTop),
-          Math.max(guideLeftClamped + characterSize, panelLeft + panelWidth) - Math.min(guideLeftClamped, panelLeft),
-          Math.max(guideTopClamped + characterSize, panelTop + panelHeight) - Math.min(guideTopClamped, panelTop)
-        );
-        if (rectsOverlap(pairRect, targetRect)) {
-          panelLeft = clamp(
-            isLeftZone ? targetRect.right + TARGET_GAP : targetRect.left - panelWidth - TARGET_GAP,
-            VIEWPORT_MARGIN,
-            Math.max(VIEWPORT_MARGIN, viewportWidth - panelWidth - VIEWPORT_MARGIN)
-          );
-        }
-      }
-    }
-
-    return {
+    return this.buildUnifiedPlacement({
       characterLeft: guideLeftClamped,
       characterTop: guideTopClamped,
       characterSize,
-      characterFlipX: isLeftZone,
-      panelLeft,
-      panelTop,
       panelWidth,
       panelHeight,
-      flipX: !isLeftZone,
-      flipY: false
-    };
-  }
-
-  private resolveGameMenuPlacement(target: GuideTarget | null): GuidePlacement {
-    if (target) {
-      return this.resolvePlacement(target);
-    }
-    const viewportWidth = this.host.clientWidth || window.innerWidth;
-    const viewportHeight = this.host.clientHeight || window.innerHeight;
-    const characterSize = clamp(Math.min(viewportWidth * 0.11, viewportHeight * 0.15), 84, 118);
-    const panelWidth = clamp(Math.min(viewportWidth * 0.3, 300), 220, 300);
-    const panelHeight = panelWidth / GUIDE_PANEL_ASPECT_RATIO;
-    const characterLeft = clamp(viewportWidth - characterSize - 28, VIEWPORT_MARGIN, viewportWidth - characterSize - VIEWPORT_MARGIN);
-    const characterTop = clamp(28, VIEWPORT_MARGIN, viewportHeight - characterSize - VIEWPORT_MARGIN);
-    const panelLeft = clamp(characterLeft - panelWidth + characterSize * 0.78, VIEWPORT_MARGIN, viewportWidth - panelWidth - VIEWPORT_MARGIN);
-    const panelTop = clamp(characterTop, VIEWPORT_MARGIN, viewportHeight - panelHeight - VIEWPORT_MARGIN);
-
-    return {
-      characterLeft,
-      characterTop,
-      characterSize,
-      characterFlipX: false,
-      panelLeft,
-      panelTop,
-      panelWidth,
-      panelHeight,
-      flipX: true,
-      flipY: false
-    };
+      viewportWidth,
+      viewportHeight,
+      target,
+      characterFlipX: shouldFlip
+    });
   }
 
   private resolvePlacement(target: GuideTarget): GuidePlacement {
@@ -1221,160 +1291,177 @@ export class GuideBubbleSystem {
       const focusCharacterSize = isMobile ? clamp(characterSize * 0.82, 60, 78) : clamp(characterSize, 92, 124);
       const focusPanelWidth = isMobile ? clamp(panelWidth * 0.74, 168, 210) : clamp(panelWidth, 248, 320);
       const focusPanelHeight = focusPanelWidth / GUIDE_PANEL_ASPECT_RATIO;
-      const focusOffsetX = focusPanelWidth - focusCharacterSize * 0.16;
-      const focusOffsetY = focusPanelHeight * 0.76;
       const focusCharacterLeft = clamp(
-        (isMobile ? 18 : 28) + focusOffsetX,
-        VIEWPORT_MARGIN + focusOffsetX,
-        Math.max(VIEWPORT_MARGIN + focusOffsetX, viewportWidth - focusCharacterSize - VIEWPORT_MARGIN)
+        isMobile ? 20 : 28,
+        VIEWPORT_MARGIN,
+        Math.max(VIEWPORT_MARGIN, viewportWidth - focusCharacterSize - VIEWPORT_MARGIN)
       );
       const focusCharacterTop = clamp(
         viewportHeight - focusCharacterSize - (isMobile ? 18 : 26),
-        VIEWPORT_MARGIN + focusOffsetY,
-        Math.max(VIEWPORT_MARGIN + focusOffsetY, viewportHeight - focusCharacterSize - VIEWPORT_MARGIN)
+        VIEWPORT_MARGIN,
+        Math.max(VIEWPORT_MARGIN, viewportHeight - focusCharacterSize - VIEWPORT_MARGIN)
       );
 
-      return {
+      return this.buildUnifiedPlacement({
         characterLeft: focusCharacterLeft,
         characterTop: focusCharacterTop,
         characterSize: focusCharacterSize,
-        characterFlipX: false,
-        panelLeft: clamp(focusCharacterLeft - focusOffsetX, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportWidth - focusPanelWidth - VIEWPORT_MARGIN)),
-        panelTop: clamp(focusCharacterTop - focusOffsetY, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportHeight - focusPanelHeight - VIEWPORT_MARGIN)),
         panelWidth: focusPanelWidth,
         panelHeight: focusPanelHeight,
-        flipX: true,
-        flipY: false
-      };
+        viewportWidth,
+        viewportHeight,
+        forceBubbleX: 'right',
+        forceBubbleY: 'above',
+        characterFlipX: false,
+        target
+      });
+    }
+    if (this.currentPresence.zone === 'intro') {
+      return this.buildUnifiedPlacement({
+        characterLeft: clamp(viewportWidth * 0.22, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportWidth - characterSize - VIEWPORT_MARGIN)),
+        characterTop: clamp(viewportHeight * 0.26, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportHeight - characterSize - VIEWPORT_MARGIN)),
+        characterSize,
+        panelWidth,
+        panelHeight,
+        viewportWidth,
+        viewportHeight,
+        forceBubbleX: 'left',
+        forceBubbleY: 'above',
+        characterFlipX: false
+      });
     }
 
     const targetRect = expandRect(buildRectFromTarget(target), isMobile ? 12 : 18);
+    const preferredLeft = targetRect.left - characterSize - TARGET_GAP;
+    const fallbackRight = targetRect.right + TARGET_GAP;
+    const preferredTop = targetRect.bottom + TARGET_GAP;
+    const fallbackTop = targetRect.top - characterSize - TARGET_GAP;
+    const hasLeftRoom = preferredLeft >= VIEWPORT_MARGIN;
+    const hasBottomRoom = preferredTop + characterSize <= viewportHeight - VIEWPORT_MARGIN;
 
-    const requestedPlacement = target.guidePlacementHint;
-    const bubbleSide = target.bubblePlacementHint ?? 'upper-left';
-    const guideFlipX = target.flipGuideX ?? false;
+    return this.buildUnifiedPlacement({
+      characterLeft: hasLeftRoom ? preferredLeft : fallbackRight,
+      characterTop: hasBottomRoom ? preferredTop : fallbackTop,
+      characterSize,
+      panelWidth,
+      panelHeight,
+      viewportWidth,
+      viewportHeight,
+      target,
+      characterFlipX: target.flipGuideX ?? !hasLeftRoom
+    });
+  }
 
-    const allGuideCandidates = [
-      {
-        name: 'bottom-right',
-        left: targetRect.right + TARGET_GAP,
-        top: targetRect.bottom + TARGET_GAP
-      },
-      {
-        name: 'right',
-        left: targetRect.right + TARGET_GAP,
-        top: target.y - characterSize * 0.5
-      },
-      {
-        name: 'bottom',
-        left: target.x - characterSize * 0.5,
-        top: targetRect.bottom + TARGET_GAP
-      },
-      {
-        name: 'top-right',
-        left: targetRect.right + TARGET_GAP,
-        top: targetRect.top - characterSize - TARGET_GAP
-      },
-      {
-        name: 'left',
-        left: targetRect.left - characterSize - TARGET_GAP,
-        top: target.y - characterSize * 0.5
-      },
-      {
-        name: 'bottom-left',
-        left: targetRect.left - characterSize * 0.7,
-        top: targetRect.bottom + TARGET_GAP
-      }
-    ];
-    const guideCandidates = requestedPlacement
-      ? allGuideCandidates.filter((candidate) => candidate.name === requestedPlacement)
-      : allGuideCandidates;
+  private buildUnifiedPlacement(options: {
+    characterLeft: number;
+    characterTop: number;
+    characterSize: number;
+    panelWidth: number;
+    panelHeight: number;
+    viewportWidth: number;
+    viewportHeight: number;
+    target?: GuideTarget | null;
+    forceBubbleX?: 'left' | 'right';
+    forceBubbleY?: 'above' | 'below';
+    characterFlipX?: boolean;
+  }): GuidePlacement {
+    const {
+      characterLeft: initialCharacterLeft,
+      characterTop: initialCharacterTop,
+      characterSize,
+      panelWidth,
+      panelHeight,
+      viewportWidth,
+      viewportHeight,
+      target = null,
+      forceBubbleX,
+      forceBubbleY,
+      characterFlipX = false
+    } = options;
 
-    let bestScore = Number.POSITIVE_INFINITY;
-    let bestPlacement: GuidePlacement | null = null;
-    const pairPanelOffsetY = panelHeight * 0.76;
-    const pairPanelOffsetLeftX = panelWidth - characterSize * 0.16;
-    const pairPanelOffsetRightX = -characterSize * 0.18;
+    let characterLeft = clamp(initialCharacterLeft, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportWidth - characterSize - VIEWPORT_MARGIN));
+    let characterTop = clamp(initialCharacterTop, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportHeight - characterSize - VIEWPORT_MARGIN));
+    const centerX = characterLeft + characterSize * 0.5;
+    const centerY = characterTop + characterSize * 0.5;
+    const leftEdge = centerX <= viewportWidth * GUIDE_EDGE_ZONE;
+    const rightEdge = centerX >= viewportWidth * (1 - GUIDE_EDGE_ZONE);
+    const topEdge = centerY <= viewportHeight * GUIDE_EDGE_ZONE;
+    const bottomEdge = centerY >= viewportHeight * (1 - GUIDE_EDGE_ZONE);
 
-    guideCandidates.forEach((guideCandidate, guideIndex) => {
-      let characterLeft = clamp(guideCandidate.left, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportWidth - characterSize - VIEWPORT_MARGIN));
-      let characterTop = clamp(guideCandidate.top, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportHeight - characterSize - VIEWPORT_MARGIN));
-      let panelLeft =
-        bubbleSide === 'upper-right'
-          ? characterLeft - pairPanelOffsetRightX
-          : characterLeft - pairPanelOffsetLeftX;
-      let panelTop = characterTop - pairPanelOffsetY;
+    const bubbleX = forceBubbleX ?? (leftEdge ? 'right' : rightEdge ? 'left' : 'left');
+    const bubbleY = forceBubbleY ?? (topEdge ? 'below' : bottomEdge ? 'above' : 'above');
 
-      const pairRect = buildRect(
+    const dockX = characterLeft + (bubbleX === 'left' ? characterSize * 0.78 : characterSize * 0.22);
+    const dockY = characterTop + (bubbleY === 'above' ? characterSize * 0.34 : characterSize * 0.68);
+    let panelLeft = bubbleX === 'left' ? dockX - panelWidth - GUIDE_BUBBLE_GAP_X : dockX + GUIDE_BUBBLE_GAP_X;
+    let panelTop = bubbleY === 'above' ? dockY - panelHeight - GUIDE_BUBBLE_GAP_Y : dockY + GUIDE_BUBBLE_GAP_Y;
+
+    if (target) {
+      const targetRect = expandRect(buildRectFromTarget(target), 12);
+      let pairRect = buildRect(
         Math.min(characterLeft, panelLeft),
         Math.min(characterTop, panelTop),
         Math.max(characterLeft + characterSize, panelLeft + panelWidth) - Math.min(characterLeft, panelLeft),
         Math.max(characterTop + characterSize, panelTop + panelHeight) - Math.min(characterTop, panelTop)
       );
-      const shiftX =
-        pairRect.left < VIEWPORT_MARGIN
-          ? VIEWPORT_MARGIN - pairRect.left
-          : pairRect.right > viewportWidth - VIEWPORT_MARGIN
-            ? viewportWidth - VIEWPORT_MARGIN - pairRect.right
-            : 0;
-      const shiftY =
-        pairRect.top < VIEWPORT_MARGIN
-          ? VIEWPORT_MARGIN - pairRect.top
-          : pairRect.bottom > viewportHeight - VIEWPORT_MARGIN
-            ? viewportHeight - VIEWPORT_MARGIN - pairRect.bottom
-            : 0;
-
-      characterLeft += shiftX;
-      characterTop += shiftY;
-      panelLeft += shiftX;
-      panelTop += shiftY;
-
-      const characterRect = buildRect(characterLeft, characterTop, characterSize, characterSize);
-      const panelRect = buildRect(panelLeft, panelTop, panelWidth, panelHeight);
-      const offscreenPenalty =
-        Math.abs(characterLeft - guideCandidate.left) +
-        Math.abs(characterTop - guideCandidate.top);
-      const overlapPenalty = rectsOverlap(panelRect, targetRect) ? 5200 : 0;
-      const characterOverlapPenalty = rectsOverlap(characterRect, targetRect) ? 5200 : 0;
-      const bubbleCharacterPenalty = rectsOverlap(panelRect, characterRect) ? 0 : 0;
-      const preferencePenalty = guideIndex * (this.currentPresence.zone === 'focus' ? 70 : 28);
-      const distancePenalty =
-        Math.hypot(characterRect.left + characterSize * 0.5 - target.x, characterRect.top + characterSize * 0.5 - target.y) * (isMobile ? 0.14 : 0.18);
-      const panelDistancePenalty =
-        Math.hypot(panelRect.left + panelWidth * 0.5 - target.x, panelRect.top + panelHeight * 0.5 - target.y) * (isMobile ? 0.05 : 0.08);
-      const score = offscreenPenalty + overlapPenalty + characterOverlapPenalty + bubbleCharacterPenalty + distancePenalty + panelDistancePenalty + preferencePenalty;
-
-      if (score < bestScore) {
-        bestScore = score;
-        bestPlacement = {
-          characterLeft,
-          characterTop,
-          characterSize,
-          characterFlipX: guideFlipX,
-          panelLeft: panelRect.left,
-          panelTop: panelRect.top,
-          panelWidth,
-          panelHeight,
-          flipX: bubbleSide === 'upper-left',
-          flipY: false
-        };
+      if (rectsOverlap(pairRect, targetRect)) {
+        const shiftX = bubbleX === 'left' ? targetRect.right - pairRect.left + TARGET_GAP : targetRect.left - pairRect.right - TARGET_GAP;
+        if (Math.abs(shiftX) > 0.5) {
+          characterLeft += shiftX;
+          panelLeft += shiftX;
+        }
+        pairRect = buildRect(
+          Math.min(characterLeft, panelLeft),
+          Math.min(characterTop, panelTop),
+          Math.max(characterLeft + characterSize, panelLeft + panelWidth) - Math.min(characterLeft, panelLeft),
+          Math.max(characterTop + characterSize, panelTop + panelHeight) - Math.min(characterTop, panelTop)
+        );
+        if (rectsOverlap(pairRect, targetRect)) {
+          const shiftY = bubbleY === 'above' ? targetRect.bottom - pairRect.top + TARGET_GAP : targetRect.top - pairRect.bottom - TARGET_GAP;
+          characterTop += shiftY;
+          panelTop += shiftY;
+        }
       }
-    });
+    }
 
-    return (
-      bestPlacement ?? {
-        characterLeft: clamp(target.x - characterSize * 0.5, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportWidth - characterSize - VIEWPORT_MARGIN)),
-        characterTop: clamp(target.y + TARGET_GAP, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportHeight - characterSize - VIEWPORT_MARGIN)),
-        characterSize,
-        characterFlipX: guideFlipX,
-        panelLeft: clamp(target.x - panelWidth - characterSize * 0.08, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportWidth - panelWidth - VIEWPORT_MARGIN)),
-        panelTop: clamp(target.y - panelHeight - characterSize * 0.22, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportHeight - panelHeight - VIEWPORT_MARGIN)),
-        panelWidth,
-        panelHeight,
-        flipX: bubbleSide === 'upper-left',
-        flipY: false
-      }
+    const pairRect = buildRect(
+      Math.min(characterLeft, panelLeft),
+      Math.min(characterTop, panelTop),
+      Math.max(characterLeft + characterSize, panelLeft + panelWidth) - Math.min(characterLeft, panelLeft),
+      Math.max(characterTop + characterSize, panelTop + panelHeight) - Math.min(characterTop, panelTop)
     );
+    const shiftX =
+      pairRect.left < VIEWPORT_MARGIN
+        ? VIEWPORT_MARGIN - pairRect.left
+        : pairRect.right > viewportWidth - VIEWPORT_MARGIN
+          ? viewportWidth - VIEWPORT_MARGIN - pairRect.right
+          : 0;
+    const shiftY =
+      pairRect.top < VIEWPORT_MARGIN
+        ? VIEWPORT_MARGIN - pairRect.top
+        : pairRect.bottom > viewportHeight - VIEWPORT_MARGIN
+          ? viewportHeight - VIEWPORT_MARGIN - pairRect.bottom
+          : 0;
+
+    characterLeft += shiftX;
+    characterTop += shiftY;
+    panelLeft += shiftX;
+    panelTop += shiftY;
+
+    return {
+      characterLeft,
+      characterTop,
+      characterSize,
+      characterFlipX,
+      panelLeft,
+      panelTop,
+      panelWidth,
+      panelHeight,
+      flipX: bubbleX === 'left',
+      flipY: bubbleY === 'below',
+      bubbleX,
+      bubbleY
+    };
   }
 
   private updateAnimation(deltaTime: number, desiredVisible: boolean) {
@@ -1448,6 +1535,8 @@ export class GuideBubbleSystem {
     this.element.setAttribute('data-panel-visible', String(this.panelVisible));
     this.element.setAttribute('data-zone', this.currentPresence.zone);
     this.panel.setAttribute('data-visible', String(this.panelVisible));
+    this.panel.setAttribute('data-bubble-x', this.currentPanelBubbleX);
+    this.panel.setAttribute('data-bubble-y', this.currentPanelBubbleY);
 
     this.characterShell.style.transform = `translate3d(${this.currentCharacterLeft.toFixed(2)}px, ${this.currentCharacterTop.toFixed(2)}px, 0) scaleX(${this.currentCharacterFlipX ? -1 : 1})`;
     this.characterShell.style.width = `${this.currentCharacterSize.toFixed(2)}px`;
@@ -1469,12 +1558,111 @@ export class GuideBubbleSystem {
   private render() {
     const message = this.currentMessage;
     if (!message) {
+      this.renderedMessageId = null;
+      this.renderedMessageRevealCount = 0;
       this.titleElement.textContent = '';
       this.bodyElement.textContent = '';
+      this.bodyElement.style.fontSize = '';
+      this.bodyElement.style.fontStyle = '';
+      this.bodyElement.style.letterSpacing = '';
+      this.bodyElement.style.lineHeight = '';
+      this.bodyElement.style.textAlign = '';
       return;
     }
-    this.titleElement.textContent = message.title[this.i18n.current];
-    this.bodyElement.textContent = message.body[this.i18n.current];
+    
+    // Get current part if multi-part dialogue
+    const currentPartIndex = message.currentPartIndex ?? 0;
+    const parts = message.parts ?? [message.body];
+    const currentPart = parts[currentPartIndex] || message.body;
+    const fullText = currentPart[this.i18n.current];
+    
+    const revealCount = this.getRevealCharacterCount(message, performance.now());
+    this.renderedMessageId = message.id;
+    this.renderedMessageRevealCount = revealCount;
+    this.titleElement.textContent = '';
+    
+    const revealedText = Array.from(fullText).slice(0, revealCount).join('');
+    this.bodyElement.textContent = revealedText;
+    
+    // Apply adaptive font sizing based on text length - much more aggressive now
+    const fontSize = this.getAdaptiveBodyFontSize(fullText);
+    this.bodyElement.style.fontSize = fontSize;
+    
+    // Apply animation styling based on message animation type
+    const animation = message.animation ?? 'static';
+    this.bodyElement.setAttribute('data-animation', animation);
+    
+    // Center alignment and strong line spacing for comic bubble feel
+    this.bodyElement.style.textAlign = 'center';
+    this.bodyElement.style.lineHeight = '1.5';
+    this.bodyElement.style.fontFamily = "'Tribal Garamond', serif";
+    
+    // Expressive styling based on content
+    if (fullText.includes('!')) {
+      this.bodyElement.style.fontWeight = 'bold';
+    } else {
+      this.bodyElement.style.fontWeight = 'normal';
+    }
+  }
+
+  private getRevealCharacterCount(message: GuideMessage, now: number) {
+    const currentPartIndex = message.currentPartIndex ?? 0;
+    const parts = message.parts ?? [message.body];
+    const currentPart = parts[currentPartIndex] || message.body;
+    const text = currentPart[this.i18n.current];
+    
+    const characters = Array.from(text);
+    if (characters.length <= 0) {
+      return 0;
+    }
+    
+    const revealDuration = clamp(
+      characters.length * GUIDE_TEXT_REVEAL_MS_PER_CHARACTER,
+      GUIDE_TEXT_REVEAL_MIN_DURATION_MS,
+      GUIDE_TEXT_REVEAL_MAX_DURATION_MS
+    );
+    
+    const partStartedAt = message.partStartedAt ?? message.createdAt;
+    const progress = clamp((now - partStartedAt) / revealDuration, 0, 1);
+    return clamp(Math.ceil(characters.length * progress), 0, characters.length);
+  }
+
+  private getAdaptiveBodyFontSize(text: LocalizedText | string): string {
+    // Get the text string
+    const textStr = typeof text === 'string' ? text : text.en || text.fr || '';
+    const length = textStr.length;
+    
+    // AGGRESSIVE SIZING FOR COMIC IMPACT
+    // Short text = dramatically larger
+    // Medium text = large
+    // Long text = appropriately sized
+    
+    // Very short micro-phrases (single words, 2-3 word bursts)
+    if (length <= 15) {
+      return 'clamp(1.6rem, 3.5vw, 2.2rem)';
+    }
+    // Short lines (quick reactions, exclamations)
+    if (length <= 25) {
+      return 'clamp(1.3rem, 2.8vw, 1.9rem)';
+    }
+    // Medium-short (comfortable phrase)
+    if (length <= 40) {
+      return 'clamp(1.1rem, 2.3vw, 1.6rem)';
+    }
+    // Medium (balanced multi-word line)
+    if (length <= 60) {
+      return 'clamp(0.95rem, 1.9vw, 1.3rem)';
+    }
+    // Medium-long (tighter three-liner)
+    if (length <= 80) {
+      return 'clamp(0.85rem, 1.6vw, 1.2rem)';
+    }
+    // Long text (post-split, rarely seen)
+    if (length <= 100) {
+      return 'clamp(0.8rem, 1.4vw, 1.1rem)';
+    }
+    // Extra long (emergency backup)
+    return 'clamp(0.75rem, 1.2vw, 1rem)';
   }
 
   private loadFlags() {
@@ -1625,11 +1813,9 @@ export class GuideBubbleSystem {
   }
 
   private setAnchorFromPixelPosition(left: number, top: number, characterSize: number, viewportWidth: number, viewportHeight: number) {
-    const pairPanelOffsetX = characterSize * 0.84;
-    const pairPanelOffsetY = this.currentPanelHeight * 0.76;
     const minCharacterLeft = VIEWPORT_MARGIN;
-    const maxCharacterLeft = Math.max(minCharacterLeft, viewportWidth - this.currentPanelWidth - pairPanelOffsetX - VIEWPORT_MARGIN);
-    const minCharacterTop = Math.max(VIEWPORT_MARGIN + pairPanelOffsetY, VIEWPORT_MARGIN);
+    const maxCharacterLeft = Math.max(minCharacterLeft, viewportWidth - characterSize - VIEWPORT_MARGIN);
+    const minCharacterTop = VIEWPORT_MARGIN;
     const maxCharacterTop = Math.max(minCharacterTop, viewportHeight - characterSize - VIEWPORT_MARGIN);
     const availableWidth = Math.max(1, maxCharacterLeft - minCharacterLeft);
     const availableHeight = Math.max(1, maxCharacterTop - minCharacterTop);

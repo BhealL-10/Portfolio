@@ -1,3 +1,5 @@
+import { preloadImageAsset } from '../core/browserAssetCache';
+
 export interface GameHudAvatarLayerSets {
   oreille: string[];
   face: string[];
@@ -118,4 +120,17 @@ export function loadAvatarLayerSets() {
   });
 
   return avatarLayerSetsPromise;
+}
+
+export async function preloadHelpPagesFor(locale: HelpLocale, theme: HelpTheme) {
+  const pages = await loadHelpPagesFor(locale, theme);
+  await Promise.all(pages.map((src) => preloadImageAsset(src)));
+  return pages;
+}
+
+export async function preloadAvatarLayerSets() {
+  const sets = await loadAvatarLayerSets();
+  const assets = Object.values(sets).flatMap((layer) => layer).filter(Boolean);
+  await Promise.all(assets.map((src) => preloadImageAsset(src)));
+  return sets;
 }

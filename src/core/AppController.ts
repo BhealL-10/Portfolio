@@ -216,13 +216,6 @@ export class AppController {
             this.guide.resetProjectHoverCooldown(previousHoveredId);
           }
           this.world.setHovered(shardId);
-          if (shardId && shardId !== previousHoveredId && (this.mode.is('orbit') || this.mode.is('constellation_complete'))) {
-            const project = this.content.getProjectById(shardId);
-            const target = this.getGuideTargetForProject(shardId);
-            if (project && target) {
-              this.guide.trigger({ type: 'orbit_hover', project }, target);
-            }
-          }
           if (!shardId) {
             if (previousHoveredId) {
               this.guide.resetProjectHoverCooldown(previousHoveredId);
@@ -1946,11 +1939,10 @@ export class AppController {
       return;
     }
 
-    const hoveredTarget = this.hoveredShardId ? this.getGuideTargetForProject(this.hoveredShardId) : null;
     this.guide.setPresence({
       visible: true,
-      target: hoveredTarget ?? this.getGuidePortfolioCenterTarget(),
-      zone: this.hoveredShardId ? 'orbit' : 'slots'
+      target: this.getGuidePortfolioCenterTarget(),
+      zone: 'slots'
     });
   }
 
@@ -1994,9 +1986,9 @@ export class AppController {
 
   private getGuidePortfolioCenterTarget() {
     return this.createGuideTarget(window.innerWidth * 0.5, window.innerHeight * 0.72, 240, 140, {
-      guidePlacementHint: 'bottom-right',
+      guidePlacementHint: 'bottom-left',
       bubblePlacementHint: 'upper-right',
-      flipGuideX: true
+      flipGuideX: false
     });
   }
 

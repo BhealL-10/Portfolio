@@ -120,6 +120,9 @@ const TWIST_CHAIN_BASE_BONUS = 0.05;
 const TWIST_CHAIN_INCREMENT = 0.012;
 const TWIST_CHAIN_MAX_BONUS = 0.08;
 const BASE_MOMENTUM_DECAY_RATE = 0.1;
+const PLAYER_PROGRESS_HALF_WIDTH = 0.92;
+const PLAYER_COLLISION_HALF_HEIGHT = 0.78;
+const BASE_COIN_PICKUP_RADIUS = 0.74;
 
 function computeTwistChainBonus(chainLength: number) {
   return Math.min(TWIST_CHAIN_MAX_BONUS, TWIST_CHAIN_BASE_BONUS + TWIST_CHAIN_INCREMENT * (chainLength - 1));
@@ -198,6 +201,8 @@ interface PendingMagnetCoin {
   angle: number;
   value: number;
   orbitScale: number;
+  forwardOffset: number;
+  verticalOffset: number;
   start: THREE.Vector3;
   collectedAt: number;
   duration: number;
@@ -461,6 +466,7 @@ export class GameSessionController {
   private readonly pendingMagnetCoins = new Map<string, PendingMagnetCoin>();
   private eventCooldownUntil = 0;
   private milestoneChoiceCache = new Map<number, BranchChoice[]>();
+  private readonly disabledMilestoneIndices = new Set<number>();
   private airborneFromMilestone = false;
   private airborneStartedAt = 0;
   private momentumLossActive = false;
@@ -1196,6 +1202,7 @@ export class GameSessionController {
     this.eventCooldownUntil = 0;
     this.pendingMagnetCoins.clear();
     this.milestoneChoiceCache.clear();
+    this.disabledMilestoneIndices.clear();
     this.airborneFromMilestone = false;
     this.airborneStartedAt = 0;
     this.momentumLossActive = false;
@@ -1360,7 +1367,7 @@ export class GameSessionController {
       iconTint: null,
       iconScale:
         movingShardPreview
-          ? clamp(1.9 + Math.max(node.gameplayRadius, node.visualScale) * 0.34, 2.35, 4.35)
+          ? clamp(2.72 + Math.max(node.gameplayRadius, node.visualScale) * 0.34, 3.18, 4.64)
           : node.colorHint === 'reward' && rewardItem
           ? clamp(1.76 + Math.max(node.gameplayRadius, node.visualScale) * 0.36, 2.36, 4.2)
           : isGuaranteedShopShard
@@ -1368,7 +1375,7 @@ export class GameSessionController {
             : isRandomRewardShard
               ? 2.28
               : 0.34,
-      iconOffsetY: movingShardPreview ? clamp(node.visualScale * 1.18 + Math.max(node.visualStretch.y - 1, 0) * 0.5, 1.65, 4.4) : 0,
+      iconOffsetY: 0,
       iconRotation: movingShardPreview ? movingShardDirectionAngle : 0
     };
   }
@@ -2188,6 +2195,18 @@ export class GameSessionController {
   private finalizeActiveRunFrame(frame: ActiveRunTickFrame) {
     if (frame.currentNode.isMilestone && this.playerState !== 'airborne') {
       this.advanceHudFeedbackTimers(frame.elapsedTime);
+      return;
+    }
+
+    if (this.tryConsumePendingMilestoneMirrorLaunch(frame.currentNode)) {
+      this.advanceHudFeedbackTimers(frame.elapsedTime);
+      this.updateWrapperSequence();
+      return;
+    }
+
+    if (this.isPendingMilestoneMirrorLaunch(frame.currentNode)) {
+      this.advanceHudFeedbackTimers(frame.elapsedTime);
+      this.updateWrapperSequence();
       return;
     }
 
@@ -3170,9 +3189,20 @@ export class GameSessionController {
 
     const currentNode = this.getResolvedNode(this.attachedIndex);
     if (currentNode.isMilestone) {
-      if (this.tryTriggerMirrorMode(currentNode)) {
+      if (this.tryConsumePendingMilestoneMirrorLaunch(currentNode) || this.tryTriggerMirrorMode(currentNode)) {
         return;
       }
+      if (this.isPendingMilestoneMirrorLaunch(currentNode)) {
+        return;
+      }
+      return;
+    }
+
+    if (this.tryConsumePendingMilestoneMirrorLaunch(currentNode)) {
+      return;
+    }
+
+    if (this.isPendingMilestoneMirrorLaunch(currentNode)) {
       return;
     }
 
@@ -3212,7 +3242,7 @@ export class GameSessionController {
     const maxBoost = this.chargeMeter >= 0.98;
     const reverseLaunch = tangent2D.x * this.getProgressionDirectionSign() < -0.12;
     const mirrorEligibleAnchor = this.isMirrorAnchorNode(currentNode);
-    const mirrorLaunchFastEnough = currentNode.isMilestone || launchSpeed >= this.getMirrorLaunchSpeedThreshold(launchSpeed);
+    const mirrorLaunchFastEnough = !currentNode.isMilestone && launchSpeed >= this.getMirrorLaunchSpeedThreshold(launchSpeed);
     this.mirrorLaunchEligible = mirrorEligibleAnchor && reverseLaunch && mirrorLaunchFastEnough;
     if (this.mirrorLaunchEligible) {
       this.mirrorLaunchAnchorIndex = currentNode.index;
@@ -3232,6 +3262,9 @@ export class GameSessionController {
     this.landingFeedbackAirborneSerial += 1;
     this.lastLandingFeedbackTriggerNodeIndex = null;
     this.awaitingFirstJump = false;
+    if (currentNode.isMilestone || currentNode.isGigantic) {
+      this.disabledMilestoneIndices.add(currentNode.index);
+    }
     this.playerState = 'airborne';
     this.state = this.choiceMode === 'reward_branch' ? 'upgrade_branching' : 'running_airborne';
     this.jumpVisualUntil = this.currentTime + 0.14;
@@ -3450,9 +3483,11 @@ export class GameSessionController {
       if (!nearbyEnemy?.alive) {
         continue;
       }
-      const enemyPosition = this.getEnemyWorldPosition(nearbyNode, nearbyEnemy.pole);
+      const enemyPosition = this.getEnemyBodyWorldPosition(nearbyNode, nearbyEnemy.pole);
+      const enemyExtents = this.getEnemyBodyHalfExtents(nearbyEnemy, false);
+      const enemyHazardRadius = Math.max(enemyExtents.x, enemyExtents.y);
       const distance = enemyPosition.distanceTo(this.scratchVector.set(node.resolvedX, node.resolvedY, node.resolvedZ));
-      if (distance <= clearance + this.getEnemyContactRadius(nearbyNode, nearbyEnemy, false)) {
+      if (distance <= clearance + enemyHazardRadius) {
         return false;
       }
     }
@@ -4701,7 +4736,7 @@ export class GameSessionController {
     visibleNodes.forEach((node) => {
       node.coinSlots.forEach((slot) => {
         if (slot.collected) return;
-        const pendingKey = this.getCoinSlotKey(node.index, slot.angle, slot.value);
+        const pendingKey = this.getCoinSlotKey(node.index, slot);
         const pending = this.pendingMagnetCoins.get(pendingKey);
         if (pending) {
           const progress = clamp((elapsedTime - pending.collectedAt) / Math.max(0.001, pending.duration), 0, 1);
@@ -4714,12 +4749,12 @@ export class GameSessionController {
           });
           return;
         }
-        const position = this.getCoinWorldPosition(node, slot.angle, slot.orbitScale);
+        const position = this.getCoinSlotWorldPosition(node, slot);
         const magnetRadius = this.getCoinMagnetRadius();
         const distanceToPlayer = position.distanceTo(this.playerPosition);
         const attraction = magnetRadius > 0 ? clamp(1 - distanceToPlayer / magnetRadius, 0, 1) : 0;
         coinMarkers.push({
-          id: `${node.index}:${Math.round(slot.angle * 1000)}:${slot.value}`,
+          id: this.getCoinSlotKey(node.index, slot),
           position,
           scale: 0.74 + slot.value * 0.08,
           visible: true,
@@ -4782,11 +4817,13 @@ export class GameSessionController {
   }
 
   private collectCoinsOnCurrentNode(node: ResolvedGamePathNode) {
+    const pickupRadiusSq = this.getCoinPickupRadius() * this.getCoinPickupRadius();
     let collectedAny = false;
     node.coinSlots.forEach((slot) => {
       if (slot.collected) return;
-      if (this.pendingMagnetCoins.has(this.getCoinSlotKey(node.index, slot.angle, slot.value))) return;
-      if (Math.abs(shortestAngleDistance(this.orbitAngle, slot.angle)) < 0.22 + this.runUpgrades.modifiers.coinMagnet * 0.12) {
+      if (this.pendingMagnetCoins.has(this.getCoinSlotKey(node.index, slot))) return;
+      const position = this.getCoinSlotWorldPosition(node, slot);
+      if (position.distanceToSquared(this.playerPosition) <= pickupRadiusSq) {
         slot.collected = true;
         this.awardCoins(this.applyCoinBonus(slot.value));
         this.emitScore();
@@ -4800,21 +4837,38 @@ export class GameSessionController {
 
   private collectCoinsNearPlayer() {
     const magnetRadius = this.getCoinMagnetRadius();
-    if (magnetRadius <= 0) {
+    const pickupRadius = this.getCoinPickupRadius();
+    const searchRadius = Math.max(magnetRadius, pickupRadius);
+    if (searchRadius <= 0) {
       return;
     }
     this.resolvePendingMagnetCoins();
+    const searchRadiusSq = searchRadius * searchRadius;
+    const pickupRadiusSq = pickupRadius * pickupRadius;
     const magnetRadiusSq = magnetRadius * magnetRadius;
+    let collectedAny = false;
     const visibleNodes = this.getDisplayNodes(Math.min(28, this.getRecommendedVisibleCount()));
     visibleNodes.forEach((node) => {
       node.coinSlots.forEach((slot) => {
         if (slot.collected) return;
-        const key = this.getCoinSlotKey(node.index, slot.angle, slot.value);
+        const key = this.getCoinSlotKey(node.index, slot);
         if (this.pendingMagnetCoins.has(key)) {
           return;
         }
-        const position = this.getCoinWorldPosition(node, slot.angle, slot.orbitScale);
-        if (position.distanceToSquared(this.playerPosition) > magnetRadiusSq) {
+        const position = this.getCoinSlotWorldPosition(node, slot);
+        const distanceSq = position.distanceToSquared(this.playerPosition);
+        if (distanceSq > searchRadiusSq) {
+          return;
+        }
+        if (distanceSq <= pickupRadiusSq) {
+          slot.collected = true;
+          this.awardCoins(this.applyCoinBonus(slot.value));
+          this.emitScore();
+          this.pendingMagnetCoins.delete(key);
+          collectedAny = true;
+          return;
+        }
+        if (magnetRadius <= 0 || distanceSq > magnetRadiusSq) {
           return;
         }
         const distance = position.distanceTo(this.playerPosition);
@@ -4824,12 +4878,17 @@ export class GameSessionController {
           angle: slot.angle,
           value: slot.value,
           orbitScale: slot.orbitScale,
+          forwardOffset: slot.forwardOffset ?? 0,
+          verticalOffset: slot.verticalOffset ?? 0,
           start: position.clone(),
           collectedAt: this.currentTime,
           duration: THREE.MathUtils.clamp(0.1 + distance * 0.07, 0.1, 0.28)
         });
       });
     });
+    if (collectedAny) {
+      this.emitAudioEvent({ type: 'coin', magnet: false });
+    }
   }
 
   private getCoinMagnetRadius() {
@@ -4837,6 +4896,10 @@ export class GameSessionController {
       return 0;
     }
     return Math.max(1.8, 2.1 + this.runUpgrades.modifiers.coinMagnet * 6.1);
+  }
+
+  private getCoinPickupRadius() {
+    return BASE_COIN_PICKUP_RADIUS + this.runUpgrades.modifiers.coinMagnet * 0.08;
   }
 
   private applyGravityBeltInfluence(deltaTime: number) {
@@ -4905,8 +4968,16 @@ export class GameSessionController {
     }
   }
 
-  private getCoinSlotKey(nodeIndex: number, angle: number, value: number) {
-    return `${nodeIndex}:${Math.round(angle * 1000)}:${value}`;
+  private getCoinSlotKey(
+    nodeIndex: number,
+    slot: {
+      angle: number;
+      value: number;
+      forwardOffset?: number;
+      verticalOffset?: number;
+    }
+  ) {
+    return `${nodeIndex}:${Math.round(slot.angle * 1000)}:${slot.value}:${Math.round((slot.forwardOffset ?? 0) * 100)}:${Math.round((slot.verticalOffset ?? 0) * 100)}`;
   }
 
   private resolvePendingMagnetCoins() {
@@ -4923,7 +4994,9 @@ export class GameSessionController {
         (candidate) =>
           !candidate.collected &&
           candidate.value === pending.value &&
-          Math.abs(candidate.angle - pending.angle) < 0.0001
+          Math.abs(candidate.angle - pending.angle) < 0.0001 &&
+          Math.abs((candidate.forwardOffset ?? 0) - pending.forwardOffset) < 0.001 &&
+          Math.abs((candidate.verticalOffset ?? 0) - pending.verticalOffset) < 0.001
       );
       if (!slot) {
         this.pendingMagnetCoins.delete(pending.key);
@@ -5000,7 +5073,7 @@ export class GameSessionController {
   private resolveEnemyContact(node: ResolvedGamePathNode, previousPosition: THREE.Vector3) {
     const enemy = node.enemySlot;
     if (!enemy || !enemy.alive) return;
-    const enemyPosition = this.getEnemyWorldPosition(node, enemy.pole);
+    const enemyPosition = this.getEnemyBodyWorldPosition(node, enemy.pole);
     if (!this.isEnemyWithinContact(node, enemy, enemyPosition, previousPosition, false)) {
       return;
     }
@@ -5024,7 +5097,7 @@ export class GameSessionController {
     for (const node of this.getInteractableVisibleNodes()) {
       const enemy = node.enemySlot;
       if (!enemy || !enemy.alive) continue;
-      const enemyPosition = this.getEnemyWorldPosition(node, enemy.pole);
+      const enemyPosition = this.getEnemyBodyWorldPosition(node, enemy.pole);
       if (!this.isEnemyWithinContact(node, enemy, enemyPosition, previousPosition, true)) continue;
       const projection = this.getTravelProjectionRatio(previousPosition, enemyPosition);
       const distanceSq = previousPosition.distanceToSquared(enemyPosition);
@@ -5442,7 +5515,10 @@ export class GameSessionController {
   }
 
   private tryTriggerMirrorMode(anchorNode: ResolvedGamePathNode) {
-    if (!this.mirrorLaunchEligible || !this.camera.isBehindSafeLine(this.playerPosition)) {
+    const anchorTriggerReady = anchorNode.isMilestone
+      ? this.hasCrossedNodeReverseSide(anchorNode, Math.max(0.22, this.getNodeProgressExtentX(anchorNode) * 0.06))
+      : this.camera.isBehindSafeLine(this.playerPosition);
+    if (!this.mirrorLaunchEligible || !anchorTriggerReady) {
       return false;
     }
     if (!this.isMirrorAnchorNode(anchorNode) || this.mirrorLaunchAnchorIndex !== anchorNode.index) {
@@ -5456,6 +5532,21 @@ export class GameSessionController {
     this.mirrorLaunchAnchorIndex = null;
     this.mirrorLaunchSpeedThreshold = 0;
     return true;
+  }
+
+  private isPendingMilestoneMirrorLaunch(anchorNode = this.getResolvedNode(this.attachedIndex)) {
+    return (
+      anchorNode.isMilestone &&
+      this.mirrorLaunchEligible &&
+      this.mirrorLaunchAnchorIndex === anchorNode.index
+    );
+  }
+
+  private tryConsumePendingMilestoneMirrorLaunch(anchorNode = this.getResolvedNode(this.attachedIndex)) {
+    if (!this.isPendingMilestoneMirrorLaunch(anchorNode)) {
+      return false;
+    }
+    return this.tryTriggerMirrorMode(anchorNode);
   }
 
   private toggleMirrorMode(anchorIndex: number) {
@@ -5558,6 +5649,12 @@ export class GameSessionController {
 
   private failRun(cause: GameOverCause = 'camera') {
     if (this.state === 'game_over') return;
+    if ((cause === 'camera' || cause === 'out_of_bounds') && this.tryConsumePendingMilestoneMirrorLaunch()) {
+      return;
+    }
+    if ((cause === 'camera' || cause === 'out_of_bounds') && this.isPendingMilestoneMirrorLaunch()) {
+      return;
+    }
     this.state = 'game_over';
     this.playerState = 'dead';
     this.gameOverCause = cause;
@@ -5606,6 +5703,9 @@ export class GameSessionController {
   }
 
   private canCaptureNode(node: ResolvedGamePathNode, previousPosition?: THREE.Vector3) {
+    if ((node.isMilestone || node.isGigantic) && this.disabledMilestoneIndices.has(node.index)) {
+      return false;
+    }
     const captureRadius = this.getCaptureRadius(node);
     const dx = this.playerPosition.x - node.resolvedX;
     const dy = this.playerPosition.y - node.resolvedY;
@@ -5684,15 +5784,20 @@ export class GameSessionController {
     let best: CaptureCandidate | null = null;
     const directionSign = this.getProgressionDirectionSign();
     const safeLeft = this.camera.getSafeLeft();
-    for (let index = this.attachedIndex + 1; index <= searchLimit; index += 1) {
+    const searchStartIndex = giganticOnly ? Math.max(0, this.attachedIndex - 6) : this.attachedIndex + 1;
+    const safeRight = this.camera.getSafeRight();
+    for (let index = searchStartIndex; index <= searchLimit; index += 1) {
       const node = this.getResolvedNode(index);
       const radius = this.getPhysicalRadius(node);
       const directionalOffset = (node.resolvedX - previousPosition.x) * directionSign;
       if (directionalOffset > 64) {
         break;
       }
-      const stillVisibleMilestone = node.isGigantic && node.resolvedX + radius >= safeLeft;
-      if (directionalOffset < -8 && !stillVisibleMilestone) {
+      const stillVisibleMilestone =
+        node.isGigantic &&
+        node.resolvedX + this.getNodeProgressExtentX(node) >= safeLeft &&
+        node.resolvedX - this.getNodeProgressExtentX(node) <= safeRight + Math.max(1.2, radius * 0.16);
+      if (this.isNodeFullyPassed(node) && !stillVisibleMilestone) {
         continue;
       }
       if (rewardChoiceLayout && this.isNodeInsideActiveRewardReserve(node, rewardChoiceLayout)) {
@@ -6147,7 +6252,25 @@ export class GameSessionController {
     return this.offsetSurfaceWorldPosition(node, sample, radiusFromCenter - sample.position.length(), target);
   }
 
-  private getCoinWorldPosition(node: ResolvedGamePathNode, angle: number, orbitScale: number) {
+  private getCoinSlotWorldPosition(
+    node: ResolvedGamePathNode,
+    slot: {
+      angle: number;
+      orbitScale: number;
+      forwardOffset?: number;
+      verticalOffset?: number;
+    }
+  ) {
+    return this.getCoinWorldPosition(node, slot.angle, slot.orbitScale, slot.forwardOffset ?? 0, slot.verticalOffset ?? 0);
+  }
+
+  private getCoinWorldPosition(
+    node: ResolvedGamePathNode,
+    angle: number,
+    orbitScale: number,
+    forwardOffset = 0,
+    verticalOffset = 0
+  ) {
     const orbit = this.getOrbitSample(node, angle);
     const clearance = this.getOrbitClearance(node);
     const orbitRadius = orbit.position.length() * orbitScale;
@@ -6157,12 +6280,21 @@ export class GameSessionController {
       orbitRadius + 0.38,
       gameplayOrbitRadius + 0.32
     );
-    return this.getSurfaceAnchorWorldPosition(node, angle, coinRadius);
+    const position = this.getSurfaceAnchorWorldPosition(node, angle, coinRadius);
+    position.x += this.getProgressionDirectionSign() * forwardOffset;
+    position.y += verticalOffset;
+    return position;
   }
 
   private getEnemyWorldPosition(node: ResolvedGamePathNode, pole: 'north' | 'south') {
     const poleAngle = pole === 'north' ? Math.PI * 0.5 : Math.PI * 1.5;
     return this.getSurfaceAnchorWorldPosition(node, poleAngle, this.getPhysicalRadius(node) + 0.92);
+  }
+
+  private getEnemyBodyWorldPosition(node: ResolvedGamePathNode, pole: 'north' | 'south') {
+    const position = this.getEnemyWorldPosition(node, pole);
+    position.y += pole === 'north' ? 0.46 : -0.46;
+    return position;
   }
 
   private getEnemyScanRadius(enemy: NonNullable<ResolvedGamePathNode['enemySlot']>) {
@@ -6183,27 +6315,34 @@ export class GameSessionController {
     return clamp((toTargetX * segmentX + toTargetY * segmentY + toTargetZ * segmentZ) / segmentLengthSq, 0, 1);
   }
 
-  private getEnemyContactRadius(node: ResolvedGamePathNode, enemy: NonNullable<ResolvedGamePathNode['enemySlot']>, airborne: boolean) {
-    const enemyRadius = enemy.tier === 'elite' ? 1.02 : enemy.tier === 'armored' ? 0.94 : enemy.tier === 'light' ? 0.82 : 1.12;
-    const nodeBias = node.gameplayRadius * 0.22;
-    const movementBias = airborne ? 0.42 : 0.28;
-    return Math.max(enemyRadius + movementBias, nodeBias + (airborne ? 1.04 : 0.98));
+  private getEnemyBodyHalfExtents(enemy: NonNullable<ResolvedGamePathNode['enemySlot']>, airborne: boolean) {
+    const displayScale = enemy.tier === 'elite' ? 0.85 : enemy.tier === 'armored' ? 0.74 : enemy.tier === 'invincible' ? 0.91 : 0.67;
+    const halfWidth = 2.56 * 0.5 * displayScale * 0.56;
+    const halfHeight = 2.56 * 0.5 * displayScale * 0.74;
+    const movementInflation = airborne ? 0.1 : 0.04;
+    return {
+      x: halfWidth + PLAYER_PROGRESS_HALF_WIDTH * 0.42 + movementInflation,
+      y: halfHeight + PLAYER_COLLISION_HALF_HEIGHT * 0.42 + movementInflation,
+      z: 0.56
+    };
   }
 
   private isEnemyWithinContact(
-    node: ResolvedGamePathNode,
+    _node: ResolvedGamePathNode,
     enemy: NonNullable<ResolvedGamePathNode['enemySlot']>,
     enemyPosition: THREE.Vector3,
     previousPosition: THREE.Vector3,
     airborne: boolean
   ) {
-    const contactRadius = this.getEnemyContactRadius(node, enemy, airborne);
+    const contactExtents = this.getEnemyBodyHalfExtents(enemy, airborne);
     const segmentX = this.playerPosition.x - previousPosition.x;
     const segmentY = this.playerPosition.y - previousPosition.y;
     const segmentZ = this.playerPosition.z - previousPosition.z;
     const segmentLengthSq = segmentX * segmentX + segmentY * segmentY + segmentZ * segmentZ;
     if (segmentLengthSq <= 0.0001) {
-      return enemyPosition.distanceTo(this.playerPosition) <= contactRadius;
+      const deltaX = (this.playerPosition.x - enemyPosition.x) / Math.max(0.001, contactExtents.x);
+      const deltaY = (this.playerPosition.y - enemyPosition.y) / Math.max(0.001, contactExtents.y);
+      return deltaX * deltaX + deltaY * deltaY <= 1;
     }
     const toEnemyX = enemyPosition.x - previousPosition.x;
     const toEnemyY = enemyPosition.y - previousPosition.y;
@@ -6216,10 +6355,28 @@ export class GameSessionController {
     const closestX = previousPosition.x + segmentX * projection;
     const closestY = previousPosition.y + segmentY * projection;
     const closestZ = previousPosition.z + segmentZ * projection;
-    const deltaX = enemyPosition.x - closestX;
-    const deltaY = enemyPosition.y - closestY;
-    const deltaZ = enemyPosition.z - closestZ;
-    return deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ <= contactRadius * contactRadius;
+    const deltaX = (enemyPosition.x - closestX) / Math.max(0.001, contactExtents.x);
+    const deltaY = (enemyPosition.y - closestY) / Math.max(0.001, contactExtents.y);
+    const deltaZ = (enemyPosition.z - closestZ) / Math.max(0.001, contactExtents.z);
+    return deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ <= 1;
+  }
+
+  private getNodeProgressExtentX(node: ResolvedGamePathNode) {
+    return this.getShapeExtents(node).x;
+  }
+
+  private isNodeFullyPassed(node: ResolvedGamePathNode, playerPosition = this.playerPosition) {
+    const directionSign = this.getProgressionDirectionSign();
+    const playerTrailingEdgeX = playerPosition.x - directionSign * PLAYER_PROGRESS_HALF_WIDTH;
+    const nodeForwardEdgeX = node.resolvedX + directionSign * this.getNodeProgressExtentX(node);
+    return (playerTrailingEdgeX - nodeForwardEdgeX) * directionSign > 0;
+  }
+
+  private hasCrossedNodeReverseSide(node: ResolvedGamePathNode, buffer = 0) {
+    const directionSign = this.getProgressionDirectionSign();
+    const playerReverseEdgeX = this.playerPosition.x - directionSign * PLAYER_PROGRESS_HALF_WIDTH;
+    const nodeReverseEdgeX = node.resolvedX - directionSign * this.getNodeProgressExtentX(node);
+    return (playerReverseEdgeX - nodeReverseEdgeX) * directionSign <= -buffer;
   }
 
   private getGravityBeltHoverLift(node: ResolvedGamePathNode, travelSpeed: number) {

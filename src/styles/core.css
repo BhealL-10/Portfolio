@@ -477,28 +477,72 @@ body {
 .guide-bubble__copy {
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
-  gap: 4px;
-  padding: 19% 16% 24% 18%;
+  justify-content: center;
+  align-items: center;
+  gap: 0;
+  padding: 21% 16% 21% 16%;
   box-sizing: border-box;
+  text-align: center;
+}
+
+.guide-bubble__panel[data-bubble-y='below'] .guide-bubble__copy {
+  padding-top: 22%;
 }
 
 .guide-bubble__title {
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--guide-copy-muted);
-  text-shadow: 0 1px 0 var(--guide-copy-shadow);
+  display: none;
 }
 
 .guide-bubble__body {
-  margin-top: 4px;
+  margin-top: 0;
   max-width: none;
-  line-height: 1.42;
+  line-height: 1.45;
+  font-family: 'Tribal Garamond', serif;
   font-size: clamp(0.9rem, 1vw, 1rem);
   color: var(--guide-copy-strong);
   text-shadow: 0 1px 0 var(--guide-copy-shadow);
   text-wrap: pretty;
+  text-align: center;
+  align-self: stretch;
+  letter-spacing: 0.02em;
+}
+
+.guide-bubble__body[data-animation='wiggle'] {
+  animation: guide-wiggle 0.4s ease-in-out infinite;
+}
+
+.guide-bubble__body[data-animation='shake'] {
+  animation: guide-shake 0.3s ease-in-out infinite;
+}
+
+.guide-bubble__body[data-animation='pulse'] {
+  animation: guide-pulse 0.6s ease-in-out infinite;
+}
+
+.guide-bubble__body[data-animation='subtle-bounce'] {
+  animation: guide-bounce 0.5s ease-in-out infinite;
+}
+
+@keyframes guide-wiggle {
+  0%, 100% { transform: skewX(0deg); }
+  25% { transform: skewX(1.5deg); }
+  75% { transform: skewX(-1.5deg); }
+}
+
+@keyframes guide-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  75% { transform: translateX(2px); }
+}
+
+@keyframes guide-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+}
+
+@keyframes guide-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
 }
 
 .intro-layer {

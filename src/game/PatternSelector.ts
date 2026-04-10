@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { getDifficultyProfile } from './difficultyScaler';
 import type { GamePathPattern } from './PatternLibrary';
 import { PATTERN_LIBRARY } from './PatternLibrary';
@@ -36,11 +37,11 @@ export function selectPattern({ score, distanceMeters, recentPatternIds, rng }: 
   const fallbackStagePool = weightedPool.length > 0 ? weightedPool : PATTERN_LIBRARY.filter((pattern) => weights[pattern.difficulty] > 0);
   const eligible = fallbackStagePool.filter((pattern) => !recent.has(pattern.id));
   const pool = eligible.length > 0 ? eligible : fallbackStagePool;
-  const totalWeight = pool.reduce((sum, pattern) => sum + weights[pattern.difficulty], 0);
+  const totalWeight = pool.reduce((sum, pattern) => sum + getPatternWeight(pattern, weights[pattern.difficulty], profile.movingShardChance), 0);
 
   let cursor = rng() * totalWeight;
   for (const pattern of pool) {
-    cursor -= weights[pattern.difficulty];
+    cursor -= getPatternWeight(pattern, weights[pattern.difficulty], profile.movingShardChance);
     if (cursor <= 0) {
       return pattern;
     }
@@ -57,4 +58,15 @@ function getPreviousMilestone(distanceMeters: number) {
     return 10;
   }
   return Math.floor(distanceMeters / 100) * 100;
+}
+
+function getPatternWeight(pattern: GamePathPattern, baseWeight: number, movingShardChance: number) {
+  const normalizedMovingChance = THREE.MathUtils.clamp(movingShardChance / 0.38, 0, 1);
+  if (pattern.movementType === 'moving') {
+    return baseWeight * THREE.MathUtils.lerp(1.2, 1.82, normalizedMovingChance);
+  }
+  if (pattern.movementType === 'mixed') {
+    return baseWeight * THREE.MathUtils.lerp(1.08, 1.28, normalizedMovingChance);
+  }
+  return baseWeight * THREE.MathUtils.lerp(1.04, 0.88, normalizedMovingChance);
 }

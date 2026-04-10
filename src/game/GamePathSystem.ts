@@ -65,6 +65,8 @@ const EARLY_SUPPORT_BAND_TILT_RADIANS = 0.2;
 const EARLY_SUPPORT_BAND_BOTTOM_OFFSET_PX = DEFAULT_COLUMN_DISTANCE * 0.88;
 const EARLY_SUPPORT_BAND_MAX_COUNT = 8;
 const EARLY_UPPER_RECOVERY_FADE_END_METERS = 320;
+const SHOP_SHARD_MAX_MOTION_DISTANCE = DEFAULT_COLUMN_DISTANCE * 0.42;
+const SHOP_SHARD_MAX_MOTION_SPEED = DEFAULT_COLUMN_DISTANCE * 0.39;
 
 function getMilestoneReservedRangeX(centerX: number) {
   return {
@@ -669,10 +671,15 @@ export class GamePathSystem {
       motionPattern !== 'none'
         ? this.resolveMotionDirection(template.motionDirection, template.motionPattern, template)
         : null;
-    const motionDistance =
+    let motionDistance =
       motionMode === 'landing_once' ? this.resolveMotionDistance(template.motionDistance, template.motionPattern, score) : 0;
-    const motionDuration =
+    let motionDuration =
       motionMode === 'landing_once' ? THREE.MathUtils.clamp(template.motionDuration ?? (1 + this.nextRandom() * 0.24), 0.82, 1.45) : 0;
+    if (eventType === 'shop' && motionMode === 'landing_once') {
+      const cappedShopMotion = this.applyShopMotionCap(motionDistance, motionDuration);
+      motionDistance = cappedShopMotion.distance;
+      motionDuration = cappedShopMotion.duration;
+    }
     const spinDirection: GameShardSpinDirection = stylizedShopVisual ? 'cw' : this.nextRandom() < 0.5 ? 'cw' : 'ccw';
     const spinSpeed =
       stylizedShopVisual
@@ -912,10 +919,10 @@ export class GamePathSystem {
       const largeShard = ['large', 'very_large', 'huge', 'massive'].includes(mainNode.sizeTier);
       if (largeShard) {
         const mainLane = this.getLaneIndex(mainNode.y, laneTargets);
-        const supportLanes = [mainLane + 2, mainLane - 2, mainLane + 3, mainLane - 3].filter(
+        const supportLanes = [mainLane + 3, mainLane + 2, mainLane + 4, mainLane - 2, mainLane - 3].filter(
           (lane, index, lanes) => lane >= 0 && lane < laneTargets.length && lanes.indexOf(lane) === index
         );
-        const supportCount = earlyDenseWindow ? 3 : 1;
+        const supportCount = earlyDenseWindow ? 4 : 2;
         for (let supportIndex = 0; supportIndex < supportCount; supportIndex += 1) {
           const lane = supportLanes[supportIndex];
           if (lane === undefined) {
@@ -923,8 +930,8 @@ export class GamePathSystem {
           }
           const prevNode = expanded[expanded.length - 1] ?? previous;
           const supportSize: GameShardSizeTier = supportIndex === 0 ? 'small' : 'very_small';
-          const supportX = mainNode.x + 0.76 + supportIndex * 0.54 + (this.nextRandom() - 0.5) * 0.12;
-          const supportY = laneTargets[lane]! + (this.nextRandom() - 0.5) * (supportSize === 'small' ? 0.44 : 0.36);
+          const supportX = mainNode.x + 0.94 + supportIndex * 0.68 + (this.nextRandom() - 0.5) * 0.14;
+          const supportY = laneTargets[lane]! + (this.nextRandom() - 0.5) * (supportSize === 'small' ? 0.38 : 0.3);
           const supportNode = this.buildNode({
             previous: prevNode,
             index: prevNode.index + 1,
@@ -1040,7 +1047,7 @@ export class GamePathSystem {
       }
 
       if (earlyDenseWindow && Math.abs(mainLane - centerLaneIndex) <= 1) {
-        const emphasizedOuterLanes = [0, activeLaneTargets.length - 1, 1, activeLaneTargets.length - 2]
+        const emphasizedOuterLanes = [activeLaneTargets.length - 1, activeLaneTargets.length - 2, 0, 1, activeLaneTargets.length - 3]
           .filter((lane, index, lanes) => lane !== mainLane && lanes.indexOf(lane) === index)
           .slice(0, forceDenseCluster ? 3 : 2);
 
@@ -1184,14 +1191,17 @@ export class GamePathSystem {
     const medium = sizeTier === 'medium' || sizeTier === 'medium_large' || sizeTier === 'large';
 
     if (largest) {
-      return THREE.MathUtils.clamp(rawY * 0.5, -laneSpacing * 2.15, laneSpacing * 2.15);
+      return THREE.MathUtils.clamp(rawY * 0.58, -laneSpacing * 2.45, laneSpacing * 2.75);
     }
 
     const preferredIndex = this.getLaneIndex(rawY, laneTargets);
 
     let laneIndex = preferredIndex;
     if (encourageSpread && !medium && this.nextRandom() < 0.42) {
-      laneIndex = Math.floor(this.nextRandom() * laneTargets.length);
+      laneIndex =
+        this.nextRandom() < 0.58
+          ? THREE.MathUtils.clamp(laneTargets.length - 1 - Math.floor(this.nextRandom() * 3), 0, laneTargets.length - 1)
+          : Math.floor(this.nextRandom() * laneTargets.length);
     } else if (encourageSpread && medium && this.nextRandom() < 0.2) {
       const swing = this.nextRandom() < 0.5 ? -1 : 1;
       laneIndex = THREE.MathUtils.clamp(preferredIndex + swing, 0, laneTargets.length - 1);
@@ -1245,7 +1255,7 @@ export class GamePathSystem {
       return node;
     }
     const laneSpacing = getPathLaneSpacing(score);
-    const centeredY = THREE.MathUtils.clamp(node.y * 0.56, -laneSpacing * 2.2, laneSpacing * 2.2);
+    const centeredY = THREE.MathUtils.clamp(node.y * 0.72, -laneSpacing * 2.35, laneSpacing * 2.65);
     return {
       ...node,
       y: centeredY
@@ -1423,48 +1433,64 @@ export class GamePathSystem {
     let working = this.normalizePatternNodes(previous, nodes);
     const anchors = nodes.filter((node) => !node.isGigantic && node.y < upperLane - DEFAULT_COLUMN_DISTANCE * 0.25);
     anchors.forEach((anchorNode, anchorIndex) => {
-      if (this.nextRandom() > THREE.MathUtils.lerp(0.54, 0.12, 1 - recoveryStrength)) {
+      if (this.nextRandom() > THREE.MathUtils.lerp(0.72, 0.18, 1 - recoveryStrength)) {
         return;
       }
 
       const candidateX = anchorNode.x + DEFAULT_COLUMN_DISTANCE * (0.42 + anchorIndex * 0.02) + (this.nextRandom() - 0.5) * 0.18;
-      const candidateY = (anchorIndex % 2 === 0 ? upperLane : topLane) + (this.nextRandom() - 0.5) * 0.38;
-      const candidate = this.buildNode({
-        previous,
-        index: previous.index + 1,
-        x: candidateX,
-        y: candidateY,
-        direction: this.directionFrom(anchorNode.x, anchorNode.y, candidateX, candidateY),
-        sizeTier: anchorIndex % 3 === 0 ? 'small' : 'very_small',
-        shapeKind: 'round',
-        motionPattern: 'none',
-        motionMode: 'none',
-        motionDirection: null,
-        motionDistance: 0,
-        motionDuration: 0,
-        motionActivatedAt: null,
-        spinDirection: this.nextRandom() < 0.5 ? 'cw' : 'ccw',
-        spinSpeed: 0.06 + this.nextRandom() * 0.04,
-        gameplayRadius: anchorIndex % 3 === 0 ? 1.06 : 0.9,
-        visualScale: anchorIndex % 3 === 0 ? 1.14 : 1.02,
-        gameplayOrbitPeriod: anchorIndex % 3 === 0 ? 2.8 : 2.52,
-        visualStretch: { x: 1, y: 1, z: 1 },
-        kind: 'normal',
-        branchSlot: null,
-        offerId: null,
-        onboarding: previous.index < 50,
-        eventType: 'none',
-        colorHint: 'none',
-        isMilestone: false,
-        isGigantic: false,
-        coinSlots: this.nextRandom() < 0.22 ? [{ angle: Math.PI * (0.28 + this.nextRandom() * 1.04), value: 1, collected: false, orbitScale: 1 }] : [],
-        enemySlot: null
-      });
-
-      const merged = this.normalizePatternNodes(previous, [...working, candidate].sort((left, right) => left.x - right.x));
-      if (validatePatternPlacement(merged, this.nodes)) {
-        working = merged;
+      const candidateLayouts = [
+        {
+          x: candidateX,
+          y: (anchorIndex % 2 === 0 ? upperLane : topLane) + (this.nextRandom() - 0.5) * 0.34,
+          sizeTier: anchorIndex % 3 === 0 ? ('small' as GameShardSizeTier) : ('very_small' as GameShardSizeTier)
+        }
+      ];
+      if (recoveryStrength > 0.58 && anchorIndex % 2 === 0) {
+        candidateLayouts.push({
+          x: candidateX + DEFAULT_COLUMN_DISTANCE * 0.62,
+          y: topLane + (this.nextRandom() - 0.5) * 0.28,
+          sizeTier: 'tiny' as GameShardSizeTier
+        });
       }
+
+      candidateLayouts.forEach((layout) => {
+        const candidate = this.buildNode({
+          previous,
+          index: previous.index + 1,
+          x: layout.x,
+          y: layout.y,
+          direction: this.directionFrom(anchorNode.x, anchorNode.y, layout.x, layout.y),
+          sizeTier: layout.sizeTier,
+          shapeKind: 'round',
+          motionPattern: 'none',
+          motionMode: 'none',
+          motionDirection: null,
+          motionDistance: 0,
+          motionDuration: 0,
+          motionActivatedAt: null,
+          spinDirection: this.nextRandom() < 0.5 ? 'cw' : 'ccw',
+          spinSpeed: 0.06 + this.nextRandom() * 0.04,
+          gameplayRadius: layout.sizeTier === 'small' ? 1.06 : layout.sizeTier === 'very_small' ? 0.9 : 0.78,
+          visualScale: layout.sizeTier === 'small' ? 1.14 : layout.sizeTier === 'very_small' ? 1.02 : 0.88,
+          gameplayOrbitPeriod: layout.sizeTier === 'small' ? 2.8 : layout.sizeTier === 'very_small' ? 2.52 : 2.34,
+          visualStretch: { x: 1, y: 1, z: 1 },
+          kind: 'normal',
+          branchSlot: null,
+          offerId: null,
+          onboarding: previous.index < 50,
+          eventType: 'none',
+          colorHint: 'none',
+          isMilestone: false,
+          isGigantic: false,
+          coinSlots: this.nextRandom() < 0.22 ? [{ angle: Math.PI * (0.28 + this.nextRandom() * 1.04), value: 1, collected: false, orbitScale: 1 }] : [],
+          enemySlot: null
+        });
+
+        const merged = this.normalizePatternNodes(previous, [...working, candidate].sort((left, right) => left.x - right.x));
+        if (validatePatternPlacement(merged, this.nodes)) {
+          working = merged;
+        }
+      });
     });
 
     return working;
@@ -1516,21 +1542,34 @@ export class GamePathSystem {
     return DEFAULT_COLUMN_DISTANCE * 0.58;
   }
 
+  private applyShopMotionCap(distance: number, duration: number) {
+    const cappedDistance = Math.min(distance, SHOP_SHARD_MAX_MOTION_DISTANCE);
+    const minimumDuration = cappedDistance / SHOP_SHARD_MAX_MOTION_SPEED;
+    return {
+      distance: cappedDistance,
+      duration: Math.max(duration, minimumDuration)
+    };
+  }
+
   private buildCoinSlots(template: GamePatternNodeTemplate, eventType: GameEventType, score: number) {
-    const slots = template.coinAngles?.map((angle) => ({
-      angle,
-      value: eventType === 'rare_item' ? 2 : 1,
-      collected: false,
-      orbitScale: 1
-    })) ?? [];
+    const decorateCoinSlot = (angle: number) => {
+      const airborneChance = score < 20 ? 0.36 : score < 70 ? 0.24 : score < 140 ? 0.17 : 0.12;
+      const airborne = eventType !== 'shop' && this.nextRandom() < airborneChance;
+      const liftBias = Math.sin(angle) * THREE.MathUtils.lerp(0.1, 0.42, this.nextRandom());
+      return {
+        angle,
+        value: eventType === 'rare_item' ? 2 : 1,
+        collected: false,
+        orbitScale: airborne ? THREE.MathUtils.lerp(1.18, 1.74, this.nextRandom()) : 1,
+        forwardOffset: airborne ? THREE.MathUtils.lerp(0.8, 2.7, this.nextRandom()) : 0,
+        verticalOffset: airborne ? THREE.MathUtils.lerp(-0.18, 1.18, this.nextRandom()) + liftBias : 0
+      };
+    };
+
+    const slots = template.coinAngles?.map((angle) => decorateCoinSlot(angle)) ?? [];
 
     if (slots.length === 0 && score < 12) {
-      slots.push({
-        angle: Math.PI * (0.2 + this.nextRandom() * 1.6),
-        value: 1,
-        collected: false,
-        orbitScale: 1
-      });
+      slots.push(decorateCoinSlot(Math.PI * (0.2 + this.nextRandom() * 1.6)));
     }
 
     return slots;
@@ -1621,7 +1660,7 @@ export class GamePathSystem {
           x: Math.max(nextNode.x, prior.x + priorGap),
           y:
             Math.abs(nextNode.y) < laneSpacing * 2.1
-              ? this.alignToLane(nextNode.y >= 0 ? laneSpacing * 2.55 : -laneSpacing * 2.55, score, nextNode.sizeTier, true)
+              ? this.alignToLane(nextNode.y >= 0 ? laneSpacing * 3.15 : -laneSpacing * 2.75, score, nextNode.sizeTier, true)
               : nextNode.y
         };
       }
@@ -1642,7 +1681,7 @@ export class GamePathSystem {
             x: reservedRange.end + Math.max(DEFAULT_COLUMN_DISTANCE * 0.92, nextNode.gameplayRadius * 0.42),
             y:
               Math.abs(nextNode.y) < laneSpacing * 2.4
-                ? this.alignToLane(nextNode.y >= 0 ? laneSpacing * 2.95 : -laneSpacing * 2.95, score, nextNode.sizeTier, true)
+                ? this.alignToLane(nextNode.y >= 0 ? laneSpacing * 3.45 : -laneSpacing * 3.05, score, nextNode.sizeTier, true)
                 : nextNode.y
           };
         }
@@ -1678,14 +1717,14 @@ export class GamePathSystem {
       const milestoneDistanceMeters = pathDistanceToMeters(normalizedNode.pathDistance);
       const earlyMilestone = milestoneDistanceMeters <= EARLY_PATTERN_DISTANCE_METERS;
       const companionLayouts = [
-        { xOffset: DEFAULT_COLUMN_DISTANCE * 1.15, yOffset: laneSpacing * 2.15, sizeTier: 'small' as GameShardSizeTier },
-        { xOffset: DEFAULT_COLUMN_DISTANCE * 1.95, yOffset: laneSpacing * 3.35, sizeTier: 'very_small' as GameShardSizeTier },
+        { xOffset: DEFAULT_COLUMN_DISTANCE * 1.2, yOffset: laneSpacing * 2.8, sizeTier: 'small' as GameShardSizeTier },
+        { xOffset: DEFAULT_COLUMN_DISTANCE * 2.1, yOffset: laneSpacing * 4.15, sizeTier: 'very_small' as GameShardSizeTier },
         { xOffset: DEFAULT_COLUMN_DISTANCE * 2.85, yOffset: laneSpacing * 1.55 * (this.nextRandom() < 0.5 ? 1 : -1), sizeTier: 'tiny' as GameShardSizeTier }
       ];
       if (earlyMilestone) {
         companionLayouts.push(
-          { xOffset: DEFAULT_COLUMN_DISTANCE * 1.4, yOffset: laneSpacing * 3.85, sizeTier: 'tiny' as GameShardSizeTier },
-          { xOffset: DEFAULT_COLUMN_DISTANCE * 2.3, yOffset: laneSpacing * 2.45, sizeTier: 'very_small' as GameShardSizeTier },
+          { xOffset: DEFAULT_COLUMN_DISTANCE * 1.55, yOffset: laneSpacing * 4.75, sizeTier: 'tiny' as GameShardSizeTier },
+          { xOffset: DEFAULT_COLUMN_DISTANCE * 2.45, yOffset: laneSpacing * 3.15, sizeTier: 'very_small' as GameShardSizeTier },
           { xOffset: DEFAULT_COLUMN_DISTANCE * 2.65, yOffset: -laneSpacing * 2.15, sizeTier: 'small' as GameShardSizeTier },
           { xOffset: DEFAULT_COLUMN_DISTANCE * 3.2, yOffset: laneSpacing * 0.95, sizeTier: 'tiny' as GameShardSizeTier },
           { xOffset: DEFAULT_COLUMN_DISTANCE * 3.7, yOffset: -laneSpacing * 1.2, sizeTier: 'very_small' as GameShardSizeTier }

@@ -47,6 +47,8 @@ export interface GameCoinSlot {
   value: number;
   collected: boolean;
   orbitScale: number;
+  forwardOffset?: number;
+  verticalOffset?: number;
 }
 
 export interface GameEnemySlot {

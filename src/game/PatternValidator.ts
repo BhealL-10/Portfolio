@@ -86,7 +86,7 @@ function isInsideMilestoneReservedRange(candidate: GamePathNode, milestone: Game
   const candidateExtents = getPlacementExtents(candidate);
   const start = milestone.x - milestoneExtents.x - DEFAULT_COLUMN_DISTANCE * 0.9;
   const end = milestone.x + milestoneExtents.x + DEFAULT_COLUMN_DISTANCE * 1.7;
-  const verticallyClear = Math.abs(candidate.y - milestone.y) >= milestoneExtents.y + candidateExtents.y + DEFAULT_COLUMN_DISTANCE * 0.32;
+  const verticallyClear = Math.abs(candidate.y - milestone.y) >= milestoneExtents.y + candidateExtents.y + DEFAULT_COLUMN_DISTANCE * 0.58;
   return candidate.x >= start && candidate.x <= end && !verticallyClear;
 }
 

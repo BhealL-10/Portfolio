@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { clamp } from '../core/math';
 
 export const DEFAULT_COLUMN_DISTANCE = 8.9;
@@ -34,9 +35,9 @@ export function getDifficultyProfile(level: number): DifficultyProfile {
   const normalized = clamp(level / 200, 0, 1);
   const band = level < 50 ? 'easy' : level < 100 ? 'medium' : level < 160 ? 'hard' : 'expert';
 
-  // Progressive camera speed: slow until 200m, then really fast to 500m
+  // Progressive camera speed: readable early run, then a smoother ramp that reaches the cap around 1000m.
   const slowPhase = Math.min(level, 200) / 200 * 0.85;
-  const fastPhase = level > 200 ? Math.min((level - 200) / 300, 1) * 5.5 : 0;
+  const fastPhase = THREE.MathUtils.smootherstep(clamp((level - 200) / 800, 0, 1), 0, 1) * 5.5;
   const cameraSpeed = 1.65 + slowPhase + fastPhase;
 
   return {
@@ -60,6 +61,6 @@ export function getDifficultyProfile(level: number): DifficultyProfile {
     triangularUnlocked: level >= 100,
     roundMovementUnlocked: level >= 5,
     eventChance: level < 12 ? 0 : level < 60 ? 0.08 : level < 120 ? 0.14 : 0.18,
-    movingShardChance: level < 5 ? 0 : level < 50 ? 0.12 : level < 100 ? 0.2 : 0.3
+    movingShardChance: level < 5 ? 0 : level < 50 ? 0.18 : level < 100 ? 0.28 : 0.4
   };
 }
