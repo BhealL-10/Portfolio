@@ -58,6 +58,7 @@ const MILESTONE_BRANCH_REJOIN_PADDING = DEFAULT_COLUMN_DISTANCE * 1.1;
 const MILESTONE_MIN_SEPARATION_X =
   MILESTONE_REWARD_OFFSET + MILESTONE_RESERVED_AFTER + MILESTONE_EXIT_BUFFER + DEFAULT_COLUMN_DISTANCE * 2.2;
 const EARLY_PATTERN_DISTANCE_METERS = 200;
+const DENSITY_TAPER_END_METERS = 1000;
 const EARLY_SUPPORT_BAND_FADE_END_METERS = 430;
 const EARLY_SUPPORT_BAND_BASE_PROBABILITY = 0.92;
 const EARLY_SUPPORT_BAND_MIN_PROBABILITY = 0.18;
@@ -69,7 +70,7 @@ const EARLY_SUPPORT_BAND_BOTTOM_OFFSET_PX = DEFAULT_COLUMN_DISTANCE * 0.88;
 const EARLY_SUPPORT_BAND_MAX_COUNT = 8;
 const EARLY_UPPER_RECOVERY_FADE_END_METERS = 320;
 const SHOP_SHARD_MAX_MOTION_DISTANCE = DEFAULT_COLUMN_DISTANCE * 0.42;
-const SHOP_SHARD_MAX_MOTION_SPEED = DEFAULT_COLUMN_DISTANCE * 0.39;
+const SHOP_SHARD_MAX_MOTION_SPEED = DEFAULT_COLUMN_DISTANCE * 0.19;
 
 function getMilestoneReservedRangeX(centerX: number) {
   return {
@@ -137,14 +138,16 @@ export class GamePathSystem {
       this.reset();
     }
     this.append(Math.max(0, initialCount - this.nodes.length));
+    this.ensureDeterministicFirstMilestone();
   }
 
-  ensureAhead(currentIndex: number, threshold = 50, chunkSize = 30) {
+  ensureAhead(currentIndex: number, threshold = 72, chunkSize = 48) {
     if (this.nodes.length === 0) {
       this.reset();
     }
     if (this.nodes.length - currentIndex > threshold) return;
     this.append(chunkSize);
+    this.ensureDeterministicFirstMilestone();
   }
 
   queuePostMilestoneEvents(fromIndex: number, score: number) {
@@ -157,8 +160,25 @@ export class GamePathSystem {
   }
 
   getInitialNodes(count: number) {
-    this.prebuild(Math.max(180, count + 60));
+    this.prebuild(Math.max(220, count + 88));
     return this.nodes.slice(0, count);
+  }
+
+  private ensureDeterministicFirstMilestone() {
+    this.reconcileStoredMilestones();
+  }
+
+  private reconcileStoredMilestones() {
+    if (this.nodes.length < 2) {
+      return;
+    }
+
+    const [firstNode, ...rest] = this.nodes;
+    if (!firstNode) {
+      return;
+    }
+
+    this.nodes = [firstNode, ...this.ensureMilestones(firstNode, rest, false)];
   }
 
   getInitialPositions(count: number) {
@@ -224,7 +244,6 @@ export class GamePathSystem {
     const insertedTail = normalized[normalized.length - 1] ?? previous;
     const rejoinMinX = (insertedTail?.x ?? previous?.x ?? 0) + MILESTONE_BRANCH_REJOIN_PADDING;
     const stitchedTail: GamePathNode[] = [];
-    const stitchBase = [...preserved, ...normalized];
     const futureTail = this.nodes.slice(startIndex + 1).filter((node) => node.kind !== 'branch' && node.colorHint !== 'reward');
     const seamStartIndex = futureTail.findIndex((node) => node.x >= rejoinMinX);
 
@@ -252,7 +271,7 @@ export class GamePathSystem {
           break;
         }
 
-        if (!validatePatternPlacement([stitchedNode], [...stitchBase, ...stitchedTail])) {
+        if (!this.validatePlacement([stitchedNode], preserved, [...normalized, ...stitchedTail])) {
           break;
         }
 
@@ -543,6 +562,10 @@ export class GamePathSystem {
     }
   }
 
+  private validatePlacement(candidateNodes: GamePathNode[], baseNodes: GamePathNode[], extraNodes: GamePathNode[] = []) {
+    return validatePatternPlacement(candidateNodes, [...baseNodes, ...extraNodes]);
+  }
+
   private append(minimumNodes: number) {
     if (minimumNodes <= 0) return;
     if (this.nodes.length === 0) {
@@ -603,13 +626,14 @@ export class GamePathSystem {
     if (rawCandidates.length === 0) {
       return this.buildFallbackPattern(previous);
     }
-    const candidates = this.isolateMilestones(this.densifyPattern(previous, rawCandidates, score, distanceMeters), previous, score);
+    const normalizedRawCandidates = this.normalizePatternNodes(previous, rawCandidates);
+    const candidates = this.isolateMilestones(this.densifyPattern(previous, normalizedRawCandidates, score, distanceMeters), previous, score);
     let basePattern: GamePathNode[];
 
-    if (validatePatternPlacement(candidates, this.nodes)) {
+    if (this.validatePlacement(candidates, this.nodes)) {
       basePattern = candidates;
-    } else if (validatePatternPlacement(rawCandidates, this.nodes)) {
-      basePattern = rawCandidates;
+    } else if (this.validatePlacement(normalizedRawCandidates, this.nodes)) {
+      basePattern = normalizedRawCandidates;
     } else {
       basePattern = this.buildFallbackPattern(previous);
     }
@@ -617,26 +641,56 @@ export class GamePathSystem {
     const reservedPattern = this.reserveMilestones(previous, this.expandLanePresence(previous, basePattern, score, distanceMeters), score);
     const withLowerSupport = this.injectLowerSupportBand(previous, reservedPattern, score, distanceMeters);
     const withUpperRecovery = this.injectUpperRecoveryBand(previous, withLowerSupport, score, distanceMeters);
-    return this.stabilizePatternLayout(previous, withUpperRecovery, score);
+    const stabilized = this.stabilizePatternLayout(previous, withUpperRecovery, score);
+    return stabilized.length > 0 ? this.ensureMilestones(previous, stabilized) : this.buildFallbackPattern(previous);
+  }
+
+  private resolveCrossedMilestoneDistance(
+    previousDistanceMeters: number,
+    currentDistanceMeters: number,
+    node: Pick<GamePathNode, 'isMilestone' | 'reservedMilestoneDistance'>
+  ) {
+    if (node.isMilestone) {
+      return null;
+    }
+
+    const reservedMilestoneDistance = node.reservedMilestoneDistance;
+    if (
+      typeof reservedMilestoneDistance === 'number' &&
+      Number.isFinite(reservedMilestoneDistance) &&
+      reservedMilestoneDistance > previousDistanceMeters + 0.0001 &&
+      reservedMilestoneDistance <= currentDistanceMeters + 0.0001
+    ) {
+      return reservedMilestoneDistance;
+    }
+
+    return getCrossedUpgradeMilestone(previousDistanceMeters, currentDistanceMeters);
   }
 
   private reserveMilestones(previous: GamePathNode, nodes: GamePathNode[], score: number) {
     if (nodes.length === 0) return nodes;
 
     const reserved: GamePathNode[] = [];
+    const laneSpacing = getPathLaneSpacing(score);
     let cursor = previous;
     nodes.forEach((node) => {
       const segmentDistance = Math.hypot(node.x - cursor.x, node.y - cursor.y);
       const previousDistanceMeters = pathDistanceToMeters(cursor.pathDistance);
       const currentDistanceMeters = pathDistanceToMeters(cursor.pathDistance + segmentDistance);
-      const crossedMilestone = getCrossedUpgradeMilestone(previousDistanceMeters, currentDistanceMeters);
+      const crossedMilestone = this.resolveCrossedMilestoneDistance(previousDistanceMeters, currentDistanceMeters, node);
 
-      let nextNode = { ...node };
-      if (crossedMilestone !== null && !cursor.isMilestone && !node.isMilestone) {
+      let originalNode = {
+        ...node,
+        reservedMilestoneDistance: null
+      };
+      if (crossedMilestone !== null && !cursor.isMilestone) {
         const milestoneVisualScale = MILESTONE_HALF_WIDTH / (1.25 * 0.92);
         const milestoneGap = MILESTONE_HALF_WIDTH + MILESTONE_RESERVED_BEFORE;
-        const x = Math.max(node.x, cursor.x + milestoneGap);
-        nextNode = this.buildNode({
+        const targetPathDistance = crossedMilestone * DEFAULT_COLUMN_DISTANCE;
+        const milestoneFraction = segmentDistance > 0 ? clamp((targetPathDistance - cursor.pathDistance) / segmentDistance, 0, 1) : 0;
+        const milestoneX = cursor.x + (node.x - cursor.x) * milestoneFraction;
+        const x = Math.max(milestoneX, cursor.x + milestoneGap);
+        const milestoneNode = this.buildNode({
           previous: cursor,
           index: cursor.index + 1,
           x,
@@ -662,9 +716,26 @@ export class GamePathSystem {
           coinSlots: [],
           enemySlot: null
         });
+        const normalizedMilestone = {
+          ...this.reindexNode(milestoneNode, cursor.index + 1, cursor),
+          pathDistance: targetPathDistance
+        };
+        reserved.push(normalizedMilestone);
+        cursor = normalizedMilestone;
+        originalNode = {
+          ...originalNode,
+          x: Math.max(
+            originalNode.x,
+            normalizedMilestone.x + MILESTONE_REWARD_OFFSET + MILESTONE_RESERVED_AFTER + MILESTONE_EXIT_BUFFER
+          ),
+          y:
+            Math.abs(originalNode.y - normalizedMilestone.y) < laneSpacing * 2.3
+              ? this.alignToLane(originalNode.y >= 0 ? laneSpacing * 3.2 : -laneSpacing * 2.9, score, originalNode.sizeTier, true)
+              : originalNode.y
+        };
       }
 
-      const normalized = this.reindexNode(nextNode, cursor.index + 1, cursor);
+      const normalized = this.reindexNode(originalNode, cursor.index + 1, cursor);
       reserved.push(normalized);
       cursor = normalized;
     });
@@ -693,10 +764,11 @@ export class GamePathSystem {
       };
 
       if (candidate.isMilestone) {
-        if (lastMilestone && candidate.x - lastMilestone.x < MILESTONE_MIN_SEPARATION_X) {
-          return;
-        }
-        candidate = { ...candidate, y: 0 };
+        candidate = {
+          ...candidate,
+          x: lastMilestone ? Math.max(candidate.x, lastMilestone.x + MILESTONE_MIN_SEPARATION_X) : candidate.x,
+          y: 0
+        };
       } else if (lastMilestone) {
         const reservedRange = getMilestoneReservedRangeX(lastMilestone.x);
         const laneSpacing = getPathLaneSpacing(score);
@@ -716,28 +788,46 @@ export class GamePathSystem {
       const prior = stabilized[stabilized.length - 1] ?? previous;
       let normalized = this.reindexNode(candidate, prior.index + 1, prior);
 
-      if (!validatePatternPlacement([normalized], [...this.nodes, ...stabilized])) {
+      if (!this.validatePlacement([normalized], this.nodes, stabilized)) {
         if (candidate.isMilestone) {
-          return;
-        }
+          let placedMilestone = false;
+          for (let attempt = 0; attempt < 4; attempt += 1) {
+            const shiftedCandidate = {
+              ...candidate,
+              x: Math.max(
+                candidate.x + DEFAULT_COLUMN_DISTANCE * (1.1 + attempt * 0.75),
+                prior.x + MILESTONE_HALF_WIDTH + MILESTONE_RESERVED_BEFORE
+              ),
+              y: 0
+            };
+            normalized = this.reindexNode(shiftedCandidate, prior.index + 1, prior);
+            if (this.validatePlacement([normalized], this.nodes, stabilized)) {
+              placedMilestone = true;
+              break;
+            }
+          }
+          if (!placedMilestone) {
+            return;
+          }
+        } else {
+          const referenceMilestone = lastMilestone;
+          if (!referenceMilestone) {
+            return;
+          }
 
-        const referenceMilestone = lastMilestone;
-        if (!referenceMilestone) {
-          return;
-        }
-
-        const laneSpacing = getPathLaneSpacing(score);
-        const shiftedCandidate = {
-          ...candidate,
-          x: Math.max(candidate.x, getMilestoneReservedRangeX(referenceMilestone.x).end + DEFAULT_COLUMN_DISTANCE * 1.05),
-          y:
-            Math.abs(candidate.y - referenceMilestone.y) < laneSpacing * 2.4
-              ? this.alignToLane(candidate.y >= 0 ? laneSpacing * 3.65 : -laneSpacing * 3.25, score, candidate.sizeTier, true)
-              : candidate.y
-        };
-        normalized = this.reindexNode(shiftedCandidate, prior.index + 1, prior);
-        if (!validatePatternPlacement([normalized], [...this.nodes, ...stabilized])) {
-          return;
+          const laneSpacing = getPathLaneSpacing(score);
+          const shiftedCandidate = {
+            ...candidate,
+            x: Math.max(candidate.x, getMilestoneReservedRangeX(referenceMilestone.x).end + DEFAULT_COLUMN_DISTANCE * 1.05),
+            y:
+              Math.abs(candidate.y - referenceMilestone.y) < laneSpacing * 2.4
+                ? this.alignToLane(candidate.y >= 0 ? laneSpacing * 3.65 : -laneSpacing * 3.25, score, candidate.sizeTier, true)
+                : candidate.y
+          };
+          normalized = this.reindexNode(shiftedCandidate, prior.index + 1, prior);
+          if (!this.validatePlacement([normalized], this.nodes, stabilized)) {
+            return;
+          }
         }
       }
 
@@ -748,6 +838,103 @@ export class GamePathSystem {
     });
 
     return stabilized;
+  }
+
+  private ensureMilestones(previous: GamePathNode, nodes: GamePathNode[], seedLastMilestoneFromExisting = true) {
+    if (nodes.length === 0) {
+      return nodes;
+    }
+
+    const normalized: GamePathNode[] = [];
+    let cursor = previous;
+    let lastMilestone = seedLastMilestoneFromExisting
+      ? [...this.nodes.slice(Math.max(0, this.nodes.length - 14)), previous]
+          .reverse()
+          .find((node) => node?.isMilestone) ?? null
+      : previous.isMilestone
+        ? previous
+        : null;
+
+    nodes.forEach((node) => {
+      const currentDistanceMeters = pathDistanceToMeters(node.pathDistance);
+      const previousDistanceMeters = pathDistanceToMeters(cursor.pathDistance);
+      const crossedMilestone = this.resolveCrossedMilestoneDistance(previousDistanceMeters, currentDistanceMeters, node);
+
+      if (crossedMilestone !== null && !cursor.isMilestone) {
+        const milestoneVisualScale = MILESTONE_HALF_WIDTH / (1.25 * 0.92);
+        const milestoneGap = MILESTONE_HALF_WIDTH + MILESTONE_RESERVED_BEFORE;
+        const targetPathDistance = crossedMilestone * DEFAULT_COLUMN_DISTANCE;
+        const segmentDistance = Math.max(0.001, node.pathDistance - cursor.pathDistance);
+        const milestoneFraction = clamp((targetPathDistance - cursor.pathDistance) / segmentDistance, 0, 1);
+        const milestoneX = cursor.x + (node.x - cursor.x) * milestoneFraction;
+        const milestoneNode = this.buildNode({
+          previous: cursor,
+          index: cursor.index + 1,
+          x: Math.max(milestoneX, cursor.x + milestoneGap),
+          y: 0,
+          direction: 'right',
+          sizeTier: 'massive',
+          shapeKind: 'round',
+          motionPattern: 'none',
+          spinDirection: 'cw',
+          spinSpeed: 0.04,
+          gameplayRadius: MILESTONE_HALF_WIDTH,
+          visualScale: milestoneVisualScale,
+          gameplayOrbitPeriod: 5.4,
+          visualStretch: { x: 1, y: 1, z: 1 },
+          kind: 'milestone',
+          branchSlot: null,
+          offerId: null,
+          onboarding: false,
+          eventType: 'none',
+          colorHint: 'none',
+          isMilestone: true,
+          isGigantic: true,
+          reservedMilestoneDistance: null,
+          coinSlots: [],
+          enemySlot: null
+        });
+        const normalizedMilestone = {
+          ...this.reindexNode(
+            {
+              ...milestoneNode,
+              x: lastMilestone
+                ? Math.max(milestoneNode.x, lastMilestone.x + MILESTONE_MIN_SEPARATION_X)
+                : Math.min(
+                    Math.max(milestoneX, cursor.x + milestoneGap),
+                    Math.max(cursor.x + milestoneGap, node.x - DEFAULT_COLUMN_DISTANCE * 0.4)
+                  )
+            },
+            cursor.index + 1,
+            cursor
+          ),
+          pathDistance: targetPathDistance
+        };
+        normalized.push(normalizedMilestone);
+        cursor = normalizedMilestone;
+        lastMilestone = normalizedMilestone;
+      }
+
+      let nextNode = {
+        ...node,
+        reservedMilestoneDistance: null
+      };
+      if (lastMilestone && !nextNode.isMilestone && nextNode.x <= lastMilestone.x + DEFAULT_COLUMN_DISTANCE * 0.35) {
+        nextNode = {
+          ...nextNode,
+          x: lastMilestone.x + DEFAULT_COLUMN_DISTANCE * 0.9
+        };
+      }
+
+      const normalizedNode = this.reindexNode(nextNode, cursor.index + 1, cursor);
+      normalized.push(normalizedNode);
+      cursor = normalizedNode;
+      if (normalizedNode.isMilestone) {
+        lastMilestone = normalizedNode;
+      }
+    });
+
+    return normalized;
   }
 
   private buildTemplateNode(
@@ -767,9 +954,10 @@ export class GamePathSystem {
     const segmentDistance = Math.hypot(x - previous.x, y - previous.y);
     const previousDistanceMeters = pathDistanceToMeters(previous.pathDistance);
     const currentDistanceMeters = pathDistanceToMeters(previous.pathDistance + segmentDistance);
-    const isMilestone = getCrossedUpgradeMilestone(previousDistanceMeters, currentDistanceMeters) !== null;
-    const isGigantic = isMilestone;
-    const resolvedSizeTier = isGigantic ? 'massive' : sizeTier;
+    const reservedMilestoneDistance = getCrossedUpgradeMilestone(previousDistanceMeters, currentDistanceMeters);
+    const isMilestone = false;
+    const isGigantic = false;
+    const resolvedSizeTier = sizeTier;
     const resolvedSizeConfig = SIZE_TIER_CONFIG[resolvedSizeTier];
     const gameplayRadius = isGigantic ? 14.4 + this.nextRandom() * 2.6 : resolvedSizeConfig.radius[0] + this.nextRandom() * (resolvedSizeConfig.radius[1] - resolvedSizeConfig.radius[0]);
     const visualScale = isGigantic ? 38 + this.nextRandom() * 14 : resolvedSizeConfig.visual[0] + this.nextRandom() * (resolvedSizeConfig.visual[1] - resolvedSizeConfig.visual[0]);
@@ -871,6 +1059,7 @@ export class GamePathSystem {
       colorHint,
       isMilestone,
       isGigantic,
+      reservedMilestoneDistance,
       coinSlots: this.buildCoinSlots(template, eventType, score),
       enemySlot: this.buildEnemySlot(template, score, eventType, shapeKind)
     });
@@ -929,6 +1118,13 @@ export class GamePathSystem {
     if (candidates.length === 0) return candidates;
 
     const profile = getDifficultyProfile(score);
+    const densityWindow =
+      1 -
+      THREE.MathUtils.smootherstep(
+        clamp((distanceMeters - EARLY_PATTERN_DISTANCE_METERS) / (DENSITY_TAPER_END_METERS - EARLY_PATTERN_DISTANCE_METERS), 0, 1),
+        0,
+        1
+      );
     const densified: GamePathNode[] = [];
     let cursor = previous;
     let flatRun = 0;
@@ -943,20 +1139,25 @@ export class GamePathSystem {
       const earlyVerticalBias = distanceMeters < EARLY_PATTERN_DISTANCE_METERS;
       const largestRadius = Math.max(candidate.gameplayRadius, cursor.gameplayRadius);
       const clusterPotential = largestRadius < 1.05 ? 5 : largestRadius < 1.9 ? 3 : 2;
+      const gapThreshold = profile.spacing * THREE.MathUtils.lerp(0.82, earlyVerticalBias ? 0.64 : 0.9, densityWindow);
+      const verticalThreshold = profile.maxVerticalDelta * THREE.MathUtils.lerp(0.62, 0.46, densityWindow);
 
       const needsExtra =
         score < 180 &&
         (
-          distance > profile.spacing * (earlyVerticalBias ? 0.76 : 0.94) ||
-          Math.abs(dy) > profile.maxVerticalDelta * 0.54 ||
-          flatRun >= (earlyVerticalBias ? 1 : 2) ||
+          distance > gapThreshold ||
+          Math.abs(dy) > verticalThreshold ||
+          flatRun >= (earlyVerticalBias || densityWindow > 0.58 ? 1 : 2) ||
           periodicVerticalWindow
         );
 
       if (needsExtra) {
         const baseInsertions =
-          earlyVerticalBias || periodicVerticalWindow || distance > profile.spacing * 1.18 || Math.abs(dy) > profile.maxVerticalDelta * 0.82 ? 2 : 1;
-        const insertions = Math.min(clusterPotential, baseInsertions + (earlyVerticalBias && clusterPotential > 1 ? 1 : 0));
+          earlyVerticalBias || periodicVerticalWindow || densityWindow > 0.54 || distance > profile.spacing * 1.08 || Math.abs(dy) > profile.maxVerticalDelta * 0.74 ? 2 : 1;
+        const insertions = Math.min(
+          clusterPotential,
+          baseInsertions + ((earlyVerticalBias || densityWindow > 0.72) && clusterPotential > 1 ? 1 : 0)
+        );
         for (let step = 0; step < insertions; step += 1) {
           const ratio = (step + 1) / (insertions + 1);
           const offsetSign = (cursor.index + candidate.index + step) % 2 === 0 ? 1 : -1;
@@ -1083,7 +1284,7 @@ export class GamePathSystem {
             coinSlots: supportIndex < 2 && this.nextRandom() < 0.28 ? [{ angle: Math.PI * (0.28 + this.nextRandom() * 1.08), value: 1, collected: false, orbitScale: 1 }] : [],
             enemySlot: null
           });
-          if (validatePatternPlacement([supportNode], [...this.nodes, ...expanded])) {
+          if (this.validatePlacement([supportNode], this.nodes, expanded)) {
             expanded.push(supportNode);
           }
         }
@@ -1161,7 +1362,7 @@ export class GamePathSystem {
           coinSlots: hasCoin ? [{ angle: Math.PI * (0.35 + this.nextRandom() * 1.2), value: 1, collected: false, orbitScale: 1 }] : [],
           enemySlot: null
         });
-        if (validatePatternPlacement([companionNode], [...this.nodes, ...expanded])) {
+        if (this.validatePlacement([companionNode], this.nodes, expanded)) {
           expanded.push(companionNode);
         }
       }
@@ -1214,7 +1415,7 @@ export class GamePathSystem {
             coinSlots: [{ angle: Math.PI * (0.3 + this.nextRandom() * 1.1), value: 1, collected: false, orbitScale: 1 }],
             enemySlot: null
           });
-          if (validatePatternPlacement([outerCompanion], [...this.nodes, ...expanded])) {
+          if (this.validatePlacement([outerCompanion], this.nodes, expanded)) {
             expanded.push(outerCompanion);
           }
         });
@@ -1258,6 +1459,7 @@ export class GamePathSystem {
     colorHint: GamePathNode['colorHint'];
     isMilestone: boolean;
     isGigantic: boolean;
+    reservedMilestoneDistance?: number | null;
     coinSlots: GameCoinSlot[];
     enemySlot: GamePathNode['enemySlot'];
     motionSeed?: number;
@@ -1297,6 +1499,7 @@ export class GamePathSystem {
       onboarding: config.onboarding,
       isMilestone: config.isMilestone,
       isGigantic: config.isGigantic,
+      reservedMilestoneDistance: config.reservedMilestoneDistance ?? null,
       coinSlots: config.coinSlots,
       enemySlot: config.enemySlot,
       motionSeed: config.motionSeed ?? this.nextRandom() * Math.PI * 2,
@@ -1383,7 +1586,7 @@ export class GamePathSystem {
   }
 
   private reindexNode(node: GamePathNode, index: number, previous: GamePathNode | null) {
-    return this.buildNode({
+    const reindexed = this.buildNode({
       previous,
       index,
       x: node.x,
@@ -1413,10 +1616,17 @@ export class GamePathSystem {
       colorHint: node.colorHint,
       isMilestone: node.isMilestone,
       isGigantic: node.isGigantic,
+      reservedMilestoneDistance: node.reservedMilestoneDistance ?? null,
       coinSlots: node.coinSlots.map((slot) => ({ ...slot })),
       enemySlot: node.enemySlot ? { ...node.enemySlot } : null,
       motionSeed: node.motionSeed
     });
+    return node.isMilestone
+      ? {
+          ...reindexed,
+          pathDistance: node.pathDistance
+        }
+      : reindexed;
   }
 
   private injectLowerSupportBand(previous: GamePathNode, nodes: GamePathNode[], score: number, distanceMeters: number) {
@@ -1509,7 +1719,7 @@ export class GamePathSystem {
       });
 
       const merged = this.normalizePatternNodes(previous, [...working, supportNode].sort((left, right) => left.x - right.x));
-      if (validatePatternPlacement(merged, this.nodes)) {
+      if (this.validatePlacement(merged, this.nodes)) {
         working = merged;
       }
       supportIndex += 1;
@@ -1607,7 +1817,7 @@ export class GamePathSystem {
         });
 
         const merged = this.normalizePatternNodes(previous, [...working, candidate].sort((left, right) => left.x - right.x));
-        if (validatePatternPlacement(merged, this.nodes)) {
+        if (this.validatePlacement(merged, this.nodes)) {
           working = merged;
         }
       });
@@ -1885,7 +2095,7 @@ export class GamePathSystem {
           enemySlot: null
         });
 
-        if (validatePatternPlacement([companion], [...this.nodes, ...enriched])) {
+        if (this.validatePlacement([companion], this.nodes, enriched)) {
           enriched.push(companion);
         }
       });

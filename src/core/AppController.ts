@@ -109,6 +109,7 @@ export class AppController {
   private gameTransitionAnchor: THREE.Vector3 | null = null;
   private gameRuntime: LoadedGameRuntime | null = null;
   private gameRuntimeLoader: Promise<LoadedGameRuntime> | null = null;
+  private gameRuntimeUnsubscribers: Array<() => void> = [];
   private pendingGameTransitionRequest: { forceDirectEntry: boolean; skipPreAlign: boolean } | null = null;
   private primaterieHubPreloaded = false;
   private primaterieHubPreloadPromise: Promise<void> | null = null;
@@ -373,17 +374,20 @@ export class AppController {
         });
         primateriePortal.setLocale(this.i18n.current);
 
-        audio.onSettingsChange((settings) => {
-          gameHud.setAudioControls(settings);
-        });
-        game.onAudioEvent((event) => {
-          audio.handleEvent(event);
-        });
-        game.onScoreChange(() => {
-          if (this.mode.is('game') || this.mode.is('game_over')) {
-            this.refreshUI();
-          }
-        });
+        // Store unsubscribe functions so they can be cleaned up on restart
+        this.gameRuntimeUnsubscribers = [
+          audio.onSettingsChange((settings) => {
+            gameHud.setAudioControls(settings);
+          }),
+          game.onAudioEvent((event) => {
+            audio.handleEvent(event);
+          }),
+          game.onScoreChange(() => {
+            if (this.mode.is('game') || this.mode.is('game_over')) {
+              this.refreshUI();
+            }
+          })
+        ];
 
         const runtime: LoadedGameRuntime = {
           game,
@@ -1432,11 +1436,8 @@ export class AppController {
         this.game.beginRun();
         this.parallaxLayers.resetForRun(this.game.getParallaxCoverageAnchorX());
         const gameFieldCount = this.getGameFieldCount();
-        this.world.setExternalLayoutPositions(
-          this.game.getVisiblePlatformPositions(gameFieldCount),
-          this.game.getVisiblePlatformScales(gameFieldCount),
-          this.game.getVisiblePlatformVisuals(gameFieldCount)
-        );
+        const layout = this.game.getVisiblePlatformLayout(gameFieldCount);
+        this.world.setExternalLayoutSnapshot(layout.positions, layout.scales, layout.visuals);
         this.refreshUI();
       }
     });
@@ -1448,15 +1449,16 @@ export class AppController {
     if (this.mode.is('game_over')) {
       this.mode.setMode('game');
     }
+    // Clean up all subscriptions and UI listeners before restarting
+    this.gameRuntimeUnsubscribers.forEach((unsubscribe) => unsubscribe());
+    this.gameRuntimeUnsubscribers.length = 0;
+    this.gameHud.dispose();
     this.audio.prime();
     this.game.restart();
     this.parallaxLayers.resetForRun(this.game.getParallaxCoverageAnchorX());
     const gameFieldCount = this.getGameFieldCount();
-    this.world.setExternalLayoutPositions(
-      this.game.getVisiblePlatformPositions(gameFieldCount),
-      this.game.getVisiblePlatformScales(gameFieldCount),
-      this.game.getVisiblePlatformVisuals(gameFieldCount)
-    );
+    const layout = this.game.getVisiblePlatformLayout(gameFieldCount);
+    this.world.setExternalLayoutSnapshot(layout.positions, layout.scales, layout.visuals);
     this.refreshUI();
   }
 
@@ -1467,6 +1469,11 @@ export class AppController {
     if (!isGameRuntimeMode(this.mode.current)) {
       return;
     }
+
+    // Clean up all subscriptions and UI listeners before exiting
+    this.gameRuntimeUnsubscribers.forEach((unsubscribe) => unsubscribe());
+    this.gameRuntimeUnsubscribers.length = 0;
+    this.gameHud.dispose();
 
     if (this.gameTransitionTweenId !== null) {
       this.transitions.cancel(this.gameTransitionTweenId);
@@ -1610,11 +1617,8 @@ export class AppController {
 
       if (this.mode.is('game') || this.mode.is('game_over')) {
         const gameFieldCount = this.getGameFieldCount();
-        this.world.setExternalLayoutPositions(
-          this.game.getVisiblePlatformPositions(gameFieldCount),
-          this.game.getVisiblePlatformScales(gameFieldCount),
-          this.game.getVisiblePlatformVisuals(gameFieldCount)
-        );
+        const layout = this.game.getVisiblePlatformLayout(gameFieldCount);
+        this.world.setExternalLayoutSnapshot(layout.positions, layout.scales, layout.visuals);
       }
 
       if (this.mode.is('game') && this.isSettingsMenuOpen() && !this.guideSettingsIntroShown && !this.hasCompletedGuideObjective('sound')) {
@@ -1815,9 +1819,9 @@ export class AppController {
     if (!this.gameRuntime) {
       return this.world.getGameFieldCapacity();
     }
-    const requestedCount = Math.max(this.world.getGameFieldCapacity(), this.game.getRecommendedVisibleCount());
+    const requestedCount = this.game.getRecommendedVisibleCount();
     this.world.ensureGameFieldCapacity(requestedCount);
-    return this.world.getGameFieldCapacity();
+    return requestedCount;
   }
 
   private updateGuide() {

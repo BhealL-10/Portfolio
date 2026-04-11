@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isMobileRuntime } from '../core/device';
 import { getThemeBackgroundHex, getThemeNonShardHex } from '../core/themePalette';
 import type { MusicReactiveState } from '../game/GameAudioSystem';
 import type { ThemeMode } from '../types/content';
@@ -13,9 +14,10 @@ const MOMENTUM_COLORS = {
   max: '#FF4545'
 } as const;
 
-const SHARD_COUNT = 144;
-const WAVE_COUNT = 28;
+const SHARD_COUNT = isMobileRuntime() ? 96 : 144;
+const WAVE_COUNT = isMobileRuntime() ? 18 : 28;
 const WAVE_SEGMENTS = 24;
+const WAVE_UPDATE_INTERVAL_SECONDS = isMobileRuntime() ? 1 / 20 : 1 / 30;
 const ORB_CENTER = new THREE.Vector3(0, 0, -43);
 const ORB_RADIUS = 13.8;
 const WAVE_BASE_LENGTH = 22;
@@ -24,10 +26,11 @@ const UNIT_Y = new THREE.Vector3(0, 1, 0);
 const UNIT_X = new THREE.Vector3(1, 0, 0);
 
 interface WaveLine {
-  angle: number;
   phase: number;
   drift: number;
   amplitudeSeed: number;
+  radial: THREE.Vector3;
+  perpendicular: THREE.Vector3;
   geometry: THREE.BufferGeometry;
   line: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
 }
@@ -63,6 +66,7 @@ export class MusicReactiveBackdrop {
   private readonly softFocusColor = new THREE.Color();
   private theme: ThemeMode;
   private visible = false;
+  private waveUpdateAccumulator = WAVE_UPDATE_INTERVAL_SECONDS;
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
     this.theme = theme;
@@ -98,7 +102,11 @@ export class MusicReactiveBackdrop {
     this.root.add(this.waveGroup);
     scene.add(this.root);
 
-    this.applyMatrices(0, { active: false, bassIntensity: 0, midIntensity: 0, melodyIntensity: 0, overallEnergy: 0, momentumRatio: 0, difficultyRatio: 0 });
+    this.applyMatrices(
+      0,
+      { active: false, bassIntensity: 0, midIntensity: 0, melodyIntensity: 0, overallEnergy: 0, momentumRatio: 0, difficultyRatio: 0 },
+      true
+    );
   }
 
   setTheme(theme: ThemeMode) {
@@ -122,7 +130,7 @@ export class MusicReactiveBackdrop {
     this.root.visible = visible;
   }
 
-  update(_deltaTime: number, elapsedTime: number, camera: THREE.PerspectiveCamera, reactive: MusicReactiveState) {
+  update(deltaTime: number, elapsedTime: number, camera: THREE.PerspectiveCamera, reactive: MusicReactiveState) {
     if (!this.visible) {
       return;
     }
@@ -139,7 +147,12 @@ export class MusicReactiveBackdrop {
       1
     );
     this.waveGroup.position.y = Math.sin(elapsedTime * 0.92) * (0.06 + reactive.overallEnergy * 0.09);
-    this.applyMatrices(elapsedTime, reactive);
+    this.waveUpdateAccumulator += deltaTime;
+    const updateWaves = this.waveUpdateAccumulator >= WAVE_UPDATE_INTERVAL_SECONDS;
+    if (updateWaves) {
+      this.waveUpdateAccumulator = 0;
+    }
+    this.applyMatrices(elapsedTime, reactive, updateWaves);
   }
 
   private createShards() {
@@ -187,12 +200,14 @@ export class MusicReactiveBackdrop {
       const line = new THREE.Line(geometry, material);
       line.frustumCulled = false;
       line.renderOrder = -3;
+      const angle = (index / WAVE_COUNT) * Math.PI * 2;
 
       waves.push({
-        angle: (index / WAVE_COUNT) * Math.PI * 2,
         phase: Math.random() * Math.PI * 2,
         drift: THREE.MathUtils.lerp(0.75, 1.45, Math.random()),
         amplitudeSeed: Math.random(),
+        radial: new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0),
+        perpendicular: new THREE.Vector3(-Math.sin(angle), Math.cos(angle), 0),
         geometry,
         line
       });
@@ -200,7 +215,7 @@ export class MusicReactiveBackdrop {
     return waves;
   }
 
-  private applyMatrices(elapsedTime: number, reactive: MusicReactiveState) {
+  private applyMatrices(elapsedTime: number, reactive: MusicReactiveState, updateWaves: boolean) {
     const bass = reactive.bassIntensity;
     const mid = reactive.midIntensity;
     const melody = reactive.melodyIntensity;
@@ -210,7 +225,8 @@ export class MusicReactiveBackdrop {
     const globalGather = 0.35 + Math.sin(elapsedTime * 0.7) * 0.08 + energy * 0.12 + momentum * 0.3;
     const orbScale = 1 + momentum * 0.38 + difficulty * 0.12;
     const movementBoost = 1 + momentum * 1.25 + difficulty * 0.44;
-    this.targetColor.copy(resolveMomentumColor(this.theme, momentum)).lerp(this.softFocusColor, 0.24);
+    resolveMomentumColor(this.targetColor, this.theme, momentum);
+    this.targetColor.lerp(this.softFocusColor, 0.24);
     this.currentColor.lerp(this.targetColor, 0.045);
     this.material.color.copy(this.currentColor);
     this.hazeInner.material.color.copy(this.currentColor);
@@ -261,16 +277,17 @@ export class MusicReactiveBackdrop {
       const wave = this.waves[index]!;
       const pulsate = 0.6 + Math.sin(elapsedTime * (1.6 * wave.drift) + wave.phase) * 0.32;
       const waveLength = lineBaseLength * pulsate + audioDrive * 14 + wave.amplitudeSeed * 5;
-      const waveThickness = 0.02 + 0.03 * (1 + momentum + audioDrive * 0.45) * (0.55 + wave.amplitudeSeed * 0.45);
       const curvatureBase = (2.6 + momentum * 1.8) * (0.18 + audioDrive * 0.38) * (0.35 + wave.amplitudeSeed * 0.5);
-      const radial = new THREE.Vector3(Math.cos(wave.angle), Math.sin(wave.angle), 0);
-      const perp = new THREE.Vector3(-radial.y, radial.x, 0);
 
       wave.line.material.opacity = lineOpacity;
-      (wave.line.material as THREE.LineBasicMaterial).linewidth = waveThickness * 30;
       wave.line.material.color.copy(this.currentColor);
+      if (!updateWaves) {
+        continue;
+      }
 
       const positions = (wave.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array;
+      const radial = wave.radial;
+      const perpendicular = wave.perpendicular;
 
       for (let segment = 0; segment <= WAVE_SEGMENTS; segment += 1) {
         const t = segment / WAVE_SEGMENTS;
@@ -278,44 +295,65 @@ export class MusicReactiveBackdrop {
         const waveMotion = Math.sin(t * Math.PI * 3 + elapsedTime * 5 * wave.drift + wave.phase) * curvatureBase * (0.5 + 0.5 * t);
         const taper = (1 - Math.abs(2 * t - 1)) * 0.8;
         const offset = waveMotion * taper;
+        const positionIndex = segment * 3;
 
-        const position = ORB_CENTER.clone();
-        position.addScaledVector(radial, localLength + ORB_RADIUS * 0.25);
-        position.addScaledVector(perp, offset);
-
-        positions[segment * 3] = position.x;
-        positions[segment * 3 + 1] = position.y;
-        positions[segment * 3 + 2] = position.z;
+        positions[positionIndex] = ORB_CENTER.x + radial.x * (localLength + ORB_RADIUS * 0.25) + perpendicular.x * offset;
+        positions[positionIndex + 1] = ORB_CENTER.y + radial.y * (localLength + ORB_RADIUS * 0.25) + perpendicular.y * offset;
+        positions[positionIndex + 2] = ORB_CENTER.z;
       }
 
       wave.geometry.attributes.position.needsUpdate = true;
-      wave.geometry.computeBoundingSphere();
     }
 
     this.mesh.instanceMatrix.needsUpdate = true;
   }
-}
 
-function resolveMomentumColor(theme: ThemeMode, momentum: number) {
-  const stops = [
-    { at: 0, color: new THREE.Color(theme === 'dark' ? MOMENTUM_COLORS.themeDark : MOMENTUM_COLORS.themeLight) },
-    { at: 0.2, color: new THREE.Color(MOMENTUM_COLORS.uncommon) },
-    { at: 0.4, color: new THREE.Color(MOMENTUM_COLORS.cyan) },
-    { at: 0.6, color: new THREE.Color(MOMENTUM_COLORS.rare) },
-    { at: 0.8, color: new THREE.Color(MOMENTUM_COLORS.epic) },
-    { at: 0.99, color: new THREE.Color(MOMENTUM_COLORS.max) },
-    { at: 1, color: new THREE.Color(MOMENTUM_COLORS.max) }
-  ];
-  const clamped = THREE.MathUtils.clamp(momentum, 0, 1);
-  for (let index = 1; index < stops.length; index += 1) {
-    const previous = stops[index - 1]!;
-    const current = stops[index]!;
-    if (clamped <= current.at) {
-      const blend = THREE.MathUtils.smoothstep((clamped - previous.at) / Math.max(0.0001, current.at - previous.at), 0, 1);
-      return previous.color.clone().lerp(current.color, blend);
+  dispose() {
+    this.mesh.geometry.dispose();
+    this.material.dispose();
+
+    const innerMaterial = this.hazeInner.material;
+    innerMaterial.map?.dispose();
+    innerMaterial.dispose();
+
+    const outerMaterial = this.hazeOuter.material;
+    outerMaterial.map?.dispose();
+    outerMaterial.dispose();
+
+    this.waves.forEach((wave) => {
+      wave.geometry.dispose();
+      wave.line.material.dispose();
+    });
+
+    if (this.root.parent) {
+      this.root.parent.remove(this.root);
     }
   }
-  return stops[stops.length - 1]!.color.clone();
+}
+
+const MOMENTUM_COLOR_STOPS = [
+  { at: 0, color: null },
+  { at: 0.2, color: MOMENTUM_COLORS.uncommon },
+  { at: 0.4, color: MOMENTUM_COLORS.cyan },
+  { at: 0.6, color: MOMENTUM_COLORS.rare },
+  { at: 0.8, color: MOMENTUM_COLORS.epic },
+  { at: 0.99, color: MOMENTUM_COLORS.max },
+  { at: 1, color: MOMENTUM_COLORS.max }
+] as const;
+const MOMENTUM_COLOR_SCRATCH = new THREE.Color();
+
+function resolveMomentumColor(target: THREE.Color, theme: ThemeMode, momentum: number) {
+  const clamped = THREE.MathUtils.clamp(momentum, 0, 1);
+  for (let index = 1; index < MOMENTUM_COLOR_STOPS.length; index += 1) {
+    const previous = MOMENTUM_COLOR_STOPS[index - 1]!;
+    const current = MOMENTUM_COLOR_STOPS[index]!;
+    if (clamped <= current.at) {
+      const blend = THREE.MathUtils.smoothstep((clamped - previous.at) / Math.max(0.0001, current.at - previous.at), 0, 1);
+      target.set(previous.color ?? (theme === 'dark' ? MOMENTUM_COLORS.themeDark : MOMENTUM_COLORS.themeLight));
+      return target.lerp(MOMENTUM_COLOR_SCRATCH.set(current.color ?? MOMENTUM_COLORS.max), blend);
+    }
+  }
+  return target.set(MOMENTUM_COLORS.max);
 }
 
 function resolveBackdropThemeColor(theme: ThemeMode) {

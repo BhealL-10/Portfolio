@@ -29,6 +29,7 @@ export class ParallaxStrip {
   readonly group = new THREE.Group();
 
   private readonly panels: ParallaxPanelRuntime[] = [];
+  private readonly materialCache = new Map<number, THREE.MeshBasicMaterial>();
   private variants: ParallaxLayerVariantAsset[] = [];
   private theme: ThemeMode;
   private visible = false;
@@ -117,10 +118,10 @@ export class ParallaxStrip {
 
   dispose() {
     this.panels.forEach((panel) => {
-      panel.mesh.material.dispose();
       this.group.remove(panel.mesh);
     });
     this.panels.length = 0;
+    this.clearMaterialCache();
     if (this.group.parent) {
       this.group.parent.remove(this.group);
     }
@@ -141,12 +142,12 @@ export class ParallaxStrip {
 
     this.assetSignature = nextSignature;
     this.variants = variants;
+    this.clearMaterialCache();
     this.layoutDirty = true;
   }
 
   private rebuildPanels(context: ParallaxStripUpdateContext) {
     this.panels.forEach((panel) => {
-      panel.mesh.material.dispose();
       this.group.remove(panel.mesh);
     });
     this.panels.length = 0;
@@ -213,7 +214,7 @@ export class ParallaxStrip {
   }
 
   private createPanel(variantIndex: number, widthPx: number, heightPx: number) {
-    const material = this.createSharedMaterialForVariant(variantIndex);
+    const material = this.getMaterialForVariant(variantIndex);
     const mesh = new THREE.Mesh(PANEL_GEOMETRY, material);
     mesh.renderOrder = this.config.renderOrder;
     mesh.frustumCulled = false;
@@ -227,17 +228,21 @@ export class ParallaxStrip {
   }
 
   private applyVariant(panel: ParallaxPanelRuntime, variantIndex: number, widthPx: number, heightPx: number) {
-    panel.mesh.material.dispose();
     panel.variantIndex = variantIndex;
     panel.widthPx = widthPx;
     panel.heightPx = heightPx;
-    panel.mesh.material = this.createSharedMaterialForVariant(variantIndex);
+    panel.mesh.material = this.getMaterialForVariant(variantIndex);
     panel.mesh.renderOrder = this.config.renderOrder;
   }
 
-  private createSharedMaterialForVariant(variantIndex: number) {
+  private getMaterialForVariant(variantIndex: number) {
+    const normalizedVariantIndex = Math.max(0, variantIndex) % this.variants.length;
+    const cached = this.materialCache.get(normalizedVariantIndex);
+    if (cached) {
+      return cached;
+    }
     const variant = this.variants[Math.max(0, variantIndex) % this.variants.length]!;
-    return new THREE.MeshBasicMaterial({
+    const material = new THREE.MeshBasicMaterial({
       map: variant.texture,
       transparent: true,
       opacity: 1,
@@ -246,6 +251,8 @@ export class ParallaxStrip {
       side: THREE.DoubleSide,
       toneMapped: false
     });
+    this.materialCache.set(normalizedVariantIndex, material);
+    return material;
   }
 
   private positionPanels(context: ParallaxStripUpdateContext) {
@@ -298,6 +305,11 @@ export class ParallaxStrip {
       2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(this.camera.fov) * 0.5) / Math.max(0.0001, this.camera.zoom));
     const visibleHeightWorld = 2 * Math.tan(verticalFov * 0.5) * Math.max(0.1, depth);
     return visibleHeightWorld / Math.max(1, viewportHeightPx);
+  }
+
+  private clearMaterialCache() {
+    this.materialCache.forEach((material) => material.dispose());
+    this.materialCache.clear();
   }
 }
 

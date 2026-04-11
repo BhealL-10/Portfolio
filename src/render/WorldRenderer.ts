@@ -14,6 +14,10 @@ const PALETTE = {
 } as const;
 
 export class WorldRenderer {
+  private static readonly MAX_PIXEL_RATIO = 1.75;
+  private static readonly DESKTOP_PIXEL_BUDGET = 3_200_000;
+  private static readonly MOBILE_PIXEL_BUDGET = 2_000_000;
+
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
   readonly renderer = new THREE.WebGLRenderer({
@@ -36,7 +40,6 @@ export class WorldRenderer {
   private lookResponse = 8;
 
   constructor(private readonly host: HTMLElement) {
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.domElement.className = 'app-canvas';
 
     this.host.appendChild(this.renderer.domElement);
@@ -109,11 +112,25 @@ export class WorldRenderer {
   }
 
   private resize = () => {
-    const width = this.host.clientWidth || window.innerWidth;
-    const height = this.host.clientHeight || window.innerHeight;
+    const width = Math.max(1, this.host.clientWidth || window.innerWidth);
+    const height = Math.max(1, this.host.clientHeight || window.innerHeight);
 
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    this.renderer.setPixelRatio(this.resolvePixelRatio(width, height));
     this.renderer.setSize(width, height, false);
   };
+
+  dispose() {
+    window.removeEventListener('resize', this.resize);
+    this.renderer.dispose();
+  }
+
+  private resolvePixelRatio(width: number, height: number) {
+    const devicePixelRatio = Math.max(1, window.devicePixelRatio || 1);
+    const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    const pixelBudget = coarsePointer ? WorldRenderer.MOBILE_PIXEL_BUDGET : WorldRenderer.DESKTOP_PIXEL_BUDGET;
+    const budgetRatio = Math.sqrt(pixelBudget / Math.max(1, width * height));
+    return Math.max(1, Math.min(devicePixelRatio, WorldRenderer.MAX_PIXEL_RATIO, budgetRatio));
+  }
 }

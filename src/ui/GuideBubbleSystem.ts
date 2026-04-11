@@ -408,33 +408,34 @@ function getGameOverHoverBody(item: 'score' | 'avatar' | 'save' | 'leaderboard' 
   switch (item) {
     case 'score':
       return loc(
-        'Là, tu vois exactement jusqu’où t’as tenu. Pas besoin d’enjoliver.',
-        'That tells you exactly how far you made it. No need to romanticize it.'
+        'Ici, tu peu regarder ton kiki meter.',
+        'Here, you can look at your score.'
       );
     case 'avatar':
       return loc(
-        'Ici, tu peux me bricoler une autre tête. Ou la tienne. On ne va pas chipoter.',
-        'This is where you can cobble together a new face for me. Or for you. Close enough.'
+        'Pense à personnaliser ton Primate.',
+        'Think about customizing your Primate.'
       );
     case 'save':
       return loc(
-        'Nom ici, save juste après. Sinon ta run s’évapore et je fais comme si je n’avais rien vu.',
-        'Name here, save right after. Otherwise the run evaporates and I pretend I never saw it.'
+        'N’oublie pas d’entrer ton nom au moins une fois, ça sauvegardera automatiquement ton score. Sinon ta run s’évapore et je fais comme si de rien n’était.',
+        'Make sure to enter your name at least once, it will automatically save your score. Otherwise your run evaporates and I pretend I didn’t see anything.'
       );
     case 'leaderboard':
       return loc(
-        'Le classement, c’est juste l’endroit où on range les ego en colonnes.',
-        'The leaderboard is just where we arrange egos into columns.'
+        'Le leaderboard montre comment tu t’es débrouillé par rapport aux plus grands Primates qui ont naviguer sur ces verres.',
+        'The leaderboard shows how you fared against the greatest Primates who have navigate on these glasses.',
+
       );
     case 'replay':
       return loc(
-        'Ah, tu veux retenter tout de suite. Là, on se comprend.',
-        'Ah, you want to run it back immediately. Now we understand each other.'
+        'Tu veux retenter ta chance ?',
+        'Do you want to try again?'
       );
     case 'menu':
       return loc(
-        'Menu si tu veux souffler un peu. Le gouffre t’attendra, ne t’inquiète pas.',
-        'Menu if you need a breather. The abyss will wait for you.'
+        'Pfff... LOOSER !',
+        'Pfff... LOOSER !'
       );
   }
 }
@@ -443,18 +444,18 @@ function getAvatarHoverBody(item: 'overview' | 'ears' | 'parts' | 'save' | 'clos
   switch (item) {
     case 'overview':
       return loc(
-        'Ici, tu me refais le portrait. Vas-y, je suis curieux de voir ce que tu m’infliges.',
-        'This is where you remake my face. Go on, I am curious what you’ll inflict on me.'
+        'Change l’apparence de ton Primate avec les accessoires que tu a débloqué.',
+        'Change your Primate’s look with the accessories you unlocked.'
       );
     case 'ears':
       return loc(
-        'Là, tu touches aux oreilles. Oui, c’est important, on a une réputation à tenir.',
-        'Those controls are for the ears. Yes, that matters, we have a reputation to maintain.'
+        'Les oreilles aussi comptent. Essaie plusieurs formes avant de sauvegarder ton chef-d’oeuvre.',
+        'Ears count too. Try a few shapes before you save your masterpiece.'
       );
     case 'parts':
       return loc(
-        'Face, yeux, motifs, accessoires: c’est là que tu me dérègles proprement.',
-        'Face, eyes, motifs, accessories: that is where you scramble me properly.'
+        'Trouve ton style unique !',
+        'Find your unique style!'
       );
     case 'save':
       return loc(
@@ -473,18 +474,18 @@ function getTutorialHoverBody(item: 'entry' | 'nav' | 'close'): LocalizedText {
   switch (item) {
     case 'entry':
       return loc(
-        'Le tuto, c’est mon pense-bête pour éviter que tu rates les boutons utiles.',
-        'The tutorial is my little cheat sheet so you do not miss the useful controls.'
+        'Prends le temps de lire les règles de la Primaterie. Ça pourrait t’aider, promis.',
+        'Take the time to read the rules of the Primaterie. It could help you, I promise.'
       );
     case 'nav':
       return loc(
-        'Fais défiler. Les pages importantes ne viennent pas toutes seules.',
-        'Flip through it. The useful pages do not walk over by themselves.'
+        'Prend le temps j’ai dit ! Pourquoi etre pressé ?',
+        'Take your time I said! Why be in a hurry?'
       );
     case 'close':
       return loc(
-        'Ferme si t’as compris. Je ne vais pas te retenir en cours toute la journée.',
-        'Close it if you got it. I am not keeping you in class all day.'
+        'Bon c’est fini ? L’aventure ne va pas attendre toute la journée !',
+        'Done already? The adventure won’t wait all day!'
       );
   }
 }
@@ -493,13 +494,13 @@ function getAchievementsHoverBody(item: 'entry' | 'filters' | 'close'): Localize
   switch (item) {
     case 'entry':
       return loc(
-        'Là, tu regardes mes petites preuves de progression. J’aime bien ranger le chaos en trophées.',
-        'That is where you inspect the little proofs of progress. I do enjoy filing chaos into trophies.'
+        'Ici tu peux regarder tous tes succès et ce que tu as déjà accompli. T’es plutôt un champion !',
+        'Here you can look at all your achievements and what you have already accomplished. You’re quite the champion!'
       );
     case 'filters':
       return loc(
-        'Trie tout ça comme tu veux. Même mes succès ont besoin d’un peu d’ordre de temps en temps.',
-        'Sort the whole thing however you like. Even my achievements need a little order sometimes.'
+        'Trie pour trouver plus facilement ce que tu cherches.',
+        'Filter to more easily find what you are looking for.'
       );
     case 'close':
       return loc(
@@ -513,8 +514,8 @@ function getSettingsHoverBody(item: 'entry' | 'help' | 'theme' | 'language' | 'f
   switch (item) {
     case 'entry':
       return loc(
-        'Regarde d’abord les réglages. Le son se vérifie là-haut avant d’aller te jeter dans le vide.',
-        'Check the settings first. Sound lives up there, and it is worth checking before you throw yourself into the void.'
+        'Regarde un peu les réglages disponibles,(Pense a verifier que le son est bien activé).',
+        'Check the settings first. (Make sure the sound is on, by the way.)'
       );
     case 'help':
       return loc(
@@ -523,18 +524,18 @@ function getSettingsHoverBody(item: 'entry' | 'help' | 'theme' | 'language' | 'f
       );
     case 'theme':
       return loc(
-        'Là, tu changes l’ambiance du jeu. Oui, j’ai aussi un bon profil en version sombre.',
-        'That one changes the game’s mood. Yes, I do look good in the darker version too.'
+        'Là, tu changes l’ambiance du jeu.',
+        'That one changes the game’s mood.'
       );
     case 'language':
       return loc(
-        'Cette puce-là me fait passer d’une langue à l’autre sans drame.',
-        'That chip swaps my language without turning it into a whole production.'
+        'ME SPEAK ENGLISH VERY WELL YES YES! Je t’ai deja dit ?.',
+        'MOI PARLER FRANCAIS OUI OUI! Did I already tell you?'
       );
     case 'fullscreen':
       return loc(
-        'Si tu veux tout prendre en plein écran, c’est ce bouton-là.',
-        'If you want the whole thing in fullscreen, that is the button.'
+        'Mode plein écran',
+        'Fullscreen mode'
       );
     case 'mute':
       return loc(
@@ -543,8 +544,8 @@ function getSettingsHoverBody(item: 'entry' | 'help' | 'theme' | 'language' | 'f
       );
     case 'volume':
       return loc(
-        'La barre te laisse doser le son. Tu glisses, ça monte ou ça retombe.',
-        'That bar lets you tune the sound. Drag it, and it goes up or down.'
+        'La barre te laisse doser le son.',
+        'That bar lets you tune the sound.'
       );
   }
 }
@@ -886,12 +887,12 @@ export class GuideBubbleSystem {
           `portfolio-scroll:${cue.project.id}:${cue.direction > 0 ? 'next' : 'prev'}`,
           cue.direction > 0
             ? loc(
-                `Ah, là tu descends vraiment dans ${cue.project.title.fr}. C’est plus intéressant quand on gratte.`,
-                `Now you’re actually digging into ${cue.project.title.en}. It gets better once you scratch deeper.`
+                `${cue.project.title.fr}`,
+                `${cue.project.title.en}`
               )
             : loc(
-                'Tu remontes un peu. Pas grave, même moi je reviens souvent voir mes propres trucs.',
-                'You’re climbing back a bit. Fair enough, even I go back through my own stuff more than once.'
+                'Hehe',
+                'Hehe'
               ),
           {
             title: loc('Profondeur', 'Depth'),
@@ -913,8 +914,8 @@ export class GuideBubbleSystem {
         return enqueue(
           'mirror-reveal',
           loc(
-            'T’étais pas censé voir ça.',
-            'You were not supposed to see that.'
+            'Oupss.',
+            'Oupss.'
           ),
           {
             title: loc('Miroir', 'Mirror'),
@@ -929,8 +930,8 @@ export class GuideBubbleSystem {
         return enqueue(
           'drag-first',
           loc(
-            'Ah, là tu fouilles vraiment. Prends le shard et vois s’il retrouve sa place.',
-            'Ah, now you’re really digging. Grab the shard and see if it remembers where it belongs.'
+            'T’es un petit malin toi, hein ?',
+            'You’re a clever one, aren’t you?'
           ),
           {
             title: loc('Traque', 'Hunt'),
@@ -945,32 +946,32 @@ export class GuideBubbleSystem {
           `slot-placed:${cue.project.id}:${cue.remainingSlots}`,
           cue.remainingSlots >= 5
             ? loc(
-                'Ok, t’as trouvé un des trucs cachés. Il en reste un paquet, mais au moins tu as compris le principe.',
-                'Okay, you found one of the hidden pieces. There are still plenty left, but at least you got the idea.'
+                'Ohoh... Intéressant hein ?',
+                'Ohoh... Interesting, huh?'
               )
             : cue.remainingSlots >= 4
               ? loc(
-                  'Là, ça commence à bouger. Tu remets doucement mon bazar dans le bon ordre.',
-                  'Now things are starting to move. You are slowly putting my mess back in the right order.'
+                  'Hmmm... Là tu commences à voir ou toujours pas ?',
+                  'Hmmm... Now you’re starting to see, or not yet?'
                 )
               : cue.remainingSlots === 3
                 ? loc(
-                    'Ah, là tu tiens quelque chose. On est à mi-chemin entre fouille et cambriolage propre.',
-                    'Ah, now you are onto something. We are halfway between exploring and a very tidy break-in.'
+                    'J’aime les gens curieux comme toi.',
+                    'I like curious people like you.'
                   )
                 : cue.remainingSlots === 2
                   ? loc(
-                      'Plus que deux morceaux à replacer. Là, tu lis vraiment dans mon désordre.',
-                      'Only two pieces left to place. You are actually reading through my mess now.'
+                      'Plus que deux morceaux à replacer.',
+                      'Only two pieces left to place..'
                     )
                   : cue.remainingSlots === 1
                     ? loc(
-                        'Encore un et tout s’aligne. Ne tremble pas maintenant.',
-                        'One more and the whole thing lines up. Do not get shaky now.'
+                        'Tu y es presque.',
+                        'You’re almost there.'
                       )
                     : loc(
-                        'Le dernier a claqué juste. Là, oui, tu viens de réveiller quelque chose.',
-                        'That last one clicked. Yes, that definitely woke something up.'
+                        'Mouhaha, tu n’es pas prêt pour la suite, prépare toi à être prêt... Je veux dire tu vois ce que je veux dire... BON ALLEZ GO !',
+                        'Mouhaha, you’re not ready for what’s next, get ready to be ready... I mean you get it, LET’S GO'
                       ),
           {
             title: loc('Déclic', 'Click'),
@@ -978,55 +979,12 @@ export class GuideBubbleSystem {
             durationMs: 3400
           }
         );
-      case 'two_slots_left':
-        return enqueue(
-          'two-slots-left',
-          loc(
-            'Plus que deux. Tu commences à comprendre comment je range mon bazar.',
-            'Only two left. You’re starting to understand how I arrange my chaos.'
-          ),
-          {
-            title: loc('Presque', 'Almost'),
-            priority: 4,
-            durationMs: 3600,
-            firstTimeKey: 'guide:two-slots-left'
-          }
-        );
-      case 'one_slot_left':
-        return enqueue(
-          'one-slot-left',
-          loc(
-            'Plus qu’un. Là, tu peux presque sentir la charnière bouger.',
-            'Only one left. You can almost feel the hinge moving now.'
-          ),
-          {
-            title: loc('Dernier effort', 'Last Push'),
-            priority: 4,
-            durationMs: 3400,
-            firstTimeKey: 'guide:one-slot-left'
-          }
-        );
-      case 'slots_complete':
-        return enqueue(
-          'slots-complete',
-          loc(
-            'Parfait. Tout est revenu à sa place. Allez, on y va.',
-            'Perfect. Everything is back where it belongs. Come on, let’s go.'
-          ),
-          {
-            title: loc('Passage', 'Passage'),
-            priority: 5,
-            durationMs: 3000,
-            firstTimeKey: 'guide:slots-complete',
-            animation: 'pulse'
-          }
-        );
       case 'primaterie_arrival':
         return enqueue(
           'primaterie-arrival',
           loc(
-            'Te voilà à la Primaterie. J’ai mis les portes principales sous tes yeux, tu n’as plus d’excuse.',
-            'There you are in the Primaterie. I put the main doors right in front of you, so you are out of excuses.'
+            'Bienvenue dans la Primaterie..',
+            'Welcome to the Primaterie..'
           ),
           {
             title: loc('Primaterie', 'Primaterie'),

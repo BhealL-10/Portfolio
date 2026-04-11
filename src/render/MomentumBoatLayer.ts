@@ -8,11 +8,16 @@ const BOAT_GEOMETRY = new THREE.PlaneGeometry(1, 1);
 const MAX_DECORATIVE_BOATS = 3;
 const BOAT_BASE_HEIGHT_PX = 68;
 const BOAT_HEIGHT_VARIANCE_PX = 16;
-const BOAT_EDGE_FADE_PX = 220;
+const BOAT_EDGE_FADE_PX = 120;
 const BOAT_SCREEN_LEAD_PX = 240;
 const BOAT_RECYCLE_PADDING_PX = 320;
 const BOAT_SPACING_MIN_PX = 600;
 const BOAT_SPACING_MAX_PX = 1000;
+const BOAT_REVEAL_DURATION_SECONDS = 0.9;
+const BOAT_FIRST_REVEAL_DELAY_SECONDS = 1.4;
+const BOAT_REVEAL_STAGGER_SECONDS = 5.2;
+const BOAT_DRIFT_SPEED_MIN_PX = 18;
+const BOAT_DRIFT_SPEED_MAX_PX = 42;
 const BOAT_LAYER_VERTICAL_LIFT_PX: readonly [number, number, number] = [26, 30, 34];
 
 interface BoatDepthBand {
@@ -56,6 +61,9 @@ interface BoatBackgroundActor {
   surfacePhase: number;
   opacity: number;
   targetOpacity: number;
+  revealAtSeconds: number;
+  revealed: boolean;
+  driftSpeedPx: number;
 }
 
 export interface MomentumBoatLayerUpdateContext {
@@ -138,7 +146,10 @@ export class MomentumBoatLayer {
         spacingSeed: Math.random(),
         surfacePhase: Math.random() * Math.PI * 2,
         opacity: 0,
-        targetOpacity: 0
+        targetOpacity: 0,
+        revealAtSeconds: BOAT_FIRST_REVEAL_DELAY_SECONDS + index * BOAT_REVEAL_STAGGER_SECONDS,
+        revealed: false,
+        driftSpeedPx: BOAT_DRIFT_SPEED_MIN_PX
       });
     }
   }
@@ -159,11 +170,13 @@ export class MomentumBoatLayer {
     this.layoutViewportWidthPx = 0;
     this.layoutViewportHeightPx = 0;
     this.layoutMirrorMode = false;
-    this.boats.forEach((boat) => {
+    this.boats.forEach((boat, index) => {
       this.reseedBoatVisual(boat);
       boat.baseXPx = 0;
       boat.opacity = 0;
       boat.targetOpacity = 0;
+      boat.revealAtSeconds = BOAT_FIRST_REVEAL_DELAY_SECONDS + index * BOAT_REVEAL_STAGGER_SECONDS;
+      boat.revealed = false;
       boat.mesh.visible = false;
       boat.material.opacity = 0;
     });
@@ -184,6 +197,16 @@ export class MomentumBoatLayer {
     if (!this.layoutReady || viewportChanged || mirrorModeChanged) {
       this.seedLayout(context, bounds);
     }
+
+    const driftDirection = context.mirrorMode ? -1 : 1;
+    this.boats.forEach((boat) => {
+      if (!boat.revealed && this.elapsedSeconds >= boat.revealAtSeconds) {
+        boat.revealed = true;
+      }
+      if (boat.revealed) {
+        boat.baseXPx += boat.driftSpeedPx * driftDirection * context.deltaTime;
+      }
+    });
 
     this.recycleBoats(bounds, context.travelOffsets, context.mirrorMode);
     this.boats.forEach((boat) => {
@@ -212,12 +235,17 @@ export class MomentumBoatLayer {
     this.layoutMirrorMode = context.mirrorMode;
 
     let cursorX = bounds.leftEdgePx - BOAT_RECYCLE_PADDING_PX;
-    this.boats.forEach((boat) => {
+    this.boats.forEach((boat, index) => {
       this.reseedBoatVisual(boat);
       boat.baseXPx = cursorX - context.travelOffsets[boat.depthBandIndex]!;
       cursorX += this.resolveBoatSpacing(boat);
       boat.opacity = 0;
       boat.targetOpacity = 0;
+      boat.revealAtSeconds =
+        BOAT_FIRST_REVEAL_DELAY_SECONDS +
+        index * BOAT_REVEAL_STAGGER_SECONDS +
+        boat.spacingSeed * 2.4;
+      boat.revealed = false;
       boat.mesh.visible = false;
       boat.material.opacity = 0;
     });
@@ -231,6 +259,9 @@ export class MomentumBoatLayer {
     const directionSign = mirrorMode ? -1 : 1;
     if (directionSign > 0) {
       this.boats.forEach((boat) => {
+        if (!boat.revealed) {
+          return;
+        }
         const travelOffsetPx = travelOffsets[boat.depthBandIndex]!;
         const screenX = boat.baseXPx + travelOffsetPx;
         if (screenX - boat.widthPx * 0.5 <= bounds.rightEdgePx + BOAT_RECYCLE_PADDING_PX) {
@@ -244,6 +275,9 @@ export class MomentumBoatLayer {
     }
 
     this.boats.forEach((boat) => {
+      if (!boat.revealed) {
+        return;
+      }
       const travelOffsetPx = travelOffsets[boat.depthBandIndex]!;
       const screenX = boat.baseXPx + travelOffsetPx;
       if (screenX + boat.widthPx * 0.5 >= bounds.leftEdgePx - BOAT_RECYCLE_PADDING_PX) {
@@ -263,10 +297,10 @@ export class MomentumBoatLayer {
     const travelOffsetPx = context.travelOffsets[boat.depthBandIndex]!;
     const screenX = boat.baseXPx + travelOffsetPx;
     const surfaceDriftPx =
-      Math.sin(this.elapsedSeconds * (0.42 + boat.depthSeed * 0.22) + boat.surfacePhase) * (6.2 + context.overallEnergy * 4.4);
+      Math.sin(this.elapsedSeconds * (0.38 + boat.depthSeed * 0.18) + boat.surfacePhase) * (2.8 + context.overallEnergy * 2.2);
     const secondaryBobPx =
-      Math.sin(this.elapsedSeconds * (0.18 + boat.scaleSeed * 0.08) + boat.surfacePhase * 0.7) * (2 + context.midIntensity * 1.6);
-    const audioLiftPx = -(context.bassIntensity * 3.6 + context.overallEnergy * 2.2 + context.melodyIntensity * 1.4);
+      Math.sin(this.elapsedSeconds * (0.16 + boat.scaleSeed * 0.06) + boat.surfacePhase * 0.7) * (1.1 + context.midIntensity * 0.8);
+    const audioLiftPx = -(context.bassIntensity * 51.6 + context.overallEnergy * 31.1 + context.melodyIntensity * 20.7);
     const layerBottomY = context.bottomScreenYs[boat.depthBandIndex]!;
     const layerLiftPx = BOAT_LAYER_VERTICAL_LIFT_PX[boat.depthBandIndex] ?? BOAT_LAYER_VERTICAL_LIFT_PX[1];
     const bottomScreenY = layerBottomY - layerLiftPx + surfaceDriftPx + secondaryBobPx + audioLiftPx - boat.baseHeightPx * 0.5; // slight overlap
@@ -276,8 +310,8 @@ export class MomentumBoatLayer {
     const localX = screenX * unitsPerPixel;
     const localY = (context.viewportHeightPx * 0.5 - centerScreenY) * unitsPerPixel;
     const edgeFade = resolveEdgeFade(screenX, boat.widthPx, bounds.leftEdgePx, bounds.rightEdgePx);
-
-    boat.targetOpacity = edgeFade * depthBand.opacityMultiplier * THREE.MathUtils.lerp(0.48, 0.84, boat.depthSeed);
+    const revealProgress = boat.revealed ? Math.min(1, Math.max(0, (this.elapsedSeconds - boat.revealAtSeconds) / BOAT_REVEAL_DURATION_SECONDS)) : 0;
+    boat.targetOpacity = revealProgress * edgeFade * THREE.MathUtils.lerp(0.94, 1, boat.depthSeed);
     boat.opacity = damp(boat.opacity, boat.targetOpacity, boat.targetOpacity > boat.opacity ? 3.8 : 5.6, context.deltaTime);
     boat.mesh.visible = boat.opacity > 0.01;
 
@@ -297,6 +331,7 @@ export class MomentumBoatLayer {
     boat.spacingSeed = Math.random();
     boat.surfacePhase = Math.random() * Math.PI * 2;
     boat.depthBandIndex = this.pickDepthBandIndex(boat.depthSeed);
+    boat.driftSpeedPx = THREE.MathUtils.lerp(BOAT_DRIFT_SPEED_MIN_PX, BOAT_DRIFT_SPEED_MAX_PX, boat.depthSeed);
     boat.baseHeightPx =
       BOAT_BASE_HEIGHT_PX + THREE.MathUtils.lerp(-BOAT_HEIGHT_VARIANCE_PX, BOAT_HEIGHT_VARIANCE_PX, boat.scaleSeed);
     boat.widthPx = boat.baseHeightPx * this.textureAspectRatio;

@@ -11,7 +11,8 @@ const difficultyWeights = {
 } as const;
 
 const INTRO_PATTERN_DISTANCE_METERS = 200;
-const RECOVERY_WINDOW_METERS = 28;
+const RECOVERY_WINDOW_METERS = 20;
+const EARLY_STANDARD_BLEND_DISTANCE_METERS = 120;
 
 export interface PatternSelectionContext {
   score: number;
@@ -27,8 +28,14 @@ export function selectPattern({ score, distanceMeters, recentPatternIds, rng }: 
   const previousMilestone = getPreviousMilestone(distanceMeters);
   const earlyGame = distanceMeters < INTRO_PATTERN_DISTANCE_METERS;
   const recoveryWindow = earlyGame && previousMilestone !== null && distanceMeters - previousMilestone <= RECOVERY_WINDOW_METERS;
+  const allowEarlyStandard = earlyGame && distanceMeters >= EARLY_STANDARD_BLEND_DISTANCE_METERS;
   const stagePool = PATTERN_LIBRARY.filter((pattern) => {
     if (earlyGame) {
+      if (allowEarlyStandard) {
+        return recoveryWindow
+          ? pattern.stage === 'recovery' || pattern.stage === 'intro' || pattern.stage === 'standard'
+          : pattern.stage === 'intro' || pattern.stage === 'recovery' || pattern.stage === 'standard';
+      }
       return recoveryWindow ? pattern.stage === 'recovery' || pattern.stage === 'intro' : pattern.stage === 'intro' || pattern.stage === 'recovery';
     }
     return pattern.stage === 'standard';

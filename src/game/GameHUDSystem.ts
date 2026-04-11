@@ -330,6 +330,12 @@ function createEmptyAvatarLayerSets(): GameHudAvatarLayerSets {
 
 export class GameHUDSystem {
   readonly element: HTMLDivElement;
+  private listeners: Array<{
+    target: EventTarget;
+    type: string;
+    handler: EventListener;
+    options?: AddEventListenerOptions;
+  }> = [];
   private panel: HTMLDivElement;
   private runStrip: HTMLDivElement;
   private scoreFeed: HTMLDivElement;
@@ -444,6 +450,7 @@ export class GameHUDSystem {
   private readonly shapeTemplateCache = new Map<string, EquipmentShapeTemplate | null>();
   private readonly shapeTemplatePending = new Set<string>();
   private readonly stopObservingTheme: () => void;
+  private stopObservingLocale: () => void = () => {};
   private readonly rewardBranchLayout = new RewardBranchLabelLayoutResolver();
   private audioMuted = false;
   private audioVolume = 0.86;
@@ -467,6 +474,7 @@ export class GameHUDSystem {
   private leaderboardSyncState: 'idle' | 'loading' | 'saving' | 'error' = 'idle';
   private uiAssetsPreloaded = false;
   private uiAssetsPreloadPromise: Promise<void> | null = null;
+  private runStripMountTimeout: number | null = null;
   private leaderboardLoaded = false;
   private leaderboardLoadPromise: Promise<void> | null = null;
   private deferredAssetsModulePromise: Promise<typeof import('./GameHudDeferredAssets')> | null = null;
@@ -501,6 +509,9 @@ export class GameHUDSystem {
       this.leaderboardEntriesCache = this.readLocalLeaderboardCache();
       this.renderLeaderboard();
     }
+  };
+  private readonly handleFullscreenChange = () => {
+    this.renderSettingsButtons();
   };
 
   constructor(host: HTMLElement, private readonly i18n: I18nService, private readonly callbacks: GameHUDCallbacks) {
@@ -847,7 +858,7 @@ export class GameHUDSystem {
       this.stepAvatarSelection(layer, direction);
     });
     this.avatarEditorSaveButton.addEventListener('click', () => this.saveAvatarSelection());
-    window.setTimeout(() => this.runStrip.classList.add('is-mounted'), 2000);
+    this.runStripMountTimeout = window.setTimeout(() => this.runStrip.classList.add('is-mounted'), 2000);
     this.shopButtons.forEach((button, index) => {
       button.addEventListener('click', () => callbacks.onSelectUpgrade(index));
     });
@@ -899,8 +910,8 @@ export class GameHUDSystem {
       this.volumeDragPointerId = null;
     };
     this.settingsVolumeButton.addEventListener('pointerup', releaseVolumePointer);
-    document.addEventListener('fullscreenchange', () => this.renderSettingsButtons());
-    document.addEventListener('webkitfullscreenchange', () => this.renderSettingsButtons());
+    document.addEventListener('fullscreenchange', this.handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', this.handleFullscreenChange);
     this.settingsVolumeButton.addEventListener('pointercancel', releaseVolumePointer);
     this.helpPrevButton.addEventListener('click', () => this.setHelpPage(this.helpPageIndex - 1));
     this.helpNextButton.addEventListener('click', () => this.setHelpPage(this.helpPageIndex + 1));
@@ -1017,7 +1028,7 @@ export class GameHUDSystem {
     });
     host.appendChild(this.element);
 
-    this.i18n.onChange(() => this.renderStatic());
+    this.stopObservingLocale = this.i18n.onChange(() => this.renderStatic());
     window.addEventListener(PLAYER_AVATAR_UPDATED_EVENT, this.handleAvatarSelectionBroadcast as EventListener);
     window.addEventListener('storage', this.handleWindowStorage);
     this.closeHelp();
@@ -1066,7 +1077,39 @@ export class GameHUDSystem {
   }
 
   dispose() {
+    // Clean up timers
     this.stopObservingTheme();
+    this.stopObservingLocale();
+    if (this.runStripMountTimeout !== null) {
+      window.clearTimeout(this.runStripMountTimeout);
+      this.runStripMountTimeout = null;
+    }
+    if (this.helpPageTransitionTimeout !== null) {
+      window.clearTimeout(this.helpPageTransitionTimeout);
+      this.helpPageTransitionTimeout = null;
+    }
+    this.clearGameOverRevealTimers();
+    this.clearScoreFeed();
+    
+    // Clean up window/document level listeners that persist across restarts
+    window.removeEventListener(PLAYER_AVATAR_UPDATED_EVENT, this.handleAvatarSelectionBroadcast as EventListener);
+    window.removeEventListener('storage', this.handleWindowStorage);
+    document.removeEventListener('fullscreenchange', this.handleFullscreenChange);
+    document.removeEventListener('webkitfullscreenchange', this.handleFullscreenChange);
+    
+    // Clean up element-level listeners that were tracked
+    for (const { target, type, handler, options } of this.listeners) {
+      try {
+        target.removeEventListener(type, handler, options);
+      } catch (e) {
+        // Silently ignore if target is no longer valid
+      }
+    }
+    this.listeners.length = 0;
+    
+    // Clear score feed timers
+    this.scoreFeedTimeouts.forEach((timeout) => window.clearTimeout(timeout));
+    this.scoreFeedTimeouts.clear();
   }
 
   preloadAssets() {
@@ -2477,7 +2520,7 @@ export class GameHUDSystem {
       .map(
         (src, index) => `
           <div class="game-hud__help-page" data-help-page="${index}">
-            <img src="${src}" alt="" class="game-hud__help-image" />
+            <img src="${src}" alt="" class="game-hud__help-image" loading="lazy" decoding="async" />
           </div>
         `
       )
@@ -3142,7 +3185,7 @@ export class GameHUDSystem {
       this.leaderboardEntriesCache = nextEntries;
       this.persistLeaderboardCache(nextEntries);
       this.markLeaderboardRegistrationCompleted();
-      const playerIndex = nextEntries.findIndex(e => e.playerName === name);
+      const playerIndex = nextEntries.findIndex((entry) => entry.name === name);
       if (playerIndex >= 0) {
         this.callbacks.onLeaderboardPosition(playerIndex + 1);
       }
@@ -3157,7 +3200,7 @@ export class GameHUDSystem {
       this.leaderboardEntriesCache = fallbackEntries;
       this.persistLeaderboardCache(fallbackEntries);
       this.markLeaderboardRegistrationCompleted();
-      const playerIndex = fallbackEntries.findIndex(e => e.playerName === name);
+      const playerIndex = fallbackEntries.findIndex((entry) => entry.name === name);
       if (playerIndex >= 0) {
         this.callbacks.onLeaderboardPosition(playerIndex + 1);
       }
@@ -4043,20 +4086,6 @@ export class GameHUDSystem {
     Object.values(EQUIPMENT_UI_ASSETS.charges).forEach((src) => this.preloadShapeTemplate(src));
     this.preloadShapeTemplate(EQUIPMENT_UI_ASSETS.bgBoat);
 
-    const deferredPreload = this.ensureDeferredAssetsModule()
-      .then(async ({ preloadAvatarLayerSets, preloadHelpPagesFor }) => {
-        await Promise.all([
-          preloadAvatarLayerSets(),
-          preloadHelpPagesFor('fr', 'dark'),
-          preloadHelpPagesFor('fr', 'light'),
-          preloadHelpPagesFor('en', 'dark'),
-          preloadHelpPagesFor('en', 'light')
-        ]);
-      })
-      .catch((error) => {
-        console.warn('[GameHUDSystem] Failed to preload deferred UI assets.', error);
-      });
-
-    return Promise.all([imagePreload, deferredPreload]).then(() => undefined);
+    return imagePreload.then(() => undefined);
   }
 }

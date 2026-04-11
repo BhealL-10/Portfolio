@@ -35,6 +35,7 @@ export interface DifficultyProfile {
 export function getDifficultyProfile(level: number): DifficultyProfile {
   const normalized = clamp(level / 200, 0, 1);
   const band = level < 50 ? 'easy' : level < 100 ? 'medium' : level < 160 ? 'hard' : 'expert';
+  const densityTaper = THREE.MathUtils.smootherstep(clamp((level - 200) / 800, 0, 1), 0, 1);
 
   // Progressive camera speed: readable early run, then a smoother ramp that reaches the cap around 1000m.
   const slowPhase = Math.min(level, 200) / 200 * 0.85;
@@ -44,7 +45,7 @@ export function getDifficultyProfile(level: number): DifficultyProfile {
   return {
     normalized,
     band,
-    spacing: DEFAULT_COLUMN_DISTANCE + normalized * 7.8,
+    spacing: DEFAULT_COLUMN_DISTANCE + normalized * 4.2 + densityTaper * 3.6,
     movementAmplitude: 0.08 + normalized * 1.05,
     movementSpeed: 0.22 + normalized * 0.88,
     cameraSpeed,
@@ -53,10 +54,10 @@ export function getDifficultyProfile(level: number): DifficultyProfile {
     maxVerticalDelta: 5.2 + normalized * 3.8,
     safeZoneDistance: 8.6 + normalized * 1.8,
     cameraLookAhead: 8.6 + normalized * 5.2,
-    baseZoom: 16.2,
+    baseZoom: 22.2,
     largeShardZoom: 6.4,
     milestoneZoom: 18,
-    momentumZoomRange: 8.8,
+    momentumZoomRange: 10.4,
     enemyUnlocked: level >= 20,
     ovalUnlocked: level >= 50,
     triangularUnlocked: level >= 100,

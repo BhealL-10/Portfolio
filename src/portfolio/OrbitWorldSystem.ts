@@ -758,6 +758,14 @@ export class OrbitWorldSystem {
     this.externalTransitionDelays = [];
   }
 
+  setExternalLayoutSnapshot(positions: THREE.Vector3[], scales?: number[], visuals?: VisiblePlatformVisual[]) {
+    this.externalLayoutActive = true;
+    this.externalLayoutPositions = positions;
+    this.externalLayoutScales = scales ?? null;
+    this.externalLayoutVisuals = visuals ?? null;
+    this.externalTransitionDelays = [];
+  }
+
   setSingleNodeExternalLayout(position: THREE.Vector3, visual: VisiblePlatformVisual, visibleIndex = 0) {
     const layout = this.buildSingleNodeExternalLayout(position, visual, visibleIndex);
     this.setExternalLayoutPositions(layout.positions, layout.scales, layout.visuals);

@@ -186,6 +186,7 @@ export class GameAudioSystem {
   private hasInteractiveAudioAuthorization = false;
   private readonly bufferCache = new Map<string, Promise<AudioBuffer>>();
   private readonly musicAnalysis = new Map<MusicTrackId, MusicTrackAnalysis>();
+  private readonly trackPreloadPromises = new Map<MusicTrackId, Promise<void>>();
   private readonly settingsListeners = new Set<(settings: AudioSettings) => void>();
   private readonly activeLoops = new Map<LoopKey, ActiveLoop>();
   private readonly sfxCooldownUntil = new Map<string, number>();
@@ -535,7 +536,6 @@ export class GameAudioSystem {
 
   private async preloadCoreAssets() {
     const urls = [
-      ...Object.values(MUSIC_TRACKS).flatMap((track) => [track.left, track.right]),
       SFX.playerJump[0],
       SFX.playerJump[1],
       SFX.land[0],
@@ -549,6 +549,7 @@ export class GameAudioSystem {
       SFX.planeGlide[0],
       SFX.playerOnShard[0]
     ];
+    await Promise.all([this.preloadTrackAssets('intro'), this.preloadTrackAssets('loop1')]);
     for (const url of urls) {
       try {
         await this.loadBuffer(url);
@@ -556,7 +557,6 @@ export class GameAudioSystem {
         console.warn(`[GameAudioSystem] Failed to preload audio asset: ${url}`, error);
       }
     }
-    await this.preloadMusicAnalyses();
   }
 
   private applyMasterGain() {
@@ -674,6 +674,8 @@ export class GameAudioSystem {
     const startPlaybackRate = this.resolveMusicPlaybackRate(trackId, this.lastState?.distanceMeters ?? 0);
     this.musicPlaybackRate = startPlaybackRate;
     this.musicTrack.setPlaybackRate(startPlaybackRate);
+    this.ensureMusicAnalysis(trackId, leftBuffer, rightBuffer);
+    void this.preloadTrackAssets(this.peekNextMusicTrack(trackId));
   }
 
   private stopMusic() {
@@ -689,27 +691,51 @@ export class GameAudioSystem {
   }
 
   private resolveNextMusicTrack(previousTrack: MusicTrackId): MusicTrackId {
-    const { trackId, nextCycleIndex } = resolveOrderedMusicLoopProgression(
-      previousTrack,
-      this.lastState?.distanceMeters ?? 0,
-      this.nextOrderedLoopIndex
-    );
+    const { trackId, nextCycleIndex } = this.resolveNextMusicTrackState(previousTrack);
     this.nextOrderedLoopIndex = nextCycleIndex;
     return trackId;
   }
 
-  private async preloadMusicAnalyses() {
-    for (const trackId of Object.keys(MUSIC_TRACKS) as MusicTrackId[]) {
-      if (this.musicAnalysis.has(trackId)) {
-        continue;
-      }
-      const { left, right } = MUSIC_TRACKS[trackId];
-      try {
-        const [leftBuffer, rightBuffer] = await Promise.all([this.loadBuffer(left), this.loadBuffer(right)]);
-        this.musicAnalysis.set(trackId, this.analyzeMusicTrack(leftBuffer, rightBuffer));
-      } catch (error) {
-        console.warn(`[GameAudioSystem] Failed to analyze music track: ${trackId}`, error);
-      }
+  private peekNextMusicTrack(previousTrack: MusicTrackId) {
+    return this.resolveNextMusicTrackState(previousTrack).trackId;
+  }
+
+  private resolveNextMusicTrackState(previousTrack: MusicTrackId) {
+    return resolveOrderedMusicLoopProgression(
+      previousTrack,
+      this.lastState?.distanceMeters ?? 0,
+      this.nextOrderedLoopIndex
+    );
+  }
+
+  private preloadTrackAssets(trackId: MusicTrackId) {
+    const cached = this.trackPreloadPromises.get(trackId);
+    if (cached) {
+      return cached;
+    }
+
+    const { left, right } = MUSIC_TRACKS[trackId];
+    const request = Promise.all([this.loadBuffer(left), this.loadBuffer(right)])
+      .then(([leftBuffer, rightBuffer]) => {
+        this.ensureMusicAnalysis(trackId, leftBuffer, rightBuffer);
+      })
+      .catch((error) => {
+        this.trackPreloadPromises.delete(trackId);
+        console.warn(`[GameAudioSystem] Failed to preload music track: ${trackId}`, error);
+      });
+
+    this.trackPreloadPromises.set(trackId, request);
+    return request;
+  }
+
+  private ensureMusicAnalysis(trackId: MusicTrackId, leftBuffer: AudioBuffer, rightBuffer: AudioBuffer) {
+    if (this.musicAnalysis.has(trackId)) {
+      return;
+    }
+    try {
+      this.musicAnalysis.set(trackId, this.analyzeMusicTrack(leftBuffer, rightBuffer));
+    } catch (error) {
+      console.warn(`[GameAudioSystem] Failed to analyze music track: ${trackId}`, error);
     }
   }
 

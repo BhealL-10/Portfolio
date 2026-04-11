@@ -44,6 +44,7 @@ export interface ParallaxLayerViewState {
 export class ParallaxLayerSystem {
   private readonly root = new THREE.Group();
   private readonly strips = new Map<LayerCategory, ParallaxStrip>();
+  private readonly viewportSize = new THREE.Vector2();
   private readonly topHorizonStrip: ParallaxStrip;
   private readonly momentumBoatLayer: MomentumBoatLayer;
   private readonly verticalOffsetPx: Record<LayerCategory, number> = { ...INITIAL_VERTICAL_OFFSET_PX };
@@ -404,7 +405,7 @@ export class ParallaxLayerSystem {
   }
 
   private captureViewportSize() {
-    const size = this.renderer.getSize(new THREE.Vector2());
+    const size = this.renderer.getSize(this.viewportSize);
     this.viewportWidthPx = Math.max(1, size.x);
     this.viewportHeightPx = Math.max(1, size.y);
   }

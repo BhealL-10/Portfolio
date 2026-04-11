@@ -9,6 +9,7 @@ export interface SpriteSheetLayout {
 export class SpriteSheetPlane {
   readonly group = new THREE.Group();
   readonly mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  private readonly uvAttribute: THREE.BufferAttribute;
   private texture: THREE.Texture;
   private readonly layout: SpriteSheetLayout;
   private currentFrame = -1;
@@ -38,6 +39,7 @@ export class SpriteSheetPlane {
     );
     this.mesh.position.y = config.offsetY ?? 0;
     this.mesh.renderOrder = config.renderOrder ?? 10;
+    this.uvAttribute = this.mesh.geometry.getAttribute('uv') as THREE.BufferAttribute;
     this.group.add(this.mesh);
     this.setFrame(0);
   }
@@ -62,7 +64,16 @@ export class SpriteSheetPlane {
     const { columns, rows } = this.layout;
     const column = frameIndex % columns;
     const rowFromTop = Math.floor(frameIndex / columns);
-    this.texture.offset.set(column / columns, 1 - (rowFromTop + 1) / rows);
+    const u0 = column / columns;
+    const u1 = (column + 1) / columns;
+    const vTop = 1 - rowFromTop / rows;
+    const vBottom = 1 - (rowFromTop + 1) / rows;
+
+    this.uvAttribute.setXY(0, u0, vTop);
+    this.uvAttribute.setXY(1, u1, vTop);
+    this.uvAttribute.setXY(2, u0, vBottom);
+    this.uvAttribute.setXY(3, u1, vBottom);
+    this.uvAttribute.needsUpdate = true;
   }
 
   playLoop(frameIndices: number[], framesPerSecond: number, elapsedTime: number) {
@@ -85,16 +96,20 @@ export class SpriteSheetPlane {
     this.setFrame(0);
   }
 
+  dispose() {
+    this.mesh.geometry.dispose();
+    this.mesh.material.dispose();
+  }
+
   private static getTexture(textureUrl: string, layout: SpriteSheetLayout) {
+    void layout;
     return getSharedTextureAsset(textureUrl, {
       colorSpace: THREE.SRGBColorSpace,
       wrapS: THREE.ClampToEdgeWrapping,
       wrapT: THREE.ClampToEdgeWrapping,
-      repeatX: 1 / layout.columns,
-      repeatY: 1 / layout.rows,
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
-      generateMipmaps: true
+      generateMipmaps: false
     });
   }
 }

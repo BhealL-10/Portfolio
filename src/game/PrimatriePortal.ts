@@ -23,8 +23,8 @@ const COMMUNITY_BUTTON_ASSETS = {
 } as const;
 
 const COMMUNITY_LINKS = {
-  discord: 'https://discord.gg/primaterie',
-  patreon: 'https://www.patreon.com/apeprod'
+  discord: 'https://discord.gg/AGSKPT4HbS',
+  patreon: 'https://patreon.com/Primaterie?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink'
 } as const;
 
 export type primaterieModeId = 'adventure' | '3v3' | '10v10' | 'portfolio';

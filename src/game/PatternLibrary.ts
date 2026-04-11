@@ -105,9 +105,13 @@ export const PATTERN_LIBRARY: GamePathPattern[] = [
   ], 'intro'),
   pattern('easy_05', 'easy', 'high', 'static', ['small', 'medium_small', 'medium'], ROUND_ONLY, [
     { x: 9, y: 4 },
+    { x: 14, y: 6, coinAngles: [Math.PI * 0.38] },
     { x: 18, y: 7 },
+    { x: 23, y: 9 },
     { x: 28, y: 9 },
+    { x: 34, y: 7 },
     { x: 38, y: 5 },
+    { x: 44, y: 3 },
     { x: 50, y: 2 }
   ], 'recovery'),
   pattern('easy_06', 'easy', 'high', 'moving', ['very_small', 'small', 'medium_small'], ROUND_ONLY, [
@@ -139,14 +143,20 @@ export const PATTERN_LIBRARY: GamePathPattern[] = [
   ], 'recovery'),
   pattern('easy_09', 'easy', 'low', 'static', ['small', 'medium_small', 'medium'], ROUND_ONLY, [
     { x: 12, y: 0 },
+    { x: 18, y: 2 },
     { x: 25, y: 2 },
+    { x: 32, y: -1, coinAngles: [Math.PI * 0.6] },
     { x: 39, y: -2, enemyPole: 'north' },
+    { x: 47, y: 1 },
     { x: 54, y: 1 }
   ]),
   pattern('easy_10', 'easy', 'medium', 'moving', ['tiny', 'very_small', 'small'], ROUND_ONLY, [
     { x: 10, y: 4, motionPattern: 'vertical', motionDirection: 'up', motionDistance: 4.6, motionDuration: 1.08 },
+    { x: 16, y: 2 },
     { x: 21, y: 1 },
+    { x: 28, y: -1 },
     { x: 33, y: -2, coinAngles: [Math.PI * 0.6] },
+    { x: 40, y: -4 },
     { x: 46, y: -5, motionPattern: 'drift', motionDirection: 'down_right', motionDistance: 4.8, motionDuration: 1.2 }
   ]),
 
@@ -166,8 +176,11 @@ export const PATTERN_LIBRARY: GamePathPattern[] = [
   ]),
   pattern('medium_03', 'medium', 'medium', 'static', ['very_small', 'small', 'medium_small', 'medium'], ROUND_OVAL, [
     { x: 11, y: 3, sizeTier: 'small' },
+    { x: 17, y: 1, sizeTier: 'very_small' },
     { x: 23, y: -1, sizeTier: 'medium_small' },
+    { x: 30, y: 2 },
     { x: 36, y: 5, sizeTier: 'very_large', coinAngles: [Math.PI * 0.95] },
+    { x: 44, y: 3, sizeTier: 'small' },
     { x: 52, y: 1, sizeTier: 'small' }
   ]),
   pattern('medium_04', 'medium', 'high', 'moving', ['very_small', 'small', 'medium_small', 'medium_large'], ROUND_OVAL, [

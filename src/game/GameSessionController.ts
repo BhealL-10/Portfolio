@@ -63,6 +63,12 @@ interface WorldHudBillboard {
   sprite: THREE.Sprite;
 }
 
+interface VisiblePlatformLayoutSnapshot {
+  positions: THREE.Vector3[];
+  scales: number[];
+  visuals: VisiblePlatformVisual[];
+}
+
 function getMotionDirectionAngle(direction: NonNullable<ResolvedGamePathNode['motionDirection']>) {
   switch (direction) {
     case 'left':
@@ -144,39 +150,55 @@ const BASE_MOMENTUM_DECAY_RATE = 0.1;
 const PLAYER_PROGRESS_HALF_WIDTH = 0.92;
 const PLAYER_COLLISION_HALF_HEIGHT = 0.78;
 const BASE_COIN_PICKUP_RADIUS = 0.74;
-const SPECIAL_ENEMY_TEST_SPAWN_BOOST = true;
-const SPECIAL_ENEMY_SPAWN_MIN_SECONDS = SPECIAL_ENEMY_TEST_SPAWN_BOOST ? 0.35 : 2.6;
-const SPECIAL_ENEMY_SPAWN_MAX_SECONDS = SPECIAL_ENEMY_TEST_SPAWN_BOOST ? 0.95 : 5.4;
-const SPECIAL_ENEMY_EARLY_TEST_DISTANCE_METERS = 220;
-const SPECIAL_ENEMY_EARLY_TEST_SPAWN_CHANCE = 0.98;
-const SPECIAL_ENEMY_DEFAULT_SPAWN_CHANCE = SPECIAL_ENEMY_TEST_SPAWN_BOOST ? 0.72 : 0.14;
-const SPECIAL_ENEMY_TEST_MAX_ACTIVE = SPECIAL_ENEMY_TEST_SPAWN_BOOST ? 4 : 2;
-const SPECIAL_ENEMY_MIN_SPAWN_SPACING_X = SPECIAL_ENEMY_TEST_SPAWN_BOOST ? 9.5 : 14;
+const SPECIAL_ENEMY_INITIAL_SPAWN_DELAY_SECONDS = 0.9;
+const SPECIAL_ENEMY_SPAWN_MIN_SECONDS = 0.85;
+const SPECIAL_ENEMY_SPAWN_MAX_SECONDS = 1.7;
+const SPECIAL_ENEMY_EARLY_DISTANCE_METERS = 220;
+const SPECIAL_ENEMY_EARLY_SPAWN_CHANCE = 0.82;
+const SPECIAL_ENEMY_DEFAULT_SPAWN_CHANCE = 0.58;
+const SPECIAL_ENEMY_MAX_ACTIVE = 3;
+const SPECIAL_ENEMY_MAX_ACTIVE_PER_KIND = 2;
+const SPECIAL_ENEMY_MIN_SPAWN_SPACING_X = 11.5;
 const SPECIAL_ENEMY_MIN_SPAWN_SPACING_Y = 2.4;
-const SPECIAL_ENEMY_DEBUG_LOGS = true;
+const SPECIAL_ENEMY_DEBUG_LOGS = false;
 const SPECIAL_ENEMY_TOP_SPEED = 4.8;
-const SPECIAL_ENEMY_BOT_SPEED = 2.9;
-const SPECIAL_ENEMY_TOP_WORLD_Y = 45;
-const SPECIAL_ENEMY_BOT_VISIBLE_Y = -14;
+const SPECIAL_ENEMY_BOT_SPEED = 6.9;
+const SPECIAL_ENEMY_TOP_WORLD_Y = 43;
+const SPECIAL_ENEMY_BOT_VISIBLE_Y = -16;
 const SPECIAL_ENEMY_BOT_HIDDEN_Y = -28;
-const SPECIAL_ENEMY_BOT_JUMP_DURATION = 0.78;
-const SPECIAL_ENEMY_BOT_VISIBLE_DURATION = 2.35;
+const SPECIAL_ENEMY_BOT_JUMP_DURATION = 0.9;
+const SPECIAL_ENEMY_BOT_VISIBLE_DURATION = 3.35;
 const SPECIAL_ENEMY_BOT_FALL_DURATION = 0.9;
 const SPECIAL_ENEMY_BOT_HIDDEN_DURATION = 0.96;
 const SPECIAL_ENEMY_BOT_VISIBLE_FLOAT_AMPLITUDE = 0.12;
+const SPECIAL_ENEMY_BOT_INITIAL_HIDDEN_PROGRESS = 0.72;
 const SPECIAL_ENEMY_BODY_Z_HALF = 0.58;
 const CAMERA_VERTICAL_TRACK_MIN_Y = -28;
 const CAMERA_VERTICAL_TRACK_MAX_Y = 45;
 const SPRINT_FISH_DISTANCE_METERS = 100;
-const SPRINT_FISH_PULL_OFFSET_X = 1.9;
-const SPRINT_FISH_PULL_OFFSET_Y = -0.18;
-const SPRINT_FISH_PULL_RESPONSE = 5.8;
+const SPRINT_FISH_TOW_SPEED_MULTIPLIER = 7.2;
+const SPRINT_FISH_TOW_SPEED_MIN = 52;
+const SPRINT_FISH_TOW_SPEED_MAX = 70;
+const SPRINT_FISH_PULL_OFFSET_X = 10.2;
+const SPRINT_FISH_PULL_OFFSET_Y = 1.24;
+const SPRINT_FISH_PULL_RESPONSE = 14.5;
+const SPRINT_FISH_PLAYER_TOW_VELOCITY_RESPONSE = 11.8;
+const SPRINT_FISH_PLAYER_TOW_VERTICAL_VELOCITY = 0.34;
 const SPRINT_FISH_PIVOT_RELEASE_ANGLE = Math.PI * 0.5;
-const SPRINT_FISH_PIVOT_MIN_ANGULAR_SPEED = 2.8;
-const SPRINT_FISH_PIVOT_MAX_ANGULAR_SPEED = 5.4;
-const SPRINT_FISH_PIVOT_FORWARD_BOOST = 1.1;
-const SPRINT_FISH_PIVOT_UP_BOOST = 0.85;
-const AMBIENT_ENEMY_SCALE_VARIANTS = [0.76, 0.88, 1, 1.1] as const;
+const SPRINT_FISH_PIVOT_MIN_RADIUS = 4.4;
+const SPRINT_FISH_PIVOT_MAX_RADIUS = 7.8;
+const SPRINT_FISH_PIVOT_MIN_ANGULAR_SPEED = 6.4;
+const SPRINT_FISH_PIVOT_MAX_ANGULAR_SPEED = 10.4;
+const SPRINT_FISH_RELEASE_SPEED_CARRY_RATIO = 0.86;
+const SPRINT_FISH_PIVOT_FORWARD_BOOST = 3.6;
+const SPRINT_FISH_PIVOT_UP_BOOST = 1.75;
+const SPRINT_FISH_STREAK_COUNT = 3;
+const AMBIENT_ENEMY_SCALE_VARIANTS = [0.96, 1.10, 1.31, 1.4] as const;
+const RUN_PATH_PREBUILD_COUNT = 220;
+const PATH_INITIAL_AHEAD_PADDING = 128;
+const DISPLAY_BACKLINE_RELEASE_BUFFER = 3.4;
+const DISPLAY_FORWARD_SPAWN_BUFFER = 5.4;
+const DISPLAY_REPLACEMENT_SEARCH_RANGE = 96;
 
 function computeTwistChainBonus(chainLength: number) {
   return Math.min(TWIST_CHAIN_MAX_BONUS, TWIST_CHAIN_BASE_BONUS + TWIST_CHAIN_INCREMENT * (chainLength - 1));
@@ -294,10 +316,12 @@ interface AmbientEnemyRuntime {
   sprintPivotAngularSpeed: number;
   sprintPivotAngularDirection: 1 | -1;
   sprintPivotReleaseAngle: number;
+  sprintTowSpeed: number;
   debugLineIndex: number;
   debugTint: string | null;
   zOffset: number;
   bounceCooldownUntil: number;
+  killCredited: boolean;
   mirrored: boolean;
 }
 
@@ -360,6 +384,7 @@ export class GameSessionController {
   private readonly frontCanonProjectile: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   private readonly bigCanonProjectile: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   private readonly grapRope: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  private readonly sprintFishSpeedStreaks: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>[];
   private readonly playerTrail = new THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
   private readonly trailPoints = Array.from({ length: 8 }, () => new THREE.Vector3());
   private readonly trailBuffer = new Float32Array(this.trailPoints.length * 3);
@@ -449,6 +474,7 @@ export class GameSessionController {
       bestCoinsCollected: 0,
       enemiesKilled: 0,
       bestEnemiesKilled: 0,
+      twistChainMax: 0,
       longestMomentumSeconds: 0,
       bestLongestMomentumSeconds: 0,
       scoreBreakdown: {
@@ -485,6 +511,12 @@ export class GameSessionController {
   private displayNextIndex = 0;
   private displayNodesCacheTime = Number.NaN;
   private readonly displayNodesCache = new Map<number, ResolvedGamePathNode[]>();
+  private platformLayoutCacheCount = -1;
+  private readonly platformLayoutCache: VisiblePlatformLayoutSnapshot = {
+    positions: [],
+    scales: [],
+    visuals: []
+  };
   private interactableVisibleNodesCache: ResolvedGamePathNode[] | null = null;
   private attachedNodeRuntimeAnchor: AttachedNodeRuntimeAnchor | null = null;
   private score = 0;
@@ -595,6 +627,9 @@ export class GameSessionController {
     this.shardHudCanvas.height = 256;
     this.shardHudTexture = new THREE.CanvasTexture(this.shardHudCanvas);
     this.shardHudTexture.colorSpace = THREE.SRGBColorSpace;
+    this.shardHudTexture.minFilter = THREE.LinearFilter;
+    this.shardHudTexture.magFilter = THREE.LinearFilter;
+    this.shardHudTexture.generateMipmaps = false;
     this.shardHudSprite = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: this.shardHudTexture,
@@ -707,6 +742,22 @@ export class GameSessionController {
     );
     this.grapRope.visible = false;
     this.grapRope.renderOrder = 27;
+    this.sprintFishSpeedStreaks = Array.from({ length: SPRINT_FISH_STREAK_COUNT }, (_, index) => {
+      const streak = new THREE.Mesh(
+        new THREE.PlaneGeometry(1, 0.16 + index * 0.04),
+        new THREE.MeshBasicMaterial({
+          color: getThemeNonShardHex(theme),
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          depthTest: false,
+          side: THREE.DoubleSide
+        })
+      );
+      streak.visible = false;
+      streak.renderOrder = 25;
+      return streak;
+    });
     this.root.add(
       this.rewardHeaderBillboard.sprite,
       ...this.rewardCardBillboards.map((billboard) => billboard.sprite),
@@ -718,7 +769,8 @@ export class GameSessionController {
       this.frontCanonLaser,
       this.frontCanonProjectile,
       this.bigCanonProjectile,
-      this.grapRope
+      this.grapRope,
+      ...this.sprintFishSpeedStreaks
     );
 
     const trailGeometry = new THREE.BufferGeometry();
@@ -901,6 +953,9 @@ export class GameSessionController {
     canvas.height = canvasHeight;
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = false;
     const sprite = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: texture,
@@ -965,6 +1020,7 @@ export class GameSessionController {
     this.shop.setTheme(theme);
     const uiColor = getThemeNonShardHex(theme);
     this.grapRope.material.color.set(uiColor);
+    this.sprintFishSpeedStreaks.forEach((streak) => streak.material.color.set(uiColor));
     this.frontCanonLaser.material.color.set(uiColor);
     this.milestonePlayerIndicator.material.color.set(uiColor);
     this.bigCanonRangeIndicator.material.color.set(this.getRarityColor('common'));
@@ -1101,7 +1157,7 @@ export class GameSessionController {
     const previewScale = this.player.scale.clone();
     this.resetRunState();
     this.path.reset();
-    this.path.prebuild(180);
+    this.path.prebuild(RUN_PATH_PREBUILD_COUNT);
     this.camera.reset(this.getResolvedNode(0), this.getProgressionDirectionSign());
     this.state = 'transition_in';
     this.root.visible = true;
@@ -1123,7 +1179,7 @@ export class GameSessionController {
     this.resetRunState();
     if (!reusePreparedPath) {
       this.path.reset();
-      this.path.prebuild(180);
+      this.path.prebuild(RUN_PATH_PREBUILD_COUNT);
     }
     this.syncPathEventBiases();
     this.root.visible = true;
@@ -1133,7 +1189,7 @@ export class GameSessionController {
     this.camera.reset(this.getResolvedNode(0), this.getProgressionDirectionSign());
     this.awaitingFirstJump = true;
     this.state = 'running_attached';
-    this.ambientEnemySpawnReadyAt = this.currentTime + (SPECIAL_ENEMY_TEST_SPAWN_BOOST ? 0.2 : 1.8);
+    this.ambientEnemySpawnReadyAt = this.currentTime + SPECIAL_ENEMY_INITIAL_SPAWN_DELAY_SECONDS;
     this.emitAudioEvent({ type: 'run_start' });
     this.emitScore();
   }
@@ -1340,6 +1396,10 @@ export class GameSessionController {
     this.frontCanonProjectile.visible = false;
     this.bigCanonProjectile.visible = false;
     this.grapRope.visible = false;
+    this.sprintFishSpeedStreaks.forEach((streak) => {
+      streak.visible = false;
+      streak.material.opacity = 0;
+    });
     this.coins.reset();
     this.enemies.reset();
     this.shop.reset();
@@ -1351,42 +1411,69 @@ export class GameSessionController {
   }
 
   getInitialPlatformPositions(count: number) {
-    this.path.prebuild(Math.max(160, count + 60));
+    this.path.prebuild(Math.max(RUN_PATH_PREBUILD_COUNT, count + PATH_INITIAL_AHEAD_PADDING));
     return this.path.getInitialNodes(count).map((node) => new THREE.Vector3(node.x, node.y, node.z));
   }
 
   getInitialPlatformScales(count: number) {
-    this.path.prebuild(Math.max(160, count + 60));
+    this.path.prebuild(Math.max(RUN_PATH_PREBUILD_COUNT, count + PATH_INITIAL_AHEAD_PADDING));
     return this.path.getInitialNodes(count).map((node) => node.visualScale);
   }
 
   getInitialPlatformVisuals(count: number): VisiblePlatformVisual[] {
-    this.path.prebuild(Math.max(160, count + 60));
+    this.path.prebuild(Math.max(RUN_PATH_PREBUILD_COUNT, count + PATH_INITIAL_AHEAD_PADDING));
     this.initializeDisplayWindow(count);
     return this.getVisiblePlatformVisuals(count);
   }
 
+  getVisiblePlatformLayout(count: number) {
+    if (this.platformLayoutCacheCount === count) {
+      return this.platformLayoutCache;
+    }
+
+    const displayNodes = this.getDisplayNodes(count);
+    const positions = this.platformLayoutCache.positions;
+    const scales = this.platformLayoutCache.scales;
+    const visuals = this.platformLayoutCache.visuals;
+
+    positions.length = displayNodes.length;
+    scales.length = displayNodes.length;
+    visuals.length = displayNodes.length;
+
+    for (let index = 0; index < displayNodes.length; index += 1) {
+      const node = displayNodes[index]!;
+      const position = positions[index] ?? (positions[index] = new THREE.Vector3());
+      position.set(node.resolvedX, node.resolvedY, node.resolvedZ);
+      scales[index] = node.visualScale;
+      visuals[index] = this.buildVisiblePlatformVisual(node, node.index === this.attachedIndex && this.playerState !== 'airborne');
+    }
+
+    this.platformLayoutCacheCount = count;
+    return this.platformLayoutCache;
+  }
+
   getVisiblePlatformPositions(count: number) {
-    return this.getDisplayNodes(count).map((node) => new THREE.Vector3(node.resolvedX, node.resolvedY, node.resolvedZ));
+    return this.getVisiblePlatformLayout(count).positions;
   }
 
   getVisiblePlatformScales(count: number) {
-    return this.getDisplayNodes(count).map((node) => node.visualScale);
+    return this.getVisiblePlatformLayout(count).scales;
   }
 
   getVisiblePlatformVisuals(count: number): VisiblePlatformVisual[] {
-    const displayNodes = this.getDisplayNodes(count);
-    return displayNodes.map((node) => this.buildVisiblePlatformVisual(node, node.index === this.attachedIndex && this.playerState !== 'airborne'));
+    return this.getVisiblePlatformLayout(count).visuals;
   }
 
   getRecommendedVisibleCount() {
-    const baseCount = this.state === 'transition_in' ? 82 : 74;
-    const momentumBonus = Math.round(this.momentum.cameraZoomMultiplier * 22 + this.runUpgrades.modifiers.cameraBaseZoomBonus * 5);
+    const mobileRuntime = isMobileRuntime();
+    const baseCount = this.state === 'transition_in' ? (mobileRuntime ? 74 : 82) : mobileRuntime ? 62 : 72;
+    const momentumBonus = Math.round(this.momentum.cameraZoomMultiplier * 26 + this.runUpgrades.modifiers.cameraBaseZoomBonus * 6);
     const choiceBonus = this.choiceMode === 'reward_branch' ? 12 : this.choiceMode === 'shop_orbit' ? 8 : 0;
     const current = this.path.getNode(this.attachedIndex);
     const next = this.path.getNode(this.attachedIndex + 1);
-    const visibilityBonus = current?.isGigantic || next?.isGigantic ? 22 : current?.eventType !== 'none' || next?.eventType !== 'none' ? 12 : 0;
-    return Math.max(68, Math.min(144, baseCount + momentumBonus + choiceBonus + visibilityBonus));
+    const visibilityBonus = current?.isGigantic || next?.isGigantic ? 24 : current?.eventType !== 'none' || next?.eventType !== 'none' ? 14 : 0;
+    const requestedCount = baseCount + momentumBonus + choiceBonus + visibilityBonus;
+    return Math.max(mobileRuntime ? 60 : 68, Math.min(mobileRuntime ? 104 : 128, requestedCount));
   }
 
   private buildVisiblePlatformVisual(node: ResolvedGamePathNode, isCurrent: boolean): VisiblePlatformVisual {
@@ -1989,6 +2076,19 @@ export class GameSessionController {
       this.currentTime + THREE.MathUtils.lerp(SPECIAL_ENEMY_SPAWN_MIN_SECONDS, SPECIAL_ENEMY_SPAWN_MAX_SECONDS, Math.random());
   }
 
+  private getAmbientEnemyActiveCountByKind() {
+    return this.ambientEnemies.reduce(
+      (counts, enemy) => {
+        counts[enemy.kind] += 1;
+        return counts;
+      },
+      {
+        enemyTop: 0,
+        enemyBot: 0
+      } satisfies Record<AmbientEnemyKind, number>
+    );
+  }
+
   private removeAmbientEnemy(enemyId: string, reason: string) {
     const enemyIndex = this.ambientEnemies.findIndex((enemy) => enemy.id === enemyId);
     if (enemyIndex < 0) {
@@ -2015,7 +2115,7 @@ export class GameSessionController {
     if (this.currentTime < this.ambientEnemySpawnReadyAt) {
       return;
     }
-    if (this.ambientEnemies.length >= SPECIAL_ENEMY_TEST_MAX_ACTIVE) {
+    if (this.ambientEnemies.length >= SPECIAL_ENEMY_MAX_ACTIVE) {
       this.debugAmbientEnemy('spawn_skipped', { reason: 'max_active_reached' });
       this.scheduleNextAmbientEnemySpawn();
       return;
@@ -2026,8 +2126,9 @@ export class GameSessionController {
       return;
     }
 
+    const activeCountByKind = this.getAmbientEnemyActiveCountByKind();
     const availableKinds: AmbientEnemyKind[] = [];
-    const topProbe: AmbientEnemyRuntime = {
+    if (activeCountByKind.enemyTop < SPECIAL_ENEMY_MAX_ACTIVE_PER_KIND && this.resolveAmbientEnemyTopY({
       id: '',
       kind: 'enemyTop',
       state: 'alive',
@@ -2059,26 +2160,29 @@ export class GameSessionController {
       sprintPivotAngularSpeed: 0,
       sprintPivotAngularDirection: 1,
       sprintPivotReleaseAngle: SPRINT_FISH_PIVOT_RELEASE_ANGLE,
+      sprintTowSpeed: 0,
       debugLineIndex: 0,
       debugTint: null,
       zOffset: 0.92,
       bounceCooldownUntil: 0,
+      killCredited: false,
       mirrored: this.isMirrorModeActive()
-    };
-    if (this.resolveAmbientEnemyTopY(topProbe) !== null) {
+    }) !== null) {
       availableKinds.push('enemyTop');
     }
-    availableKinds.push('enemyBot');
+    if (activeCountByKind.enemyBot < SPECIAL_ENEMY_MAX_ACTIVE_PER_KIND) {
+      availableKinds.push('enemyBot');
+    }
     if (availableKinds.length === 0) {
-      this.debugAmbientEnemy('spawn_rejected', { reason: 'no_available_kinds' });
+      this.debugAmbientEnemy('spawn_rejected', { reason: 'kind_cap_reached', activeCountByKind });
       this.scheduleNextAmbientEnemySpawn();
       return;
     }
 
     const distanceMeters = this.stats.getSnapshot().distanceMeters;
     const spawnChance =
-      distanceMeters < SPECIAL_ENEMY_EARLY_TEST_DISTANCE_METERS
-        ? SPECIAL_ENEMY_EARLY_TEST_SPAWN_CHANCE
+      distanceMeters < SPECIAL_ENEMY_EARLY_DISTANCE_METERS
+        ? SPECIAL_ENEMY_EARLY_SPAWN_CHANCE
         : SPECIAL_ENEMY_DEFAULT_SPAWN_CHANCE;
     if (Math.random() > spawnChance) {
       this.debugAmbientEnemy('spawn_rejected', { reason: 'chance_roll_failed', spawnChance });
@@ -2086,10 +2190,6 @@ export class GameSessionController {
       return;
     }
 
-    const activeCountByKind = {
-      enemyTop: this.ambientEnemies.filter((enemy) => enemy.kind === 'enemyTop').length,
-      enemyBot: this.ambientEnemies.filter((enemy) => enemy.kind === 'enemyBot').length
-    } as const;
     const sortedKinds = [...availableKinds].sort((left, right) => {
       const leftCount = activeCountByKind[left];
       const rightCount = activeCountByKind[right];
@@ -2149,10 +2249,12 @@ export class GameSessionController {
       sprintPivotAngularSpeed: 0,
       sprintPivotAngularDirection: 1,
       sprintPivotReleaseAngle: SPRINT_FISH_PIVOT_RELEASE_ANGLE,
+      sprintTowSpeed: 0,
       debugLineIndex,
       debugTint,
       zOffset: kind === 'enemyTop' ? 0.92 : 0.84,
       bounceCooldownUntil: 0,
+      killCredited: false,
       mirrored: this.isMirrorModeActive()
     };
 
@@ -2171,9 +2273,7 @@ export class GameSessionController {
       runtime.hiddenY = botBand.hiddenY;
       runtime.cruiseY = runtime.visibleY;
       runtime.position.y = runtime.hiddenY;
-      if (SPECIAL_ENEMY_TEST_SPAWN_BOOST) {
-        runtime.botPhaseStartedAt -= runtime.botHiddenDuration * 0.85;
-      }
+      runtime.botPhaseStartedAt -= runtime.botHiddenDuration * SPECIAL_ENEMY_BOT_INITIAL_HIDDEN_PROGRESS;
       this.debugAmbientEnemy('bot_band', {
         enemyId: runtime.id,
         safeBottom: Math.round(this.camera.getSafeBottom() * 100) / 100,
@@ -2208,14 +2308,17 @@ export class GameSessionController {
   }
 
   private awardAmbientEnemyKill(enemy: AmbientEnemyRuntime, source: 'impact' | 'shield' = 'impact') {
-    if (enemy.rewardCoins <= 0) {
+    if (enemy.killCredited) {
       return;
     }
-    this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
+    enemy.killCredited = true;
+    if (enemy.rewardCoins > 0) {
+      this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
+      enemy.rewardCoins = 0;
+    }
     this.recordEnemyKill({ amount: 1, source });
     this.emitScore();
     this.emitAudioEvent({ type: 'enemy_die' });
-    enemy.rewardCoins = 0;
   }
 
   private applyAmbientEnemyBounce(enemy: AmbientEnemyRuntime, previousPosition: THREE.Vector3, bounceStrength = 1) {
@@ -2252,9 +2355,14 @@ export class GameSessionController {
     enemy.stateStartedAt = this.currentTime;
     enemy.velocity.x *= 0.24;
     enemy.velocity.y = -1.8;
+    if (enemy.kind === 'enemyBot') {
+      enemy.position.y = enemy.visibleY;
+    }
   }
 
   private beginSprintFish(enemy: AmbientEnemyRuntime) {
+    const directionSign = this.getAmbientEnemyDirectionSign(enemy.kind);
+    const baseTravelSpeed = Math.max(SPECIAL_ENEMY_BOT_SPEED, Math.abs(enemy.velocity.x));
     enemy.state = 'sprint_fish';
     enemy.stateStartedAt = this.currentTime;
     enemy.sprintPivotActive = false;
@@ -2263,7 +2371,8 @@ export class GameSessionController {
     enemy.sprintPivotAngularSpeed = 0;
     enemy.sprintPivotAngularDirection = 1;
     enemy.sprintPivotReleaseAngle = SPRINT_FISH_PIVOT_RELEASE_ANGLE;
-    enemy.velocity.x = this.getAmbientEnemyDirectionSign(enemy.kind) * Math.abs(enemy.velocity.x);
+    enemy.sprintTowSpeed = clamp(baseTravelSpeed * SPRINT_FISH_TOW_SPEED_MULTIPLIER, SPRINT_FISH_TOW_SPEED_MIN, SPRINT_FISH_TOW_SPEED_MAX);
+    enemy.velocity.x = directionSign * enemy.sprintTowSpeed;
     this.grapState = 'sprint_fish';
     this.grapAmbientEnemyId = enemy.id;
     this.grapTargetIndex = null;
@@ -2275,7 +2384,8 @@ export class GameSessionController {
     this.state = 'running_airborne';
     this.chargeActive = false;
     this.upActionActive = false;
-    this.sprintFishStartX = this.playerPosition.x;
+    this.grapRopeLength = Math.max(this.grapRopeLength, SPRINT_FISH_PULL_OFFSET_X * 0.96);
+    this.sprintFishStartX = enemy.position.x;
     enemy.position.y = enemy.visibleY;
   }
 
@@ -2289,11 +2399,16 @@ export class GameSessionController {
     enemy.stateStartedAt = this.currentTime;
     enemy.velocity.x = 0;
     enemy.position.y = enemy.visibleY;
-    enemy.sprintPivotRadius = clamp(pivotOffset.length(), 1.35, 3.8);
+    enemy.sprintPivotRadius = clamp(pivotOffset.length(), SPRINT_FISH_PIVOT_MIN_RADIUS, SPRINT_FISH_PIVOT_MAX_RADIUS);
     enemy.sprintPivotAngle = Math.atan2(pivotOffset.y, pivotOffset.x);
     enemy.sprintPivotAngularDirection = directionSign > 0 ? -1 : 1;
+    const targetPivotSpeed = Math.max(
+      enemy.sprintTowSpeed,
+      Math.abs(this.playerVelocity.x),
+      Math.abs(this.playerVelocity.y) + SPRINT_FISH_PIVOT_UP_BOOST
+    );
     enemy.sprintPivotAngularSpeed = clamp(
-      Math.max(Math.abs(this.playerVelocity.x), Math.abs(this.playerVelocity.y) + 2) / Math.max(0.9, enemy.sprintPivotRadius),
+      targetPivotSpeed / Math.max(0.9, enemy.sprintPivotRadius),
       SPRINT_FISH_PIVOT_MIN_ANGULAR_SPEED,
       SPRINT_FISH_PIVOT_MAX_ANGULAR_SPEED
     );
@@ -2312,12 +2427,14 @@ export class GameSessionController {
     const pivotTangent = enemy.sprintPivotActive
       ? this.getSprintFishPivotTangent(enemy, this.scratchVector)
       : this.scratchVector.set(directionSign, 0.18, 0).normalize();
-    const tangentialSpeed = enemy.sprintPivotActive ? enemy.sprintPivotRadius * enemy.sprintPivotAngularSpeed : 0;
+    const tangentialSpeed = enemy.sprintPivotActive ? enemy.sprintPivotRadius * enemy.sprintPivotAngularSpeed : enemy.sprintTowSpeed;
+    const releaseCarrySpeed = Math.max(tangentialSpeed, enemy.sprintTowSpeed * SPRINT_FISH_RELEASE_SPEED_CARRY_RATIO);
     this.playerVelocity.copy(
-      pivotTangent.multiplyScalar(tangentialSpeed).add(
+      pivotTangent.multiplyScalar(releaseCarrySpeed).add(
         this.scratchVectorB.set(directionSign * SPRINT_FISH_PIVOT_FORWARD_BOOST, SPRINT_FISH_PIVOT_UP_BOOST, 0)
       )
     );
+    this.fillMomentumBurst(0.06);
     this.playerHeading.set(this.playerVelocity.x || directionSign, this.playerVelocity.y || 0).normalize();
     this.playerSurfaceNormal.set(-this.playerHeading.y, this.playerHeading.x).normalize();
     this.playerState = 'airborne';
@@ -2382,10 +2499,18 @@ export class GameSessionController {
             this.playerPosition.z
           );
           this.playerPosition.lerp(targetPlayerPosition, clamp(deltaTime * SPRINT_FISH_PULL_RESPONSE, 0, 1));
-          this.playerVelocity.lerp(this.scratchVectorB.set(enemy.velocity.x, 0.22, 0), clamp(deltaTime * 7.2, 0, 1));
+          const minimumTowSeparation = SPRINT_FISH_PULL_OFFSET_X * 0.82;
+          const signedTowDistance = (enemy.position.x - this.playerPosition.x) * directionSign;
+          if (signedTowDistance < minimumTowSeparation) {
+            this.playerPosition.x = enemy.position.x - directionSign * minimumTowSeparation;
+          }
+          this.playerVelocity.lerp(
+            this.scratchVectorB.set(enemy.velocity.x * 0.98, SPRINT_FISH_PLAYER_TOW_VERTICAL_VELOCITY, 0),
+            clamp(deltaTime * SPRINT_FISH_PLAYER_TOW_VELOCITY_RESPONSE, 0, 1)
+          );
           this.playerHeading.set(directionSign, 0);
           this.playerSurfaceNormal.set(0, 1);
-          const sprintDistanceMeters = Math.abs(this.playerPosition.x - this.sprintFishStartX) / DEFAULT_COLUMN_DISTANCE;
+          const sprintDistanceMeters = Math.abs(enemy.position.x - this.sprintFishStartX) / DEFAULT_COLUMN_DISTANCE;
           if (sprintDistanceMeters >= SPRINT_FISH_DISTANCE_METERS) {
             this.startSprintFishPivot(enemy);
           }
@@ -2393,19 +2518,28 @@ export class GameSessionController {
         continue;
       }
 
+      if (enemy.state === 'dying') {
+        enemy.velocity.y -= 8.6 * deltaTime;
+        enemy.position.addScaledVector(this.scratchVector.set(enemy.velocity.x, enemy.velocity.y, 0), deltaTime);
+        if (this.currentTime - enemy.stateStartedAt >= enemy.deathDuration) {
+          this.removeAmbientEnemy(enemy.id, 'death_animation_complete');
+          continue;
+        }
+        const halfExtents = this.getAmbientEnemyBaseHalfExtents(enemy);
+        const fullyPastDeathBounds =
+          enemy.position.x - halfExtents.x > this.camera.getSafeRight() + DEFAULT_COLUMN_DISTANCE * 2.2 ||
+          enemy.position.x + halfExtents.x < this.camera.getSafeLeft() - DEFAULT_COLUMN_DISTANCE * 2.2 ||
+          enemy.position.y + halfExtents.y < this.camera.getSafeBottom() - DEFAULT_COLUMN_DISTANCE * 2.4;
+        if (fullyPastDeathBounds) {
+          this.removeAmbientEnemy(enemy.id, 'death_out_of_bounds');
+        }
+        continue;
+      }
+
       enemy.position.x += enemy.velocity.x * deltaTime;
 
       if (enemy.kind === 'enemyTop') {
-        if (enemy.state === 'alive') {
-          enemy.position.y = enemy.cruiseY;
-        } else {
-          enemy.velocity.y -= 8.6 * deltaTime;
-          enemy.position.addScaledVector(this.scratchVector.set(0, enemy.velocity.y, 0), deltaTime);
-          if (this.currentTime - enemy.stateStartedAt >= enemy.deathDuration) {
-            this.removeAmbientEnemy(enemy.id, 'death_animation_complete');
-            continue;
-          }
-        }
+        enemy.position.y = enemy.cruiseY;
       } else {
         this.updateAmbientEnemyBotVerticalMotion(enemy);
       }
@@ -2507,6 +2641,7 @@ export class GameSessionController {
       bestCoinsCollected: statsSnapshot.bestCoinsCollected,
       enemiesKilled: statsSnapshot.enemiesKilled,
       bestEnemiesKilled: statsSnapshot.bestEnemiesKilled,
+      twistChainMax: statsSnapshot.twistChainMax,
       longestMomentumSeconds: statsSnapshot.longestMomentumSeconds,
       bestLongestMomentumSeconds: statsSnapshot.bestLongestMomentumSeconds,
       scoreBreakdown: statsSnapshot.scoreBreakdown,
@@ -2805,6 +2940,7 @@ export class GameSessionController {
 
   private invalidateVisibleNodeCaches() {
     this.displayNodesCache.clear();
+    this.platformLayoutCacheCount = -1;
     this.interactableVisibleNodesCache = null;
     this.displayNodesCacheTime = Number.NaN;
   }
@@ -3565,15 +3701,20 @@ export class GameSessionController {
     for (let slot = 0; slot < this.displayWindowIndices.length; slot += 1) {
       const nodeIndex = this.displayWindowIndices[slot]!;
       const node = this.getResolvedNode(nodeIndex);
-      const fullyPastBackline =
-        this.getProgressionDirectionSign() > 0
-          ? node.resolvedX + this.getPhysicalRadius(node) + 5.5 < this.camera.getSafeLeft()
-          : node.resolvedX - this.getPhysicalRadius(node) - 5.5 > this.camera.getSafeRight();
+      const fullyPastBackline = (() => {
+        const radius = this.getPhysicalRadius(node);
+        if (this.getProgressionDirectionSign() > 0) {
+          const leftCullX = this.camera.getSafeLeft() - DISPLAY_BACKLINE_RELEASE_BUFFER;
+          return node.resolvedX + radius < leftCullX;
+        }
+        const rightCullX = this.camera.getSafeRight() + DISPLAY_BACKLINE_RELEASE_BUFFER;
+        return node.resolvedX - radius > rightCullX;
+      })();
       if (!fullyPastBackline) {
         continue;
       }
 
-      this.path.ensureAhead(this.displayNextIndex + 1);
+      this.path.ensureAhead(this.displayNextIndex + 1, 120, 64);
       const replacementIndex = this.findReplacementDisplayNode(slot);
       if (replacementIndex === null) {
         continue;
@@ -3585,14 +3726,14 @@ export class GameSessionController {
 
   private initializeDisplayWindow(count: number) {
     if (this.displayWindowIndices.length === 0) {
-      this.path.ensureAhead(count + 1);
+      this.path.ensureAhead(count + PATH_INITIAL_AHEAD_PADDING, 120, 80);
       this.displayWindowIndices = Array.from({ length: count }, (_, index) => index);
       this.displayNextIndex = count;
       return;
     }
 
     if (this.displayWindowIndices.length < count) {
-      this.path.ensureAhead(count + 1);
+      this.path.ensureAhead(count + PATH_INITIAL_AHEAD_PADDING, 120, 80);
       while (this.displayWindowIndices.length < count) {
         this.displayWindowIndices.push(this.displayNextIndex);
         this.displayNextIndex += 1;
@@ -3613,12 +3754,16 @@ export class GameSessionController {
   }
 
   private findReplacementDisplayNode(excludeSlot: number) {
-    for (let candidateIndex = this.displayNextIndex; candidateIndex < this.displayNextIndex + 24; candidateIndex += 1) {
+    for (
+      let candidateIndex = this.displayNextIndex;
+      candidateIndex < this.displayNextIndex + DISPLAY_REPLACEMENT_SEARCH_RANGE;
+      candidateIndex += 1
+    ) {
       const replacement = this.getResolvedNode(candidateIndex);
       const spawnsOffscreenAhead =
         this.getProgressionDirectionSign() > 0
-          ? replacement.resolvedX - this.getPhysicalRadius(replacement) > this.camera.getSafeRight() + 2.8
-          : replacement.resolvedX + this.getPhysicalRadius(replacement) < this.camera.getSafeLeft() - 2.8;
+          ? replacement.resolvedX - this.getPhysicalRadius(replacement) > this.camera.getSafeRight() + DISPLAY_FORWARD_SPAWN_BUFFER
+          : replacement.resolvedX + this.getPhysicalRadius(replacement) < this.camera.getSafeLeft() - DISPLAY_FORWARD_SPAWN_BUFFER;
       if (!spawnsOffscreenAhead) {
         continue;
       }
@@ -3675,10 +3820,13 @@ export class GameSessionController {
     const speedTarget = 1 + normalizedGauge * 0.8 + this.runUpgrades.modifiers.speedBonus;
     const jumpTarget = 1 + normalizedGauge * 0.62 + this.runUpgrades.modifiers.chargedLeapBonus * 0.16;
     const cameraZoomTarget =
-      normalizedGauge < 0.5
-        ? normalizedGauge * 1.02
-        : 0.51 + Math.pow((normalizedGauge - 0.5) / 0.5, 1.08) * 1.42;
-    const spyglassMomentumBoost = this.runUpgrades.modifiers.cameraMomentumZoomBonus * (0.24 + normalizedGauge * 0.76);
+      normalizedGauge < 0.45
+        ? normalizedGauge * 0.92
+        : 0.41 + Math.pow((normalizedGauge - 0.45) / 0.55, 1.12) * 0.59;
+    const spyglassMomentumBoost =
+      this.runUpgrades.modifiers.cameraMomentumZoomBonus *
+      Math.pow(normalizedGauge, 1.35) *
+      1.18;
 
     this.momentum.speedMultiplier = damp(this.momentum.speedMultiplier, speedTarget, 2.4, deltaTime);
     this.momentum.jumpMultiplier = damp(this.momentum.jumpMultiplier, jumpTarget, 2.6, deltaTime);
@@ -4845,7 +4993,20 @@ export class GameSessionController {
     });
     const geometry = this.playerTrail.geometry.getAttribute('position');
     geometry.needsUpdate = true;
-    this.playerTrail.material.opacity = 0.24 + this.momentum.gauge * 0.36;
+    const sprintEnemy = this.getAmbientEnemyById(this.grapAmbientEnemyId);
+    const sprintIntensity =
+      this.grapState === 'sprint_fish' && sprintEnemy?.state === 'sprint_fish'
+        ? clamp(
+            ((sprintEnemy.sprintTowSpeed || this.playerVelocity.length()) - SPRINT_FISH_TOW_SPEED_MIN) /
+              Math.max(0.001, SPRINT_FISH_TOW_SPEED_MAX - SPRINT_FISH_TOW_SPEED_MIN),
+            0,
+            1
+          )
+        : 0;
+    this.playerTrail.material.opacity =
+      sprintIntensity > 0
+        ? THREE.MathUtils.lerp(0.54, 0.9, sprintIntensity)
+        : 0.24 + this.momentum.gauge * 0.36;
   }
 
   private syncPlayerVisual(elapsedTime: number) {
@@ -5152,8 +5313,10 @@ export class GameSessionController {
       this.grapRope.material.opacity =
         this.grapState === 'launch'
           ? 0.58
-          : this.grapState === 'hooked' || this.grapState === 'sprint_fish'
-            ? 0.92
+          : this.grapState === 'sprint_fish'
+            ? 1
+            : this.grapState === 'hooked'
+              ? 0.92
             : 0.78;
       if (grapAmbientEnemy) {
         this.grapTargetPosition.copy(grapAmbientEnemy.position);
@@ -5170,10 +5333,51 @@ export class GameSessionController {
       this.grapRope.position.copy(ropeOrigin).addScaledVector(ropeVector, 0.5);
       this.grapRope.position.z = ropeOrigin.z + 0.02;
       this.grapRope.rotation.z = Math.atan2(ropeVector.y, ropeVector.x) - Math.PI * 0.5;
-      this.grapRope.scale.set(this.grapState === 'hooked' || this.grapState === 'sprint_fish' ? 1.12 : 1, distance, 1);
+      this.grapRope.scale.set(this.grapState === 'sprint_fish' ? 1.42 : this.grapState === 'hooked' ? 1.12 : 1, distance, 1);
     } else {
       this.grapRope.material.opacity = 0.85;
     }
+    this.syncSprintFishSpeedVisual(heading, grapAmbientEnemy);
+  }
+
+  private syncSprintFishSpeedVisual(heading: number, sprintEnemy: AmbientEnemyRuntime | null) {
+    const active = this.grapState === 'sprint_fish' && sprintEnemy?.state === 'sprint_fish';
+    if (!active || !sprintEnemy) {
+      this.sprintFishSpeedStreaks.forEach((streak) => {
+        streak.visible = false;
+        streak.material.opacity = 0;
+      });
+      return;
+    }
+
+    const forwardX = Math.cos(heading);
+    const forwardY = Math.sin(heading);
+    const sideX = -forwardY;
+    const sideY = forwardX;
+    const referenceSpeed = Math.max(sprintEnemy.sprintTowSpeed, this.playerVelocity.length());
+    const intensity = clamp(
+      (referenceSpeed - SPRINT_FISH_TOW_SPEED_MIN) / Math.max(0.001, SPRINT_FISH_TOW_SPEED_MAX - SPRINT_FISH_TOW_SPEED_MIN),
+      0,
+      1
+    );
+
+    this.sprintFishSpeedStreaks.forEach((streak, index) => {
+      const laneOffset = index - (this.sprintFishSpeedStreaks.length - 1) * 0.5;
+      const shimmer = 0.88 + Math.sin(this.currentTime * (8.4 + index * 1.4) + index * 1.1) * 0.12;
+      const length = THREE.MathUtils.lerp(6.8, 12.6, intensity) * (1 - index * 0.08);
+      const width = THREE.MathUtils.lerp(0.16, 0.42, intensity) * (1 - index * 0.06);
+      const rearOffset = 1.4 + index * 1.55 + length * 0.42;
+      const lateralOffset = laneOffset * (0.88 + intensity * 1.05);
+      streak.position.set(
+        this.playerPosition.x - forwardX * rearOffset + sideX * lateralOffset,
+        this.playerPosition.y - forwardY * rearOffset + sideY * lateralOffset,
+        this.playerPosition.z - 0.03 - index * 0.002
+      );
+      streak.rotation.z = heading;
+      streak.scale.set(length, width, 1);
+      streak.material.opacity = (0.16 + intensity * 0.26) * shimmer;
+      streak.visible = streak.material.opacity > 0.02;
+    });
   }
 
   private syncWorldRewardBranchHud(currentNode: ResolvedGamePathNode) {
@@ -6035,6 +6239,12 @@ export class GameSessionController {
 
     if (bestEnemy.kind === 'enemyTop') {
       this.applyAmbientEnemyBounce(bestEnemy, previousPosition, airborne ? 1.08 : 1.14);
+      this.startAmbientEnemyDeath(bestEnemy);
+      return;
+    }
+
+    if (airborne) {
+      this.applyAmbientEnemyBounce(bestEnemy, previousPosition, 1.04);
       this.startAmbientEnemyDeath(bestEnemy);
       return;
     }

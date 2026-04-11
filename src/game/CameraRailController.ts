@@ -38,11 +38,15 @@ interface CameraFocusTarget {
 
 export class CameraRailController {
   private static readonly CAMERA_CENTER_OFFSET = 1.6;
+  private static readonly GAMEPLAY_REFERENCE_ASPECT = 16 / 9;
+  private static readonly MIN_GAMEPLAY_HALF_HEIGHT = 11.8;
+  private static readonly MIN_GAMEPLAY_HALF_WIDTH = 13.2;
   private readonly position = new THREE.Vector3();
   private readonly lookAt = new THREE.Vector3();
   private currentFocus = new THREE.Vector2();
   private targetFocus = new THREE.Vector2();
   private currentZoom = 11.8;
+  private renderZoom = 11.8;
   private targetZoom = 11.8;
   private railX = -12;
   private safeLeft = -Infinity;
@@ -58,6 +62,7 @@ export class CameraRailController {
     this.currentFocus.set(node.resolvedX + 4.2 * directionSign, node.resolvedY);
     this.targetFocus.copy(this.currentFocus);
     this.currentZoom = 11.8;
+    this.renderZoom = 11.8;
     this.targetZoom = 11.8;
     this.position.set(this.currentFocus.x - CameraRailController.CAMERA_CENTER_OFFSET * directionSign, node.resolvedY + 0.18, this.currentZoom);
     this.lookAt.set(this.currentFocus.x, node.resolvedY, 0);
@@ -171,7 +176,12 @@ export class CameraRailController {
     config: CameraRailUpdateConfig,
     lockMode: CameraFocusLock['mode'] | 'none'
   ) {
-    const momentumZoom = profile.momentumZoomRange * 1.28 * Math.min(1.45, Math.max(0, config.momentumGauge));
+    const baseMomentumZoom = profile.momentumZoomRange * Math.pow(THREE.MathUtils.clamp(config.momentumGauge, 0, 1), 1.04);
+    const equipmentMomentumOverdrive =
+      profile.momentumZoomRange *
+      0.74 *
+      Math.pow(Math.max(0, config.momentumGauge - 1), 1.1);
+    const momentumZoom = baseMomentumZoom + equipmentMomentumOverdrive;
     this.targetZoom =
       profile.baseZoom +
       momentumZoom +
@@ -201,8 +211,7 @@ export class CameraRailController {
       return;
     }
 
-    const renderedHalfHeight = Math.tan(THREE.MathUtils.degToRad(this.fov * 0.5)) * this.currentZoom;
-    const gameplayHalfHeight = Math.max(renderedHalfHeight, 11.8);
+    const gameplayHalfHeight = Math.max(this.getHalfHeightAtZoom(this.currentZoom), CameraRailController.MIN_GAMEPLAY_HALF_HEIGHT);
     const safeVerticalInset = gameplayHalfHeight * 0.94;
     const minFocusY = config.verticalClampMinY + safeVerticalInset;
     const maxFocusY = config.verticalClampMaxY - safeVerticalInset;
@@ -216,20 +225,21 @@ export class CameraRailController {
   }
 
   private updatePose() {
+    this.renderZoom = this.resolvePresentationZoom();
     this.position.set(
       this.currentFocus.x - CameraRailController.CAMERA_CENTER_OFFSET * this.directionSign,
       this.currentFocus.y + 0.18,
-      this.currentZoom
+      this.renderZoom
     );
     this.lookAt.set(this.currentFocus.x, this.currentFocus.y, 0);
   }
 
   private updateSafeBounds() {
-    const aspect = Math.max(0.5, window.innerWidth / Math.max(1, window.innerHeight));
-    const renderedHalfHeight = Math.tan(THREE.MathUtils.degToRad(this.fov * 0.5)) * this.currentZoom;
-    const renderedHalfWidth = renderedHalfHeight * aspect;
-    const gameplayHalfHeight = Math.max(renderedHalfHeight, 11.8);
-    const gameplayHalfWidth = Math.max(renderedHalfWidth, 13.2);
+    const gameplayHalfHeight = Math.max(this.getHalfHeightAtZoom(this.currentZoom), CameraRailController.MIN_GAMEPLAY_HALF_HEIGHT);
+    const gameplayHalfWidth = Math.max(
+      gameplayHalfHeight * CameraRailController.GAMEPLAY_REFERENCE_ASPECT,
+      CameraRailController.MIN_GAMEPLAY_HALF_WIDTH
+    );
     this.safeLeft = this.lookAt.x - gameplayHalfWidth * 0.94;
     this.safeRight = this.lookAt.x + gameplayHalfWidth * 0.94;
     this.safeTop = this.lookAt.y + gameplayHalfHeight * 0.94;
@@ -254,7 +264,7 @@ export class CameraRailController {
   }
 
   getZoom() {
-    return this.currentZoom;
+    return this.renderZoom;
   }
 
   getSafeLeft() {
@@ -271,5 +281,25 @@ export class CameraRailController {
 
   getSafeBottom() {
     return this.safeBottom;
+  }
+
+  private getHalfHeightAtZoom(zoom: number) {
+    return Math.tan(THREE.MathUtils.degToRad(this.fov * 0.5)) * zoom;
+  }
+
+  private resolveGameplayHalfWidth() {
+    const gameplayHalfHeight = Math.max(this.getHalfHeightAtZoom(this.currentZoom), CameraRailController.MIN_GAMEPLAY_HALF_HEIGHT);
+    return Math.max(
+      gameplayHalfHeight * CameraRailController.GAMEPLAY_REFERENCE_ASPECT,
+      CameraRailController.MIN_GAMEPLAY_HALF_WIDTH
+    );
+  }
+
+  private resolvePresentationZoom() {
+    const aspect = Math.max(0.5, window.innerWidth / Math.max(1, window.innerHeight));
+    const minimumZoomForGameplayWidth =
+      this.resolveGameplayHalfWidth() /
+      Math.max(0.0001, Math.tan(THREE.MathUtils.degToRad(this.fov * 0.5)) * aspect);
+    return Math.max(this.currentZoom, minimumZoomForGameplayWidth);
   }
 }

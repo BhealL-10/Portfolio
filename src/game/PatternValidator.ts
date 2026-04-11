@@ -61,7 +61,7 @@ export function validatePatternPlacement(candidateNodes: GamePathNode[], existin
         if (node.index === candidate.index) {
           continue;
         }
-        if (node.isMilestone && isInsideMilestoneReservedRange({ ...candidate, x: checkpoint.x, y: checkpoint.y }, node)) {
+        if (node.isMilestone && !candidate.isMilestone && isInsideMilestoneReservedRange({ ...candidate, x: checkpoint.x, y: checkpoint.y }, node)) {
           return false;
         }
         const distance = Math.hypot(checkpoint.x - node.x, checkpoint.y - node.y);
