@@ -177,8 +177,8 @@ const CAMERA_VERTICAL_TRACK_MIN_Y = -28;
 const CAMERA_VERTICAL_TRACK_MAX_Y = 45;
 const SPRINT_FISH_DISTANCE_METERS = 100;
 const SPRINT_FISH_TOW_SPEED_MULTIPLIER = 7.2;
-const SPRINT_FISH_TOW_SPEED_MIN = 52;
-const SPRINT_FISH_TOW_SPEED_MAX = 70;
+const SPRINT_FISH_TOW_SPEED_MIN = 92;
+const SPRINT_FISH_TOW_SPEED_MAX = 100;
 const SPRINT_FISH_PULL_OFFSET_X = 10.2;
 const SPRINT_FISH_PULL_OFFSET_Y = 1.24;
 const SPRINT_FISH_PULL_RESPONSE = 14.5;
@@ -199,6 +199,16 @@ const PATH_INITIAL_AHEAD_PADDING = 128;
 const DISPLAY_BACKLINE_RELEASE_BUFFER = 3.4;
 const DISPLAY_FORWARD_SPAWN_BUFFER = 5.4;
 const DISPLAY_REPLACEMENT_SEARCH_RANGE = 96;
+const STREAMING_LOOKAHEAD_SECONDS = 2.25;
+const STREAMING_SPRINTFISH_LOOKAHEAD_SECONDS = 2.85;
+const STREAMING_LOOKAHEAD_FRAME_PADDING_SECONDS = 0.45;
+const STREAMING_NODES_PER_METER = 1.55;
+const STREAMING_MIN_AHEAD_NODES = 140;
+const STREAMING_MAX_AHEAD_NODES = 280;
+const STREAMING_MIN_CHUNK_SIZE = 96;
+const STREAMING_MAX_CHUNK_SIZE = 176;
+const STREAMING_DISPLAY_OVERSCAN_NODES = 18;
+const STREAMING_MAX_PRESERVED_PAST_SLOTS = 10;
 
 function computeTwistChainBonus(chainLength: number) {
   return Math.min(TWIST_CHAIN_MAX_BONUS, TWIST_CHAIN_BASE_BONUS + TWIST_CHAIN_INCREMENT * (chainLength - 1));
@@ -1469,11 +1479,84 @@ export class GameSessionController {
     const baseCount = this.state === 'transition_in' ? (mobileRuntime ? 74 : 82) : mobileRuntime ? 62 : 72;
     const momentumBonus = Math.round(this.momentum.cameraZoomMultiplier * 26 + this.runUpgrades.modifiers.cameraBaseZoomBonus * 6);
     const choiceBonus = this.choiceMode === 'reward_branch' ? 12 : this.choiceMode === 'shop_orbit' ? 8 : 0;
+    const streamingSpeed = this.getStreamingForwardSpeed();
+    const speedBonus = Math.round(clamp((streamingSpeed - 12) / 1.8, 0, mobileRuntime ? 16 : 22));
+    const sprintFishBonus = this.isSprintFishActive() ? (mobileRuntime ? 10 : 14) : 0;
     const current = this.path.getNode(this.attachedIndex);
     const next = this.path.getNode(this.attachedIndex + 1);
     const visibilityBonus = current?.isGigantic || next?.isGigantic ? 24 : current?.eventType !== 'none' || next?.eventType !== 'none' ? 14 : 0;
-    const requestedCount = baseCount + momentumBonus + choiceBonus + visibilityBonus;
-    return Math.max(mobileRuntime ? 60 : 68, Math.min(mobileRuntime ? 104 : 128, requestedCount));
+    const requestedCount = baseCount + momentumBonus + choiceBonus + visibilityBonus + speedBonus + sprintFishBonus;
+    return Math.max(mobileRuntime ? 60 : 68, Math.min(mobileRuntime ? 112 : 136, requestedCount));
+  }
+
+  private getStreamingForwardSpeed() {
+    const sprintEnemy = this.getAmbientEnemyById(this.grapAmbientEnemyId);
+    const sprintCarrySpeed =
+      this.grapState === 'sprint_fish'
+        ? Math.max(
+            sprintEnemy?.sprintTowSpeed ?? 0,
+            SPRINT_FISH_TOW_SPEED_MAX,
+            SPRINT_FISH_TOW_SPEED_MAX * SPRINT_FISH_RELEASE_SPEED_CARRY_RATIO + SPRINT_FISH_PIVOT_FORWARD_BOOST
+          )
+        : 0;
+    return Math.max(
+      Math.abs(this.playerVelocity.x),
+      this.playerVelocity.length(),
+      this.momentum.speedMultiplier * 14,
+      sprintCarrySpeed
+    );
+  }
+
+  private getStreamingLookaheadPlan(deltaTime: number) {
+    const visibleCount = this.getRecommendedVisibleCount();
+    const streamingSpeed = this.getStreamingForwardSpeed();
+    const lookaheadSeconds = this.isSprintFishActive() ? STREAMING_SPRINTFISH_LOOKAHEAD_SECONDS : STREAMING_LOOKAHEAD_SECONDS;
+    const framePaddingSeconds = Math.min(STREAMING_LOOKAHEAD_FRAME_PADDING_SECONDS, Math.max(0, deltaTime) * 2.2);
+    const safetyMeters =
+      visibleCount * 0.58 +
+      (streamingSpeed * (lookaheadSeconds + framePaddingSeconds)) / DEFAULT_COLUMN_DISTANCE;
+    const aheadNodes = THREE.MathUtils.clamp(
+      Math.ceil(safetyMeters * STREAMING_NODES_PER_METER),
+      Math.max(visibleCount + 28, STREAMING_MIN_AHEAD_NODES),
+      STREAMING_MAX_AHEAD_NODES
+    );
+    const chunkSize = THREE.MathUtils.clamp(
+      Math.ceil(Math.max(STREAMING_MIN_CHUNK_SIZE, aheadNodes * (this.isSprintFishActive() ? 0.68 : 0.6))),
+      STREAMING_MIN_CHUNK_SIZE,
+      STREAMING_MAX_CHUNK_SIZE
+    );
+    const desiredFutureSlots = Math.min(
+      visibleCount,
+      Math.max(visibleCount - 6, Math.ceil(aheadNodes * 0.72))
+    );
+    return {
+      visibleCount,
+      aheadNodes,
+      chunkSize,
+      desiredFutureSlots
+    };
+  }
+
+  private maintainStreamingAhead(deltaTime: number) {
+    const plan = this.getStreamingLookaheadPlan(deltaTime);
+    this.path.ensureAhead(this.attachedIndex, plan.aheadNodes, plan.chunkSize);
+    this.ensureDisplayWindowCoverage(plan.visibleCount, plan.desiredFutureSlots);
+    return plan;
+  }
+
+  private ensureDisplayWindowCoverage(visibleCount: number, desiredFutureSlots: number) {
+    this.initializeDisplayWindow(visibleCount);
+
+    const furthestDisplayIndex = this.displayWindowIndices.reduce((furthest, index) => Math.max(furthest, index), this.attachedIndex);
+    const futureSlots = this.displayWindowIndices.filter((index) => index > this.attachedIndex).length;
+    const stalePastSlots = this.displayWindowIndices.filter((index) => index < this.attachedIndex - 1).length;
+    const futureCoverageMissing = furthestDisplayIndex < this.attachedIndex + desiredFutureSlots - STREAMING_DISPLAY_OVERSCAN_NODES;
+    const futureSlotsMissing = futureSlots < desiredFutureSlots;
+    const stalePastCoverage = stalePastSlots > STREAMING_MAX_PRESERVED_PAST_SLOTS;
+
+    if (futureCoverageMissing || futureSlotsMissing || stalePastCoverage) {
+      this.reconcileDisplayWindowAfterPathChange(visibleCount, desiredFutureSlots);
+    }
   }
 
   private buildVisiblePlatformVisual(node: ResolvedGamePathNode, isCurrent: boolean): VisiblePlatformVisual {
@@ -3033,7 +3116,7 @@ export class GameSessionController {
   }
 
   private runActiveSimulationPhase(frame: ActiveRunTickFrame) {
-    this.path.ensureAhead(this.attachedIndex, 78, 72);
+    this.maintainStreamingAhead(frame.deltaTime);
     this.tickModuleRuntime(frame.deltaTime);
     this.updateMomentum(frame.deltaTime);
     this.stats.updateMomentumWindow(this.currentTime, !frame.shopLocked && this.momentum.gauge > 0.08);
@@ -3052,7 +3135,8 @@ export class GameSessionController {
       this.collectCoinsNearPlayer();
       this.syncAirbornePlayerOrientation();
       this.refreshActiveRunTickNodes(frame);
-      this.advanceDisplayAnchor();
+      const postSprintFishPlan = this.maintainStreamingAhead(frame.deltaTime);
+      this.advanceDisplayAnchor(postSprintFishPlan.aheadNodes, postSprintFishPlan.chunkSize);
       return;
     }
 
@@ -3066,7 +3150,8 @@ export class GameSessionController {
     }
 
     this.refreshActiveRunTickNodes(frame);
-    this.advanceDisplayAnchor();
+    const postMovementStreamingPlan = this.maintainStreamingAhead(frame.deltaTime);
+    this.advanceDisplayAnchor(postMovementStreamingPlan.aheadNodes, postMovementStreamingPlan.chunkSize);
   }
 
   private refreshActiveRunTickNodes(frame: ActiveRunTickFrame) {
@@ -3692,7 +3777,7 @@ export class GameSessionController {
     return new THREE.Vector3(node.resolvedX, node.resolvedY, node.resolvedZ);
   }
 
-  private advanceDisplayAnchor() {
+  private advanceDisplayAnchor(aheadNodes = 120, chunkSize = 64) {
     if (this.displayWindowIndices.length === 0) return;
     if (this.airborneFromMilestone && this.playerState === 'airborne') {
       return;
@@ -3714,8 +3799,8 @@ export class GameSessionController {
         continue;
       }
 
-      this.path.ensureAhead(this.displayNextIndex + 1, 120, 64);
-      const replacementIndex = this.findReplacementDisplayNode(slot);
+      this.path.ensureAhead(this.displayNextIndex + 1, aheadNodes, chunkSize);
+      const replacementIndex = this.findReplacementDisplayNode(slot, Math.max(DISPLAY_REPLACEMENT_SEARCH_RANGE, chunkSize + 24));
       if (replacementIndex === null) {
         continue;
       }
@@ -3741,22 +3826,32 @@ export class GameSessionController {
     }
   }
 
-  private reconcileDisplayWindowAfterPathChange() {
+  private reconcileDisplayWindowAfterPathChange(desiredTotalCount = this.displayWindowIndices.length, desiredFutureSlots?: number) {
     if (this.displayWindowIndices.length === 0) {
       return;
     }
-    const visibleCount = this.displayWindowIndices.length;
-    const preserved = this.displayWindowIndices.filter((index) => index <= this.attachedIndex);
-    const neededFuture = Math.max(0, visibleCount - preserved.length);
-    const rebuiltFuture = Array.from({ length: neededFuture }, (_, offset) => this.attachedIndex + 1 + offset);
+    const clampedTotalCount = Math.max(0, desiredTotalCount);
+    const targetFutureSlots = Math.max(
+      0,
+      Math.min(
+        clampedTotalCount,
+        desiredFutureSlots ?? Math.max(clampedTotalCount - STREAMING_MAX_PRESERVED_PAST_SLOTS, 0)
+      )
+    );
+    const preserved = this.displayWindowIndices
+      .filter((index) => index <= this.attachedIndex)
+      .sort((a, b) => b - a)
+      .slice(0, Math.max(0, clampedTotalCount - targetFutureSlots))
+      .sort((a, b) => a - b);
+    const rebuiltFuture = Array.from({ length: targetFutureSlots }, (_, offset) => this.attachedIndex + 1 + offset);
     this.displayWindowIndices = [...preserved, ...rebuiltFuture];
-    this.displayNextIndex = this.attachedIndex + 1 + neededFuture;
+    this.displayNextIndex = this.attachedIndex + 1 + rebuiltFuture.length;
   }
 
-  private findReplacementDisplayNode(excludeSlot: number) {
+  private findReplacementDisplayNode(excludeSlot: number, searchRange = DISPLAY_REPLACEMENT_SEARCH_RANGE) {
     for (
       let candidateIndex = this.displayNextIndex;
-      candidateIndex < this.displayNextIndex + DISPLAY_REPLACEMENT_SEARCH_RANGE;
+      candidateIndex < this.displayNextIndex + searchRange;
       candidateIndex += 1
     ) {
       const replacement = this.getResolvedNode(candidateIndex);
