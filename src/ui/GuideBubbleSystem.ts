@@ -263,7 +263,7 @@ function getOrbitHoverBody(project: PortfolioProject): LocalizedText {
       );
     default:
       return loc(
-        'Ce fragment parle d’un autre coin de mon univers. Va voir.',
+        'Euh ?',
         'This fragment is about another corner of my universe. Go take a look.'
       );
   }
@@ -364,8 +364,8 @@ function getFocusBody(project: PortfolioProject, facetIndex: number): LocalizedT
 
   const facet = project.facets[facetIndex];
   return loc(
-    `Là, tu regardes ${facet.categoryLabel.fr.toLowerCase()} de ${project.title.fr}. C’est un de ces endroits où je range mal mes idées.`,
-    `You’re looking at ${project.title.en}'s ${facet.categoryLabel.en.toLowerCase()} side. One of those places where I store my ideas badly.`
+    `Là, tu regardes ${facet.categoryLabel.fr.toLowerCase()} de ${project.title.fr}.`,
+    `You’re looking at ${project.title.en}'s ${facet.categoryLabel.en.toLowerCase()}.`
   );
 }
 
@@ -373,13 +373,13 @@ function getPrimaterieHoverBody(item: 'portfolio' | 'adventure' | 'discord' | 'p
   switch (item) {
     case 'portfolio':
       return loc(
-        'Va naviguer dans mes projets.',
-        'Go navigate into my projects.'
+        'Tu peux allez regarder les autre projets que j’ai fait ici.',
+        'You can go check out the other projects I made here.'
       );
     case 'adventure':
       return loc(
-        'Lance une aventure.',
-        'Start an adventure.'
+        'T’es prêt pour l’aventure ?',
+        'Are you ready for an adventure?'
       );
     case 'discord':
       return loc(
@@ -388,13 +388,13 @@ function getPrimaterieHoverBody(item: 'portfolio' | 'adventure' | 'discord' | 'p
       );
     case 'patreon':
       return loc(
-        'Si tu veux soutenir un créateur indépendant passionné, c’est par là. Le trésor fait peur.',
-        'If you want to support a passionate independent creator, this is where. The treasury is scary.'
+        'La trésorerie fait peur ! Soutiens un primate indépendant et passionné et aide-moi à financer mes projets.',
+        'The treasury is scary! Support a passionate independent ape creator and help me fund my projects.'
       );
     case 'theme':
       return loc(
-        'Change l’ambiance ici',
-        'Change the mood there'
+        'Attention les yeux !',
+        'Feast your eyes on this!'
       );
     case 'language':
       return loc(

@@ -13,6 +13,7 @@ const BOAT_SCREEN_LEAD_PX = 240;
 const BOAT_RECYCLE_PADDING_PX = 320;
 const BOAT_SPACING_MIN_PX = 600;
 const BOAT_SPACING_MAX_PX = 1000;
+const BOAT_LAYER_VERTICAL_LIFT_PX: readonly [number, number, number] = [26, 30, 34];
 
 interface BoatDepthBand {
   localZ: number;
@@ -267,8 +268,9 @@ export class MomentumBoatLayer {
       Math.sin(this.elapsedSeconds * (0.18 + boat.scaleSeed * 0.08) + boat.surfacePhase * 0.7) * (2 + context.midIntensity * 1.6);
     const audioLiftPx = -(context.bassIntensity * 3.6 + context.overallEnergy * 2.2 + context.melodyIntensity * 1.4);
     const layerBottomY = context.bottomScreenYs[boat.depthBandIndex]!;
-    const bottomScreenY = layerBottomY + surfaceDriftPx + secondaryBobPx + audioLiftPx - boat.baseHeightPx * 0.2; // slight overlap
-    const centerScreenY = bottomScreenY - boat.baseHeightPx * 0.5;
+    const layerLiftPx = BOAT_LAYER_VERTICAL_LIFT_PX[boat.depthBandIndex] ?? BOAT_LAYER_VERTICAL_LIFT_PX[1];
+    const bottomScreenY = layerBottomY - layerLiftPx + surfaceDriftPx + secondaryBobPx + audioLiftPx - boat.baseHeightPx * 0.5; // slight overlap
+    const centerScreenY = bottomScreenY - boat.baseHeightPx * 1.2;
     const depthBand = BOAT_DEPTH_BANDS[boat.depthBandIndex] ?? BOAT_DEPTH_BANDS[2]!;
     const unitsPerPixel = this.getUnitsPerPixelAtDepth(Math.abs(depthBand.localZ), context.viewportHeightPx);
     const localX = screenX * unitsPerPixel;

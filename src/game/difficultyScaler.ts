@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { clamp } from '../core/math';
 
 export const DEFAULT_COLUMN_DISTANCE = 8.9;
+const MOVING_SHARD_TEST_BOOST = true;
 
 export function pathDistanceToMeters(pathDistance: number) {
   return pathDistance / DEFAULT_COLUMN_DISTANCE;
@@ -61,6 +62,22 @@ export function getDifficultyProfile(level: number): DifficultyProfile {
     triangularUnlocked: level >= 100,
     roundMovementUnlocked: level >= 5,
     eventChance: level < 12 ? 0 : level < 60 ? 0.08 : level < 120 ? 0.14 : 0.18,
-    movingShardChance: level < 5 ? 0 : level < 50 ? 0.18 : level < 100 ? 0.28 : 0.4
+    movingShardChance: MOVING_SHARD_TEST_BOOST
+      ? level < 2
+        ? 0.78
+        : level < 20
+          ? 0.92
+          : level < 60
+            ? 0.78
+            : level < 100
+              ? 0.58
+              : 0.52
+      : level < 5
+        ? 0
+        : level < 50
+          ? 0.18
+          : level < 100
+            ? 0.28
+            : 0.4
   };
 }

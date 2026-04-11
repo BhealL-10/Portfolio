@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { damp } from '../core/math';
 import { getDifficultyProfile } from './difficultyScaler';
 import type { GameSessionState, ResolvedGamePathNode } from './gameSessionTypes';
+import { getPathVerticalExtent } from './pathLayout';
 
 interface CameraFocusLock {
   mode: 'milestone' | 'shop';
@@ -23,6 +24,8 @@ interface CameraRailUpdateConfig {
   choiceZoom: number;
   speedPressure: number;
   focusLock: CameraFocusLock | null;
+  verticalClampMinY?: number;
+  verticalClampMaxY?: number;
 }
 
 interface CameraFocusTarget {
@@ -72,6 +75,7 @@ export class CameraRailController {
     const focusTarget = this.resolveFocusTarget(profile, config, lockMode);
     this.applyFocusTarget(config.deltaTime, config.playerPosition, focusTarget);
     this.applyZoom(profile, config, lockMode);
+    this.clampFocusY(config);
     this.updatePose();
     this.updateSafeBounds();
   }
@@ -118,9 +122,22 @@ export class CameraRailController {
       : config.currentNode.resolvedY * 0.64 + config.nextNode.resolvedY * 0.36;
     const laneFocusBias = Math.pow(config.momentumGauge, 0.85);
     const playerYOffset = config.playerPosition.y - routeY;
+    const playableVerticalExtent = Math.max(8.8, getPathVerticalExtent(config.distanceMeters));
+    const edgePressure = THREE.MathUtils.clamp(
+      (Math.abs(playerYOffset) - playableVerticalExtent * 0.18) / Math.max(1.5, playableVerticalExtent * 0.34),
+      0,
+      1
+    );
     const playerFollow = config.currentNode.isGigantic
       ? 0.18
-      : THREE.MathUtils.clamp(0.36 + Math.min(0.4, Math.abs(playerYOffset) / 11) + laneFocusBias * 0.16, 0.36, 0.78);
+      : THREE.MathUtils.clamp(
+          0.62 +
+            Math.min(0.18, Math.abs(playerYOffset) / Math.max(6, playableVerticalExtent * 0.72)) +
+            edgePressure * 0.2 +
+            laneFocusBias * 0.04,
+          0.62,
+          0.98
+        );
     const desiredY = config.currentNode.isGigantic ? routeY : THREE.MathUtils.lerp(routeY, config.playerPosition.y, playerFollow);
     const horizontalCatchup =
       (this.directionSign > 0
@@ -132,7 +149,7 @@ export class CameraRailController {
       desiredX,
       desiredY,
       horizontalResponse: config.currentNode.isGigantic ? horizontalCatchup * 2.6 : horizontalCatchup,
-      verticalResponse: config.currentNode.isGigantic ? 8.4 : 4.1 + laneFocusBias * 2.2,
+      verticalResponse: config.currentNode.isGigantic ? 8.4 : 5.6 + edgePressure * 3.2 + laneFocusBias * 0.8,
       clampToPlayer: !config.currentNode.isGigantic
     };
   }
@@ -172,6 +189,30 @@ export class CameraRailController {
               ? 1.35
               : 1.55;
     this.currentZoom = damp(this.currentZoom, this.targetZoom, zoomResponse, config.deltaTime);
+  }
+
+  private clampFocusY(config: CameraRailUpdateConfig) {
+    if (
+      typeof config.verticalClampMinY !== 'number' ||
+      typeof config.verticalClampMaxY !== 'number' ||
+      !Number.isFinite(config.verticalClampMinY) ||
+      !Number.isFinite(config.verticalClampMaxY)
+    ) {
+      return;
+    }
+
+    const renderedHalfHeight = Math.tan(THREE.MathUtils.degToRad(this.fov * 0.5)) * this.currentZoom;
+    const gameplayHalfHeight = Math.max(renderedHalfHeight, 11.8);
+    const safeVerticalInset = gameplayHalfHeight * 0.94;
+    const minFocusY = config.verticalClampMinY + safeVerticalInset;
+    const maxFocusY = config.verticalClampMaxY - safeVerticalInset;
+
+    if (minFocusY > maxFocusY) {
+      this.currentFocus.y = (config.verticalClampMinY + config.verticalClampMaxY) * 0.5;
+      return;
+    }
+
+    this.currentFocus.y = THREE.MathUtils.clamp(this.currentFocus.y, minFocusY, maxFocusY);
   }
 
   private updatePose() {

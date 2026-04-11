@@ -6,7 +6,7 @@ import { getThemeNonShardHex, getThemeShardContrastHex, getThemeShardHex } from 
 import type { ThemeMode } from '../types/content';
 import { CameraRailController } from './CameraRailController';
 import { CoinSystem, type CoinMarker } from './CoinSystem';
-import { EnemySystem, type EnemyMarker } from './EnemySystem';
+import { EnemySystem, type EnemyMarker, type EnemyMarkerKind } from './EnemySystem';
 import { AchievementSystem } from './achievements/AchievementSystem';
 import { createEmptyAchievementPanelSnapshot } from './achievements/AchievementTypes';
 import { createMiniGamePortalNode, MINI_GAME_PORTAL_LAUNCH_ANGLE } from './MiniGamePortalLayout';
@@ -53,6 +53,9 @@ import type { GameAudioEvent, GameAudioRuntimeState } from './gameAudioTypes';
 type PlayerMotionState = 'attached' | 'charging' | 'airborne' | 'dead';
 type ChoiceMode = 'none' | 'reward_branch' | 'shop_orbit';
 type PlayerVisualState = 'attached_idle_orbit' | 'attached_fast_orbit' | 'jump_start' | 'airborne' | 'landing' | 'death';
+type AmbientEnemyKind = Extract<EnemyMarkerKind, 'enemyTop' | 'enemyBot'>;
+type AmbientEnemyState = 'alive' | 'dying' | 'sprint_fish';
+type AmbientEnemyBotPhase = 'hidden_below_screen' | 'jumping_up' | 'visible_airborne' | 'falling_down';
 
 interface WorldHudBillboard {
   canvas: HTMLCanvasElement;
@@ -67,18 +70,36 @@ function getMotionDirectionAngle(direction: NonNullable<ResolvedGamePathNode['mo
     case 'right':
       return 0;
     case 'up':
-      return -Math.PI * 0.5;
-    case 'down':
       return Math.PI * 0.5;
+    case 'down':
+      return -Math.PI * 0.5;
     case 'up_left':
-      return -Math.PI * 0.75;
-    case 'up_right':
-      return -Math.PI * 0.25;
-    case 'down_left':
       return Math.PI * 0.75;
+    case 'up_right':
+      return Math.PI * 0.25;
+    case 'down_left':
+      return -Math.PI * 0.75;
     case 'down_right':
     default:
-      return Math.PI * 0.25;
+      return -Math.PI * 0.25;
+  }
+}
+
+function getMotionPreviewDirection(node: ResolvedGamePathNode) {
+  if (node.motionDirection) {
+    return node.motionDirection;
+  }
+  switch (node.motionPattern) {
+    case 'vertical':
+      return 'up' as const;
+    case 'horizontal':
+      return 'right' as const;
+    case 'drift':
+      return 'up_right' as const;
+    case 'micro_orbit':
+      return 'up_left' as const;
+    default:
+      return null;
   }
 }
 
@@ -123,6 +144,39 @@ const BASE_MOMENTUM_DECAY_RATE = 0.1;
 const PLAYER_PROGRESS_HALF_WIDTH = 0.92;
 const PLAYER_COLLISION_HALF_HEIGHT = 0.78;
 const BASE_COIN_PICKUP_RADIUS = 0.74;
+const SPECIAL_ENEMY_TEST_SPAWN_BOOST = true;
+const SPECIAL_ENEMY_SPAWN_MIN_SECONDS = SPECIAL_ENEMY_TEST_SPAWN_BOOST ? 0.35 : 2.6;
+const SPECIAL_ENEMY_SPAWN_MAX_SECONDS = SPECIAL_ENEMY_TEST_SPAWN_BOOST ? 0.95 : 5.4;
+const SPECIAL_ENEMY_EARLY_TEST_DISTANCE_METERS = 220;
+const SPECIAL_ENEMY_EARLY_TEST_SPAWN_CHANCE = 0.98;
+const SPECIAL_ENEMY_DEFAULT_SPAWN_CHANCE = SPECIAL_ENEMY_TEST_SPAWN_BOOST ? 0.72 : 0.14;
+const SPECIAL_ENEMY_TEST_MAX_ACTIVE = SPECIAL_ENEMY_TEST_SPAWN_BOOST ? 4 : 2;
+const SPECIAL_ENEMY_MIN_SPAWN_SPACING_X = SPECIAL_ENEMY_TEST_SPAWN_BOOST ? 9.5 : 14;
+const SPECIAL_ENEMY_MIN_SPAWN_SPACING_Y = 2.4;
+const SPECIAL_ENEMY_DEBUG_LOGS = true;
+const SPECIAL_ENEMY_TOP_SPEED = 4.8;
+const SPECIAL_ENEMY_BOT_SPEED = 2.9;
+const SPECIAL_ENEMY_TOP_WORLD_Y = 45;
+const SPECIAL_ENEMY_BOT_VISIBLE_Y = -14;
+const SPECIAL_ENEMY_BOT_HIDDEN_Y = -28;
+const SPECIAL_ENEMY_BOT_JUMP_DURATION = 0.78;
+const SPECIAL_ENEMY_BOT_VISIBLE_DURATION = 2.35;
+const SPECIAL_ENEMY_BOT_FALL_DURATION = 0.9;
+const SPECIAL_ENEMY_BOT_HIDDEN_DURATION = 0.96;
+const SPECIAL_ENEMY_BOT_VISIBLE_FLOAT_AMPLITUDE = 0.12;
+const SPECIAL_ENEMY_BODY_Z_HALF = 0.58;
+const CAMERA_VERTICAL_TRACK_MIN_Y = -28;
+const CAMERA_VERTICAL_TRACK_MAX_Y = 45;
+const SPRINT_FISH_DISTANCE_METERS = 100;
+const SPRINT_FISH_PULL_OFFSET_X = 1.9;
+const SPRINT_FISH_PULL_OFFSET_Y = -0.18;
+const SPRINT_FISH_PULL_RESPONSE = 5.8;
+const SPRINT_FISH_PIVOT_RELEASE_ANGLE = Math.PI * 0.5;
+const SPRINT_FISH_PIVOT_MIN_ANGULAR_SPEED = 2.8;
+const SPRINT_FISH_PIVOT_MAX_ANGULAR_SPEED = 5.4;
+const SPRINT_FISH_PIVOT_FORWARD_BOOST = 1.1;
+const SPRINT_FISH_PIVOT_UP_BOOST = 0.85;
+const AMBIENT_ENEMY_SCALE_VARIANTS = [0.76, 0.88, 1, 1.1] as const;
 
 function computeTwistChainBonus(chainLength: number) {
   return Math.min(TWIST_CHAIN_MAX_BONUS, TWIST_CHAIN_BASE_BONUS + TWIST_CHAIN_INCREMENT * (chainLength - 1));
@@ -207,6 +261,49 @@ interface PendingMagnetCoin {
   collectedAt: number;
   duration: number;
 }
+
+interface AmbientEnemyRuntime {
+  id: string;
+  kind: AmbientEnemyKind;
+  state: AmbientEnemyState;
+  position: THREE.Vector3;
+  velocity: THREE.Vector3;
+  scale: number;
+  sizeVariant: 0 | 1 | 2 | 3;
+  rewardCoins: number;
+  spawnedAt: number;
+  stateStartedAt: number;
+  deathDuration: number;
+  phaseOffset: number;
+  cycleDuration: number;
+  topBandOffset: number;
+  bottomVisibleOffset: number;
+  bottomHiddenOffset: number;
+  cruiseY: number;
+  visibleY: number;
+  hiddenY: number;
+  botPhase: AmbientEnemyBotPhase | null;
+  botPhaseStartedAt: number;
+  botJumpDuration: number;
+  botVisibleDuration: number;
+  botFallDuration: number;
+  botHiddenDuration: number;
+  sprintPivotActive: boolean;
+  sprintPivotAngle: number;
+  sprintPivotRadius: number;
+  sprintPivotAngularSpeed: number;
+  sprintPivotAngularDirection: 1 | -1;
+  sprintPivotReleaseAngle: number;
+  debugLineIndex: number;
+  debugTint: string | null;
+  zOffset: number;
+  bounceCooldownUntil: number;
+  mirrored: boolean;
+}
+
+type GrappleCandidate =
+  | { kind: 'node'; index: number; distance: number; angle: number; angleScore: number }
+  | { kind: 'ambient_enemy'; enemyId: string; distance: number; angleScore: number };
 
 interface ActiveAchievementToast {
   achievementId: string;
@@ -450,16 +547,21 @@ export class GameSessionController {
   private bigCanonAnimUntil = 0;
   private frontCanonAnimStartedAt = 0;
   private frontCanonAnimUntil = 0;
-  private grapState: 'idle' | 'launch' | 'hooked' | 'landing' = 'idle';
+  private grapState: 'idle' | 'launch' | 'hooked' | 'landing' | 'sprint_fish' = 'idle';
   private grapStateUntil = 0;
   private grapTargetIndex: number | null = null;
   private grapTargetAngle: number | null = null;
+  private grapAmbientEnemyId: string | null = null;
   private grapRopeLength = 0;
   private readonly grapTargetPosition = new THREE.Vector3();
   private grapCooldownPending = false;
   private grapAwaitReleaseBeforePull = false;
   private grapReleasePending = false;
   private grapReleasePressedAt = 0;
+  private readonly ambientEnemies: AmbientEnemyRuntime[] = [];
+  private ambientEnemySpawnReadyAt = 0;
+  private ambientEnemySerial = 0;
+  private sprintFishStartX = 0;
   private readonly frontCanonShot: PendingEnemyShot = this.createPendingEnemyShot('front_canon');
   private readonly bigCanonShot: PendingEnemyShot = this.createPendingEnemyShot('big_canon');
   private grapRangeIndicatorHalfAngle = 0;
@@ -982,6 +1084,7 @@ export class GameSessionController {
     this.coins.reset();
     this.enemies.reset();
     this.shop.reset();
+    this.resetAmbientEnemyRuntime();
     this.coins.setVisible(false);
     this.enemies.setVisible(false);
     this.camera.reset(node, this.getProgressionDirectionSign());
@@ -1030,6 +1133,7 @@ export class GameSessionController {
     this.camera.reset(this.getResolvedNode(0), this.getProgressionDirectionSign());
     this.awaitingFirstJump = true;
     this.state = 'running_attached';
+    this.ambientEnemySpawnReadyAt = this.currentTime + (SPECIAL_ENEMY_TEST_SPAWN_BOOST ? 0.2 : 1.8);
     this.emitAudioEvent({ type: 'run_start' });
     this.emitScore();
   }
@@ -1058,6 +1162,7 @@ export class GameSessionController {
     this.resetPendingEnemyShot(this.bigCanonShot);
     this.coins.reset();
     this.enemies.reset();
+    this.resetAmbientEnemyRuntime();
     this.player.visible = false;
     this.playerTrail.visible = false;
   }
@@ -1081,6 +1186,7 @@ export class GameSessionController {
     this.resetPendingEnemyShot(this.bigCanonShot);
     this.coins.reset();
     this.enemies.reset();
+    this.resetAmbientEnemyRuntime();
     this.camera.reset(this.getResolvedNode(0), this.getProgressionDirectionSign());
   }
 
@@ -1194,6 +1300,7 @@ export class GameSessionController {
     this.grapStateUntil = 0;
     this.grapTargetIndex = null;
     this.grapTargetAngle = null;
+    this.grapAmbientEnemyId = null;
     this.grapRopeLength = 0;
     this.grapCooldownPending = false;
     this.grapAwaitReleaseBeforePull = true;
@@ -1236,6 +1343,7 @@ export class GameSessionController {
     this.coins.reset();
     this.enemies.reset();
     this.shop.reset();
+    this.resetAmbientEnemyRuntime();
   }
 
   private syncPathEventBiases() {
@@ -1306,8 +1414,10 @@ export class GameSessionController {
     const rewardItem = node.offerId ? getItemById(node.offerId) : null;
     const isGuaranteedShopShard = Boolean(node.guaranteedShopIcon);
     const isRandomRewardShard = node.eventVisualKind === 'question' || node.eventType === 'gift' || node.eventType === 'rare_item';
-    const movingShardPreview = node.motionMode === 'landing_once' && node.motionActivatedAt === null && Boolean(node.motionDirection);
-    const movingShardDirectionAngle = movingShardPreview ? getMotionDirectionAngle(node.motionDirection!) : 0;
+    const movingShardPreviewDirection = node.motionActivatedAt === null ? getMotionPreviewDirection(node) : null;
+    const movingShardPreview =
+      movingShardPreviewDirection !== null && (node.motionMode === 'landing_once' || node.motionPattern !== 'none');
+    const movingShardDirectionAngle = movingShardPreview && movingShardPreviewDirection ? getMotionDirectionAngle(movingShardPreviewDirection) : 0;
     const gravityBeltRadius =
       this.runUpgrades.modifiers.gravityCentering > 0 && !node.isMilestone
         ? clamp(
@@ -1367,7 +1477,7 @@ export class GameSessionController {
       iconTint: null,
       iconScale:
         movingShardPreview
-          ? clamp(2.72 + Math.max(node.gameplayRadius, node.visualScale) * 0.34, 3.18, 4.64)
+          ? clamp(3 + Math.max(node.gameplayRadius, node.visualScale) * 0.4, 3.4, 5.2)
           : node.colorHint === 'reward' && rewardItem
           ? clamp(1.76 + Math.max(node.gameplayRadius, node.visualScale) * 0.36, 2.36, 4.2)
           : isGuaranteedShopShard
@@ -1375,12 +1485,15 @@ export class GameSessionController {
             : isRandomRewardShard
               ? 2.28
               : 0.34,
-      iconOffsetY: 0,
+      iconOffsetY: movingShardPreview ? clamp(Math.max(node.gameplayRadius, node.visualScale) * 0.04, 0.04, 0.22) : 0,
       iconRotation: movingShardPreview ? movingShardDirectionAngle : 0
     };
   }
 
   setChargeActive(active: boolean) {
+    if (this.isSprintFishActive()) {
+      return false;
+    }
     if (
       this.state === 'idle' ||
       this.state === 'portal_preview' ||
@@ -1415,6 +1528,11 @@ export class GameSessionController {
   }
 
   setGrappleActionActive(active: boolean) {
+    if (this.isSprintFishActive()) {
+      this.upActionActive = false;
+      this.grapReleasePending = false;
+      return;
+    }
     this.upActionActive = active;
     if (active) {
       return;
@@ -1435,6 +1553,9 @@ export class GameSessionController {
   }
 
   triggerJump() {
+    if (this.isSprintFishActive()) {
+      return false;
+    }
     if (
       this.state === 'idle' ||
       this.state === 'portal_preview' ||
@@ -1452,6 +1573,9 @@ export class GameSessionController {
   }
 
   triggerAirborneMobilityAction() {
+    if (this.isSprintFishActive()) {
+      return false;
+    }
     if (
       this.state === 'idle' ||
       this.state === 'portal_preview' ||
@@ -1474,6 +1598,9 @@ export class GameSessionController {
   }
 
   triggerTeleportAction() {
+    if (this.isSprintFishActive()) {
+      return false;
+    }
     if (
       this.state === 'idle' ||
       this.state === 'portal_preview' ||
@@ -1487,6 +1614,9 @@ export class GameSessionController {
   }
 
   triggerUpAction() {
+    if (this.isSprintFishActive()) {
+      return false;
+    }
     if (
       this.state === 'idle' ||
       this.state === 'portal_preview' ||
@@ -1500,6 +1630,9 @@ export class GameSessionController {
   }
 
   triggerHarpoonAction() {
+    if (this.isSprintFishActive()) {
+      return false;
+    }
     if (
       this.state === 'idle' ||
       this.state === 'portal_preview' ||
@@ -1512,7 +1645,7 @@ export class GameSessionController {
     if (this.isShopInteractionLocked()) {
       return false;
     }
-    if (this.grapTargetIndex !== null && (this.grapState === 'launch' || this.grapState === 'hooked')) {
+    if ((this.grapTargetIndex !== null || this.grapAmbientEnemyId !== null) && (this.grapState === 'launch' || this.grapState === 'hooked')) {
       if (this.grapState === 'hooked') {
         this.grapReleasePending = true;
         this.grapReleasePressedAt = this.currentTime;
@@ -1654,17 +1787,638 @@ export class GameSessionController {
       6.4 +
       6.8 +
       8.8 * 1.28 * 1.45;
-    const maxVisibleHalfHeight = Math.tan(THREE.MathUtils.degToRad(42 * 0.5)) * maxCameraZoom;
-    const halfPlayableHeight = Math.max(outerLaneExtent + shardPadding, maxVisibleHalfHeight + DEFAULT_COLUMN_DISTANCE * 1.15);
+    const upperPlayableLimit = Math.max(outerLaneExtent + shardPadding, CAMERA_VERTICAL_TRACK_MAX_Y + DEFAULT_COLUMN_DISTANCE * 0.32);
+    const lowerPlayableLimit = Math.max(outerLaneExtent + shardPadding, Math.abs(CAMERA_VERTICAL_TRACK_MIN_Y) + DEFAULT_COLUMN_DISTANCE * 0.32);
     return {
-      minY: -halfPlayableHeight,
-      maxY: halfPlayableHeight,
+      minY: -lowerPlayableLimit,
+      maxY: upperPlayableLimit,
       maxCameraZoom
     };
   }
 
   isMirrorModeActive() {
     return this.getProgressionDirectionSign() < 0;
+  }
+
+  private resetAmbientEnemyRuntime() {
+    this.ambientEnemies.length = 0;
+    this.ambientEnemySpawnReadyAt = 0;
+    this.ambientEnemySerial = 0;
+    this.sprintFishStartX = 0;
+    this.grapAmbientEnemyId = null;
+  }
+
+  private getAmbientEnemyById(id: string | null) {
+    if (!id) {
+      return null;
+    }
+    return this.ambientEnemies.find((enemy) => enemy.id === id) ?? null;
+  }
+
+  private isSprintFishActive() {
+    const sprintEnemy = this.getAmbientEnemyById(this.grapAmbientEnemyId);
+    return this.grapState === 'sprint_fish' && sprintEnemy?.state === 'sprint_fish';
+  }
+
+  private debugAmbientEnemy(event: string, extra: Record<string, unknown> = {}) {
+    if (!SPECIAL_ENEMY_DEBUG_LOGS) {
+      return;
+    }
+    console.info('[AmbientEnemy]', event, {
+      time: Math.round(this.currentTime * 100) / 100,
+      activeCount: this.ambientEnemies.length,
+      sprintTarget: this.grapAmbientEnemyId,
+      ...extra
+    });
+  }
+
+  private getAmbientEnemyDirectionSign(kind: AmbientEnemyKind) {
+    if (kind === 'enemyTop') {
+      return this.isMirrorModeActive() ? 1 : -1;
+    }
+    return this.isMirrorModeActive() ? -1 : 1;
+  }
+
+  private getAmbientEnemyBaseHalfExtents(enemy: AmbientEnemyRuntime) {
+    if (enemy.kind === 'enemyTop') {
+      return {
+        x: 1.34 * enemy.scale,
+        y: 0.82 * enemy.scale,
+        z: SPECIAL_ENEMY_BODY_Z_HALF
+      };
+    }
+    return {
+      x: 1.08 * enemy.scale,
+      y: 0.92 * enemy.scale,
+      z: SPECIAL_ENEMY_BODY_Z_HALF
+    };
+  }
+
+  private getAmbientEnemyContactExtents(enemy: AmbientEnemyRuntime, airborne: boolean) {
+    const base = this.getAmbientEnemyBaseHalfExtents(enemy);
+    const movementInflation = airborne ? 0.1 : 0.04;
+    return {
+      x: base.x + PLAYER_PROGRESS_HALF_WIDTH * 0.42 + movementInflation,
+      y: base.y + PLAYER_COLLISION_HALF_HEIGHT * 0.42 + movementInflation,
+      z: base.z
+    };
+  }
+
+  private isAmbientEnemyWithinContact(enemy: AmbientEnemyRuntime, previousPosition: THREE.Vector3, airborne: boolean) {
+    const contactExtents = this.getAmbientEnemyContactExtents(enemy, airborne);
+    const segmentX = this.playerPosition.x - previousPosition.x;
+    const segmentY = this.playerPosition.y - previousPosition.y;
+    const segmentZ = this.playerPosition.z - previousPosition.z;
+    const segmentLengthSq = segmentX * segmentX + segmentY * segmentY + segmentZ * segmentZ;
+    if (segmentLengthSq <= 0.0001) {
+      const deltaX = (this.playerPosition.x - enemy.position.x) / Math.max(0.001, contactExtents.x);
+      const deltaY = (this.playerPosition.y - enemy.position.y) / Math.max(0.001, contactExtents.y);
+      return deltaX * deltaX + deltaY * deltaY <= 1;
+    }
+    const toEnemyX = enemy.position.x - previousPosition.x;
+    const toEnemyY = enemy.position.y - previousPosition.y;
+    const toEnemyZ = enemy.position.z - previousPosition.z;
+    const projection = clamp((toEnemyX * segmentX + toEnemyY * segmentY + toEnemyZ * segmentZ) / segmentLengthSq, 0, 1);
+    const closestX = previousPosition.x + segmentX * projection;
+    const closestY = previousPosition.y + segmentY * projection;
+    const closestZ = previousPosition.z + segmentZ * projection;
+    const deltaX = (enemy.position.x - closestX) / Math.max(0.001, contactExtents.x);
+    const deltaY = (enemy.position.y - closestY) / Math.max(0.001, contactExtents.y);
+    const deltaZ = (enemy.position.z - closestZ) / Math.max(0.001, contactExtents.z);
+    return deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ <= 1;
+  }
+
+  private resolveAmbientEnemyTopY(_enemy: AmbientEnemyRuntime) {
+    return SPECIAL_ENEMY_TOP_WORLD_Y;
+  }
+
+  private resolveAmbientEnemyBotBandHeights(_enemy: AmbientEnemyRuntime) {
+    return {
+      visibleY: SPECIAL_ENEMY_BOT_VISIBLE_Y,
+      hiddenY: SPECIAL_ENEMY_BOT_HIDDEN_Y
+    };
+  }
+
+  private setAmbientEnemyBotPhase(enemy: AmbientEnemyRuntime, phase: AmbientEnemyBotPhase) {
+    enemy.botPhase = phase;
+    enemy.botPhaseStartedAt = this.currentTime;
+    if (phase === 'hidden_below_screen') {
+      enemy.position.y = enemy.hiddenY;
+      return;
+    }
+    if (phase === 'visible_airborne') {
+      enemy.position.y = enemy.visibleY;
+    }
+  }
+
+  private updateAmbientEnemyBotVerticalMotion(enemy: AmbientEnemyRuntime) {
+    const band = this.resolveAmbientEnemyBotBandHeights(enemy);
+    enemy.visibleY = band.visibleY;
+    enemy.hiddenY = band.hiddenY;
+    const phase = enemy.botPhase ?? 'hidden_below_screen';
+    const phaseElapsed = this.currentTime - enemy.botPhaseStartedAt;
+    if (phase === 'hidden_below_screen') {
+      enemy.position.y = enemy.hiddenY;
+      if (phaseElapsed >= enemy.botHiddenDuration) {
+        this.setAmbientEnemyBotPhase(enemy, 'jumping_up');
+      }
+      return;
+    }
+    if (phase === 'jumping_up') {
+      const progress = clamp(phaseElapsed / Math.max(0.001, enemy.botJumpDuration), 0, 1);
+      enemy.position.y = THREE.MathUtils.lerp(enemy.hiddenY, enemy.visibleY, THREE.MathUtils.smootherstep(progress, 0, 1));
+      if (progress >= 1) {
+        this.setAmbientEnemyBotPhase(enemy, 'visible_airborne');
+      }
+      return;
+    }
+    if (phase === 'visible_airborne') {
+      const airborneProgress = clamp(phaseElapsed / Math.max(0.001, enemy.botVisibleDuration), 0, 1);
+      const floatOffset = -Math.sin(airborneProgress * Math.PI) * SPECIAL_ENEMY_BOT_VISIBLE_FLOAT_AMPLITUDE;
+      enemy.position.y = enemy.visibleY + floatOffset;
+      if (phaseElapsed >= enemy.botVisibleDuration) {
+        this.setAmbientEnemyBotPhase(enemy, 'falling_down');
+      }
+      return;
+    }
+    const progress = clamp(phaseElapsed / Math.max(0.001, enemy.botFallDuration), 0, 1);
+    enemy.position.y = THREE.MathUtils.lerp(enemy.visibleY, enemy.hiddenY, THREE.MathUtils.smootherstep(progress, 0, 1));
+    if (progress >= 1) {
+      this.setAmbientEnemyBotPhase(enemy, 'hidden_below_screen');
+    }
+  }
+
+  private isAmbientEnemyBotVisible(enemy: AmbientEnemyRuntime) {
+    if (enemy.kind !== 'enemyBot' || enemy.state !== 'alive') {
+      return false;
+    }
+    const baseHalfExtents = this.getAmbientEnemyBaseHalfExtents(enemy);
+    return (
+      enemy.botPhase !== 'hidden_below_screen' &&
+      enemy.position.y + baseHalfExtents.y >= this.camera.getSafeBottom() - Math.max(4.2, baseHalfExtents.y * 1.8)
+    );
+  }
+
+  private isAmbientEnemyMarkerVisible(enemy: AmbientEnemyRuntime) {
+    const halfExtents = this.getAmbientEnemyBaseHalfExtents(enemy);
+    const bottomBuffer = enemy.kind === 'enemyBot' ? 5.8 : 1.2;
+    return (
+      enemy.position.x + halfExtents.x >= this.camera.getSafeLeft() - 0.8 &&
+      enemy.position.x - halfExtents.x <= this.camera.getSafeRight() + 0.8 &&
+      enemy.position.y + halfExtents.y >= this.camera.getSafeBottom() - bottomBuffer &&
+      enemy.position.y - halfExtents.y <= this.camera.getSafeTop() + 1.2
+    );
+  }
+
+  private hasAmbientEnemySpawnSpacingConflict(spawnX: number, spawnY: number, kind: AmbientEnemyKind) {
+    return this.ambientEnemies.some((enemy) => {
+      const spacingX = Math.abs(enemy.position.x - spawnX);
+      const spacingY = Math.abs(enemy.position.y - spawnY);
+      if (spacingX < SPECIAL_ENEMY_MIN_SPAWN_SPACING_X && spacingY < SPECIAL_ENEMY_MIN_SPAWN_SPACING_Y) {
+        return true;
+      }
+      if (enemy.kind === kind && spacingX < SPECIAL_ENEMY_MIN_SPAWN_SPACING_X * 1.2) {
+        return true;
+      }
+      return false;
+    });
+  }
+
+  private scheduleNextAmbientEnemySpawn() {
+    this.ambientEnemySpawnReadyAt =
+      this.currentTime + THREE.MathUtils.lerp(SPECIAL_ENEMY_SPAWN_MIN_SECONDS, SPECIAL_ENEMY_SPAWN_MAX_SECONDS, Math.random());
+  }
+
+  private removeAmbientEnemy(enemyId: string, reason: string) {
+    const enemyIndex = this.ambientEnemies.findIndex((enemy) => enemy.id === enemyId);
+    if (enemyIndex < 0) {
+      return;
+    }
+    this.debugAmbientEnemy('despawn', {
+      enemyId,
+      reason
+    });
+    this.ambientEnemies.splice(enemyIndex, 1);
+    if (this.grapAmbientEnemyId === enemyId && this.grapState !== 'idle' && this.grapState !== 'landing') {
+      this.beginGrappleLanding();
+    } else {
+      if (this.grapAmbientEnemyId === enemyId) {
+        this.grapAmbientEnemyId = null;
+      }
+    }
+    if (this.grapAmbientEnemyId === null) {
+      this.sprintFishStartX = 0;
+    }
+  }
+
+  private spawnAmbientEnemy() {
+    if (this.currentTime < this.ambientEnemySpawnReadyAt) {
+      return;
+    }
+    if (this.ambientEnemies.length >= SPECIAL_ENEMY_TEST_MAX_ACTIVE) {
+      this.debugAmbientEnemy('spawn_skipped', { reason: 'max_active_reached' });
+      this.scheduleNextAmbientEnemySpawn();
+      return;
+    }
+    if (this.choiceMode !== 'none' || this.state === 'upgrade_branching' || this.state === 'upgrade_acquired' || this.state === 'game_over') {
+      this.debugAmbientEnemy('spawn_skipped', { reason: 'state_blocked', state: this.state, choiceMode: this.choiceMode });
+      this.scheduleNextAmbientEnemySpawn();
+      return;
+    }
+
+    const availableKinds: AmbientEnemyKind[] = [];
+    const topProbe: AmbientEnemyRuntime = {
+      id: '',
+      kind: 'enemyTop',
+      state: 'alive',
+      position: new THREE.Vector3(),
+      velocity: new THREE.Vector3(),
+      scale: 1,
+      sizeVariant: 0,
+      rewardCoins: 0,
+      spawnedAt: this.currentTime,
+      stateStartedAt: this.currentTime,
+      deathDuration: 0.72,
+      phaseOffset: 0,
+      cycleDuration: 0,
+      topBandOffset: 0,
+      bottomVisibleOffset: 0,
+      bottomHiddenOffset: 0,
+      cruiseY: 0,
+      visibleY: 0,
+      hiddenY: 0,
+      botPhase: 'hidden_below_screen',
+      botPhaseStartedAt: this.currentTime,
+      botJumpDuration: SPECIAL_ENEMY_BOT_JUMP_DURATION,
+      botVisibleDuration: SPECIAL_ENEMY_BOT_VISIBLE_DURATION,
+      botFallDuration: SPECIAL_ENEMY_BOT_FALL_DURATION,
+      botHiddenDuration: SPECIAL_ENEMY_BOT_HIDDEN_DURATION,
+      sprintPivotActive: false,
+      sprintPivotAngle: 0,
+      sprintPivotRadius: 0,
+      sprintPivotAngularSpeed: 0,
+      sprintPivotAngularDirection: 1,
+      sprintPivotReleaseAngle: SPRINT_FISH_PIVOT_RELEASE_ANGLE,
+      debugLineIndex: 0,
+      debugTint: null,
+      zOffset: 0.92,
+      bounceCooldownUntil: 0,
+      mirrored: this.isMirrorModeActive()
+    };
+    if (this.resolveAmbientEnemyTopY(topProbe) !== null) {
+      availableKinds.push('enemyTop');
+    }
+    availableKinds.push('enemyBot');
+    if (availableKinds.length === 0) {
+      this.debugAmbientEnemy('spawn_rejected', { reason: 'no_available_kinds' });
+      this.scheduleNextAmbientEnemySpawn();
+      return;
+    }
+
+    const distanceMeters = this.stats.getSnapshot().distanceMeters;
+    const spawnChance =
+      distanceMeters < SPECIAL_ENEMY_EARLY_TEST_DISTANCE_METERS
+        ? SPECIAL_ENEMY_EARLY_TEST_SPAWN_CHANCE
+        : SPECIAL_ENEMY_DEFAULT_SPAWN_CHANCE;
+    if (Math.random() > spawnChance) {
+      this.debugAmbientEnemy('spawn_rejected', { reason: 'chance_roll_failed', spawnChance });
+      this.scheduleNextAmbientEnemySpawn();
+      return;
+    }
+
+    const activeCountByKind = {
+      enemyTop: this.ambientEnemies.filter((enemy) => enemy.kind === 'enemyTop').length,
+      enemyBot: this.ambientEnemies.filter((enemy) => enemy.kind === 'enemyBot').length
+    } as const;
+    const sortedKinds = [...availableKinds].sort((left, right) => {
+      const leftCount = activeCountByKind[left];
+      const rightCount = activeCountByKind[right];
+      if (leftCount !== rightCount) {
+        return leftCount - rightCount;
+      }
+      return Math.random() < 0.5 ? -1 : 1;
+    });
+    const kind = sortedKinds[0] ?? 'enemyBot';
+    const debugLineIndex = 0;
+    const debugTint = null;
+    const sizeVariant = Math.floor(Math.random() * AMBIENT_ENEMY_SCALE_VARIANTS.length) as 0 | 1 | 2 | 3;
+    const scale = AMBIENT_ENEMY_SCALE_VARIANTS[sizeVariant] ?? 1;
+    const directionSign = this.getAmbientEnemyDirectionSign(kind);
+    const speed = (kind === 'enemyTop' ? SPECIAL_ENEMY_TOP_SPEED : SPECIAL_ENEMY_BOT_SPEED) + sizeVariant * 0.34;
+    const halfExtents = kind === 'enemyTop'
+      ? { x: 1.34 * scale, y: 0.82 * scale }
+      : { x: 1.08 * scale, y: 0.92 * scale };
+    const progressionDirectionSign = this.getProgressionDirectionSign();
+    const spawnX =
+      kind === 'enemyBot'
+        ? progressionDirectionSign > 0
+          ? this.camera.getSafeRight() - halfExtents.x * 0.55
+          : this.camera.getSafeLeft() + halfExtents.x * 0.55
+        : directionSign > 0
+          ? this.camera.getSafeLeft() - halfExtents.x - DEFAULT_COLUMN_DISTANCE * 0.7
+          : this.camera.getSafeRight() + halfExtents.x + DEFAULT_COLUMN_DISTANCE * 0.7;
+    const runtime: AmbientEnemyRuntime = {
+      id: `ambient-enemy-${++this.ambientEnemySerial}`,
+      kind,
+      state: 'alive',
+      position: new THREE.Vector3(spawnX, 0, 0),
+      velocity: new THREE.Vector3(directionSign * speed, 0, 0),
+      scale,
+      sizeVariant,
+      rewardCoins: kind === 'enemyTop' ? 5 + sizeVariant : 6 + sizeVariant,
+      spawnedAt: this.currentTime,
+      stateStartedAt: this.currentTime,
+      deathDuration: 0.78,
+      phaseOffset: 0,
+      cycleDuration: 0,
+      topBandOffset: 0,
+      bottomVisibleOffset: 0,
+      bottomHiddenOffset: 0,
+      cruiseY: 0,
+      visibleY: 0,
+      hiddenY: 0,
+      botPhase: kind === 'enemyBot' ? 'hidden_below_screen' : null,
+      botPhaseStartedAt: this.currentTime,
+      botJumpDuration: SPECIAL_ENEMY_BOT_JUMP_DURATION,
+      botVisibleDuration: SPECIAL_ENEMY_BOT_VISIBLE_DURATION,
+      botFallDuration: SPECIAL_ENEMY_BOT_FALL_DURATION,
+      botHiddenDuration: SPECIAL_ENEMY_BOT_HIDDEN_DURATION,
+      sprintPivotActive: false,
+      sprintPivotAngle: 0,
+      sprintPivotRadius: 0,
+      sprintPivotAngularSpeed: 0,
+      sprintPivotAngularDirection: 1,
+      sprintPivotReleaseAngle: SPRINT_FISH_PIVOT_RELEASE_ANGLE,
+      debugLineIndex,
+      debugTint,
+      zOffset: kind === 'enemyTop' ? 0.92 : 0.84,
+      bounceCooldownUntil: 0,
+      mirrored: this.isMirrorModeActive()
+    };
+
+    if (kind === 'enemyTop') {
+      const topY = this.resolveAmbientEnemyTopY(runtime);
+      if (topY === null) {
+        this.debugAmbientEnemy('spawn_rejected', { reason: 'top_band_invalid' });
+        this.scheduleNextAmbientEnemySpawn();
+        return;
+      }
+      runtime.cruiseY = topY;
+      runtime.position.y = topY;
+    } else {
+      const botBand = this.resolveAmbientEnemyBotBandHeights(runtime);
+      runtime.visibleY = botBand.visibleY;
+      runtime.hiddenY = botBand.hiddenY;
+      runtime.cruiseY = runtime.visibleY;
+      runtime.position.y = runtime.hiddenY;
+      if (SPECIAL_ENEMY_TEST_SPAWN_BOOST) {
+        runtime.botPhaseStartedAt -= runtime.botHiddenDuration * 0.85;
+      }
+      this.debugAmbientEnemy('bot_band', {
+        enemyId: runtime.id,
+        safeBottom: Math.round(this.camera.getSafeBottom() * 100) / 100,
+        visibleY: Math.round(runtime.visibleY * 100) / 100,
+        hiddenY: Math.round(runtime.hiddenY * 100) / 100,
+        debugLineIndex: runtime.debugLineIndex,
+        debugTint: runtime.debugTint
+      });
+    }
+
+    if (this.hasAmbientEnemySpawnSpacingConflict(runtime.position.x, runtime.position.y, runtime.kind)) {
+      this.debugAmbientEnemy('spawn_rejected', {
+        reason: 'spacing_conflict',
+        kind: runtime.kind,
+        x: runtime.position.x,
+        y: runtime.position.y
+      });
+      this.scheduleNextAmbientEnemySpawn();
+      return;
+    }
+
+    this.ambientEnemies.push(runtime);
+    this.debugAmbientEnemy('spawned', {
+      enemyId: runtime.id,
+      kind: runtime.kind,
+      x: Math.round(runtime.position.x * 100) / 100,
+      y: Math.round(runtime.position.y * 100) / 100,
+      debugLineIndex: runtime.debugLineIndex,
+      debugTint: runtime.debugTint
+    });
+    this.scheduleNextAmbientEnemySpawn();
+  }
+
+  private awardAmbientEnemyKill(enemy: AmbientEnemyRuntime, source: 'impact' | 'shield' = 'impact') {
+    if (enemy.rewardCoins <= 0) {
+      return;
+    }
+    this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
+    this.recordEnemyKill({ amount: 1, source });
+    this.emitScore();
+    this.emitAudioEvent({ type: 'enemy_die' });
+    enemy.rewardCoins = 0;
+  }
+
+  private applyAmbientEnemyBounce(enemy: AmbientEnemyRuntime, previousPosition: THREE.Vector3, bounceStrength = 1) {
+    const away = this.scratchVector.copy(this.playerPosition).sub(enemy.position);
+    if (away.lengthSq() <= 0.0001) {
+      away.copy(this.playerPosition).sub(previousPosition);
+    }
+    if (away.lengthSq() <= 0.0001) {
+      away.set(this.getProgressionDirectionSign(), 0.2, 0);
+    }
+    away.normalize();
+    const forward = this.scratchVectorB.set(this.getProgressionDirectionSign(), 0, 0);
+    const impulse = Math.max(4.8, this.playerVelocity.length() * 0.76 + 3.1) * bounceStrength;
+    this.playerPosition.addScaledVector(away, 0.18 + bounceStrength * 0.06);
+    this.playerVelocity.copy(away.multiplyScalar(impulse)).addScaledVector(forward, 1.1);
+    this.playerHeading.set(this.playerVelocity.x || this.getProgressionDirectionSign(), this.playerVelocity.y || 0).normalize();
+    this.playerSurfaceNormal.set(-this.playerHeading.y, this.playerHeading.x).normalize();
+    this.playerState = 'airborne';
+    this.state = 'running_airborne';
+    this.chargeActive = false;
+    this.airborneFromMilestone = false;
+    this.airborneStartedAt = this.currentTime;
+    if (this.grapState !== 'idle') {
+      this.beginGrappleLanding();
+    }
+  }
+
+  private startAmbientEnemyDeath(enemy: AmbientEnemyRuntime) {
+    if (enemy.state !== 'alive') {
+      return;
+    }
+    this.awardAmbientEnemyKill(enemy, 'impact');
+    enemy.state = 'dying';
+    enemy.stateStartedAt = this.currentTime;
+    enemy.velocity.x *= 0.24;
+    enemy.velocity.y = -1.8;
+  }
+
+  private beginSprintFish(enemy: AmbientEnemyRuntime) {
+    enemy.state = 'sprint_fish';
+    enemy.stateStartedAt = this.currentTime;
+    enemy.sprintPivotActive = false;
+    enemy.sprintPivotAngle = 0;
+    enemy.sprintPivotRadius = 0;
+    enemy.sprintPivotAngularSpeed = 0;
+    enemy.sprintPivotAngularDirection = 1;
+    enemy.sprintPivotReleaseAngle = SPRINT_FISH_PIVOT_RELEASE_ANGLE;
+    enemy.velocity.x = this.getAmbientEnemyDirectionSign(enemy.kind) * Math.abs(enemy.velocity.x);
+    this.grapState = 'sprint_fish';
+    this.grapAmbientEnemyId = enemy.id;
+    this.grapTargetIndex = null;
+    this.grapTargetAngle = null;
+    this.grapStateUntil = Number.POSITIVE_INFINITY;
+    this.grapAwaitReleaseBeforePull = false;
+    this.grapReleasePending = false;
+    this.playerState = 'airborne';
+    this.state = 'running_airborne';
+    this.chargeActive = false;
+    this.upActionActive = false;
+    this.sprintFishStartX = this.playerPosition.x;
+    enemy.position.y = enemy.visibleY;
+  }
+
+  private startSprintFishPivot(enemy: AmbientEnemyRuntime) {
+    const directionSign = this.getAmbientEnemyDirectionSign(enemy.kind);
+    const pivotOffset = this.scratchVector.copy(this.playerPosition).sub(enemy.position);
+    if (pivotOffset.lengthSq() <= 0.0001) {
+      pivotOffset.set(-directionSign * SPRINT_FISH_PULL_OFFSET_X, SPRINT_FISH_PULL_OFFSET_Y, 0);
+    }
+    enemy.sprintPivotActive = true;
+    enemy.stateStartedAt = this.currentTime;
+    enemy.velocity.x = 0;
+    enemy.position.y = enemy.visibleY;
+    enemy.sprintPivotRadius = clamp(pivotOffset.length(), 1.35, 3.8);
+    enemy.sprintPivotAngle = Math.atan2(pivotOffset.y, pivotOffset.x);
+    enemy.sprintPivotAngularDirection = directionSign > 0 ? -1 : 1;
+    enemy.sprintPivotAngularSpeed = clamp(
+      Math.max(Math.abs(this.playerVelocity.x), Math.abs(this.playerVelocity.y) + 2) / Math.max(0.9, enemy.sprintPivotRadius),
+      SPRINT_FISH_PIVOT_MIN_ANGULAR_SPEED,
+      SPRINT_FISH_PIVOT_MAX_ANGULAR_SPEED
+    );
+    enemy.sprintPivotReleaseAngle = SPRINT_FISH_PIVOT_RELEASE_ANGLE;
+  }
+
+  private getSprintFishPivotTangent(enemy: AmbientEnemyRuntime, out: THREE.Vector3) {
+    const sin = Math.sin(enemy.sprintPivotAngle);
+    const cos = Math.cos(enemy.sprintPivotAngle);
+    return out.set(-sin * enemy.sprintPivotAngularDirection, cos * enemy.sprintPivotAngularDirection, 0);
+  }
+
+  private finishSprintFish(enemy: AmbientEnemyRuntime) {
+    const directionSign = this.getAmbientEnemyDirectionSign(enemy.kind);
+    this.awardAmbientEnemyKill(enemy, 'impact');
+    const pivotTangent = enemy.sprintPivotActive
+      ? this.getSprintFishPivotTangent(enemy, this.scratchVector)
+      : this.scratchVector.set(directionSign, 0.18, 0).normalize();
+    const tangentialSpeed = enemy.sprintPivotActive ? enemy.sprintPivotRadius * enemy.sprintPivotAngularSpeed : 0;
+    this.playerVelocity.copy(
+      pivotTangent.multiplyScalar(tangentialSpeed).add(
+        this.scratchVectorB.set(directionSign * SPRINT_FISH_PIVOT_FORWARD_BOOST, SPRINT_FISH_PIVOT_UP_BOOST, 0)
+      )
+    );
+    this.playerHeading.set(this.playerVelocity.x || directionSign, this.playerVelocity.y || 0).normalize();
+    this.playerSurfaceNormal.set(-this.playerHeading.y, this.playerHeading.x).normalize();
+    this.playerState = 'airborne';
+    this.state = 'running_airborne';
+    this.chargeActive = false;
+    this.airborneFromMilestone = false;
+    this.airborneStartedAt = this.currentTime;
+    this.beginGrappleLanding();
+    this.removeAmbientEnemy(enemy.id, 'sprint_finished');
+  }
+
+  private updateAmbientEnemies(deltaTime: number) {
+    if (this.state === 'idle' || this.state === 'portal_preview' || this.state === 'transition_in' || this.state === 'transition_out' || this.state === 'game_over') {
+      return;
+    }
+    if ((this.choiceMode !== 'none' || this.state === 'upgrade_branching' || this.state === 'upgrade_acquired') && !this.isSprintFishActive()) {
+      const idsToClear = this.ambientEnemies.map((enemy) => enemy.id);
+      idsToClear.forEach((enemyId) => this.removeAmbientEnemy(enemyId, 'state_blocked'));
+      return;
+    }
+
+    this.spawnAmbientEnemy();
+
+    const enemies = [...this.ambientEnemies];
+    for (const enemy of enemies) {
+      enemy.mirrored = this.isMirrorModeActive();
+
+      if (enemy.state === 'sprint_fish') {
+        if (enemy.sprintPivotActive) {
+          enemy.position.y = enemy.visibleY;
+          enemy.sprintPivotAngle += enemy.sprintPivotAngularDirection * enemy.sprintPivotAngularSpeed * deltaTime;
+          const pivotCos = Math.cos(enemy.sprintPivotAngle);
+          const pivotSin = Math.sin(enemy.sprintPivotAngle);
+          this.playerPosition.set(
+            enemy.position.x + pivotCos * enemy.sprintPivotRadius,
+            enemy.position.y + pivotSin * enemy.sprintPivotRadius,
+            this.playerPosition.z
+          );
+          const pivotTangent = this.getSprintFishPivotTangent(enemy, this.scratchVector);
+          const tangentialSpeed = enemy.sprintPivotRadius * enemy.sprintPivotAngularSpeed;
+          this.playerVelocity.lerp(
+            this.scratchVectorB.copy(pivotTangent).multiplyScalar(tangentialSpeed),
+            clamp(deltaTime * 8.4, 0, 1)
+          );
+          this.playerHeading.set(this.playerVelocity.x || this.getProgressionDirectionSign(), this.playerVelocity.y || 0).normalize();
+          this.playerSurfaceNormal.set(-this.playerHeading.y, this.playerHeading.x).normalize();
+          const reachedReleaseAngle =
+            enemy.sprintPivotAngularDirection < 0
+              ? enemy.sprintPivotAngle <= enemy.sprintPivotReleaseAngle
+              : enemy.sprintPivotAngle >= enemy.sprintPivotReleaseAngle;
+          const playerAbovePivot = this.playerPosition.y >= enemy.position.y + enemy.sprintPivotRadius * 0.82;
+          if (reachedReleaseAngle || playerAbovePivot) {
+            this.finishSprintFish(enemy);
+          }
+        } else {
+          enemy.position.x += enemy.velocity.x * deltaTime;
+          enemy.position.y = enemy.visibleY;
+          const directionSign = this.getAmbientEnemyDirectionSign(enemy.kind);
+          const targetPlayerPosition = this.scratchVector.set(
+            enemy.position.x - directionSign * SPRINT_FISH_PULL_OFFSET_X,
+            enemy.position.y + SPRINT_FISH_PULL_OFFSET_Y,
+            this.playerPosition.z
+          );
+          this.playerPosition.lerp(targetPlayerPosition, clamp(deltaTime * SPRINT_FISH_PULL_RESPONSE, 0, 1));
+          this.playerVelocity.lerp(this.scratchVectorB.set(enemy.velocity.x, 0.22, 0), clamp(deltaTime * 7.2, 0, 1));
+          this.playerHeading.set(directionSign, 0);
+          this.playerSurfaceNormal.set(0, 1);
+          const sprintDistanceMeters = Math.abs(this.playerPosition.x - this.sprintFishStartX) / DEFAULT_COLUMN_DISTANCE;
+          if (sprintDistanceMeters >= SPRINT_FISH_DISTANCE_METERS) {
+            this.startSprintFishPivot(enemy);
+          }
+        }
+        continue;
+      }
+
+      enemy.position.x += enemy.velocity.x * deltaTime;
+
+      if (enemy.kind === 'enemyTop') {
+        if (enemy.state === 'alive') {
+          enemy.position.y = enemy.cruiseY;
+        } else {
+          enemy.velocity.y -= 8.6 * deltaTime;
+          enemy.position.addScaledVector(this.scratchVector.set(0, enemy.velocity.y, 0), deltaTime);
+          if (this.currentTime - enemy.stateStartedAt >= enemy.deathDuration) {
+            this.removeAmbientEnemy(enemy.id, 'death_animation_complete');
+            continue;
+          }
+        }
+      } else {
+        this.updateAmbientEnemyBotVerticalMotion(enemy);
+      }
+
+      const halfExtents = this.getAmbientEnemyBaseHalfExtents(enemy);
+      const fullyPastScreen =
+        enemy.velocity.x > 0
+          ? enemy.position.x - halfExtents.x > this.camera.getSafeRight() + DEFAULT_COLUMN_DISTANCE * 1.6
+          : enemy.position.x + halfExtents.x < this.camera.getSafeLeft() - DEFAULT_COLUMN_DISTANCE * 1.6;
+      if (fullyPastScreen) {
+        this.removeAmbientEnemy(enemy.id, 'passed_screen_bounds');
+      }
+    }
   }
 
   getHudState(): GameHudSnapshot {
@@ -1817,7 +2571,7 @@ export class GameSessionController {
       Boolean(this.getEquippedItem('reacteur_front')) ||
       Boolean(this.getEquippedItem('reacteur_back'));
     const teleportBusy = this.isWrapperBusy();
-    const grappleBusy = this.grapState !== 'idle' || this.grapTargetIndex !== null;
+    const grappleBusy = this.grapState !== 'idle' || this.grapTargetIndex !== null || this.grapAmbientEnemyId !== null;
     const airActionActive =
       (this.moduleFlashUntil.wings ?? 0) > this.currentTime ||
       (this.moduleFlashUntil.propulseur ?? 0) > this.currentTime ||
@@ -1894,7 +2648,7 @@ export class GameSessionController {
   }
 
   private isGrappleBusy() {
-    return this.grapState !== 'idle' || this.grapTargetIndex !== null || this.grapCooldownPending;
+    return this.grapState !== 'idle' || this.grapTargetIndex !== null || this.grapAmbientEnemyId !== null || this.grapCooldownPending;
   }
 
   private isGrappleAvailable() {
@@ -2156,6 +2910,15 @@ export class GameSessionController {
     );
     this.queueAchievementToastsIfNeeded();
     this.prewarmUpcomingMilestones();
+    this.updateAmbientEnemies(frame.deltaTime);
+
+    if (this.isSprintFishActive()) {
+      this.collectCoinsNearPlayer();
+      this.syncAirbornePlayerOrientation();
+      this.refreshActiveRunTickNodes(frame);
+      this.advanceDisplayAnchor();
+      return;
+    }
 
     if (frame.shopLocked) {
       this.souffleurActive = false;
@@ -2982,6 +3745,7 @@ export class GameSessionController {
     this.collectCoinsOnCurrentNode(currentNode);
     this.collectCoinsNearPlayer();
     this.resolveEnemyContact(currentNode, previousPosition);
+    this.resolveAmbientEnemyContact(previousPosition, false);
 
   }
 
@@ -3007,12 +3771,18 @@ export class GameSessionController {
 
     const rewardChoiceLayout = this.getActiveRewardChoiceLayout();
 
-    if (this.grapTargetIndex !== null) {
-      const grapNode = this.getResolvedNode(this.grapTargetIndex);
-      if (this.grapTargetAngle !== null) {
-        this.getSurfaceContactWorldPosition(grapNode, this.grapTargetAngle, this.grapTargetPosition);
-      } else {
-        this.grapTargetPosition.set(grapNode.resolvedX, grapNode.resolvedY, grapNode.resolvedZ);
+    const grapAmbientEnemy = this.getAmbientEnemyById(this.grapAmbientEnemyId);
+    let grapNode: ResolvedGamePathNode | null = null;
+    if (this.grapTargetIndex !== null || grapAmbientEnemy) {
+      if (grapAmbientEnemy) {
+        this.grapTargetPosition.copy(grapAmbientEnemy.position);
+      } else if (this.grapTargetIndex !== null) {
+        grapNode = this.getResolvedNode(this.grapTargetIndex);
+        if (this.grapTargetAngle !== null) {
+          this.getSurfaceContactWorldPosition(grapNode, this.grapTargetAngle, this.grapTargetPosition);
+        } else {
+          this.grapTargetPosition.set(grapNode.resolvedX, grapNode.resolvedY, grapNode.resolvedZ);
+        }
       }
       const pull = this.scratchVectorB.copy(this.grapTargetPosition).sub(this.playerPosition);
       const distance = Math.max(0.001, pull.length());
@@ -3022,6 +3792,11 @@ export class GameSessionController {
         !this.grapAwaitReleaseBeforePull &&
         (!this.grapReleasePending || this.currentTime - this.grapReleasePressedAt >= 0.14);
       if (this.currentTime >= this.grapStateUntil && this.grapState === 'launch') {
+        if (grapAmbientEnemy?.kind === 'enemyBot' && this.isAmbientEnemyBotVisible(grapAmbientEnemy)) {
+          this.beginSprintFish(grapAmbientEnemy);
+          this.emitAudioEvent({ type: 'grapple_hit' });
+          return;
+        }
         this.grapState = 'hooked';
         this.grapRopeLength = Math.max(0.96, distance);
         this.emitAudioEvent({ type: 'grapple_hit' });
@@ -3040,7 +3815,9 @@ export class GameSessionController {
           this.grapReleasePending = false;
         }
         const retractRate = canPullWithHold ? 12.4 + this.momentum.gauge * 3.8 : 0;
-        const contactLength = Math.max(0.72, this.getOrbitClearance(grapNode) + 0.22);
+        const contactLength = grapNode
+          ? Math.max(0.72, this.getOrbitClearance(grapNode) + 0.22)
+          : Math.max(0.72, distance - 0.28);
         this.grapRopeLength = Math.max(contactLength, this.grapRopeLength - retractRate * deltaTime);
         const ropeTension = Math.max(0, distance - this.grapRopeLength);
         if (canPullWithHold && ropeTension > -0.24) {
@@ -3069,6 +3846,7 @@ export class GameSessionController {
     const travelSpeed = Math.max(0.001, this.playerVelocity.length());
 
     this.resolveAirborneEnemyContact(previousPosition, travelSpeed);
+    this.resolveAmbientEnemyContact(previousPosition, true);
     if (this.state === 'game_over') {
       return;
     }
@@ -3357,10 +4135,13 @@ export class GameSessionController {
     if (!candidate) {
       return false;
     }
+    if (candidate.kind === 'ambient_enemy') {
+      return this.armAmbientEnemyGrapple(candidate.enemyId, candidate.distance);
+    }
     return this.armGrapple(candidate.index, candidate.distance, candidate.angle);
   }
 
-  private findGrappleCandidate() {
+  private findGrappleCandidate(): GrappleCandidate | null {
     const gate = this.canAttemptGrapple();
     if (!gate.canAttempt) {
       return null;
@@ -3370,7 +4151,7 @@ export class GameSessionController {
     const coneDotMin = Math.cos(this.getGrappleConeHalfAngle());
     const minReach = 1.1;
     const effectiveReach = this.getGrappleEffectiveRange(grappleOrigin.x);
-    let bestCandidate: { index: number; distance: number; angle: number; angleScore: number } | null = null;
+    let bestCandidate: GrappleCandidate | null = null;
     for (const node of this.getInteractableVisibleNodes()) {
       if (node.index === this.attachedIndex) {
         continue;
@@ -3406,9 +4187,47 @@ export class GameSessionController {
         angleScore > bestCandidate.angleScore + 0.0005 ||
         (Math.abs(angleScore - bestCandidate.angleScore) <= 0.0005 && distance < bestCandidate.distance - 0.02)
       ) {
-        bestCandidate = { index: node.index, distance, angle: contact.angle, angleScore };
+        bestCandidate = { kind: 'node', index: node.index, distance, angle: contact.angle, angleScore };
       }
     }
+
+    this.ambientEnemies.forEach((ambientEnemy) => {
+      if (ambientEnemy.kind !== 'enemyBot' || ambientEnemy.state !== 'alive' || !this.isAmbientEnemyBotVisible(ambientEnemy)) {
+        return;
+      }
+      const centerX = ambientEnemy.position.x - grappleOrigin.x;
+      const centerY = ambientEnemy.position.y - grappleOrigin.y;
+      const centerDistance = Math.hypot(centerX, centerY);
+      if (centerDistance <= 0.001) {
+        return;
+      }
+      const enemyRadius = this.getAmbientEnemyBaseHalfExtents(ambientEnemy).x;
+      const edgeDistance = Math.max(0, centerDistance - enemyRadius);
+      if (edgeDistance < minReach || edgeDistance > effectiveReach) {
+        return;
+      }
+      const centerNormalizedX = centerX / centerDistance;
+      const centerNormalizedY = centerY / centerDistance;
+      const centerDot = clamp(centerNormalizedX * headingVector.x + centerNormalizedY * headingVector.y, -1, 1);
+      const silhouetteBonus = Math.min(0.24, enemyRadius / centerDistance);
+      const angleScore = centerDot + silhouetteBonus;
+      if (angleScore < coneDotMin) {
+        return;
+      }
+      const distance = centerDistance;
+      if (
+        !bestCandidate ||
+        angleScore > bestCandidate.angleScore + 0.0005 ||
+        (Math.abs(angleScore - bestCandidate.angleScore) <= 0.0005 && distance < bestCandidate.distance - 0.02)
+      ) {
+        bestCandidate = {
+          kind: 'ambient_enemy',
+          enemyId: ambientEnemy.id,
+          distance,
+          angleScore
+        };
+      }
+    });
     return bestCandidate;
   }
 
@@ -3435,6 +4254,28 @@ export class GameSessionController {
     }
     this.grapTargetIndex = index;
     this.grapTargetAngle = angle;
+    this.grapAmbientEnemyId = null;
+    this.grapState = 'launch';
+    this.grapStateUntil = this.currentTime + 0.08;
+    this.grapRopeLength = Math.max(0.96, distance);
+    this.grapCooldownPending = true;
+    this.grapAwaitReleaseBeforePull = false;
+    this.grapReleasePending = false;
+    this.grapReleasePressedAt = 0;
+    this.achievements.recordModuleActivated('grappin', this.currentTime);
+    this.queueAchievementToastsIfNeeded();
+    this.triggerModuleFlash('grappin', 0.5);
+    this.emitAudioEvent({ type: 'grapple_cast' });
+    return true;
+  }
+
+  private armAmbientEnemyGrapple(enemyId: string, distance: number) {
+    if (!this.isGrappleAvailable()) {
+      return false;
+    }
+    this.grapTargetIndex = null;
+    this.grapTargetAngle = null;
+    this.grapAmbientEnemyId = enemyId;
     this.grapState = 'launch';
     this.grapStateUntil = this.currentTime + 0.08;
     this.grapRopeLength = Math.max(0.96, distance);
@@ -3986,7 +4827,9 @@ export class GameSessionController {
       milestoneZoom,
       choiceZoom,
       speedPressure: speedPressure * (1 - this.runUpgrades.modifiers.timeSlowFactor * 0.55),
-      focusLock
+      focusLock,
+      verticalClampMinY: CAMERA_VERTICAL_TRACK_MIN_Y,
+      verticalClampMaxY: CAMERA_VERTICAL_TRACK_MAX_Y
     });
   }
 
@@ -4184,7 +5027,7 @@ export class GameSessionController {
       if (slot === 'grappin') {
         if (this.grapState === 'launch') {
           sprite.setFrame(1);
-        } else if (this.grapState === 'hooked') {
+        } else if (this.grapState === 'hooked' || this.grapState === 'sprint_fish') {
           sprite.setFrame(2);
         } else if (this.grapState === 'landing') {
           sprite.setFrame(3);
@@ -4301,28 +5144,33 @@ export class GameSessionController {
     this.syncProjectilePlane(this.frontCanonProjectile, this.frontCanonShot, heading);
     this.syncProjectilePlane(this.bigCanonProjectile, this.bigCanonShot, heading);
 
-    const grapHasTarget = this.grapTargetIndex !== null && this.grapState !== 'idle';
+    const grapAmbientEnemy = this.getAmbientEnemyById(this.grapAmbientEnemyId);
+    const grapHasTarget = (this.grapTargetIndex !== null || grapAmbientEnemy !== null) && this.grapState !== 'idle';
     this.grapRope.visible = grapHasTarget;
     if (grapHasTarget) {
       const ropeOrigin = this.getGrappleOrigin(grapHeading);
       this.grapRope.material.opacity =
         this.grapState === 'launch'
           ? 0.58
-          : this.grapState === 'hooked'
+          : this.grapState === 'hooked' || this.grapState === 'sprint_fish'
             ? 0.92
             : 0.78;
-      const targetNode = this.getResolvedNode(this.grapTargetIndex!);
-      if (this.grapTargetAngle !== null) {
-        this.getSurfaceContactWorldPosition(targetNode, this.grapTargetAngle, this.grapTargetPosition);
+      if (grapAmbientEnemy) {
+        this.grapTargetPosition.copy(grapAmbientEnemy.position);
       } else {
-        this.grapTargetPosition.set(targetNode.resolvedX, targetNode.resolvedY, targetNode.resolvedZ);
+        const targetNode = this.getResolvedNode(this.grapTargetIndex!);
+        if (this.grapTargetAngle !== null) {
+          this.getSurfaceContactWorldPosition(targetNode, this.grapTargetAngle, this.grapTargetPosition);
+        } else {
+          this.grapTargetPosition.set(targetNode.resolvedX, targetNode.resolvedY, targetNode.resolvedZ);
+        }
       }
       const ropeVector = this.scratchVector.copy(this.grapTargetPosition).sub(ropeOrigin);
       const distance = Math.max(0.2, ropeVector.length());
       this.grapRope.position.copy(ropeOrigin).addScaledVector(ropeVector, 0.5);
       this.grapRope.position.z = ropeOrigin.z + 0.02;
       this.grapRope.rotation.z = Math.atan2(ropeVector.y, ropeVector.x) - Math.PI * 0.5;
-      this.grapRope.scale.set(this.grapState === 'hooked' ? 1.12 : 1, distance, 1);
+      this.grapRope.scale.set(this.grapState === 'hooked' || this.grapState === 'sprint_fish' ? 1.12 : 1, distance, 1);
     } else {
       this.grapRope.material.opacity = 0.85;
     }
@@ -4789,6 +5637,34 @@ export class GameSessionController {
       });
     }
 
+    this.ambientEnemies.forEach((ambientEnemy) => {
+      if (!this.isAmbientEnemyMarkerVisible(ambientEnemy)) {
+        return;
+      }
+      enemyMarkersById.set(ambientEnemy.id, {
+        id: ambientEnemy.id,
+        position: ambientEnemy.position.clone(),
+        visible: true,
+        tier: 'light',
+        pole: 'north',
+        mirrored: ambientEnemy.mirrored,
+        kind: ambientEnemy.kind,
+        animation:
+          ambientEnemy.state === 'dying'
+            ? 'death'
+            : ambientEnemy.state === 'sprint_fish'
+              ? 'sprint'
+              : 'alive',
+        animationStartedAt: ambientEnemy.stateStartedAt,
+        animationDuration: ambientEnemy.deathDuration,
+        scale: ambientEnemy.scale,
+        zOffset: ambientEnemy.zOffset,
+        bodyOffsetY: 0,
+        showBackArrow: false,
+        tint: null
+      });
+    });
+
     this.coins.setVisible(this.state !== 'idle' && this.state !== 'transition_out');
     this.enemies.setVisible(this.state !== 'idle' && this.state !== 'transition_out');
     this.coins.update(coinMarkers, elapsedTime);
@@ -5014,7 +5890,7 @@ export class GameSessionController {
   }
 
   private applyGrappleConstraint() {
-    if (this.grapTargetIndex === null || this.grapState === 'idle' || this.grapState === 'launch') {
+    if (this.grapTargetIndex === null || this.grapState === 'idle' || this.grapState === 'launch' || this.grapState === 'sprint_fish') {
       return;
     }
     const toPlayer = this.scratchVector.copy(this.playerPosition).sub(this.grapTargetPosition);
@@ -5036,7 +5912,10 @@ export class GameSessionController {
   }
 
   private releaseGrapple() {
-    if (this.grapTargetIndex === null && this.grapState === 'idle') {
+    if (this.grapTargetIndex === null && this.grapAmbientEnemyId === null && this.grapState === 'idle') {
+      return;
+    }
+    if (this.grapState === 'sprint_fish') {
       return;
     }
     if (this.grapTargetIndex !== null && this.grapState === 'hooked') {
@@ -5064,6 +5943,7 @@ export class GameSessionController {
     this.grapStateUntil = this.currentTime + 1;
     this.grapTargetIndex = null;
     this.grapTargetAngle = null;
+    this.grapAmbientEnemyId = null;
     this.grapRopeLength = 0;
     this.grapAwaitReleaseBeforePull = false;
     this.grapReleasePending = false;
@@ -5119,6 +5999,48 @@ export class GameSessionController {
       travelSpeed
     });
     this.applyEnemyCollisionResolution(enemy, resolution);
+  }
+
+  private resolveAmbientEnemyContact(previousPosition: THREE.Vector3, airborne: boolean) {
+    let bestEnemy: AmbientEnemyRuntime | null = null;
+    let bestProjection = Number.POSITIVE_INFINITY;
+    let bestDistanceSq = Number.POSITIVE_INFINITY;
+
+    for (const enemy of this.ambientEnemies) {
+      if (enemy.state !== 'alive' || this.currentTime < enemy.bounceCooldownUntil) {
+        continue;
+      }
+      if (enemy.kind === 'enemyBot' && !this.isAmbientEnemyBotVisible(enemy)) {
+        continue;
+      }
+      if (!this.isAmbientEnemyWithinContact(enemy, previousPosition, airborne)) {
+        continue;
+      }
+      const projection = this.getTravelProjectionRatio(previousPosition, enemy.position);
+      const distanceSq = previousPosition.distanceToSquared(enemy.position);
+      if (
+        !bestEnemy ||
+        projection < bestProjection - 0.001 ||
+        (Math.abs(projection - bestProjection) <= 0.001 && distanceSq < bestDistanceSq)
+      ) {
+        bestEnemy = enemy;
+        bestProjection = projection;
+        bestDistanceSq = distanceSq;
+      }
+    }
+
+    if (!bestEnemy) {
+      return;
+    }
+
+    if (bestEnemy.kind === 'enemyTop') {
+      this.applyAmbientEnemyBounce(bestEnemy, previousPosition, airborne ? 1.08 : 1.14);
+      this.startAmbientEnemyDeath(bestEnemy);
+      return;
+    }
+
+    this.applyAmbientEnemyBounce(bestEnemy, previousPosition, airborne ? 0.92 : 0.98);
+    bestEnemy.bounceCooldownUntil = this.currentTime + 0.24;
   }
 
   private resolveEnemyCollisionOutcome(
@@ -5550,6 +6472,8 @@ export class GameSessionController {
   }
 
   private toggleMirrorMode(anchorIndex: number) {
+    const ambientEnemyIds = this.ambientEnemies.map((enemy) => enemy.id);
+    ambientEnemyIds.forEach((enemyId) => this.removeAmbientEnemy(enemyId, 'mirror_mode_toggle'));
     const hiddenMirrorReward = anchorIndex === this.attachedIndex && this.hiddenMilestoneChoice && this.getResolvedNode(anchorIndex).isMilestone
       ? this.hiddenMilestoneChoice
       : null;
@@ -5670,6 +6594,7 @@ export class GameSessionController {
     this.gameOverStartedAt = this.currentTime;
     this.playerTrail.visible = false;
     this.pendingMagnetCoins.clear();
+    this.resetAmbientEnemyRuntime();
     this.landingFeedback = null;
     this.landingFeedbackNodeIndex = null;
     this.resetPendingEnemyShot(this.frontCanonShot);
