@@ -1,6 +1,6 @@
 import type { RogueliteItemKind, RogueliteItemOffer, RogueliteRarity } from './roguelite';
 import { getItemById, rarityLabels, rogueliteItems } from './roguelite';
-import { preloadImageAsset } from '../core/browserAssetCache';
+import { drawImageIfReady, preloadImageAsset } from '../core/browserAssetCache';
 import { I18nService } from '../ui/I18nService';
 import type { AcquisitionFeedback, GameOverCause, GamePlayerMotionState, LandingGrade } from './gameSessionTypes';
 import {
@@ -2839,7 +2839,9 @@ export class GameHUDSystem {
       return null;
     }
     ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(image, 0, 0, width, height);
+    if (!drawImageIfReady(ctx, image, 0, 0, width, height)) {
+      return null;
+    }
     const imageData = ctx.getImageData(0, 0, width, height);
     const contour = this.extractOuterContourLoop(imageData.data, width, height);
     if (!contour || contour.length < 3) {

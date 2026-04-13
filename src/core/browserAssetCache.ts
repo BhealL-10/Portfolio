@@ -21,6 +21,7 @@ interface RasterizedSvgTextureOptions extends SharedTextureOptions {
 interface SharedImageEntry {
   image: HTMLImageElement;
   loaded: boolean;
+  failed: boolean;
   listeners: Set<() => void>;
 }
 
@@ -98,16 +99,20 @@ export function getSharedImageAsset(
     entry = {
       image,
       loaded: false,
+      failed: false,
       listeners: new Set()
     };
 
     const handleLoad = () => {
       entry!.loaded = true;
+      entry!.failed = false;
       entry!.listeners.forEach((listener) => listener());
       entry!.listeners.clear();
     };
 
     const handleError = () => {
+      entry!.loaded = false;
+      entry!.failed = true;
       entry!.listeners.clear();
     };
 
@@ -117,6 +122,8 @@ export function getSharedImageAsset(
 
     if (image.complete && image.naturalWidth > 0) {
       entry.loaded = true;
+    } else if (image.complete) {
+      entry.failed = true;
     }
 
     imageCache.set(src, entry);
@@ -127,6 +134,7 @@ export function getSharedImageAsset(
   if (options.onLoad) {
     if (entry.loaded || (entry.image.complete && entry.image.naturalWidth > 0)) {
       entry.loaded = true;
+      entry.failed = false;
       options.onLoad();
     } else {
       entry.listeners.add(options.onLoad);
@@ -154,6 +162,30 @@ export function preloadImageAsset(src: string, decoding: HTMLImageElement['decod
     }
     image.addEventListener('error', finish, { once: true });
   });
+}
+
+export function isRenderableImageAsset(image: HTMLImageElement | null | undefined): image is HTMLImageElement {
+  return Boolean(image && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0);
+}
+
+export function drawImageIfReady(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement | null | undefined,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number
+) {
+  if (!isRenderableImageAsset(image)) {
+    return false;
+  }
+
+  try {
+    context.drawImage(image, dx, dy, dw, dh);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function buildRasterizedTextureCacheKey(src: string, options: RasterizedSvgTextureOptions) {
@@ -215,7 +247,10 @@ export function getRasterizedSvgTextureAsset(src: string, options: RasterizedSvg
       context.clearRect(0, 0, rasterWidth, rasterHeight);
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = 'high';
-      context.drawImage(image, 0, 0, rasterWidth, rasterHeight);
+      if (!drawImageIfReady(context, image, 0, 0, rasterWidth, rasterHeight)) {
+        resolveFallbackTexture();
+        return;
+      }
       const texture = new THREE.CanvasTexture(canvas);
       applyTextureOptions(texture, options);
       texture.needsUpdate = true;

@@ -735,12 +735,11 @@ function allowedRaritiesForScore(score: number): RogueliteRarity[] {
 
 export function getNextUpgradeMilestone(distanceMeters: number) {
   if (distanceMeters < 10) return 10;
-  if (distanceMeters < 100) return 100;
-  return Math.floor(distanceMeters / 100) * 100 + 100;
+  return 10 + (Math.floor((distanceMeters - 10) / 100) + 1) * 100;
 }
 
 export function isUpgradeMilestone(distanceMeters: number) {
-  return distanceMeters === 10 || (distanceMeters >= 100 && distanceMeters % 100 === 0);
+  return distanceMeters === 10 || (distanceMeters > 10 && (distanceMeters - 10) % 100 === 0);
 }
 
 export function getCrossedUpgradeMilestone(previousDistanceMeters: number, currentDistanceMeters: number) {

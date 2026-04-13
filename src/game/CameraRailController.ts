@@ -53,6 +53,10 @@ export class CameraRailController {
   private safeRight = Infinity;
   private safeTop = Infinity;
   private safeBottom = -Infinity;
+  private visibleLeft = -Infinity;
+  private visibleRight = Infinity;
+  private visibleTop = Infinity;
+  private visibleBottom = -Infinity;
   private readonly fov = 42;
   private directionSign: 1 | -1 = 1;
 
@@ -70,6 +74,10 @@ export class CameraRailController {
     this.safeRight = Infinity;
     this.safeTop = Infinity;
     this.safeBottom = -Infinity;
+    this.visibleLeft = -Infinity;
+    this.visibleRight = Infinity;
+    this.visibleTop = Infinity;
+    this.visibleBottom = -Infinity;
   }
 
   update(config: CameraRailUpdateConfig) {
@@ -82,6 +90,7 @@ export class CameraRailController {
     this.applyZoom(profile, config, lockMode);
     this.clampFocusY(config);
     this.updatePose();
+    this.updateVisibleBounds();
     this.updateSafeBounds();
   }
 
@@ -283,6 +292,22 @@ export class CameraRailController {
     return this.safeBottom;
   }
 
+  getVisibleLeft() {
+    return this.visibleLeft;
+  }
+
+  getVisibleRight() {
+    return this.visibleRight;
+  }
+
+  getVisibleTop() {
+    return this.visibleTop;
+  }
+
+  getVisibleBottom() {
+    return this.visibleBottom;
+  }
+
   private getHalfHeightAtZoom(zoom: number) {
     return Math.tan(THREE.MathUtils.degToRad(this.fov * 0.5)) * zoom;
   }
@@ -301,5 +326,15 @@ export class CameraRailController {
       this.resolveGameplayHalfWidth() /
       Math.max(0.0001, Math.tan(THREE.MathUtils.degToRad(this.fov * 0.5)) * aspect);
     return Math.max(this.currentZoom, minimumZoomForGameplayWidth);
+  }
+
+  private updateVisibleBounds() {
+    const aspect = Math.max(0.5, window.innerWidth / Math.max(1, window.innerHeight));
+    const visibleHalfHeight = this.getHalfHeightAtZoom(this.renderZoom);
+    const visibleHalfWidth = visibleHalfHeight * aspect;
+    this.visibleLeft = this.lookAt.x - visibleHalfWidth;
+    this.visibleRight = this.lookAt.x + visibleHalfWidth;
+    this.visibleTop = this.lookAt.y + visibleHalfHeight;
+    this.visibleBottom = this.lookAt.y - visibleHalfHeight;
   }
 }

@@ -1261,7 +1261,7 @@ export class OrbitWorldSystem {
         if (visual) {
           entity.group.rotation.z = visual.shapeKind === 'round' ? 0 : visual.spinPhase;
         }
-        entity.hiddenUntil = elapsedTime + 0.08;
+        entity.hiddenUntil = 0;
       }
 
       entity.group.visible = elapsedTime >= entity.hiddenUntil;

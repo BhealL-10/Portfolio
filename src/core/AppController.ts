@@ -374,7 +374,7 @@ export class AppController {
         });
         primateriePortal.setLocale(this.i18n.current);
 
-        // Store unsubscribe functions so they can be cleaned up on restart
+        // Store unsubscribe functions so they can be cleaned up when leaving the game runtime
         this.gameRuntimeUnsubscribers = [
           audio.onSettingsChange((settings) => {
             gameHud.setAudioControls(settings);
@@ -1449,10 +1449,6 @@ export class AppController {
     if (this.mode.is('game_over')) {
       this.mode.setMode('game');
     }
-    // Clean up all subscriptions and UI listeners before restarting
-    this.gameRuntimeUnsubscribers.forEach((unsubscribe) => unsubscribe());
-    this.gameRuntimeUnsubscribers.length = 0;
-    this.gameHud.dispose();
     this.audio.prime();
     this.game.restart();
     this.parallaxLayers.resetForRun(this.game.getParallaxCoverageAnchorX());
@@ -1596,7 +1592,11 @@ export class AppController {
         this.game.setGrappleActionActive(false);
       }
       this.game.update(orientationBlocked ? 0 : deltaTime, elapsedTime);
-      const audioActive = this.mode.is('game') || this.mode.is('game_over');
+      const audioActive =
+        (this.mode.is('game_transition') || this.mode.is('game') || this.mode.is('game_over')) &&
+        !this.gameTransitionReturningToHub &&
+        this.game.currentState !== 'portal_preview' &&
+        this.game.currentState !== 'idle';
       this.audio.setEnabled(audioActive);
       this.audio.update(this.game.getAudioState(), deltaTime);
 
@@ -1719,8 +1719,8 @@ export class AppController {
         };
     const musicBackdropVisible = Boolean(
       gameRuntime &&
-        (this.mode.is('game') || this.mode.is('game_over')) &&
-        musicReactiveState.active &&
+        (this.mode.is('game_transition') || this.mode.is('game') || this.mode.is('game_over')) &&
+        !this.gameTransitionReturningToHub &&
         this.game.currentState !== 'portal_preview'
     );
     const parallaxVisible = Boolean(

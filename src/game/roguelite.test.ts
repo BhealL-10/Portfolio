@@ -10,10 +10,26 @@ import {
 describe('roguelite milestones', () => {
   it('returns the expected milestone sequence', () => {
     expect(getNextUpgradeMilestone(0)).toBe(10);
-    expect(getNextUpgradeMilestone(10)).toBe(100);
-    expect(getNextUpgradeMilestone(100)).toBe(200);
-    expect(getNextUpgradeMilestone(1299)).toBe(1300);
-    expect(getNextUpgradeMilestone(2000)).toBe(2100);
+    expect(getNextUpgradeMilestone(10)).toBe(110);
+    expect(getNextUpgradeMilestone(110)).toBe(210);
+    expect(getNextUpgradeMilestone(210)).toBe(310);
+    expect(getNextUpgradeMilestone(310)).toBe(410);
+    expect(getNextUpgradeMilestone(410)).toBe(510);
+    expect(getNextUpgradeMilestone(510)).toBe(610);
+    expect(getNextUpgradeMilestone(610)).toBe(710);
+    expect(getNextUpgradeMilestone(710)).toBe(810);
+    expect(getNextUpgradeMilestone(810)).toBe(910);
+    expect(getNextUpgradeMilestone(910)).toBe(1010);
+    expect(getNextUpgradeMilestone(1010)).toBe(1110);
+    expect(getNextUpgradeMilestone(1110)).toBe(1210);
+    expect(getNextUpgradeMilestone(1210)).toBe(1310);
+    expect(getNextUpgradeMilestone(1310)).toBe(1410);
+    expect(getNextUpgradeMilestone(1410)).toBe(1510);
+    expect(getNextUpgradeMilestone(1510)).toBe(1610);
+    expect(getNextUpgradeMilestone(1610)).toBe(1710);
+    expect(getNextUpgradeMilestone(1710)).toBe(1810);
+    expect(getNextUpgradeMilestone(1810)).toBe(1910);
+    expect(getNextUpgradeMilestone(1910)).toBe(2010);
   });
 });
 

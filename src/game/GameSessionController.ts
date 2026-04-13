@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getSharedImageAsset, getSharedTextureAsset, preloadImageAsset } from '../core/browserAssetCache';
+import { drawImageIfReady, getSharedImageAsset, getSharedTextureAsset, preloadImageAsset } from '../core/browserAssetCache';
 import { isMobileRuntime } from '../core/device';
 import { clamp, damp } from '../core/math';
 import { getThemeNonShardHex, getThemeShardContrastHex, getThemeShardHex } from '../core/themePalette';
@@ -67,6 +67,18 @@ interface VisiblePlatformLayoutSnapshot {
   positions: THREE.Vector3[];
   scales: number[];
   visuals: VisiblePlatformVisual[];
+}
+
+interface StreamingLookaheadPlan {
+  visibleCount: number;
+  aheadNodes: number;
+  chunkSize: number;
+  desiredFutureSlots: number;
+  streamingAnchorIndex: number;
+  displayWindowMinX: number;
+  displayWindowMaxX: number;
+  logicalWindowMinX: number;
+  logicalWindowMaxX: number;
 }
 
 function getMotionDirectionAngle(direction: NonNullable<ResolvedGamePathNode['motionDirection']>) {
@@ -177,11 +189,11 @@ const CAMERA_VERTICAL_TRACK_MIN_Y = -28;
 const CAMERA_VERTICAL_TRACK_MAX_Y = 45;
 const SPRINT_FISH_DISTANCE_METERS = 100;
 const SPRINT_FISH_TOW_SPEED_MULTIPLIER = 7.2;
-const SPRINT_FISH_TOW_SPEED_MIN = 92;
-const SPRINT_FISH_TOW_SPEED_MAX = 100;
-const SPRINT_FISH_PULL_OFFSET_X = 10.2;
-const SPRINT_FISH_PULL_OFFSET_Y = 1.24;
-const SPRINT_FISH_PULL_RESPONSE = 14.5;
+const SPRINT_FISH_TOW_SPEED_MIN = 192;
+const SPRINT_FISH_TOW_SPEED_MAX = 288;
+const SPRINT_FISH_PULL_OFFSET_X = 5.2;
+const SPRINT_FISH_PULL_OFFSET_Y = 5.24;
+const SPRINT_FISH_PULL_RESPONSE = 8.5;
 const SPRINT_FISH_PLAYER_TOW_VELOCITY_RESPONSE = 11.8;
 const SPRINT_FISH_PLAYER_TOW_VERTICAL_VELOCITY = 0.34;
 const SPRINT_FISH_PIVOT_RELEASE_ANGLE = Math.PI * 0.5;
@@ -209,6 +221,18 @@ const STREAMING_MIN_CHUNK_SIZE = 96;
 const STREAMING_MAX_CHUNK_SIZE = 176;
 const STREAMING_DISPLAY_OVERSCAN_NODES = 18;
 const STREAMING_MAX_PRESERVED_PAST_SLOTS = 10;
+const STREAMING_CAMERA_PREBIND_SECONDS = 1.12;
+const STREAMING_SPRINTFISH_CAMERA_PREBIND_SECONDS = 1.45;
+const STREAMING_CAMERA_BACK_BUFFER_COLUMNS = 2.4;
+const STREAMING_CAMERA_FORWARD_BIND_MIN_COLUMNS = 9.5;
+const STREAMING_CAMERA_FORWARD_BIND_MAX_COLUMNS = 28;
+const STREAMING_CAMERA_LOGICAL_RESERVE_COLUMNS = 8.5;
+const STREAMING_MAX_LOGICAL_CATCHUP_PASSES = 4;
+const DISPLAY_SLOT_LOCK_BUFFER = DEFAULT_COLUMN_DISTANCE * 0.9;
+const DISPLAY_FORWARD_REMAP_BUFFER = DEFAULT_COLUMN_DISTANCE * 1.3;
+const DISPLAY_WINDOW_REMAP_LIMIT = 32;
+const SPRINT_FISH_LANDING_ASSIST_SECONDS = 2.6;
+const SPRINT_FISH_LANDING_ASSIST_RADIUS = 2.8;
 
 function computeTwistChainBonus(chainLength: number) {
   return Math.min(TWIST_CHAIN_MAX_BONUS, TWIST_CHAIN_BASE_BONUS + TWIST_CHAIN_INCREMENT * (chainLength - 1));
@@ -604,6 +628,8 @@ export class GameSessionController {
   private ambientEnemySpawnReadyAt = 0;
   private ambientEnemySerial = 0;
   private sprintFishStartX = 0;
+  private sprintFishLandingTargetIndex: number | null = null;
+  private sprintFishLandingAssistUntil = 0;
   private readonly frontCanonShot: PendingEnemyShot = this.createPendingEnemyShot('front_canon');
   private readonly bigCanonShot: PendingEnemyShot = this.createPendingEnemyShot('big_canon');
   private grapRangeIndicatorHalfAngle = 0;
@@ -1372,6 +1398,8 @@ export class GameSessionController {
     this.grapAwaitReleaseBeforePull = true;
     this.grapReleasePending = false;
     this.grapReleasePressedAt = 0;
+    this.sprintFishLandingTargetIndex = null;
+    this.sprintFishLandingAssistUntil = 0;
     this.eventCooldownUntil = 0;
     this.pendingMagnetCoins.clear();
     this.milestoneChoiceCache.clear();
@@ -1486,7 +1514,7 @@ export class GameSessionController {
     const next = this.path.getNode(this.attachedIndex + 1);
     const visibilityBonus = current?.isGigantic || next?.isGigantic ? 24 : current?.eventType !== 'none' || next?.eventType !== 'none' ? 14 : 0;
     const requestedCount = baseCount + momentumBonus + choiceBonus + visibilityBonus + speedBonus + sprintFishBonus;
-    return Math.max(mobileRuntime ? 60 : 68, Math.min(mobileRuntime ? 112 : 136, requestedCount));
+    return Math.max(mobileRuntime ? 60 : 68, Math.min(mobileRuntime ? 120 : 148, requestedCount));
   }
 
   private getStreamingForwardSpeed() {
@@ -1507,13 +1535,107 @@ export class GameSessionController {
     );
   }
 
-  private getStreamingLookaheadPlan(deltaTime: number) {
-    const visibleCount = this.getRecommendedVisibleCount();
+  private getCameraVisibleHorizontalBounds() {
+    const visibleLeft = this.camera.getVisibleLeft();
+    const visibleRight = this.camera.getVisibleRight();
+    if (Number.isFinite(visibleLeft) && Number.isFinite(visibleRight)) {
+      return {
+        left: Math.min(visibleLeft, visibleRight),
+        right: Math.max(visibleLeft, visibleRight)
+      };
+    }
+
+    const safeLeft = this.camera.getSafeLeft();
+    const safeRight = this.camera.getSafeRight();
+    if (Number.isFinite(safeLeft) && Number.isFinite(safeRight)) {
+      return {
+        left: Math.min(safeLeft, safeRight),
+        right: Math.max(safeLeft, safeRight)
+      };
+    }
+
+    return {
+      left: this.playerPosition.x - DEFAULT_COLUMN_DISTANCE * 6,
+      right: this.playerPosition.x + DEFAULT_COLUMN_DISTANCE * 8
+    };
+  }
+
+  private getProjectedStreamingFocusX(streamingSpeed: number, leadSeconds: number) {
+    const directionSign = this.getProgressionDirectionSign();
+    const projectedByVelocity = this.playerPosition.x + this.playerVelocity.x * leadSeconds;
+    const projectedBySpeed = this.playerPosition.x + directionSign * streamingSpeed * leadSeconds;
+    if (this.playerState === 'airborne' || this.isSprintFishActive()) {
+      return directionSign > 0 ? Math.max(projectedByVelocity, projectedBySpeed) : Math.min(projectedByVelocity, projectedBySpeed);
+    }
+    return projectedByVelocity;
+  }
+
+  private getStreamingAnchorIndex(targetWorldX: number) {
+    let anchorIndex = this.attachedIndex;
+    if (this.sprintFishLandingTargetIndex !== null) {
+      anchorIndex = Math.max(anchorIndex, this.sprintFishLandingTargetIndex);
+    }
+    if (this.playerState === 'airborne' || this.isSprintFishActive() || this.getStreamingForwardSpeed() > 20) {
+      anchorIndex = Math.max(anchorIndex, this.findSprintFishLandingAnchorIndex(targetWorldX, 220));
+    }
+    return anchorIndex;
+  }
+
+  private getStreamingLookaheadPlan(deltaTime: number): StreamingLookaheadPlan {
+    const baseVisibleCount = this.getRecommendedVisibleCount();
     const streamingSpeed = this.getStreamingForwardSpeed();
+    const directionSign = this.getProgressionDirectionSign();
+    const { left: visibleLeft, right: visibleRight } = this.getCameraVisibleHorizontalBounds();
+    const visibleSpan = Math.max(DEFAULT_COLUMN_DISTANCE * 4.8, visibleRight - visibleLeft);
     const lookaheadSeconds = this.isSprintFishActive() ? STREAMING_SPRINTFISH_LOOKAHEAD_SECONDS : STREAMING_LOOKAHEAD_SECONDS;
     const framePaddingSeconds = Math.min(STREAMING_LOOKAHEAD_FRAME_PADDING_SECONDS, Math.max(0, deltaTime) * 2.2);
+    const cameraPrebindSeconds = this.isSprintFishActive()
+      ? STREAMING_SPRINTFISH_CAMERA_PREBIND_SECONDS
+      : STREAMING_CAMERA_PREBIND_SECONDS;
+    const streamingFocusX = this.getProjectedStreamingFocusX(
+      streamingSpeed,
+      cameraPrebindSeconds + framePaddingSeconds + (this.isSprintFishActive() ? 0.28 : 0.12)
+    );
+    const backBufferDistance = Math.max(
+      DEFAULT_COLUMN_DISTANCE * STREAMING_CAMERA_BACK_BUFFER_COLUMNS,
+      visibleSpan * 0.18
+    );
+    const forwardBindDistance = THREE.MathUtils.clamp(
+      visibleSpan * 0.55 + streamingSpeed * (cameraPrebindSeconds + framePaddingSeconds * 0.85),
+      DEFAULT_COLUMN_DISTANCE * STREAMING_CAMERA_FORWARD_BIND_MIN_COLUMNS,
+      DEFAULT_COLUMN_DISTANCE * STREAMING_CAMERA_FORWARD_BIND_MAX_COLUMNS
+    );
+    const logicalReserveDistance = forwardBindDistance + Math.max(
+      DEFAULT_COLUMN_DISTANCE * STREAMING_CAMERA_LOGICAL_RESERVE_COLUMNS,
+      visibleSpan * 0.34 + streamingSpeed * (lookaheadSeconds * 0.46 + framePaddingSeconds)
+    );
+    const displayForwardFocusX = streamingFocusX + directionSign * Math.max(visibleSpan * 0.24, DEFAULT_COLUMN_DISTANCE * 1.8);
+    const logicalForwardFocusX =
+      streamingFocusX +
+      directionSign * Math.max(visibleSpan * 0.4, streamingSpeed * (framePaddingSeconds + lookaheadSeconds * 0.36));
+    const displayWindowMinX =
+      directionSign > 0
+        ? visibleLeft - backBufferDistance
+        : Math.min(visibleLeft - forwardBindDistance, displayForwardFocusX);
+    const displayWindowMaxX =
+      directionSign > 0
+        ? Math.max(visibleRight + forwardBindDistance, displayForwardFocusX)
+        : visibleRight + backBufferDistance;
+    const logicalWindowMinX =
+      directionSign > 0
+        ? visibleLeft - backBufferDistance
+        : Math.min(visibleLeft - logicalReserveDistance, logicalForwardFocusX);
+    const logicalWindowMaxX =
+      directionSign > 0
+        ? Math.max(visibleRight + logicalReserveDistance, logicalForwardFocusX)
+        : visibleRight + backBufferDistance;
+    const streamingAnchorIndex = this.getStreamingAnchorIndex(logicalForwardFocusX);
+    const displaySpan = Math.max(DEFAULT_COLUMN_DISTANCE * 3.5, displayWindowMaxX - displayWindowMinX);
+    const windowCoverageCount = Math.ceil((displaySpan / DEFAULT_COLUMN_DISTANCE) * STREAMING_NODES_PER_METER * 1.12);
+    const visibleCount = Math.max(baseVisibleCount, windowCoverageCount);
     const safetyMeters =
-      visibleCount * 0.58 +
+      visibleCount * 0.48 +
+      displaySpan / DEFAULT_COLUMN_DISTANCE +
       (streamingSpeed * (lookaheadSeconds + framePaddingSeconds)) / DEFAULT_COLUMN_DISTANCE;
     const aheadNodes = THREE.MathUtils.clamp(
       Math.ceil(safetyMeters * STREAMING_NODES_PER_METER),
@@ -1527,35 +1649,192 @@ export class GameSessionController {
     );
     const desiredFutureSlots = Math.min(
       visibleCount,
-      Math.max(visibleCount - 6, Math.ceil(aheadNodes * 0.72))
+      Math.max(Math.ceil(windowCoverageCount * 0.82), Math.ceil(aheadNodes * 0.72))
     );
     return {
       visibleCount,
       aheadNodes,
       chunkSize,
-      desiredFutureSlots
+      desiredFutureSlots,
+      streamingAnchorIndex,
+      displayWindowMinX,
+      displayWindowMaxX,
+      logicalWindowMinX,
+      logicalWindowMaxX
     };
   }
 
   private maintainStreamingAhead(deltaTime: number) {
     const plan = this.getStreamingLookaheadPlan(deltaTime);
-    this.path.ensureAhead(this.attachedIndex, plan.aheadNodes, plan.chunkSize);
-    this.ensureDisplayWindowCoverage(plan.visibleCount, plan.desiredFutureSlots);
+    this.path.ensureAhead(plan.streamingAnchorIndex, plan.aheadNodes, plan.chunkSize);
+    this.ensureLogicalStreamingWindowCoverage(plan);
+    this.ensureDisplayWindowCoverage(plan);
     return plan;
   }
 
-  private ensureDisplayWindowCoverage(visibleCount: number, desiredFutureSlots: number) {
-    this.initializeDisplayWindow(visibleCount);
+  private ensureLogicalStreamingWindowCoverage(plan: StreamingLookaheadPlan) {
+    let targetAheadNodes = plan.aheadNodes;
+    const targetForwardX = this.getProgressionDirectionSign() > 0 ? plan.logicalWindowMaxX : plan.logicalWindowMinX;
 
-    const furthestDisplayIndex = this.displayWindowIndices.reduce((furthest, index) => Math.max(furthest, index), this.attachedIndex);
-    const futureSlots = this.displayWindowIndices.filter((index) => index > this.attachedIndex).length;
-    const stalePastSlots = this.displayWindowIndices.filter((index) => index < this.attachedIndex - 1).length;
-    const futureCoverageMissing = furthestDisplayIndex < this.attachedIndex + desiredFutureSlots - STREAMING_DISPLAY_OVERSCAN_NODES;
-    const futureSlotsMissing = futureSlots < desiredFutureSlots;
-    const stalePastCoverage = stalePastSlots > STREAMING_MAX_PRESERVED_PAST_SLOTS;
+    for (let attempt = 0; attempt < STREAMING_MAX_LOGICAL_CATCHUP_PASSES; attempt += 1) {
+      const tailNode = this.getResolvedNode(plan.streamingAnchorIndex + targetAheadNodes);
+      if (this.isForwardCoverageReady(tailNode, targetForwardX)) {
+        return;
+      }
+      if (targetAheadNodes >= STREAMING_MAX_AHEAD_NODES) {
+        return;
+      }
+      targetAheadNodes = Math.min(STREAMING_MAX_AHEAD_NODES, targetAheadNodes + plan.chunkSize);
+      this.path.ensureAhead(plan.streamingAnchorIndex, targetAheadNodes, plan.chunkSize);
+    }
+  }
 
-    if (futureCoverageMissing || futureSlotsMissing || stalePastCoverage) {
-      this.reconcileDisplayWindowAfterPathChange(visibleCount, desiredFutureSlots);
+  private ensureDisplayWindowCoverage(plan: StreamingLookaheadPlan) {
+    this.initializeDisplayWindow(plan.visibleCount);
+    this.refreshDisplayWindowOutsideView(plan);
+  }
+
+  private isForwardCoverageReady(node: ResolvedGamePathNode, targetX: number) {
+    const radius = this.getPhysicalRadius(node);
+    return this.getProgressionDirectionSign() > 0
+      ? node.resolvedX + radius >= targetX
+      : node.resolvedX - radius <= targetX;
+  }
+
+  private measureDisplayWindowCoverage(plan: StreamingLookaheadPlan) {
+    const { left: visibleLeft, right: visibleRight } = this.getCameraVisibleHorizontalBounds();
+    let forwardCoverageEdge = this.getProgressionDirectionSign() > 0 ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
+    let visibleNodes = 0;
+    let futureSlots = 0;
+    let stalePastSlots = 0;
+
+    for (const index of this.displayWindowIndices) {
+      const node = this.getResolvedNode(index);
+      const radius = this.getPhysicalRadius(node);
+      const minX = node.resolvedX - radius;
+      const maxX = node.resolvedX + radius;
+      if (maxX >= visibleLeft && minX <= visibleRight) {
+        visibleNodes += 1;
+      }
+      if (this.getProgressionDirectionSign() > 0) {
+        forwardCoverageEdge = Math.max(forwardCoverageEdge, maxX);
+      } else {
+        forwardCoverageEdge = Math.min(forwardCoverageEdge, minX);
+      }
+      if (index > this.attachedIndex) {
+        futureSlots += 1;
+      }
+      if (index < this.attachedIndex - 1) {
+        stalePastSlots += 1;
+      }
+    }
+
+    const futureCoverageMissing =
+      this.getProgressionDirectionSign() > 0
+        ? forwardCoverageEdge < plan.displayWindowMaxX - DISPLAY_FORWARD_SPAWN_BUFFER
+        : forwardCoverageEdge > plan.displayWindowMinX + DISPLAY_FORWARD_SPAWN_BUFFER;
+
+    return {
+      futureCoverageMissing,
+      futureSlotsMissing: futureSlots < Math.max(6, plan.desiredFutureSlots - STREAMING_DISPLAY_OVERSCAN_NODES),
+      visibleCoverageMissing: visibleNodes === 0,
+      stalePastCoverage: stalePastSlots > STREAMING_MAX_PRESERVED_PAST_SLOTS
+    };
+  }
+
+  private getDisplaySlotLockBounds(plan: StreamingLookaheadPlan) {
+    return {
+      minX: plan.displayWindowMinX - DISPLAY_SLOT_LOCK_BUFFER,
+      maxX: plan.displayWindowMaxX + DISPLAY_SLOT_LOCK_BUFFER
+    };
+  }
+
+  private isDisplaySlotLocked(slot: number, plan: StreamingLookaheadPlan) {
+    const index = this.displayWindowIndices[slot];
+    if (index === undefined) {
+      return false;
+    }
+    if (index === this.attachedIndex || index === this.attachedIndex + 1) {
+      return true;
+    }
+    const node = this.getResolvedNode(index);
+    const radius = this.getPhysicalRadius(node);
+    const { minX, maxX } = this.getDisplaySlotLockBounds(plan);
+    const nodeMinX = node.resolvedX - radius;
+    const nodeMaxX = node.resolvedX + radius;
+    if (nodeMaxX >= minX && nodeMinX <= maxX) {
+      return true;
+    }
+    if (this.getProgressionDirectionSign() > 0) {
+      return nodeMinX >= plan.displayWindowMinX && nodeMaxX <= plan.displayWindowMaxX && node.index <= this.attachedIndex + 2;
+    }
+    return nodeMaxX <= plan.displayWindowMaxX && nodeMinX >= plan.displayWindowMinX && node.index <= this.attachedIndex + 2;
+  }
+
+  private findDisplaySlotToRecycle(plan: StreamingLookaheadPlan) {
+    let bestSlot = -1;
+    let bestPriority = Number.NEGATIVE_INFINITY;
+    const directionSign = this.getProgressionDirectionSign();
+
+    for (let slot = 0; slot < this.displayWindowIndices.length; slot += 1) {
+      if (this.isDisplaySlotLocked(slot, plan)) {
+        continue;
+      }
+      const node = this.getResolvedNode(this.displayWindowIndices[slot]!);
+      const radius = this.getPhysicalRadius(node);
+      const minX = node.resolvedX - radius;
+      const maxX = node.resolvedX + radius;
+      const stalePast =
+        directionSign > 0
+          ? maxX < plan.displayWindowMinX - DISPLAY_SLOT_LOCK_BUFFER
+          : minX > plan.displayWindowMaxX + DISPLAY_SLOT_LOCK_BUFFER;
+      const outsidePreparedWindow =
+        directionSign > 0
+          ? minX > plan.logicalWindowMaxX + DISPLAY_FORWARD_REMAP_BUFFER
+          : maxX < plan.logicalWindowMinX - DISPLAY_FORWARD_REMAP_BUFFER;
+      if (!stalePast && !outsidePreparedWindow) {
+        continue;
+      }
+      const priority = stalePast ? 2 : 1;
+      if (priority > bestPriority) {
+        bestPriority = priority;
+        bestSlot = slot;
+      }
+    }
+
+    return bestSlot;
+  }
+
+  private refreshDisplayWindowOutsideView(plan: StreamingLookaheadPlan, remapLimit = DISPLAY_WINDOW_REMAP_LIMIT) {
+    let remaining = remapLimit;
+    while (remaining > 0) {
+      const coverage = this.measureDisplayWindowCoverage(plan);
+      if (
+        !coverage.futureCoverageMissing &&
+        !coverage.futureSlotsMissing &&
+        !coverage.stalePastCoverage
+      ) {
+        break;
+      }
+
+      const slot = this.findDisplaySlotToRecycle(plan);
+      if (slot < 0) {
+        break;
+      }
+
+      this.path.ensureAhead(this.displayNextIndex + 1, plan.aheadNodes, plan.chunkSize);
+      const replacementIndex = this.findReplacementDisplayNode(
+        slot,
+        Math.max(DISPLAY_REPLACEMENT_SEARCH_RANGE, plan.chunkSize + 24),
+        plan
+      );
+      if (replacementIndex === null) {
+        break;
+      }
+
+      this.displayWindowIndices[slot] = replacementIndex;
+      this.displayNextIndex = Math.max(this.displayNextIndex, replacementIndex + 1);
+      remaining -= 1;
     }
   }
 
@@ -2526,7 +2805,105 @@ export class GameSessionController {
     this.airborneFromMilestone = false;
     this.airborneStartedAt = this.currentTime;
     this.beginGrappleLanding();
+    this.prepareSprintFishLandingAssist();
     this.removeAmbientEnemy(enemy.id, 'sprint_finished');
+  }
+
+  private clearSprintFishLandingAssist() {
+    this.sprintFishLandingTargetIndex = null;
+    this.sprintFishLandingAssistUntil = 0;
+  }
+
+  private findSprintFishLandingAnchorIndex(targetWorldX: number, maxSearch = 120) {
+    const directionSign = this.getProgressionDirectionSign();
+    let previousIndex = this.attachedIndex;
+    for (let index = Math.max(0, this.attachedIndex + 1); index <= this.attachedIndex + maxSearch; index += 1) {
+      const node = this.getResolvedNode(index);
+      const directionalDelta = (node.resolvedX - targetWorldX) * directionSign;
+      if (directionalDelta >= 0) {
+        return Math.max(this.attachedIndex, index - 1);
+      }
+      previousIndex = index;
+    }
+    return previousIndex;
+  }
+
+  private findSprintFishLandingTarget(searchLimit: number, predictedX: number, predictedY: number) {
+    let bestNode: ResolvedGamePathNode | null = null;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    const directionSign = this.getProgressionDirectionSign();
+
+    for (let index = Math.max(this.attachedIndex + 1, 0); index <= searchLimit; index += 1) {
+      const node = this.getResolvedNode(index);
+      if (node.enemySlot?.alive || node.eventType === 'shop') {
+        continue;
+      }
+      const directionalAdvance = (node.resolvedX - this.playerPosition.x) * directionSign;
+      if (directionalAdvance < DEFAULT_COLUMN_DISTANCE * 0.8) {
+        continue;
+      }
+      const xError = Math.abs((node.resolvedX - predictedX) * directionSign);
+      const yError = Math.abs(node.resolvedY - predictedY);
+      const sizeBonus = node.gameplayRadius * 3.2 + node.visualScale * 0.7;
+      const eventPenalty = node.isGigantic ? 0.9 : node.isMilestone ? 0.6 : 0;
+      const score = sizeBonus - xError * 0.22 - yError * 0.3 - eventPenalty + Math.min(4, directionalAdvance * 0.05);
+      if (score > bestScore) {
+        bestScore = score;
+        bestNode = node;
+      }
+    }
+
+    return bestScore > -0.5 ? bestNode : null;
+  }
+
+  private prepareSprintFishLandingAssist() {
+    const releaseSpeed = Math.max(0.001, this.playerVelocity.length());
+    const directionSign = this.getProgressionDirectionSign();
+    const projectedTravelSeconds = clamp(0.52 + releaseSpeed * 0.012, 0.58, 1.05);
+    const predictedX = this.playerPosition.x + this.playerVelocity.x * projectedTravelSeconds;
+    const predictedY = this.playerPosition.y + this.playerVelocity.y * projectedTravelSeconds - 4.6;
+    const prewarmPlan = this.maintainStreamingAhead(0);
+    const searchLimit = Math.max(
+      this.attachedIndex + Math.max(64, this.displayWindowIndices.length + 22),
+      prewarmPlan.streamingAnchorIndex + Math.max(40, Math.ceil(prewarmPlan.desiredFutureSlots * 0.68))
+    );
+    let landingNode = this.findSprintFishLandingTarget(searchLimit, predictedX, predictedY);
+
+    if (!landingNode) {
+      const anchorIndex = this.findSprintFishLandingAnchorIndex(predictedX, 144);
+      const landingIndex = this.path.ensureSprintFishLandingPath(anchorIndex, this.unprojectWorldX(predictedX), predictedY);
+      this.reconcileDisplayWindowAfterPathChange(this.getRecommendedVisibleCount(), this.getStreamingLookaheadPlan(0));
+      landingNode = this.getResolvedNode(landingIndex);
+    }
+
+    if (!landingNode) {
+      this.clearSprintFishLandingAssist();
+      return;
+    }
+
+    this.sprintFishLandingTargetIndex = landingNode.index;
+    this.sprintFishLandingAssistUntil = this.currentTime + SPRINT_FISH_LANDING_ASSIST_SECONDS;
+
+    const toTarget = this.scratchVector
+      .set(
+        landingNode.resolvedX - this.playerPosition.x,
+        landingNode.resolvedY - this.playerPosition.y + Math.min(1.2, landingNode.gameplayRadius * 0.18),
+        0
+      );
+    if ((toTarget.x * directionSign) > 0.001 && toTarget.lengthSq() > 0.0001) {
+      const desiredDirection = toTarget.normalize();
+      const currentSpeed = Math.max(releaseSpeed, 12.5);
+      const blendedDirection = this.scratchVectorB
+        .copy(this.playerVelocity)
+        .normalize()
+        .multiplyScalar(0.72)
+        .addScaledVector(desiredDirection, 0.28)
+        .normalize();
+      this.playerVelocity.copy(blendedDirection.multiplyScalar(currentSpeed));
+      this.playerVelocity.y = Math.max(this.playerVelocity.y, 1.1);
+      this.playerHeading.set(this.playerVelocity.x || directionSign, this.playerVelocity.y || 0).normalize();
+      this.playerSurfaceNormal.set(-this.playerHeading.y, this.playerHeading.x).normalize();
+    }
   }
 
   private updateAmbientEnemies(deltaTime: number) {
@@ -3042,6 +3419,9 @@ export class GameSessionController {
 
   private beginTickFrame(elapsedTime: number) {
     this.currentTime = elapsedTime;
+    if (this.sprintFishLandingAssistUntil > 0 && elapsedTime >= this.sprintFishLandingAssistUntil) {
+      this.clearSprintFishLandingAssist();
+    }
     this.invalidateVisibleNodeCachesIfNeeded(elapsedTime);
   }
 
@@ -3136,7 +3516,7 @@ export class GameSessionController {
       this.syncAirbornePlayerOrientation();
       this.refreshActiveRunTickNodes(frame);
       const postSprintFishPlan = this.maintainStreamingAhead(frame.deltaTime);
-      this.advanceDisplayAnchor(postSprintFishPlan.aheadNodes, postSprintFishPlan.chunkSize);
+      this.advanceDisplayAnchor(postSprintFishPlan.aheadNodes, postSprintFishPlan.chunkSize, postSprintFishPlan);
       return;
     }
 
@@ -3151,7 +3531,7 @@ export class GameSessionController {
 
     this.refreshActiveRunTickNodes(frame);
     const postMovementStreamingPlan = this.maintainStreamingAhead(frame.deltaTime);
-    this.advanceDisplayAnchor(postMovementStreamingPlan.aheadNodes, postMovementStreamingPlan.chunkSize);
+    this.advanceDisplayAnchor(postMovementStreamingPlan.aheadNodes, postMovementStreamingPlan.chunkSize, postMovementStreamingPlan);
   }
 
   private refreshActiveRunTickNodes(frame: ActiveRunTickFrame) {
@@ -3169,6 +3549,8 @@ export class GameSessionController {
   private runActivePresentationPhase(frame: ActiveRunTickFrame) {
     this.syncShopPresentation(frame.currentNode, frame.elapsedTime);
     this.syncCameraFollow(frame.deltaTime, frame.currentNode, frame.nextNode);
+    const postCameraStreamingPlan = this.maintainStreamingAhead(frame.deltaTime);
+    this.advanceDisplayAnchor(postCameraStreamingPlan.aheadNodes, postCameraStreamingPlan.chunkSize, postCameraStreamingPlan);
     this.syncTrailVisual();
     this.syncPlayerVisual(frame.elapsedTime);
     this.syncShardHud(frame.currentNode);
@@ -3777,7 +4159,7 @@ export class GameSessionController {
     return new THREE.Vector3(node.resolvedX, node.resolvedY, node.resolvedZ);
   }
 
-  private advanceDisplayAnchor(aheadNodes = 120, chunkSize = 64) {
+  private advanceDisplayAnchor(aheadNodes = 120, chunkSize = 64, plan: StreamingLookaheadPlan | null = null) {
     if (this.displayWindowIndices.length === 0) return;
     if (this.airborneFromMilestone && this.playerState === 'airborne') {
       return;
@@ -3800,7 +4182,11 @@ export class GameSessionController {
       }
 
       this.path.ensureAhead(this.displayNextIndex + 1, aheadNodes, chunkSize);
-      const replacementIndex = this.findReplacementDisplayNode(slot, Math.max(DISPLAY_REPLACEMENT_SEARCH_RANGE, chunkSize + 24));
+      const replacementIndex = this.findReplacementDisplayNode(
+        slot,
+        Math.max(DISPLAY_REPLACEMENT_SEARCH_RANGE, chunkSize + 24),
+        plan ?? this.getStreamingLookaheadPlan(0)
+      );
       if (replacementIndex === null) {
         continue;
       }
@@ -3826,40 +4212,44 @@ export class GameSessionController {
     }
   }
 
-  private reconcileDisplayWindowAfterPathChange(desiredTotalCount = this.displayWindowIndices.length, desiredFutureSlots?: number) {
-    if (this.displayWindowIndices.length === 0) {
+  private reconcileDisplayWindowAfterPathChange(
+    desiredTotalCount = this.displayWindowIndices.length,
+    plan: StreamingLookaheadPlan | null = null
+  ) {
+    const clampedTotalCount = Math.max(0, desiredTotalCount);
+    if (clampedTotalCount === 0) {
+      this.displayWindowIndices = [];
+      this.displayNextIndex = this.attachedIndex + 1;
       return;
     }
-    const clampedTotalCount = Math.max(0, desiredTotalCount);
-    const targetFutureSlots = Math.max(
-      0,
-      Math.min(
-        clampedTotalCount,
-        desiredFutureSlots ?? Math.max(clampedTotalCount - STREAMING_MAX_PRESERVED_PAST_SLOTS, 0)
-      )
-    );
-    const preserved = this.displayWindowIndices
-      .filter((index) => index <= this.attachedIndex)
-      .sort((a, b) => b - a)
-      .slice(0, Math.max(0, clampedTotalCount - targetFutureSlots))
-      .sort((a, b) => a - b);
-    const rebuiltFuture = Array.from({ length: targetFutureSlots }, (_, offset) => this.attachedIndex + 1 + offset);
-    this.displayWindowIndices = [...preserved, ...rebuiltFuture];
-    this.displayNextIndex = this.attachedIndex + 1 + rebuiltFuture.length;
+
+    this.initializeDisplayWindow(clampedTotalCount);
+    const activePlan = plan ?? this.getStreamingLookaheadPlan(0);
+    this.refreshDisplayWindowOutsideView(activePlan, Math.max(DISPLAY_WINDOW_REMAP_LIMIT, clampedTotalCount));
   }
 
-  private findReplacementDisplayNode(excludeSlot: number, searchRange = DISPLAY_REPLACEMENT_SEARCH_RANGE) {
+  private findReplacementDisplayNode(
+    excludeSlot: number,
+    searchRange = DISPLAY_REPLACEMENT_SEARCH_RANGE,
+    plan: StreamingLookaheadPlan
+  ) {
+    const { right: visibleRight, left: visibleLeft } = this.getCameraVisibleHorizontalBounds();
     for (
       let candidateIndex = this.displayNextIndex;
       candidateIndex < this.displayNextIndex + searchRange;
       candidateIndex += 1
     ) {
       const replacement = this.getResolvedNode(candidateIndex);
-      const spawnsOffscreenAhead =
+      const radius = this.getPhysicalRadius(replacement);
+      const minX = replacement.resolvedX - radius;
+      const maxX = replacement.resolvedX + radius;
+      const spawnsAheadOfVisibleBounds =
         this.getProgressionDirectionSign() > 0
-          ? replacement.resolvedX - this.getPhysicalRadius(replacement) > this.camera.getSafeRight() + DISPLAY_FORWARD_SPAWN_BUFFER
-          : replacement.resolvedX + this.getPhysicalRadius(replacement) < this.camera.getSafeLeft() - DISPLAY_FORWARD_SPAWN_BUFFER;
-      if (!spawnsOffscreenAhead) {
+          ? minX > visibleRight + DISPLAY_FORWARD_REMAP_BUFFER
+          : maxX < visibleLeft - DISPLAY_FORWARD_REMAP_BUFFER;
+      const staysInsidePreparedWindow =
+        maxX >= plan.displayWindowMinX && minX <= plan.displayWindowMaxX + DISPLAY_FORWARD_SPAWN_BUFFER;
+      if (!spawnsAheadOfVisibleBounds || !staysInsidePreparedWindow) {
         continue;
       }
       if (this.isDisplayNodeOverlapping(replacement, excludeSlot)) {
@@ -4143,7 +4533,10 @@ export class GameSessionController {
       }
     }
 
-    const searchLimit = this.attachedIndex + Math.max(24, this.displayWindowIndices.length + 8);
+    const searchLimit = Math.max(
+      this.attachedIndex + Math.max(24, this.displayWindowIndices.length + 8),
+      this.sprintFishLandingTargetIndex !== null ? this.sprintFishLandingTargetIndex + 3 : 0
+    );
     const giganticCapture = this.findBestForwardCaptureCandidate(previousPosition, this.playerPosition, travelSpeed, searchLimit, rewardChoiceLayout, true);
     if (giganticCapture) {
       if (this.grapTargetIndex === giganticCapture.node.index) {
@@ -4663,6 +5056,7 @@ export class GameSessionController {
     resolvedAttachment: OrbitAttachment | null = null,
     resolvedNodeSnapshot: ResolvedGamePathNode | null = null
   ) {
+    this.clearSprintFishLandingAssist();
     this.attachedIndex = index;
     this.mirrorLaunchEligible = false;
     this.mirrorLaunchAnchorIndex = null;
@@ -4901,11 +5295,11 @@ export class GameSessionController {
   private resolveNodeEvent(node: ResolvedGamePathNode) {
     if (node.isMilestone) {
       if (!this.milestoneChoiceCache.has(node.index)) {
-        const offers = buildUpgradeOffers(node.index, this.runUpgrades, Math.random, 4);
+        const offers = buildUpgradeOffers(node.index, this.runUpgrades, this.path.getSeededRng(), 4);
         this.milestoneChoiceCache.set(node.index, this.path.createUpgradeBranches(node.index, offers.slice(0, 3), this.score));
         this.hiddenMilestoneChoice = offers[3] ? this.path.createHiddenMilestoneBackBranch(node.index, offers[3]) : null;
       } else if (!this.hiddenMilestoneChoice) {
-        const offers = buildUpgradeOffers(node.index, this.runUpgrades, Math.random, 4);
+        const offers = buildUpgradeOffers(node.index, this.runUpgrades, this.path.getSeededRng(), 4);
         this.hiddenMilestoneChoice = offers[3] ? this.path.createHiddenMilestoneBackBranch(node.index, offers[3]) : null;
       }
       this.activeChoices = (this.milestoneChoiceCache.get(node.index) ?? []).map((choice) => ({
@@ -4964,11 +5358,6 @@ export class GameSessionController {
   }
 
   private commitRewardChoice(choice: BranchChoice, viaFallback: boolean) {
-    this.path.replaceFuture(this.attachedIndex, choice.pathNodes);
-    const branchTailIndex = this.attachedIndex + choice.pathNodes.length;
-    this.path.ensureAhead(branchTailIndex, 78, 72);
-    this.path.queuePostMilestoneEvents(branchTailIndex, branchTailIndex);
-    this.reconcileDisplayWindowAfterPathChange();
     this.milestoneChoiceCache.delete(this.attachedIndex);
     this.achievements.recordMilestoneRewardClaimed();
     this.applyOffer(choice.offer, viaFallback ? 'Quick choice' : 'Path chosen');
@@ -5581,11 +5970,12 @@ export class GameSessionController {
     this.strokeRoundedRect(context, 0, 0, canvas.width, canvas.height, 54, rarityColor, 0.96, 18);
     this.fillRoundedRect(context, 46, 44, 332, canvas.height - 88, 34, rarityColor, 0.12);
     this.fillRoundedRect(context, 70, 72, 16, canvas.height - 144, 10, rarityColor, 0.94);
-    if (hudImage.complete) {
-      context.drawImage(hudImage, 118, 82, 252, 252);
+    const drewHudIcon = drawImageIfReady(context, hudImage, 118, 82, 252, 252);
+    if (!drewHudIcon) {
+      this.drawRewardCardBillboardIconFallback(context, 118, 82, 252, 252, rarityColor, bg);
     }
-    if (rarityImage && rarityImage.complete) {
-      context.drawImage(rarityImage, 286, 270, 120, 120);
+    if (rarityImage) {
+      drawImageIfReady(context, rarityImage, 286, 270, 120, 120);
     }
     context.fillStyle = bg;
     context.globalAlpha = 0.72;
@@ -5605,6 +5995,27 @@ export class GameSessionController {
     this.drawWrappedText(context, offer.item.description[this.locale], 460, 536, canvas.width - 554, 90, 3, bg);
     context.globalAlpha = 1;
     texture.needsUpdate = true;
+  }
+
+  private drawRewardCardBillboardIconFallback(
+    context: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    accentColor: string,
+    textColor: string
+  ) {
+    this.fillRoundedRect(context, x, y, width, height, 38, accentColor, 0.08);
+    this.strokeRoundedRect(context, x, y, width, height, 38, accentColor, 0.3, 8);
+    context.save();
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.globalAlpha = 0.5;
+    context.fillStyle = textColor;
+    context.font = "600 132px 'Tribal Garamond', 'Text Me One', sans-serif";
+    context.fillText('?', x + width * 0.5, y + height * 0.56);
+    context.restore();
   }
 
   private fillRoundedRect(
@@ -5815,12 +6226,12 @@ export class GameSessionController {
     size: number,
     opacity: number
   ) {
-    if (!image.complete || image.naturalWidth === 0 || image.naturalHeight === 0 || opacity <= 0) {
+    if (opacity <= 0) {
       return;
     }
     ctx.save();
     ctx.globalAlpha = opacity;
-    ctx.drawImage(image, centerX - size * 0.5, centerY - size * 0.5, size, size);
+    drawImageIfReady(ctx, image, centerX - size * 0.5, centerY - size * 0.5, size, size);
     ctx.restore();
   }
 
@@ -5833,7 +6244,7 @@ export class GameSessionController {
     progress: number,
     opacity: number
   ) {
-    if (!image.complete || image.naturalWidth === 0 || image.naturalHeight === 0 || opacity <= 0) {
+    if (opacity <= 0) {
       return;
     }
     const clamped = clamp(progress, 0, 1);
@@ -5854,7 +6265,7 @@ export class GameSessionController {
     ctx.closePath();
     ctx.clip();
     ctx.globalAlpha = opacity;
-    ctx.drawImage(image, centerX - size * 0.5, centerY - size * 0.5, size, size);
+    drawImageIfReady(ctx, image, centerX - size * 0.5, centerY - size * 0.5, size, size);
     ctx.restore();
   }
 
@@ -6783,11 +7194,6 @@ export class GameSessionController {
       ? this.hiddenMilestoneChoice
       : null;
     if (hiddenMirrorReward) {
-      this.path.replaceFuture(anchorIndex, hiddenMirrorReward.pathNodes);
-      const branchTailIndex = anchorIndex + hiddenMirrorReward.pathNodes.length;
-      this.path.ensureAhead(branchTailIndex, 78, 72);
-      this.path.queuePostMilestoneEvents(branchTailIndex, branchTailIndex);
-      this.reconcileDisplayWindowAfterPathChange();
       this.milestoneChoiceCache.delete(anchorIndex);
       this.achievements.recordMilestoneRewardClaimed();
       this.applyOffer(hiddenMirrorReward.offer, 'Mirror route');
@@ -6924,11 +7330,16 @@ export class GameSessionController {
       this.playerState === 'airborne' && this.runUpgrades.modifiers.gravityCentering > 0
         ? Math.max(0.08, this.getPhysicalRadius(node) * 0.08)
         : 0;
+    const sprintFishLandingAssistRadius =
+      this.sprintFishLandingTargetIndex === node.index && this.currentTime <= this.sprintFishLandingAssistUntil
+        ? SPRINT_FISH_LANDING_ASSIST_RADIUS
+        : 0;
     return (
       this.getPhysicalRadius(node) +
       (node.isGigantic ? this.getOrbitClearance(node) + 1.15 : 0.92) +
       this.runUpgrades.modifiers.captureRadius +
-      beltAssistRadius
+      beltAssistRadius +
+      sprintFishLandingAssistRadius
     );
   }
 

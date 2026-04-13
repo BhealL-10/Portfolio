@@ -14,10 +14,15 @@ interface AppBuildConfig {
   legacyAssetDirs: string[];
 }
 
-function resolveAppBuildConfig(env: Record<string, string | undefined>): AppBuildConfig {
+function resolveAppBuildConfig(
+  env: Record<string, string | undefined>,
+  defaults: {
+    base: string;
+  }
+): AppBuildConfig {
   return {
     projectRoot: resolve(fileURLToPath(new URL('./', import.meta.url))),
-    base: normalizeBase(env.VITE_APP_BASE),
+    base: normalizeBase(env.VITE_APP_BASE, defaults.base),
     outDir: env.VITE_BUILD_OUT_DIR?.trim() || 'dist',
     sourcemap: parseBoolean(env.VITE_BUILD_SOURCEMAP, false),
     chunkSizeWarningLimit: parseInteger(env.VITE_BUILD_CHUNK_WARNING_LIMIT, 500),
@@ -25,8 +30,26 @@ function resolveAppBuildConfig(env: Record<string, string | undefined>): AppBuil
   };
 }
 
-function normalizeBase(input: string | undefined) {
-  const base = input?.trim() || '/';
+function normalizeBase(input: string | undefined, fallback: string) {
+  const base = input?.trim() || fallback;
+  if (base === '/' || base === './') {
+    return base;
+  }
+  if (/^(?:https?:)?\/\//.test(base)) {
+    return base.endsWith('/') ? base : `${base}/`;
+  }
+  if (base.startsWith('./')) {
+    return base.endsWith('/') ? base : `${base}/`;
+  }
+  if (base.startsWith('../')) {
+    return base.endsWith('/') ? base : `${base}/`;
+  }
+  if (base === '.') {
+    return './';
+  }
+  if (base === '..') {
+    return '../';
+  }
   if (base === '/') {
     return base;
   }
@@ -84,9 +107,11 @@ function copyLegacyAssets(projectRoot: string, outDir: string, assetDirs: string
   };
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const buildConfig = resolveAppBuildConfig(env);
+  const buildConfig = resolveAppBuildConfig(env, {
+    base: command === 'serve' ? '/' : './'
+  });
 
   return {
     base: buildConfig.base,

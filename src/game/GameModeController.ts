@@ -646,8 +646,6 @@ export class GameModeController {
       this.playerVelocity.set(0, 0, 0);
     }
 
-    this.pathBuffer.replaceFuture(this.attachedAnchorIndex, branch.nodes);
-    this.pathBuffer.ensureAhead(this.attachedAnchorIndex + branch.nodes.length, 50, 120);
     this.runUpgrades = applyItemToRunState(this.runUpgrades, branch.offer.item.id);
     this.currentOffers = [];
     this.upgradeBranches = [];

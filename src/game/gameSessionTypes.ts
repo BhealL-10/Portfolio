@@ -89,6 +89,7 @@ export interface GamePathNode {
   onboarding: boolean;
   isMilestone: boolean;
   isGigantic: boolean;
+  milestoneOwned?: boolean;
   reservedMilestoneDistance?: number | null;
   coinSlots: GameCoinSlot[];
   enemySlot: GameEnemySlot | null;
