@@ -10,7 +10,17 @@ export interface PlacementConflict {
   rightIndex: number;
 }
 
-export function validatePatternPlacement(candidateNodes: GamePathNode[], existingNodes: GamePathNode[]) {
+export interface PlacementReservedRange {
+  startX: number;
+  endX: number;
+  type?: 'milestone';
+}
+
+export function validatePathPlacement(
+  candidateNodes: GamePathNode[],
+  existingNodes: GamePathNode[],
+  reservedRanges: PlacementReservedRange[] = []
+) {
   if (candidateNodes.length === 0) return false;
 
   const placedNodes = [...existingNodes];
@@ -23,7 +33,7 @@ export function validatePatternPlacement(candidateNodes: GamePathNode[], existin
       const dx = candidate.x - previous.x;
       const dy = candidate.y - previous.y;
       const distance = Math.hypot(dx, dy);
-      const minimumDistance = getPlacementRadius(previous) + getPlacementRadius(candidate);
+      const minimumDistance = getNodePlacementRadius(previous) + getNodePlacementRadius(candidate);
       const sharedColumn = canShareVerticalColumn(previous, candidate, dx, dy, minimumDistance, profile.maxVerticalDelta);
 
       if (nodesConflict(previous, candidate) || distance > profile.maxJumpDistance) {
@@ -44,6 +54,10 @@ export function validatePatternPlacement(candidateNodes: GamePathNode[], existin
       return false;
     }
 
+    if (intrudesReservedRanges(candidate, reservedRanges)) {
+      return false;
+    }
+
     const nearbyNodes = getRelevantNodes(candidate, placedNodes);
     for (const node of nearbyNodes) {
       if (node.index === candidate.index) {
@@ -60,7 +74,7 @@ export function validatePatternPlacement(candidateNodes: GamePathNode[], existin
       }
     }
 
-    if (motionLeavesVerticalBounds(candidate, verticalLimit)) {
+    if (motionLeavesVerticalBounds(candidate, verticalLimit) || motionIntrudesReservedRanges(candidate, reservedRanges)) {
       return false;
     }
 
@@ -71,7 +85,7 @@ export function validatePatternPlacement(candidateNodes: GamePathNode[], existin
   return true;
 }
 
-export function findPlacementConflicts(nodes: GamePathNode[]) {
+export function findPlacementConflicts(nodes: GamePathNode[], reservedRanges: PlacementReservedRange[] = []) {
   const conflicts: PlacementConflict[] = [];
 
   for (let index = 0; index < nodes.length; index += 1) {
@@ -80,6 +94,14 @@ export function findPlacementConflicts(nodes: GamePathNode[]) {
     if (motionLeavesVerticalBounds(left, verticalLimit)) {
       conflicts.push({
         type: 'motion_corridor',
+        leftIndex: left.index,
+        rightIndex: left.index
+      });
+    }
+
+    if (intrudesReservedRanges(left, reservedRanges) || motionIntrudesReservedRanges(left, reservedRanges)) {
+      conflicts.push({
+        type: 'milestone_reserved',
         leftIndex: left.index,
         rightIndex: left.index
       });
@@ -127,6 +149,65 @@ export function findPlacementConflicts(nodes: GamePathNode[]) {
   return conflicts;
 }
 
+export function buildMilestoneReservedRange(milestone: GamePathNode): PlacementReservedRange {
+  const halfWidth = getPlacementHalfWidth(milestone);
+  return {
+    startX: milestone.x - halfWidth,
+    endX: milestone.x + halfWidth,
+    type: 'milestone'
+  };
+}
+
+export function getNodePlacementRadius(node: GamePathNode) {
+  const softMargin = node.gameplayRadius < 1.15 ? 0.72 : node.gameplayRadius < 1.9 ? 1.05 : 1.38;
+  return node.gameplayRadius + node.visualScale * 0.14 + softMargin;
+}
+
+export function getNodePlacementExtents(node: GamePathNode) {
+  const geometryBaseX = node.shapeKind === 'triangular' ? 1.24 * 0.866 : node.shapeKind === 'oval' ? 1.18 : 1.25;
+  const geometryBaseY = node.shapeKind === 'triangular' ? 1.24 : node.shapeKind === 'oval' ? 1.18 : 1.25;
+  return {
+    x: geometryBaseX * node.visualScale * node.visualStretch.x * 0.92,
+    y: geometryBaseY * node.visualScale * node.visualStretch.y * 0.92
+  };
+}
+
+export function getNodePlacementFootprint(node: GamePathNode) {
+  const extents = getNodePlacementExtents(node);
+  return {
+    x: Math.max(extents.x, node.gameplayRadius * (node.shapeKind === 'triangular' ? 0.92 : 1)),
+    y: Math.max(extents.y, node.gameplayRadius * (node.shapeKind === 'triangular' ? 0.98 : 0.94))
+  };
+}
+
+export function getPlacementHalfWidth(node: GamePathNode) {
+  return getNodePlacementFootprint(node).x;
+}
+
+export function getPlacementHalfHeight(node: GamePathNode) {
+  return getNodePlacementFootprint(node).y;
+}
+
+export function getMinimumSpacingMargin(left: GamePathNode, right: GamePathNode) {
+  const base = Math.min(getNodePlacementRadius(left), getNodePlacementRadius(right));
+  return Math.min(DEFAULT_COLUMN_DISTANCE * 0.16, Math.max(DEFAULT_COLUMN_DISTANCE * 0.06, base * 0.14));
+}
+
+function intrudesReservedRanges(candidate: GamePathNode, reservedRanges: PlacementReservedRange[]) {
+  return reservedRanges.some((range) => candidateIntrudesReservedRange(candidate, range));
+}
+
+function motionIntrudesReservedRanges(candidate: GamePathNode, reservedRanges: PlacementReservedRange[]) {
+  return reservedRanges.some((range) => motionIntersectsReservedRange(candidate, range));
+}
+
+function candidateIntrudesReservedRange(candidate: GamePathNode, range: PlacementReservedRange) {
+  const candidateHalfWidth = getPlacementHalfWidth(candidate);
+  const margin = getMinimumSpacingMargin(candidate, candidate);
+  const candidateBounds = getSweptBounds(candidate);
+  return candidateBounds.maxX >= range.startX - candidateHalfWidth - margin && candidateBounds.minX <= range.endX + candidateHalfWidth + margin;
+}
+
 function isInsideMilestoneReservedRange(candidate: GamePathNode, milestone: GamePathNode) {
   if (candidate.milestoneOwned) {
     return false;
@@ -140,48 +221,13 @@ function isInsideMilestoneReservedRange(candidate: GamePathNode, milestone: Game
   return candidateBounds.maxX >= start && candidateBounds.minX <= end;
 }
 
-export function getPlacementRadius(node: GamePathNode) {
-  const softMargin = node.gameplayRadius < 1.15 ? 0.72 : node.gameplayRadius < 1.9 ? 1.05 : 1.38;
-  return node.gameplayRadius + node.visualScale * 0.14 + softMargin;
-}
-
-export function getPlacementExtents(node: GamePathNode) {
-  const geometryBaseX = node.shapeKind === 'triangular' ? 1.24 * 0.866 : node.shapeKind === 'oval' ? 1.18 : 1.25;
-  const geometryBaseY = node.shapeKind === 'triangular' ? 1.24 : node.shapeKind === 'oval' ? 1.18 : 1.25;
-  return {
-    x: geometryBaseX * node.visualScale * node.visualStretch.x * 0.92,
-    y: geometryBaseY * node.visualScale * node.visualStretch.y * 0.92
-  };
-}
-
 function placementBoxesOverlap(left: GamePathNode, right: GamePathNode, paddingX: number, paddingY: number) {
-  const leftExtents = getPlacementFootprint(left);
-  const rightExtents = getPlacementFootprint(right);
+  const leftExtents = getNodePlacementFootprint(left);
+  const rightExtents = getNodePlacementFootprint(right);
   return (
     Math.abs(left.x - right.x) < leftExtents.x + rightExtents.x + paddingX &&
     Math.abs(left.y - right.y) < leftExtents.y + rightExtents.y + paddingY
   );
-}
-
-function getPlacementFootprint(node: GamePathNode) {
-  const extents = getPlacementExtents(node);
-  return {
-    x: Math.max(extents.x, node.gameplayRadius * (node.shapeKind === 'triangular' ? 0.92 : 1)),
-    y: Math.max(extents.y, node.gameplayRadius * (node.shapeKind === 'triangular' ? 0.98 : 0.94))
-  };
-}
-
-function getPlacementHalfWidth(node: GamePathNode) {
-  return getPlacementFootprint(node).x;
-}
-
-function getPlacementHalfHeight(node: GamePathNode) {
-  return getPlacementFootprint(node).y;
-}
-
-function getMinimumSpacingMargin(left: GamePathNode, right: GamePathNode) {
-  const base = Math.min(getPlacementRadius(left), getPlacementRadius(right));
-  return Math.min(DEFAULT_COLUMN_DISTANCE * 0.16, Math.max(DEFAULT_COLUMN_DISTANCE * 0.06, base * 0.14));
 }
 
 function nodesConflict(left: GamePathNode, right: GamePathNode) {
@@ -189,7 +235,7 @@ function nodesConflict(left: GamePathNode, right: GamePathNode) {
     return false;
   }
   const margin = getMinimumSpacingMargin(left, right);
-  const radialLimit = getPlacementRadius(left) + getPlacementRadius(right) + margin;
+  const radialLimit = getNodePlacementRadius(left) + getNodePlacementRadius(right) + margin;
   const dx = left.x - right.x;
   const dy = left.y - right.y;
   if (dx * dx + dy * dy >= radialLimit * radialLimit) {
@@ -313,7 +359,7 @@ function motionCorridorsConflict(left: GamePathNode, right: GamePathNode) {
     return false;
   }
 
-  const allowed = getPlacementRadius(left) + getPlacementRadius(right) + margin;
+  const allowed = getNodePlacementRadius(left) + getNodePlacementRadius(right) + margin;
   const allowedSq = allowed * allowed;
 
   if (leftMotion && rightMotion) {
@@ -341,6 +387,18 @@ function motionIntersectsMilestoneRange(node: GamePathNode, milestone: GamePathN
   const minX = Math.min(segment.start.x, segment.end.x);
   const maxX = Math.max(segment.start.x, segment.end.x);
   return maxX >= reservedStart && minX <= reservedEnd;
+}
+
+function motionIntersectsReservedRange(node: GamePathNode, range: PlacementReservedRange) {
+  const segment = getMotionSegment(node);
+  if (!segment) {
+    return false;
+  }
+  const candidateHalfWidth = getPlacementHalfWidth(node);
+  const margin = getMinimumSpacingMargin(node, node);
+  const minX = Math.min(segment.start.x, segment.end.x);
+  const maxX = Math.max(segment.start.x, segment.end.x);
+  return maxX >= range.startX - candidateHalfWidth - margin && minX <= range.endX + candidateHalfWidth + margin;
 }
 
 function getSweptBounds(node: GamePathNode) {

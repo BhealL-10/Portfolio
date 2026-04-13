@@ -3806,28 +3806,12 @@ export class GameSessionController {
     if (cached) {
       return cached;
     }
-    const rewardChoiceLayout = this.getActiveRewardChoiceLayout();
-    if (rewardChoiceLayout) {
+    if (this.choiceMode === 'reward_branch' && this.activeChoices.length > 0) {
       this.initializeDisplayWindow(count);
-      const { milestoneNode, rewardNodes, reservedStart, reservedEnd } = rewardChoiceLayout;
-      const nodes = this.displayWindowIndices
-        .map((index) => this.getResolvedNode(index))
-        .filter((node) => {
-          if (node.index === milestoneNode.index) {
-            return true;
-          }
-          const radius = this.getPhysicalRadius(node);
-          if (
-            node.resolvedX + radius >= reservedStart &&
-            node.resolvedX - radius <= reservedEnd &&
-            node.resolvedY + radius >= rewardChoiceLayout.reservedBottom &&
-            node.resolvedY - radius <= rewardChoiceLayout.reservedTop
-          ) {
-            return false;
-          }
-          return !rewardNodes.some((rewardNode) => this.doNodesOverlapForDisplay(node, rewardNode));
-        });
-      nodes.push(milestoneNode, ...rewardNodes);
+      const nodes = [
+        ...this.displayWindowIndices.map((index) => this.getResolvedNode(index)),
+        ...this.activeChoices.map((choice) => this.resolveChoiceNode(choice.entry))
+      ];
       nodes.sort((a, b) => a.resolvedX - b.resolvedX);
       const deduped: ResolvedGamePathNode[] = [];
       const seen = new Set<string>();
@@ -3837,28 +3821,6 @@ export class GameSessionController {
         seen.add(key);
         deduped.push(node);
       });
-      const fillerBase = deduped[deduped.length - 1] ?? milestoneNode;
-      while (deduped.length < count) {
-        deduped.push({
-          ...fillerBase,
-          resolvedX: fillerBase.resolvedX + 320 + deduped.length * 6,
-          resolvedY: fillerBase.resolvedY + 180,
-          resolvedZ: fillerBase.resolvedZ,
-          visualScale: 0.0001,
-          gameplayRadius: 0.0001,
-          shapeKind: 'round',
-          colorHint: 'none',
-          eventType: 'none',
-          guaranteedShopIcon: false,
-          isMilestone: false,
-          isGigantic: false,
-          coinSlots: [],
-          enemySlot: null,
-          resolvedSpinPhase: 0,
-          spinSpeed: 0,
-          visualStretch: { x: 1, y: 1, z: 1 }
-        });
-      }
       const result = deduped.slice(0, count);
       this.displayNodesCache.set(count, result);
       return result;
@@ -3868,47 +3830,6 @@ export class GameSessionController {
     const result = this.displayWindowIndices.slice(0, count).map((index) => this.getResolvedNode(index));
     this.displayNodesCache.set(count, result);
     return result;
-  }
-
-  private getActiveRewardChoiceLayout() {
-    if (this.choiceMode !== 'reward_branch' || this.activeChoices.length === 0) {
-      return null;
-    }
-    const milestoneNode = this.getResolvedNode(this.attachedIndex);
-    const rewardNodes = this.activeChoices.map((choice) => this.resolveChoiceNode(choice.entry));
-    const rewardXValues = rewardNodes.map((node) => node.resolvedX);
-    const rewardYValues = rewardNodes.map((node) => node.resolvedY);
-    return {
-      milestoneNode,
-      rewardNodes,
-      reservedStart: Math.min(milestoneNode.resolvedX, ...rewardXValues) - DEFAULT_COLUMN_DISTANCE * 3.4,
-      reservedEnd: Math.max(milestoneNode.resolvedX, ...rewardXValues) + DEFAULT_COLUMN_DISTANCE * 3.4,
-      reservedTop: Math.max(milestoneNode.resolvedY, ...rewardYValues) + DEFAULT_COLUMN_DISTANCE * 1.2,
-      reservedBottom: Math.min(milestoneNode.resolvedY, ...rewardYValues) - DEFAULT_COLUMN_DISTANCE * 1.2
-    };
-  }
-
-  private isNodeInsideActiveRewardReserve(
-    node: ResolvedGamePathNode,
-    rewardChoiceLayout: NonNullable<ReturnType<GameSessionController['getActiveRewardChoiceLayout']>>
-  ) {
-    if (node.index === rewardChoiceLayout.milestoneNode.index) {
-      return false;
-    }
-    const matchesRewardNode = rewardChoiceLayout.rewardNodes.some(
-      (rewardNode) =>
-        Math.abs(node.resolvedX - rewardNode.resolvedX) < 0.001 && Math.abs(node.resolvedY - rewardNode.resolvedY) < 0.001
-    );
-    if (matchesRewardNode) {
-      return false;
-    }
-    const radius = this.getPhysicalRadius(node);
-    return (
-      node.resolvedX + radius >= rewardChoiceLayout.reservedStart &&
-      node.resolvedX - radius <= rewardChoiceLayout.reservedEnd &&
-      node.resolvedY + radius >= rewardChoiceLayout.reservedBottom &&
-      node.resolvedY - radius <= rewardChoiceLayout.reservedTop
-    );
   }
 
   private getInteractableVisibleNodes() {
@@ -4402,8 +4323,6 @@ export class GameSessionController {
       this.triggerModuleFlash('souffleur', 0.12);
     }
 
-    const rewardChoiceLayout = this.getActiveRewardChoiceLayout();
-
     const grapAmbientEnemy = this.getAmbientEnemyById(this.grapAmbientEnemyId);
     let grapNode: ResolvedGamePathNode | null = null;
     if (this.grapTargetIndex !== null || grapAmbientEnemy) {
@@ -4518,9 +4437,10 @@ export class GameSessionController {
         const entry = this.resolveChoiceNode(choice.entry);
         const rewardAttachment = this.findCaptureAttachment(entry, previousPosition, this.playerPosition, travelSpeed);
         if (rewardAttachment) {
+          const rewardAttachIndex = this.attachedIndex + 3;
           this.commitRewardBranch(index, false);
           this.attachToNode(
-            this.attachedIndex + 1,
+            rewardAttachIndex,
             true,
             this.playerPosition,
             this.playerVelocity,
@@ -4537,7 +4457,7 @@ export class GameSessionController {
       this.attachedIndex + Math.max(24, this.displayWindowIndices.length + 8),
       this.sprintFishLandingTargetIndex !== null ? this.sprintFishLandingTargetIndex + 3 : 0
     );
-    const giganticCapture = this.findBestForwardCaptureCandidate(previousPosition, this.playerPosition, travelSpeed, searchLimit, rewardChoiceLayout, true);
+    const giganticCapture = this.findBestForwardCaptureCandidate(previousPosition, this.playerPosition, travelSpeed, searchLimit, true);
     if (giganticCapture) {
       if (this.grapTargetIndex === giganticCapture.node.index) {
         this.beginGrappleLanding();
@@ -4554,7 +4474,7 @@ export class GameSessionController {
       return;
     }
 
-    const forwardCapture = this.findBestForwardCaptureCandidate(previousPosition, this.playerPosition, travelSpeed, searchLimit, rewardChoiceLayout, false);
+    const forwardCapture = this.findBestForwardCaptureCandidate(previousPosition, this.playerPosition, travelSpeed, searchLimit, false);
     if (forwardCapture) {
       if (this.grapTargetIndex === forwardCapture.node.index) {
         this.beginGrappleLanding();
@@ -7419,7 +7339,6 @@ export class GameSessionController {
     currentPosition: THREE.Vector3,
     travelSpeed: number,
     searchLimit: number,
-    rewardChoiceLayout: NonNullable<ReturnType<GameSessionController['getActiveRewardChoiceLayout']>> | null,
     giganticOnly: boolean
   ) {
     let best: CaptureCandidate | null = null;
@@ -7439,9 +7358,6 @@ export class GameSessionController {
         node.resolvedX + this.getNodeProgressExtentX(node) >= safeLeft &&
         node.resolvedX - this.getNodeProgressExtentX(node) <= safeRight + Math.max(1.2, radius * 0.16);
       if (this.isNodeFullyPassed(node) && !stillVisibleMilestone) {
-        continue;
-      }
-      if (rewardChoiceLayout && this.isNodeInsideActiveRewardReserve(node, rewardChoiceLayout)) {
         continue;
       }
       if (giganticOnly ? !node.isGigantic : node.isGigantic) {
