@@ -190,9 +190,9 @@ export class OrbitWorldSystem {
   private focusReadyAt = 0;
   private activeLookAt = new THREE.Vector3();
   private externalLayoutActive = false;
-  private externalLayoutPositions: THREE.Vector3[] | null = null;
-  private externalLayoutScales: number[] | null = null;
-  private externalLayoutVisuals: VisiblePlatformVisual[] | null = null;
+  private externalLayoutPositions: Array<THREE.Vector3 | null> | null = null;
+  private externalLayoutScales: Array<number | null> | null = null;
+  private externalLayoutVisuals: Array<VisiblePlatformVisual | null> | null = null;
   private externalTransitionFrom: THREE.Vector3[] = [];
   private externalTransitionTo: THREE.Vector3[] = [];
   private externalTransitionProgress = 0;
@@ -681,15 +681,18 @@ export class OrbitWorldSystem {
 
   beginExternalLayoutTransition(
     targets: THREE.Vector3[],
-    scales?: number[],
-    visuals?: VisiblePlatformVisual[],
+    scales?: Array<number | null>,
+    visuals?: Array<VisiblePlatformVisual | null>,
     options?: { staggerVisibleIndex?: number | null; reverseStagger?: boolean }
   ) {
-    const previousExternalPositions = this.externalLayoutPositions?.map((position) => position.clone()) ?? null;
+    const currentPositions = this.getCurrentShardPositions();
+    const previousExternalPositions = this.externalLayoutPositions?.map(
+      (position, index) => position?.clone() ?? currentPositions[index]?.clone() ?? new THREE.Vector3()
+    ) ?? null;
     this.externalLayoutActive = true;
     this.externalLayoutPositions = null;
     this.externalLayoutScales = scales ? [...scales] : null;
-    this.externalLayoutVisuals = visuals ? visuals.map((visual) => ({
+    this.externalLayoutVisuals = visuals ? visuals.map((visual) => (visual ? {
       scale: visual.scale.clone(),
       shapeKind: visual.shapeKind,
       spinDirection: visual.spinDirection,
@@ -712,7 +715,7 @@ export class OrbitWorldSystem {
       iconScale: visual.iconScale,
       iconOffsetY: visual.iconOffsetY,
       iconRotation: visual.iconRotation
-    })) : null;
+    } : null)) : null;
     this.externalTransitionFrom = previousExternalPositions ?? this.getCurrentShardPositions();
     this.externalTransitionTo = targets.map((target) => target.clone());
     this.externalTransitionProgress = 0;
@@ -727,11 +730,15 @@ export class OrbitWorldSystem {
     this.externalTransitionProgress = progress;
   }
 
-  setExternalLayoutPositions(positions: THREE.Vector3[], scales?: number[], visuals?: VisiblePlatformVisual[]) {
+  setExternalLayoutPositions(
+    positions: Array<THREE.Vector3 | null>,
+    scales?: Array<number | null>,
+    visuals?: Array<VisiblePlatformVisual | null>
+  ) {
     this.externalLayoutActive = true;
-    this.externalLayoutPositions = positions.map((position) => position.clone());
+    this.externalLayoutPositions = positions.map((position) => position?.clone() ?? null);
     this.externalLayoutScales = scales ? [...scales] : null;
-    this.externalLayoutVisuals = visuals ? visuals.map((visual) => ({
+    this.externalLayoutVisuals = visuals ? visuals.map((visual) => (visual ? {
       scale: visual.scale.clone(),
       shapeKind: visual.shapeKind,
       spinDirection: visual.spinDirection,
@@ -754,11 +761,15 @@ export class OrbitWorldSystem {
       iconScale: visual.iconScale,
       iconOffsetY: visual.iconOffsetY,
       iconRotation: visual.iconRotation
-    })) : null;
+    } : null)) : null;
     this.externalTransitionDelays = [];
   }
 
-  setExternalLayoutSnapshot(positions: THREE.Vector3[], scales?: number[], visuals?: VisiblePlatformVisual[]) {
+  setExternalLayoutSnapshot(
+    positions: Array<THREE.Vector3 | null>,
+    scales?: Array<number | null>,
+    visuals?: Array<VisiblePlatformVisual | null>
+  ) {
     this.externalLayoutActive = true;
     this.externalLayoutPositions = positions;
     this.externalLayoutScales = scales ?? null;
@@ -895,8 +906,17 @@ export class OrbitWorldSystem {
 
       if (this.externalLayoutActive) {
         const externalVisual = this.externalLayoutVisuals?.[index] ?? null;
-        if (this.externalLayoutPositions?.[index]) {
-          targetPosition = this.externalLayoutPositions[index];
+        const externalPosition = this.externalLayoutPositions?.[index] ?? null;
+        if (this.externalLayoutPositions && (!externalPosition || !externalVisual)) {
+          entity.group.visible = false;
+          entity.hiddenUntil = 0;
+          entity.accentRing.visible = false;
+          entity.iconPlane.visible = false;
+          entity.core.material.opacity = 0;
+          return;
+        }
+        if (externalPosition) {
+          targetPosition = externalPosition;
         } else if (this.externalTransitionFrom[index] && this.externalTransitionTo[index]) {
           targetPosition = this.externalTransitionFrom[index]
             .clone()
@@ -907,7 +927,10 @@ export class OrbitWorldSystem {
           if (externalVisual) {
             entity.group.rotation.z = externalVisual.shapeKind === 'round' ? 0 : externalVisual.spinPhase;
           }
-          entity.hiddenUntil = elapsedTime + 0.08;
+          entity.hiddenUntil = 0;
+        }
+        if (this.externalLayoutPositions) {
+          entity.hiddenUntil = 0;
         }
         targetScaleX = externalVisual?.scale.x ?? this.externalLayoutScales?.[index] ?? 1.02;
         targetScaleY = targetScaleX;

@@ -46,7 +46,18 @@ function createResolvedNode(index: number, x: number, y: number): ResolvedGamePa
   };
 }
 
-function updateControllerForViewport(width: number, height: number, momentumGauge = 0.45, frames = 1) {
+function updateControllerForViewport(
+  width: number,
+  height: number,
+  options: {
+    momentumGauge?: number;
+    momentumOverdrive?: number;
+    frames?: number;
+    playerY?: number;
+    verticalClampMinY?: number;
+    verticalClampMaxY?: number;
+  } = {}
+) {
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: {
@@ -59,6 +70,13 @@ function updateControllerForViewport(width: number, height: number, momentumGaug
   const currentNode = createResolvedNode(12, 24, 0);
   const nextNode = createResolvedNode(13, 31, 2);
   controller.reset(currentNode, 1);
+  const momentumGauge = options.momentumGauge ?? 0.45;
+  const momentumOverdrive = options.momentumOverdrive ?? 0;
+  const frames = options.frames ?? 1;
+  const playerY = options.playerY ?? 1.5;
+  const verticalClampMinY = options.verticalClampMinY ?? -28;
+  const verticalClampMaxY = options.verticalClampMaxY ?? 45;
+
   for (let frame = 0; frame < frames; frame += 1) {
     controller.update({
       deltaTime: 1 / 60,
@@ -67,15 +85,16 @@ function updateControllerForViewport(width: number, height: number, momentumGaug
       directionSign: 1,
       currentNode,
       nextNode,
-      playerPosition: new THREE.Vector3(25.5, 1.5, 0),
+      playerPosition: new THREE.Vector3(25.5, playerY, 0),
       momentumGauge,
+      momentumOverdrive,
       largeShardFactor: 0,
       milestoneZoom: 0,
       choiceZoom: 0,
       speedPressure: 1,
       focusLock: null,
-      verticalClampMinY: -28,
-      verticalClampMaxY: 45
+      verticalClampMinY,
+      verticalClampMaxY
     });
   }
   return controller;
@@ -123,12 +142,59 @@ describe('CameraRailController', () => {
   });
 
   it('extends zoom-out further when momentum overdrive exceeds the base range', () => {
-    const baseMomentumController = updateControllerForViewport(1600, 900, 1, 120);
-    const equipmentBoostedController = updateControllerForViewport(1600, 900, 1.55, 120);
+    const baseMomentumController = updateControllerForViewport(1600, 900, {
+      momentumGauge: 1,
+      frames: 120
+    });
+    const equipmentBoostedController = updateControllerForViewport(1600, 900, {
+      momentumGauge: 1,
+      momentumOverdrive: 0.65,
+      frames: 120
+    });
 
     expect(equipmentBoostedController.getZoom()).toBeGreaterThan(baseMomentumController.getZoom());
     expect(equipmentBoostedController.getSafeRight() - equipmentBoostedController.getSafeLeft()).toBeGreaterThan(
       baseMomentumController.getSafeRight() - baseMomentumController.getSafeLeft()
     );
+  });
+
+  it('zooms out more as momentum rises during regular running', () => {
+    const lowMomentumController = updateControllerForViewport(1600, 900, {
+      momentumGauge: 0,
+      frames: 120
+    });
+    const highMomentumController = updateControllerForViewport(1600, 900, {
+      momentumGauge: 1,
+      frames: 120
+    });
+
+    expect(highMomentumController.getZoom()).toBeGreaterThan(lowMomentumController.getZoom());
+    expect(highMomentumController.getVisibleTop() - highMomentumController.getVisibleBottom()).toBeGreaterThan(
+      lowMomentumController.getVisibleTop() - lowMomentumController.getVisibleBottom()
+    );
+  });
+
+  it('makes the visible top edge exactly match the top death boundary when clamped high', () => {
+    const controller = updateControllerForViewport(1600, 900, {
+      playerY: 120,
+      frames: 240,
+      verticalClampMinY: -28,
+      verticalClampMaxY: 45
+    });
+
+    expect(controller.getVisibleTop()).toBeCloseTo(45, 4);
+    expect(controller.getSafeTop()).toBeCloseTo(45, 4);
+  });
+
+  it('makes the visible bottom edge exactly match the bottom death boundary when clamped low', () => {
+    const controller = updateControllerForViewport(1600, 900, {
+      playerY: -120,
+      frames: 240,
+      verticalClampMinY: -28,
+      verticalClampMaxY: 45
+    });
+
+    expect(controller.getVisibleBottom()).toBeCloseTo(-28, 4);
+    expect(controller.getSafeBottom()).toBeCloseTo(-28, 4);
   });
 });

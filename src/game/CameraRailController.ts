@@ -19,6 +19,7 @@ interface CameraRailUpdateConfig {
   nextNode: ResolvedGamePathNode;
   playerPosition: THREE.Vector3;
   momentumGauge: number;
+  momentumOverdrive?: number;
   largeShardFactor: number;
   milestoneZoom: number;
   choiceZoom: number;
@@ -185,11 +186,12 @@ export class CameraRailController {
     config: CameraRailUpdateConfig,
     lockMode: CameraFocusLock['mode'] | 'none'
   ) {
-    const baseMomentumZoom = profile.momentumZoomRange * Math.pow(THREE.MathUtils.clamp(config.momentumGauge, 0, 1), 1.04);
+    const normalizedMomentum = THREE.MathUtils.clamp(config.momentumGauge, 0, 1);
+    const baseMomentumZoom = profile.momentumZoomRange * Math.pow(normalizedMomentum, 0.92) * 1.08;
     const equipmentMomentumOverdrive =
       profile.momentumZoomRange *
-      0.74 *
-      Math.pow(Math.max(0, config.momentumGauge - 1), 1.1);
+      0.92 *
+      Math.max(0, config.momentumOverdrive ?? 0);
     const momentumZoom = baseMomentumZoom + equipmentMomentumOverdrive;
     this.targetZoom =
       profile.baseZoom +
@@ -206,7 +208,7 @@ export class CameraRailController {
             ? 8.8
             : config.state === 'upgrade_branching'
               ? 1.35
-              : 1.55;
+              : 2.35;
     this.currentZoom = damp(this.currentZoom, this.targetZoom, zoomResponse, config.deltaTime);
   }
 
@@ -220,10 +222,9 @@ export class CameraRailController {
       return;
     }
 
-    const gameplayHalfHeight = Math.max(this.getHalfHeightAtZoom(this.currentZoom), CameraRailController.MIN_GAMEPLAY_HALF_HEIGHT);
-    const safeVerticalInset = gameplayHalfHeight * 0.94;
-    const minFocusY = config.verticalClampMinY + safeVerticalInset;
-    const maxFocusY = config.verticalClampMaxY - safeVerticalInset;
+    const visibleHalfHeight = this.getVisibleHalfHeightAtZoom(this.currentZoom);
+    const minFocusY = config.verticalClampMinY + visibleHalfHeight;
+    const maxFocusY = config.verticalClampMaxY - visibleHalfHeight;
 
     if (minFocusY > maxFocusY) {
       this.currentFocus.y = (config.verticalClampMinY + config.verticalClampMaxY) * 0.5;
@@ -234,7 +235,7 @@ export class CameraRailController {
   }
 
   private updatePose() {
-    this.renderZoom = this.resolvePresentationZoom();
+    this.renderZoom = this.resolvePresentationZoom(this.currentZoom);
     this.position.set(
       this.currentFocus.x - CameraRailController.CAMERA_CENTER_OFFSET * this.directionSign,
       this.currentFocus.y + 0.18,
@@ -251,8 +252,8 @@ export class CameraRailController {
     );
     this.safeLeft = this.lookAt.x - gameplayHalfWidth * 0.94;
     this.safeRight = this.lookAt.x + gameplayHalfWidth * 0.94;
-    this.safeTop = this.lookAt.y + gameplayHalfHeight * 0.94;
-    this.safeBottom = this.lookAt.y - gameplayHalfHeight * 0.94;
+    this.safeTop = Number.isFinite(this.visibleTop) ? this.visibleTop : this.lookAt.y + gameplayHalfHeight * 0.94;
+    this.safeBottom = Number.isFinite(this.visibleBottom) ? this.visibleBottom : this.lookAt.y - gameplayHalfHeight * 0.94;
   }
 
   isBehindSafeLine(position: THREE.Vector3) {
@@ -320,16 +321,24 @@ export class CameraRailController {
     );
   }
 
-  private resolvePresentationZoom() {
-    const aspect = Math.max(0.5, window.innerWidth / Math.max(1, window.innerHeight));
+  private resolvePresentationZoom(baseZoom: number) {
+    const aspect = this.getViewportAspect();
     const minimumZoomForGameplayWidth =
       this.resolveGameplayHalfWidth() /
       Math.max(0.0001, Math.tan(THREE.MathUtils.degToRad(this.fov * 0.5)) * aspect);
-    return Math.max(this.currentZoom, minimumZoomForGameplayWidth);
+    return Math.max(baseZoom, minimumZoomForGameplayWidth);
+  }
+
+  private getVisibleHalfHeightAtZoom(zoom: number) {
+    return this.getHalfHeightAtZoom(this.resolvePresentationZoom(zoom));
+  }
+
+  private getViewportAspect() {
+    return Math.max(0.5, window.innerWidth / Math.max(1, window.innerHeight));
   }
 
   private updateVisibleBounds() {
-    const aspect = Math.max(0.5, window.innerWidth / Math.max(1, window.innerHeight));
+    const aspect = this.getViewportAspect();
     const visibleHalfHeight = this.getHalfHeightAtZoom(this.renderZoom);
     const visibleHalfWidth = visibleHalfHeight * aspect;
     this.visibleLeft = this.lookAt.x - visibleHalfWidth;

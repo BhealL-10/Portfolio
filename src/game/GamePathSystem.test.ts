@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { pathDistanceToMeters } from './difficultyScaler';
+import { DEFAULT_COLUMN_DISTANCE, pathDistanceToMeters } from './difficultyScaler';
 import { GamePathSystem } from './GamePathSystem';
-import { getPathLaneSpacing, getPathLaneTargets } from './pathLayout';
+import { getPathLaneSpacing, getPathLaneTargets, getPathLaneVerticalOffset } from './pathLayout';
 import { findPlacementConflicts } from './PathPlacement';
 import { buildUpgradeOffers, createRunUpgradeState } from './roguelite';
 
@@ -81,6 +81,95 @@ function countUsedLanes(nodes: ReturnType<typeof collectNodes>, startMeters: num
   ).size;
 }
 
+function countFormationWindows(
+  nodes: ReturnType<typeof collectNodes>,
+  startMeters: number,
+  endMeters: number,
+  windowWidthMeters = 0.6,
+  minimumNodes = 2
+) {
+  const filtered = nodes
+    .filter(({ node, distanceMeters }) => !node.isMilestone && distanceMeters >= startMeters && distanceMeters < endMeters)
+    .sort((left, right) => left.distanceMeters - right.distanceMeters);
+  let count = 0;
+  let index = 0;
+
+  while (index < filtered.length) {
+    const start = filtered[index]!.distanceMeters;
+    const window = filtered.filter(({ distanceMeters }) => distanceMeters >= start && distanceMeters <= start + windowWidthMeters);
+    if (window.length >= minimumNodes) {
+      count += 1;
+      index += window.length;
+      continue;
+    }
+    index += 1;
+  }
+
+  return count;
+}
+
+function countMixedSizeFormationWindows(
+  nodes: ReturnType<typeof collectNodes>,
+  startMeters: number,
+  endMeters: number,
+  windowWidthMeters = 0.6
+) {
+  const filtered = nodes
+    .filter(({ node, distanceMeters }) => !node.isMilestone && distanceMeters >= startMeters && distanceMeters < endMeters)
+    .sort((left, right) => left.distanceMeters - right.distanceMeters);
+  let count = 0;
+  let index = 0;
+
+  while (index < filtered.length) {
+    const start = filtered[index]!.distanceMeters;
+    const window = filtered.filter(({ distanceMeters }) => distanceMeters >= start && distanceMeters <= start + windowWidthMeters);
+    if (window.length >= 2 && new Set(window.map(({ node }) => node.sizeTier)).size >= 2) {
+      count += 1;
+      index += window.length;
+      continue;
+    }
+    index += 1;
+  }
+
+  return count;
+}
+
+function countSharedColumnGroups(
+  nodes: ReturnType<typeof collectNodes>,
+  startMeters: number,
+  endMeters: number,
+  minimumNodes = 2
+) {
+  const filtered = nodes
+    .filter(({ node, distanceMeters }) => !node.isMilestone && distanceMeters >= startMeters && distanceMeters < endMeters)
+    .map(({ node }) => node);
+  const groups = new Map<string, number>();
+
+  filtered.forEach((node) => {
+    const key = node.x.toFixed(4);
+    groups.set(key, (groups.get(key) ?? 0) + 1);
+  });
+
+  return Array.from(groups.values()).filter((count) => count >= minimumNodes).length;
+}
+
+function getMaximumForwardGap(
+  nodes: ReturnType<typeof collectNodes>,
+  startMeters: number,
+  endMeters: number
+) {
+  const filtered = nodes
+    .filter(({ node, distanceMeters }) => !node.isMilestone && distanceMeters >= startMeters && distanceMeters < endMeters)
+    .sort((left, right) => left.distanceMeters - right.distanceMeters);
+
+  let maximumGap = 0;
+  for (let index = 1; index < filtered.length; index += 1) {
+    maximumGap = Math.max(maximumGap, filtered[index]!.distanceMeters - filtered[index - 1]!.distanceMeters);
+  }
+
+  return maximumGap;
+}
+
 describe('GamePathSystem block generation', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -103,6 +192,21 @@ describe('GamePathSystem block generation', () => {
 
     expect(firstMilestone?.distanceMeters).toBeCloseTo(10, 5);
     expect(introNodes.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it('keeps intro, milestone, and reward anchors in the same raised vertical field', () => {
+    const path = buildPath(0.20202020202020202);
+    path.prebuild(180);
+
+    const startNode = path.getNode(0)!;
+    const milestone = Array.from({ length: 40 }, (_, index) => path.getNode(index))
+      .find((node) => node?.isMilestone && Math.round(pathDistanceToMeters(node.pathDistance)) === 10)!;
+    const rewardTrio = [1, 2, 3].map((offset) => path.getNode(milestone.index + offset)!);
+
+    expect(startNode.y).toBeCloseTo(getPathLaneVerticalOffset(0), 4);
+    expect(milestone.y).toBeCloseTo(getPathLaneVerticalOffset(10), 4);
+    expect(Math.max(...rewardTrio.map((node) => node.y))).toBeGreaterThan(getPathLaneVerticalOffset(10) + 6);
+    expect(Math.min(...rewardTrio.map((node) => node.y))).toBeLessThan(getPathLaneVerticalOffset(10));
   });
 
   it('places a guaranteed shop exactly 50m inside every main 100m block', () => {
@@ -138,8 +242,8 @@ describe('GamePathSystem block generation', () => {
     expect(firstRewardCorridor.every(({ node }) => node.milestoneOwned)).toBe(true);
     expect(secondRewardCorridor.every(({ node }) => node.milestoneOwned)).toBe(true);
     expect(lastBefore110?.distanceMeters ?? 0).toBeGreaterThan(103);
-    expect(firstAfter110?.distanceMeters ?? 0).toBeGreaterThan(116.9);
-    expect(firstAfter110?.distanceMeters ?? 999).toBeLessThan(119.5);
+    expect(firstAfter110?.distanceMeters ?? 0).toBeGreaterThan(119.2);
+    expect(firstAfter110?.distanceMeters ?? 999).toBeLessThan(120.6);
   });
 
   it('uses much more of the 10-lane field instead of collapsing into a single middle row', () => {
@@ -158,7 +262,20 @@ describe('GamePathSystem block generation', () => {
     expect(countUsedLanes(allNodes, 410, 510)).toBeGreaterThanOrEqual(2);
   });
 
-  it('starts extremely dense and then tapers block density gradually toward 500m+', () => {
+  it('pushes the shard field higher and uses the upper playable space aggressively', () => {
+    const nodes = collectNodes(240, 0.98989898989899)
+      .filter(({ node, distanceMeters }) => !node.isMilestone && distanceMeters >= 10 && distanceMeters < 210)
+      .map(({ node }) => node.y);
+
+    const averageY = nodes.reduce((sum, y) => sum + y, 0) / Math.max(1, nodes.length);
+    const highNodes = nodes.filter((y) => y >= 18);
+
+    expect(Math.max(...nodes)).toBeGreaterThan(29.5);
+    expect(highNodes.length).toBeGreaterThanOrEqual(22);
+    expect(averageY).toBeGreaterThan(1.5);
+  });
+
+  it('starts extremely dense and then trends lighter over distance without collapsing into gaps', () => {
     const nodes = collectNodes(840, 0.6180339887498948);
     const blockCounts = [
       countSectionNodes(nodes, 10, 110),
@@ -171,18 +288,59 @@ describe('GamePathSystem block generation', () => {
       countSectionNodes(nodes, 710, 810)
     ];
 
-    expect(blockCounts[0]).toBeGreaterThanOrEqual(64);
-    expect(blockCounts[1]).toBeGreaterThanOrEqual(52);
-    expect(blockCounts[2]).toBeGreaterThanOrEqual(42);
-    expect(blockCounts[3]).toBeGreaterThanOrEqual(32);
-    expect(blockCounts[4]).toBeGreaterThanOrEqual(24);
-    expect(blockCounts[0]).toBeGreaterThan(blockCounts[1]);
-    expect(blockCounts[1]).toBeGreaterThan(blockCounts[2]);
-    expect(blockCounts[2]).toBeGreaterThan(blockCounts[3]);
+    expect(blockCounts[0]).toBeGreaterThanOrEqual(82);
+    expect(blockCounts[1]).toBeGreaterThanOrEqual(68);
+    expect(blockCounts[2]).toBeGreaterThanOrEqual(52);
+    expect(blockCounts[3]).toBeGreaterThanOrEqual(36);
+    expect(blockCounts[4]).toBeGreaterThanOrEqual(28);
+    expect(blockCounts[0]).toBeGreaterThan(blockCounts[3]);
+    expect(Math.max(blockCounts[1], blockCounts[2])).toBeGreaterThan(blockCounts[3]);
     expect(blockCounts[3]).toBeGreaterThan(blockCounts[4]);
+    expect(blockCounts[4]).toBeGreaterThan(blockCounts[6]);
     blockCounts.forEach((count) => {
       expect(count).toBeGreaterThanOrEqual(14);
     });
+  });
+
+  it('builds clustered local formations instead of a single one-node-per-slice route', () => {
+    const nodes = collectNodes(240, 0.42424242424242425);
+
+    expect(countFormationWindows(nodes, 10, 110)).toBeGreaterThanOrEqual(13);
+    expect(countFormationWindows(nodes, 110, 210)).toBeGreaterThanOrEqual(9);
+    expect(countFormationWindows(nodes, 10, 110, 2.2, 3)).toBeGreaterThanOrEqual(8);
+    expect(countFormationWindows(nodes, 110, 210, 2.2, 3)).toBeGreaterThanOrEqual(5);
+    expect(countMixedSizeFormationWindows(nodes, 10, 110)).toBeGreaterThanOrEqual(7);
+  });
+
+  it('keeps forward gaps capped so the path stays populated beyond 50m and 60m', () => {
+    const nodes = collectNodes(420, 0.7878787878787878);
+
+    expect(getMaximumForwardGap(nodes, 20, 100)).toBeLessThanOrEqual(1.85);
+    expect(getMaximumForwardGap(nodes, 120, 200)).toBeLessThanOrEqual(1.9);
+    expect(getMaximumForwardGap(nodes, 220, 300)).toBeLessThanOrEqual(2.1);
+  });
+
+  it('allows true same-x vertical columns in the early dense grid', () => {
+    const nodes = collectNodes(180, 0.37373737373737376);
+
+    expect(countSharedColumnGroups(nodes, 10, 110, 2)).toBeGreaterThanOrEqual(12);
+    expect(countSharedColumnGroups(nodes, 10, 110, 3)).toBeGreaterThanOrEqual(3);
+  });
+
+  it('keeps the intro field lifted so the first 10m no longer sits below the main field', () => {
+    const nodes = collectNodes(160, 0.7070707070707071);
+    const introYs = nodes
+      .filter(({ node, distanceMeters }) => !node.isMilestone && distanceMeters > 0 && distanceMeters < 10)
+      .map(({ node }) => node.y);
+    const mainYs = nodes
+      .filter(({ node, distanceMeters }) => !node.isMilestone && distanceMeters >= 10 && distanceMeters < 110)
+      .map(({ node }) => node.y);
+
+    const introAverage = introYs.reduce((sum, y) => sum + y, 0) / Math.max(1, introYs.length);
+    const mainAverage = mainYs.reduce((sum, y) => sum + y, 0) / Math.max(1, mainYs.length);
+
+    expect(introAverage).toBeGreaterThan(mainAverage - 0.35);
+    expect(Math.max(...introYs)).toBeGreaterThan(31);
   });
 
   it('makes moving shards common and gives them longer travel than before', () => {
@@ -212,6 +370,62 @@ describe('GamePathSystem block generation', () => {
 
     expect(branches).toHaveLength(3);
     expect(furthestBranchMeters).toBeLessThan(pathDistanceToMeters(firstMainNode!.pathDistance));
+  });
+
+  it('keeps the reward trio in place and converts those same nodes back to normal shards after resolution', () => {
+    const seed = 0.6161616161616161;
+    const path = buildPath(seed);
+    path.prebuild(180);
+
+    const milestone = Array.from({ length: 40 }, (_, index) => path.getNode(index))
+      .find((node) => node?.isMilestone && Math.round(pathDistanceToMeters(node.pathDistance)) === 10);
+    expect(milestone).toBeTruthy();
+
+    const offers = buildUpgradeOffers(Math.max(100, milestone!.index), createRunUpgradeState(), path.getSeededRng(), 3);
+    const trioBefore = [1, 2, 3].map((offset) => path.getNode(milestone!.index + offset)!);
+    const branches = path.createUpgradeBranches(milestone!.index, offers, milestone!.index);
+    path.activateMilestoneRewardChoices(milestone!.index, offers);
+    const trioDuring = [1, 2, 3].map((offset) => path.getNode(milestone!.index + offset)!);
+
+    expect(branches.map((branch) => branch.entry.index)).toEqual(trioBefore.map((node) => node.index));
+    expect(trioDuring.every((node) => node.colorHint === 'reward' && node.kind === 'branch')).toBe(true);
+    expect(new Set(trioBefore.map((node) => node.x.toFixed(5)))).toHaveLength(1);
+    expect(trioBefore.every((node) => node.shapeKind === 'round')).toBe(true);
+    expect(new Set(trioBefore.map((node) => node.sizeTier))).toEqual(new Set(['medium_large']));
+    expect(
+      Math.abs(trioBefore.reduce((sum, node) => sum + node.y, 0) / trioBefore.length - milestone!.y)
+    ).toBeLessThan(getPathLaneSpacing(milestone!.index));
+    expect(trioDuring.map((node) => [node.x, node.y, node.shapeKind, node.sizeTier])).toEqual(
+      trioBefore.map((node) => [node.x, node.y, node.shapeKind, node.sizeTier])
+    );
+
+    path.settleMilestoneRewardChoices(milestone!.index);
+    const trioAfter = [1, 2, 3].map((offset) => path.getNode(milestone!.index + offset)!);
+
+    expect(trioAfter.every((node) => node.colorHint === 'none' && node.kind === 'normal')).toBe(true);
+    expect(trioAfter.map((node) => [node.x, node.y, node.shapeKind, node.sizeTier])).toEqual(
+      trioBefore.map((node) => [node.x, node.y, node.shapeKind, node.sizeTier])
+    );
+  });
+
+  it('builds a guaranteed sprintFish landing cluster with multiple landing options and forward continuation', () => {
+    const path = buildPath(0.8080808080808081);
+    path.prebuild(240);
+
+    const anchorIndex = 18;
+    const anchor = path.getNode(anchorIndex)!;
+    const landingIndex = path.ensureSprintFishLandingPath(
+      anchorIndex,
+      anchor.x + DEFAULT_COLUMN_DISTANCE * 5.2,
+      18.4
+    );
+    const landingCluster = [0, 1, 2].map((offset) => path.getNode(landingIndex + offset)!);
+    const exitNodes = [3, 4].map((offset) => path.getNode(landingIndex + offset)!);
+
+    expect(new Set(landingCluster.map((node) => node.x.toFixed(5)))).toHaveLength(1);
+    expect(landingCluster.every((node) => node.shapeKind === 'round' && !node.isMilestone)).toBe(true);
+    expect(exitNodes.every((node) => node.x > landingCluster[0]!.x)).toBe(true);
+    expect(exitNodes[1]!.x).toBeGreaterThan(exitNodes[0]!.x);
   });
 
   it('stays deterministic for the same seed and changes layout when the seed changes', () => {

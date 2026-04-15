@@ -1820,8 +1820,9 @@ export class AppController {
       return this.world.getGameFieldCapacity();
     }
     const requestedCount = this.game.getRecommendedVisibleCount();
-    this.world.ensureGameFieldCapacity(requestedCount);
-    return requestedCount;
+    const capacity = this.game.ensureVisiblePlatformCapacity(requestedCount);
+    this.world.ensureGameFieldCapacity(capacity);
+    return capacity;
   }
 
   private updateGuide() {

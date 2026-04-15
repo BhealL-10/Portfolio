@@ -1,6 +1,6 @@
 import { DEFAULT_COLUMN_DISTANCE, getDifficultyProfile } from './difficultyScaler';
 import type { GamePathNode } from './gameSessionTypes';
-import { getPathVerticalExtent } from './pathLayout';
+import { getPathLaneTargets } from './pathLayout';
 
 export type PlacementConflictType = 'spacing' | 'milestone_reserved' | 'motion_corridor';
 
@@ -49,8 +49,8 @@ export function validatePathPlacement(
       }
     }
 
-    const verticalLimit = getPathVerticalExtent(candidate.index) + DEFAULT_COLUMN_DISTANCE * 1.55;
-    if (Math.abs(candidate.y) > verticalLimit) {
+    const verticalBounds = getVerticalPlacementBounds(candidate.index);
+    if (nodeLeavesVerticalBounds(candidate, verticalBounds)) {
       return false;
     }
 
@@ -74,7 +74,7 @@ export function validatePathPlacement(
       }
     }
 
-    if (motionLeavesVerticalBounds(candidate, verticalLimit) || motionIntrudesReservedRanges(candidate, reservedRanges)) {
+    if (motionLeavesVerticalBounds(candidate, verticalBounds) || motionIntrudesReservedRanges(candidate, reservedRanges)) {
       return false;
     }
 
@@ -90,8 +90,8 @@ export function findPlacementConflicts(nodes: GamePathNode[], reservedRanges: Pl
 
   for (let index = 0; index < nodes.length; index += 1) {
     const left = nodes[index]!;
-    const verticalLimit = getPathVerticalExtent(left.index) + DEFAULT_COLUMN_DISTANCE * 1.55;
-    if (motionLeavesVerticalBounds(left, verticalLimit)) {
+    const verticalBounds = getVerticalPlacementBounds(left.index);
+    if (nodeLeavesVerticalBounds(left, verticalBounds) || motionLeavesVerticalBounds(left, verticalBounds)) {
       conflicts.push({
         type: 'motion_corridor',
         leftIndex: left.index,
@@ -257,8 +257,8 @@ function canShareVerticalColumn(
 
   const sameColumnBand = Math.abs(dx) <= Math.max(2.1, minimumDistance * 0.34);
   const verticalSpread = Math.abs(dy) >= Math.max(4.1, minimumDistance * 0.94);
-  const verticalCap = Math.abs(dy) <= Math.max(maxVerticalDelta * 2.8, DEFAULT_COLUMN_DISTANCE * 2.1);
-  const forwardEnough = dx >= 0.28;
+  const verticalCap = Math.abs(dy) <= Math.max(maxVerticalDelta * 4.4, DEFAULT_COLUMN_DISTANCE * 2.5);
+  const forwardEnough = dx >= -0.04;
 
   return sameColumnBand && verticalSpread && verticalCap && forwardEnough;
 }
@@ -317,15 +317,45 @@ function normalizeVector(x: number, y: number) {
   return { x: x / length, y: y / length };
 }
 
-function motionLeavesVerticalBounds(node: GamePathNode, verticalLimit: number) {
+function getVerticalPlacementBounds(score: number) {
+  const laneTargets = getPathLaneTargets(score);
+  const padding = DEFAULT_COLUMN_DISTANCE * 1.55;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  laneTargets.forEach((targetY) => {
+    minY = Math.min(minY, targetY);
+    maxY = Math.max(maxY, targetY);
+  });
+
+  return {
+    minY: minY - padding,
+    maxY: maxY + padding
+  };
+}
+
+function nodeLeavesVerticalBounds(
+  node: GamePathNode,
+  verticalBounds: { minY: number; maxY: number }
+) {
+  const footprintY = getPlacementHalfHeight(node);
+  return node.y - footprintY < verticalBounds.minY || node.y + footprintY > verticalBounds.maxY;
+}
+
+function motionLeavesVerticalBounds(
+  node: GamePathNode,
+  verticalBounds: { minY: number; maxY: number }
+) {
   const segment = getMotionSegment(node);
   if (!segment) {
     return false;
   }
   const footprintY = getPlacementHalfHeight(node);
   return (
-    Math.abs(segment.rawStart.y) + footprintY > verticalLimit ||
-    Math.abs(segment.end.y) + footprintY > verticalLimit
+    segment.rawStart.y - footprintY < verticalBounds.minY ||
+    segment.rawStart.y + footprintY > verticalBounds.maxY ||
+    segment.end.y - footprintY < verticalBounds.minY ||
+    segment.end.y + footprintY > verticalBounds.maxY
   );
 }
 

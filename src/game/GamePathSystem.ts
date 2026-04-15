@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { clamp } from '../core/math';
 import { DEFAULT_COLUMN_DISTANCE, getDifficultyProfile, pathDistanceToMeters } from './difficultyScaler';
-import { getPathLaneSpacing, getPathLaneTargets } from './pathLayout';
+import { getPathLaneSpacing, getPathLaneTargets, getPathLaneVerticalOffset, PLAYABLE_PATH_LANE_COUNT } from './pathLayout';
 import {
   buildMilestoneReservedRange,
+  getNodePlacementFootprint,
   validatePathPlacement,
   validateTeleportTarget,
   type PlacementReservedRange
@@ -51,18 +52,17 @@ const SIZE_TIER_ORDER: GameShardSizeTier[] = [
 ];
 
 const MILESTONE_HALF_WIDTH = DEFAULT_COLUMN_DISTANCE * 1.72;
-const MILESTONE_REWARD_OFFSET = DEFAULT_COLUMN_DISTANCE * 3.28;
 const MILESTONE_BRANCH_REJOIN_PADDING = DEFAULT_COLUMN_DISTANCE * 1.1;
 const INTRO_BLOCK_METERS = 10;
 const MAIN_BLOCK_METERS = 100;
 const MAIN_BLOCK_SHOP_OFFSET_METERS = 50;
 const MAIN_BLOCK_SHOP_CLEARANCE_METERS = 3.9;
-const INTRO_BLOCK_NODE_TARGET = 14;
-const FIRST_MAIN_BLOCK_NODE_TARGET = 74;
-const POST_DENSE_MAIN_BLOCK_NODE_TARGET = 62;
-const FAR_MAIN_BLOCK_NODE_TARGET = 28;
-const DENSITY_TAPER_START_METERS = 110;
-const DENSITY_TAPER_END_METERS = 500;
+const INTRO_BLOCK_NODE_TARGET = 30;
+const FIRST_MAIN_BLOCK_NODE_TARGET = 204;
+const POST_DENSE_MAIN_BLOCK_NODE_TARGET = 170;
+const FAR_MAIN_BLOCK_NODE_TARGET = 72;
+const DENSITY_TAPER_START_METERS = 260;
+const DENSITY_TAPER_END_METERS = 620;
 const INTRO_COLUMN_JITTER_METERS = 0.08;
 const MAIN_COLUMN_JITTER_METERS = 0.34;
 const INTRO_BLOCK_START_PADDING_METERS = 0.72;
@@ -70,15 +70,21 @@ const INTRO_BLOCK_END_PADDING_METERS = 3.05;
 const MAIN_BLOCK_START_PADDING_METERS = 2.05;
 const MAIN_BLOCK_END_PADDING_METERS = 3.6;
 const POST_MILESTONE_REWARD_RESERVED_START_METERS = 1.9;
-const POST_MILESTONE_REWARD_RESERVED_END_METERS = 6.85;
-const POST_MILESTONE_CONTENT_START_METERS = 7.25;
+const POST_MILESTONE_REWARD_RESERVED_END_METERS = 8.8;
+const POST_MILESTONE_CONTENT_START_METERS = 9.6;
 const MAX_LANE_DELTA_PER_STEP = 3;
 const EXTRA_EVENT_SAFE_GAP_METERS = 11;
 const EXTRA_EVENT_MAX_PER_BLOCK = 2;
 const INTRO_ONBOARDING_END_METERS = 18;
 const MOTION_DURATION_MIN = 1.2;
 const MOTION_DURATION_MAX = 1.82;
-const EARLY_FULL_HEIGHT_SWEEP_ORDER = [4, 5, 6, 7, 8, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 1, 2, 3] as const;
+const EARLY_FULL_HEIGHT_SWEEP_ORDER = [6, 7, 8, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 1, 2, 3, 4, 5] as const;
+const GRID_FULL_SLOT_MASK = (1 << PLAYABLE_PATH_LANE_COUNT) - 1;
+const MILESTONE_GRID_OCCUPIED_HALF_SLOTS = 3;
+const MILESTONE_GRID_SAFETY_SLOTS = 1;
+const GRID_SLICE_MEMBER_OFFSETS = [0, 0, 0, 0, 0.68, 0.68, 1.32, 1.96] as const;
+const SPRINT_FISH_LANDING_SUPPORT_LANE_DELTA = 2;
+const INTRO_PATTERN_FIELD_LIFT = 0.9;
 
 type StructuralBlockKind = 'intro' | 'main';
 
@@ -107,6 +113,24 @@ interface StructuralNodePlan {
   milestoneOwned?: boolean;
 }
 
+interface StructuralSliceEventAssignment {
+  eventType: GameEventType;
+  guaranteedShopIcon: boolean;
+}
+
+interface GridRect {
+  startColumn: number;
+  endColumn: number;
+  startSlot: number;
+  endSlot: number;
+}
+
+interface BlockGridState {
+  startColumn: number;
+  endColumn: number;
+  occupancyMasks: number[];
+}
+
 
 export class GamePathSystem {
   private nodes: GamePathNode[] = [];
@@ -128,7 +152,7 @@ export class GamePathSystem {
       {
         index: 0,
         x: -12,
-        y: 0.8,
+        y: this.getPathFieldCenterY(0),
         z: 0,
         gameplayRadius: 1.86,
         visualScale: 1.92,
@@ -289,7 +313,7 @@ export class GamePathSystem {
   }
 
   ensureSprintFishLandingPath(anchorIndex: number, landingRawX: number, landingY: number) {
-    this.ensureAhead(anchorIndex + 10, 90, 72);
+    this.ensureAhead(anchorIndex + 16, 132, 96);
     const clampedAnchorIndex = THREE.MathUtils.clamp(anchorIndex, 0, Math.max(0, this.nodes.length - 1));
     const anchorNode = this.nodes[clampedAnchorIndex];
     if (!anchorNode) {
@@ -305,10 +329,12 @@ export class GamePathSystem {
       -laneSpacing * 2.8,
       laneSpacing * 3.15
     );
+    const laneTargets = getPathLaneTargets(score);
+    const landingLane = this.getLaneIndex(targetLandingY, laneTargets);
 
     const existing = this.nodes
-      .slice(clampedAnchorIndex + 1, Math.min(this.nodes.length, clampedAnchorIndex + 8))
-      .find(
+      .slice(clampedAnchorIndex + 1, Math.min(this.nodes.length, clampedAnchorIndex + 12))
+      .filter(
         (node) =>
           !node.isMilestone &&
           !node.isGigantic &&
@@ -316,8 +342,13 @@ export class GamePathSystem {
           Math.abs(node.x - targetLandingX) <= DEFAULT_COLUMN_DISTANCE * 1.28 &&
           Math.abs(node.y - targetLandingY) <= laneSpacing * 0.9
       );
-    if (existing) {
-      return existing.index;
+    if (existing.length >= 3) {
+      const best = existing.reduce((bestNode, node) => {
+        const bestError = Math.abs(bestNode.x - targetLandingX) + Math.abs(bestNode.y - targetLandingY);
+        const nodeError = Math.abs(node.x - targetLandingX) + Math.abs(node.y - targetLandingY);
+        return nodeError < bestError ? node : bestNode;
+      });
+      return best.index;
     }
 
     const landingNode = this.buildNode({
@@ -352,14 +383,86 @@ export class GamePathSystem {
       enemySlot: null
     });
 
-    const exit1X = landingNode.x + DEFAULT_COLUMN_DISTANCE * 2.15;
-    const exit1Y = this.alignToLane(THREE.MathUtils.lerp(landingNode.y, 0, 0.18), score, 'medium_large', true);
-    const exit1 = this.buildNode({
+    const upperLandingLane = THREE.MathUtils.clamp(landingLane + SPRINT_FISH_LANDING_SUPPORT_LANE_DELTA, 0, PLAYABLE_PATH_LANE_COUNT - 1);
+    const lowerLandingLane = THREE.MathUtils.clamp(landingLane - SPRINT_FISH_LANDING_SUPPORT_LANE_DELTA, 0, PLAYABLE_PATH_LANE_COUNT - 1);
+    const landingSupportSizeTier: GameShardSizeTier = 'medium_small';
+    const landingSupportConfig = SIZE_TIER_CONFIG[landingSupportSizeTier];
+    const landingSupportRadius = THREE.MathUtils.lerp(landingSupportConfig.radius[0], landingSupportConfig.radius[1], 0.66);
+    const landingSupportScale = THREE.MathUtils.lerp(landingSupportConfig.visual[0], landingSupportConfig.visual[1], 0.68);
+    const landingSupportOrbit = THREE.MathUtils.lerp(landingSupportConfig.orbitPeriod[0], landingSupportConfig.orbitPeriod[1], 0.52);
+
+    const upperLanding = this.buildNode({
       previous: landingNode,
       index: clampedAnchorIndex + 2,
+      x: landingNode.x,
+      y: laneTargets[upperLandingLane] ?? landingNode.y + laneSpacing * SPRINT_FISH_LANDING_SUPPORT_LANE_DELTA,
+      direction: this.directionFrom(landingNode.x, landingNode.y, landingNode.x, laneTargets[upperLandingLane] ?? landingNode.y),
+      sizeTier: landingSupportSizeTier,
+      shapeKind: 'round',
+      motionPattern: 'none',
+      motionMode: 'none',
+      motionDirection: null,
+      motionDistance: 0,
+      motionDuration: 0,
+      motionActivatedAt: null,
+      spinDirection: 'ccw',
+      spinSpeed: 0.1 + this.nextRandom() * 0.04,
+      gameplayRadius: landingSupportRadius,
+      visualScale: landingSupportScale,
+      gameplayOrbitPeriod: landingSupportOrbit,
+      visualStretch: { x: 1, y: 1, z: 1 },
+      kind: 'normal',
+      branchSlot: null,
+      offerId: null,
+      onboarding: false,
+      eventType: 'none',
+      colorHint: 'none',
+      isMilestone: false,
+      isGigantic: false,
+      coinSlots: [],
+      enemySlot: null
+    });
+
+    const lowerLanding = this.buildNode({
+      previous: upperLanding,
+      index: clampedAnchorIndex + 3,
+      x: landingNode.x,
+      y: laneTargets[lowerLandingLane] ?? landingNode.y - laneSpacing * SPRINT_FISH_LANDING_SUPPORT_LANE_DELTA,
+      direction: this.directionFrom(upperLanding.x, upperLanding.y, landingNode.x, laneTargets[lowerLandingLane] ?? landingNode.y),
+      sizeTier: landingSupportSizeTier,
+      shapeKind: 'round',
+      motionPattern: 'none',
+      motionMode: 'none',
+      motionDirection: null,
+      motionDistance: 0,
+      motionDuration: 0,
+      motionActivatedAt: null,
+      spinDirection: 'cw',
+      spinSpeed: 0.09 + this.nextRandom() * 0.04,
+      gameplayRadius: landingSupportRadius,
+      visualScale: landingSupportScale,
+      gameplayOrbitPeriod: landingSupportOrbit,
+      visualStretch: { x: 1, y: 1, z: 1 },
+      kind: 'normal',
+      branchSlot: null,
+      offerId: null,
+      onboarding: false,
+      eventType: 'none',
+      colorHint: 'none',
+      isMilestone: false,
+      isGigantic: false,
+      coinSlots: [],
+      enemySlot: null
+    });
+
+    const exit1X = landingNode.x + DEFAULT_COLUMN_DISTANCE * 1.96;
+    const exit1Y = this.alignToLane(THREE.MathUtils.lerp(landingNode.y, 2.8, 0.16), score, 'medium_large', true);
+    const exit1 = this.buildNode({
+      previous: lowerLanding,
+      index: clampedAnchorIndex + 4,
       x: exit1X,
       y: exit1Y,
-      direction: this.directionFrom(landingNode.x, landingNode.y, exit1X, exit1Y),
+      direction: this.directionFrom(lowerLanding.x, lowerLanding.y, exit1X, exit1Y),
       sizeTier: 'medium_large',
       shapeKind: 'round',
       motionPattern: 'none',
@@ -386,11 +489,11 @@ export class GamePathSystem {
       enemySlot: null
     });
 
-    const exit2X = exit1.x + DEFAULT_COLUMN_DISTANCE * 1.82;
-    const exit2Y = this.alignToLane(THREE.MathUtils.lerp(exit1.y, 0, 0.24), score, 'medium', true);
+    const exit2X = exit1.x + DEFAULT_COLUMN_DISTANCE * 1.62;
+    const exit2Y = this.alignToLane(THREE.MathUtils.lerp(exit1.y, 3.1, 0.22), score, 'medium', true);
     const exit2 = this.buildNode({
       previous: exit1,
-      index: clampedAnchorIndex + 3,
+      index: clampedAnchorIndex + 5,
       x: exit2X,
       y: exit2Y,
       direction: this.directionFrom(exit1.x, exit1.y, exit2X, exit2Y),
@@ -420,103 +523,84 @@ export class GamePathSystem {
       enemySlot: null
     });
 
-    this.replaceFuture(clampedAnchorIndex, [landingNode, exit1, exit2]);
+    this.replaceFuture(clampedAnchorIndex, [landingNode, upperLanding, lowerLanding, exit1, exit2]);
     return clampedAnchorIndex + 1;
   }
 
-  createUpgradeBranches(milestoneIndex: number, offers: RogueliteItemOffer[], score: number): BranchChoice[] {
+  createUpgradeBranches(milestoneIndex: number, offers: RogueliteItemOffer[], _score: number): BranchChoice[] {
     const milestone = this.getNode(milestoneIndex);
     if (!milestone) return [];
 
-    const rng = this.createIndexedRng(509, milestoneIndex + Math.round(score * 10));
-    const laneSpacing = getPathLaneSpacing(score);
-    const branchEntryX = milestone.x + MILESTONE_REWARD_OFFSET;
-    const definitions = [
-      { slot: 0 as const, yBias: laneSpacing * 3.05, direction: 'up_right' as const },
-      { slot: 1 as const, yBias: 0, direction: 'right' as const },
-      { slot: 2 as const, yBias: -laneSpacing * 3.05, direction: 'down_right' as const }
-    ];
-
-    return offers.slice(0, 3).map((offer, index) => {
-      const branch = definitions[index] ?? definitions[1];
-      const sizeTier: GameShardSizeTier = 'medium';
-      const sizeConfig = SIZE_TIER_CONFIG[sizeTier];
-      const gameplayRadius = sizeConfig.radius[0] + rng() * (sizeConfig.radius[1] - sizeConfig.radius[0]);
-      const visualScale = sizeConfig.visual[0] + rng() * (sizeConfig.visual[1] - sizeConfig.visual[0]);
-      const orbitPeriod = sizeConfig.orbitPeriod[0] + rng() * (sizeConfig.orbitPeriod[1] - sizeConfig.orbitPeriod[0]);
-      const entry = this.buildNode({
-        previous: milestone,
-        index: milestoneIndex + 1,
-        x: branchEntryX,
-        y: milestone.y + branch.yBias,
-        direction: branch.direction,
-        sizeTier,
-        shapeKind: 'round',
-        motionPattern: 'none',
-        spinDirection: index === 1 ? 'cw' : 'ccw',
-        spinSpeed: 0.14 + index * 0.03 + rng() * 0.04,
-        gameplayRadius,
-        visualScale,
-        gameplayOrbitPeriod: orbitPeriod,
-        visualStretch: { x: 1, y: 1, z: 1 },
+    this.ensureAhead(milestoneIndex + 8, 24, 16);
+    const choices: BranchChoice[] = [];
+    offers.slice(0, 3).forEach((offer, index) => {
+      const source = this.getNode(milestoneIndex + index + 1);
+      if (!source) {
+        return;
+      }
+      const entry: GamePathNode = {
+        ...source,
         kind: 'branch',
-        branchSlot: branch.slot,
+        branchSlot: index as 0 | 1 | 2,
         offerId: offer.item.id,
-        onboarding: false,
-        eventType: 'none',
         colorHint: 'reward',
-        isMilestone: false,
-        isGigantic: false,
-        coinSlots: [{ angle: Math.PI * 0.5, value: 1, collected: false, orbitScale: 1 }],
-        enemySlot: null
-      });
-
-      const exitSizeTier: GameShardSizeTier = 'medium_small';
-      const exitSizeConfig = SIZE_TIER_CONFIG[exitSizeTier];
-      const exitGameplayRadius =
-        exitSizeConfig.radius[0] + rng() * (exitSizeConfig.radius[1] - exitSizeConfig.radius[0]);
-      const exitVisualScale =
-        exitSizeConfig.visual[0] + rng() * (exitSizeConfig.visual[1] - exitSizeConfig.visual[0]);
-      const exitOrbitPeriod =
-        exitSizeConfig.orbitPeriod[0] + rng() * (exitSizeConfig.orbitPeriod[1] - exitSizeConfig.orbitPeriod[0]);
-      const exit = this.buildNode({
-        previous: entry,
-        index: milestoneIndex + 2,
-        x: Math.max(
-          entry.x + DEFAULT_COLUMN_DISTANCE * 2.52,
-          milestone.x + DEFAULT_COLUMN_DISTANCE * 6.08
-        ),
-        y: entry.y,
-        direction: 'right',
-        sizeTier: exitSizeTier,
-        shapeKind: 'round',
-        motionPattern: 'none',
-        spinDirection: 'cw',
-        spinSpeed: 0.08 + rng() * 0.05,
-        gameplayRadius: exitGameplayRadius,
-        visualScale: exitVisualScale,
-        gameplayOrbitPeriod: exitOrbitPeriod,
-        visualStretch: { x: 1, y: 1, z: 1 },
-        kind: 'normal',
-        branchSlot: null,
-        offerId: null,
-        onboarding: false,
+        guaranteedShopIcon: false,
         eventType: 'none',
-        colorHint: 'none',
-        isMilestone: false,
-        isGigantic: false,
-        coinSlots: [],
-        enemySlot: null
-      });
+        eventVisualKind: 'default',
+        coinSlots: source.coinSlots.map((slot) => ({ ...slot }))
+      };
 
-      return {
-        mode: 'reward_branch',
+      choices.push({
+        mode: 'reward_branch' as const,
         offer,
         entry,
         previewNodes: [entry],
-        pathNodes: [entry, exit]
+        pathNodes: [entry]
+      });
+    });
+    return choices;
+  }
+
+  activateMilestoneRewardChoices(milestoneIndex: number, offers: RogueliteItemOffer[]) {
+    offers.slice(0, 3).forEach((offer, index) => {
+      const targetIndex = milestoneIndex + index + 1;
+      const node = this.nodes[targetIndex];
+      if (!node) {
+        return;
+      }
+      this.nodes[targetIndex] = {
+        ...node,
+        kind: 'branch',
+        branchSlot: index as 0 | 1 | 2,
+        offerId: offer.item.id,
+        colorHint: 'reward',
+        guaranteedShopIcon: false,
+        eventType: 'none',
+        eventVisualKind: 'default',
+        coinSlots: node.coinSlots.map((slot) => ({ ...slot }))
       };
     });
+  }
+
+  settleMilestoneRewardChoices(milestoneIndex: number) {
+    for (let index = 0; index < 3; index += 1) {
+      const targetIndex = milestoneIndex + index + 1;
+      const node = this.nodes[targetIndex];
+      if (!node) {
+        continue;
+      }
+      this.nodes[targetIndex] = {
+        ...node,
+        kind: 'normal',
+        branchSlot: null,
+        offerId: null,
+        colorHint: 'none',
+        eventType: 'none',
+        eventVisualKind: 'default',
+        guaranteedShopIcon: false,
+        milestoneOwned: false
+      };
+    }
   }
 
   createHiddenMilestoneBackBranch(milestoneIndex: number, offer: RogueliteItemOffer) {
@@ -784,135 +868,209 @@ export class GamePathSystem {
     rng: () => number
   ) {
     const safeTargetCount = this.resolveBlockNodeTarget(descriptor);
+    const formationSliceCount = this.resolveFormationSliceCount(descriptor, safeTargetCount);
     const rewardReserve = this.getPostMilestoneRewardReservedRange(previous, descriptor);
     const safeStart = Math.max(
       descriptor.blockStartMeters + (descriptor.kind === 'intro' ? INTRO_BLOCK_START_PADDING_METERS : MAIN_BLOCK_START_PADDING_METERS),
       rewardReserve ? descriptor.blockStartMeters + POST_MILESTONE_CONTENT_START_METERS : descriptor.blockStartMeters
     );
     const safeEnd = descriptor.targetMilestoneMeters - (descriptor.kind === 'intro' ? INTRO_BLOCK_END_PADDING_METERS : MAIN_BLOCK_END_PADDING_METERS);
-    const columns =
+    const sliceCenters =
       descriptor.kind === 'main'
-        ? this.buildBlockColumns(safeStart, safeEnd, safeTargetCount, descriptor.guaranteedShopMeters, rng)
-        : this.distributeMeters(safeStart, safeEnd, safeTargetCount, INTRO_COLUMN_JITTER_METERS * 0.5, rng);
+        ? this.buildBlockColumns(safeStart, safeEnd, formationSliceCount, descriptor.guaranteedShopMeters, rng)
+        : this.distributeMeters(safeStart, safeEnd, formationSliceCount, INTRO_COLUMN_JITTER_METERS * 0.5, rng);
     const generated: GamePathNode[] = previous.isMilestone ? this.buildMilestoneExitNodes(previous, descriptor, rng) : [];
-    const bonusEvents = this.buildBonusEventAssignments(descriptor, columns, rng);
+    const gridState = this.createBlockGridState(
+      descriptor,
+      safeStart,
+      safeEnd,
+      rewardReserve ? [reservedRange, rewardReserve] : [reservedRange]
+    );
+    this.occupyGridNode(gridState, previous);
+    generated.forEach((node) => this.occupyGridNode(gridState, node));
+    const bonusEvents = this.buildBonusEventAssignments(descriptor, sliceCenters, rng);
     let previousLane = this.resolveStartingLane(
       (generated[generated.length - 1] ?? previous).index,
       (generated[generated.length - 1] ?? previous).y
     );
-    const laneSequence = this.buildLaneSequence(descriptor, columns.length, previousLane, rng);
+    const laneSequence = this.buildLaneSequence(descriptor, sliceCenters.length, previousLane, rng);
+    const formationExtraMembers = this.buildFormationExpansionPlan(descriptor, sliceCenters.length, safeTargetCount, bonusEvents, rng);
     const placementReservedRanges = rewardReserve ? [reservedRange, rewardReserve] : [reservedRange];
 
-    columns.forEach((absoluteMeters, columnIndex) => {
-      const cursor = generated[generated.length - 1] ?? previous;
-      const currentMeters = pathDistanceToMeters(cursor.pathDistance);
-      if (absoluteMeters <= currentMeters + 0.05) {
+    sliceCenters.forEach((centerMeters, sliceIndex) => {
+      const sliceStartCursor = generated[generated.length - 1] ?? previous;
+      const sliceCurrentMeters = pathDistanceToMeters(sliceStartCursor.pathDistance);
+      if (centerMeters <= sliceCurrentMeters + 0.05) {
         return;
       }
       const score = previous.index + generated.length;
-      const eventAssignment = bonusEvents.get(columnIndex) ?? {
+      const eventAssignment = bonusEvents.get(sliceIndex) ?? {
         eventType: 'none' as GameEventType,
         guaranteedShopIcon: false
       };
-      const isGuaranteedShop = descriptor.guaranteedShopMeters !== null && Math.abs(absoluteMeters - descriptor.guaranteedShopMeters) <= 0.0001;
+      const isGuaranteedShop = descriptor.guaranteedShopMeters !== null && Math.abs(centerMeters - descriptor.guaranteedShopMeters) <= 0.0001;
       const eventType = isGuaranteedShop ? 'shop' : eventAssignment.eventType;
-      const targetLane = laneSequence[columnIndex] ?? previousLane;
-      const motionPattern =
-        eventType === 'shop'
-          ? 'none'
-          : this.pickBlockMotionPattern(descriptor, columnIndex, score, descriptor.kind === 'intro' ? 'small' : 'medium_small', rng);
-      const plan: StructuralNodePlan = {
-        absoluteMeters,
-        laneIndex: targetLane,
-        sizeTier:
-          eventType === 'shop'
-            ? (isGuaranteedShop ? 'medium' : 'medium_large')
-            : descriptor.kind === 'intro'
-              ? this.pickSizeTier(
-                  columnIndex % 4 === 0
-                    ? ['small', 'medium_small', 'medium']
-                    : ['tiny', 'very_small', 'small', 'medium_small'],
-                  score,
-                  rng
-                )
-              : this.pickSizeTier(
-                  descriptor.blockStartMeters < 110
-                    ? (columnIndex % 5 === 0
-                        ? ['small', 'medium_small', 'medium']
-                        : ['tiny', 'very_small', 'small', 'medium_small'])
-                    : descriptor.blockStartMeters < 310
-                      ? (columnIndex % 4 === 0
-                          ? ['small', 'medium_small', 'medium']
-                          : ['very_small', 'small', 'medium_small'])
-                      : descriptor.blockStartMeters < 510
-                        ? ['very_small', 'small', 'medium_small']
-                        : ['small', 'medium_small', 'medium'],
-                  score,
-                  rng
-                ),
-        shapeKind: motionPattern === 'none' ? this.pickShapeKind(['round', 'oval', 'triangular'], score, rng) : 'round',
-        motionPattern,
-        motionDirection:
-          motionPattern === 'vertical'
-            ? (targetLane >= 5 ? 'down' : 'up')
-            : motionPattern === 'drift'
-              ? (targetLane >= 5 ? 'down_right' : 'up_right')
-              : motionPattern === 'horizontal'
-                ? 'right'
-                : null,
-        motionDistance: this.resolveMotionDistance(descriptor, motionPattern, score, rng),
-        motionDuration: motionPattern === 'none' ? 0 : THREE.MathUtils.lerp(MOTION_DURATION_MIN, MOTION_DURATION_MAX, rng()),
-        eventType,
-        guaranteedShopIcon: isGuaranteedShop,
-        coinAngles: this.buildPlanCoinAngles(descriptor, columnIndex, eventType, score, rng),
-        enemyPole: this.pickPlanEnemyPole(eventType, motionPattern, motionPattern === 'none' ? 'round' : 'round', score, rng)
-      };
-      let candidate = this.placeStructuralNode(previous, generated, placementReservedRanges, plan, rng);
-      if (!candidate) {
-        const emergencyPlan: StructuralNodePlan = {
-          absoluteMeters: isGuaranteedShop ? absoluteMeters : Math.min(absoluteMeters, currentMeters + (descriptor.kind === 'intro' ? 0.86 : 1.58)),
-          laneIndex: this.resolveLaneFallback(previousLane, targetLane, score),
-          sizeTier: isGuaranteedShop ? 'medium' : descriptor.kind === 'intro' ? 'small' : 'very_small',
-          shapeKind: 'round',
-          motionPattern: 'none',
-          motionDirection: null,
-          motionDistance: 0,
-          motionDuration: 0,
+      const backboneLane = laneSequence[sliceIndex] ?? previousLane;
+      const nextBackboneLane = laneSequence[sliceIndex + 1] ?? backboneLane;
+      const extraMembers = formationExtraMembers[sliceIndex] ?? 0;
+      const formationPlans = this.buildFormationPlans(
+        descriptor,
+        sliceIndex,
+        centerMeters,
+        backboneLane,
+        nextBackboneLane,
+        extraMembers,
+        {
           eventType,
-          guaranteedShopIcon: isGuaranteedShop,
-          coinAngles: eventType === 'none' && descriptor.kind === 'intro' && columnIndex < 2 ? [Math.PI * (0.26 + rng() * 0.38)] : [],
-          enemyPole: null,
-          milestoneOwned: false
-        };
-        const emergencyCandidate = this.buildGeneratedNode(cursor, emergencyPlan, rng);
-        if (emergencyCandidate && this.validatePlacement([emergencyCandidate], this.nodes, generated, placementReservedRanges)) {
-          candidate = emergencyCandidate;
+          guaranteedShopIcon: isGuaranteedShop
+        },
+        score,
+        gridState,
+        rng
+      );
+
+      let backbonePlaced = false;
+      formationPlans.forEach((plan, memberIndex) => {
+        const cursor = generated[generated.length - 1] ?? previous;
+        const currentMeters = pathDistanceToMeters(cursor.pathDistance);
+        if (plan.absoluteMeters < currentMeters - 0.02) {
+          return;
         }
-      }
-      if (!candidate && isGuaranteedShop) {
-        candidate = this.buildGeneratedNode(cursor, {
-          absoluteMeters,
-          laneIndex: this.resolveLaneFallback(previousLane, 4, score),
-          sizeTier: 'small',
-          shapeKind: 'round',
-          motionPattern: 'none',
-          motionDirection: null,
-          motionDistance: 0,
-          motionDuration: 0,
-          eventType: 'shop',
-          guaranteedShopIcon: true,
-          coinAngles: [],
-          enemyPole: null
-        }, rng);
-      }
-      if (!candidate) {
+
+        let candidate = this.placeStructuralNode(previous, generated, placementReservedRanges, plan, descriptor, gridState, rng);
+        if (!candidate && memberIndex === 0) {
+          const emergencyPlan: StructuralNodePlan = {
+            absoluteMeters: plan.guaranteedShopIcon ? plan.absoluteMeters : Math.min(plan.absoluteMeters, currentMeters + (descriptor.kind === 'intro' ? 0.82 : 1.42)),
+            laneIndex: this.resolveLaneFallback(previousLane, plan.laneIndex, score + memberIndex),
+            sizeTier: plan.guaranteedShopIcon ? 'medium' : descriptor.kind === 'intro' ? 'small' : 'very_small',
+            shapeKind: 'round',
+            motionPattern: 'none',
+            motionDirection: null,
+            motionDistance: 0,
+            motionDuration: 0,
+            eventType: plan.eventType,
+            guaranteedShopIcon: plan.guaranteedShopIcon,
+            coinAngles: plan.eventType === 'none' && descriptor.kind === 'intro' && sliceIndex < 2 ? [Math.PI * (0.26 + rng() * 0.38)] : [],
+            enemyPole: null,
+            milestoneOwned: plan.milestoneOwned ?? false
+          };
+          const emergencyCandidate = this.buildGeneratedNode(cursor, emergencyPlan, rng);
+          if (emergencyCandidate && this.validatePlacement([emergencyCandidate], this.nodes, generated, placementReservedRanges)) {
+            candidate = emergencyCandidate;
+          }
+        }
+        if (!candidate && memberIndex === 0 && plan.guaranteedShopIcon) {
+          const shopCandidate = this.buildGeneratedNode(cursor, {
+            absoluteMeters: plan.absoluteMeters,
+            laneIndex: this.resolveLaneFallback(previousLane, 4, score + memberIndex),
+            sizeTier: 'small',
+            shapeKind: 'round',
+            motionPattern: 'none',
+            motionDirection: null,
+            motionDistance: 0,
+            motionDuration: 0,
+            eventType: 'shop',
+            guaranteedShopIcon: true,
+            coinAngles: [],
+            enemyPole: null
+          }, rng);
+          if (shopCandidate && this.validatePlacement([shopCandidate], this.nodes, generated, placementReservedRanges)) {
+            candidate = shopCandidate;
+          }
+        }
+        if (!candidate) {
+          return;
+        }
+
+        generated.push(candidate);
+        this.occupyGridNode(gridState, candidate);
+        previousLane = this.getLaneIndex(candidate.y, getPathLaneTargets(candidate.index));
+        if (memberIndex === 0) {
+          backbonePlaced = true;
+        }
+      });
+
+      if (!backbonePlaced) {
         return;
       }
-      generated.push(candidate);
-      previousLane = this.getLaneIndex(candidate.y, getPathLaneTargets(candidate.index));
     });
 
-    return generated;
+    const tailNodes = this.buildTailRecoveryNodes(
+      previous,
+      generated,
+      descriptor,
+      safeEnd,
+      placementReservedRanges,
+      gridState,
+      rng
+    );
+    generated.push(...tailNodes);
+
+    const densified = this.buildGapInfillNodes(previous, generated, descriptor, placementReservedRanges, gridState, rng);
+    this.ensureGuaranteedShopNode(densified, descriptor);
+    return densified;
+  }
+
+  private ensureGuaranteedShopNode(generated: GamePathNode[], descriptor: StructuralBlockDescriptor) {
+    const guaranteedShopMeters = descriptor.guaranteedShopMeters;
+    if (guaranteedShopMeters === null) {
+      return;
+    }
+
+    const existingShopIndex = generated.findIndex((node) => {
+      if (node.milestoneOwned || node.eventType !== 'shop') {
+        return false;
+      }
+      const nodeMeters = pathDistanceToMeters(node.pathDistance);
+      return Math.abs(nodeMeters - guaranteedShopMeters) <= 1.2;
+    });
+    if (existingShopIndex >= 0) {
+      generated[existingShopIndex] = {
+        ...generated[existingShopIndex]!,
+        guaranteedShopIcon: true,
+        eventVisualKind: 'shop',
+        pathDistance: guaranteedShopMeters * DEFAULT_COLUMN_DISTANCE
+      };
+      return;
+    }
+
+    const candidateIndex = generated.reduce((bestIndex, node, index) => {
+      if (node.milestoneOwned || node.isMilestone) {
+        return bestIndex;
+      }
+      if (bestIndex < 0) {
+        return index;
+      }
+      const nodeMeters = pathDistanceToMeters(node.pathDistance);
+      const bestMeters = pathDistanceToMeters(generated[bestIndex]!.pathDistance);
+      return Math.abs(nodeMeters - guaranteedShopMeters) < Math.abs(bestMeters - guaranteedShopMeters)
+        ? index
+        : bestIndex;
+    }, -1);
+
+    if (candidateIndex < 0) {
+      return;
+    }
+
+    const candidate = generated[candidateIndex]!;
+    generated[candidateIndex] = {
+      ...candidate,
+      kind: 'event',
+      eventType: 'shop',
+      eventVisualKind: 'shop',
+      guaranteedShopIcon: true,
+      colorHint: 'accent',
+      pathDistance: guaranteedShopMeters * DEFAULT_COLUMN_DISTANCE,
+      shapeKind: 'round',
+      motionPattern: 'none',
+      motionMode: 'none',
+      motionDirection: null,
+      motionDistance: 0,
+      motionDuration: 0,
+      motionActivatedAt: null,
+      coinSlots: [],
+      enemySlot: null
+    };
   }
 
   private buildMilestoneExitNodes(previous: GamePathNode, descriptor: StructuralBlockDescriptor, rng: () => number) {
@@ -920,28 +1078,86 @@ export class GamePathSystem {
       return [] as GamePathNode[];
     }
 
-    const exitOffsets = descriptor.kind === 'main' ? [1.15, 2.2, 3.35, 4.65, 6.05] : [1.1, 2.05];
+    const exitOffsets = descriptor.kind === 'main' ? [2.85, 2.85, 2.85, 5.65, 7.85] : [1.15, 2.25];
+    const mainExitLanes = [7, 5, 3, 6, 4] as const;
     const generated: GamePathNode[] = [];
     let previousLane = this.resolveStartingLane(previous.index, previous.y);
+    const rewardTrioSizeTier: GameShardSizeTier = 'medium_large';
+    const rewardTrioConfig = SIZE_TIER_CONFIG[rewardTrioSizeTier];
+    const rewardTrioGameplayRadius = THREE.MathUtils.lerp(rewardTrioConfig.radius[0], rewardTrioConfig.radius[1], 0.68);
+    const rewardTrioVisualScale = THREE.MathUtils.lerp(rewardTrioConfig.visual[0], rewardTrioConfig.visual[1], 0.72);
+    const rewardTrioOrbitPeriod = THREE.MathUtils.lerp(rewardTrioConfig.orbitPeriod[0], rewardTrioConfig.orbitPeriod[1], 0.5);
 
     exitOffsets.forEach((offset, index) => {
       const score = previous.index + generated.length + 1;
       const targetLane =
         descriptor.kind === 'main'
-          ? (index === 0 ? 5 : index < 3 ? 4 : index === exitOffsets.length - 1 ? 5 : 4)
+          ? mainExitLanes[index] ?? 4
           : index === 0
             ? 5
             : 4;
       const laneIndex = this.resolveLaneFallback(previousLane, targetLane, score);
+
+      if (descriptor.kind === 'main' && index < 3) {
+        const x = this.getAbsoluteXForMeters(pathDistanceToMeters(previous.pathDistance) + offset);
+        const y = getPathLaneTargets(score)[targetLane] ?? 0;
+        const rewardNode = this.buildNode({
+          previous: generated[generated.length - 1] ?? previous,
+          index: score,
+          x,
+          y,
+          direction: this.directionFrom((generated[generated.length - 1] ?? previous).x, (generated[generated.length - 1] ?? previous).y, x, y),
+          sizeTier: rewardTrioSizeTier,
+          shapeKind: 'round',
+          motionPattern: 'none',
+          motionMode: 'none',
+          motionDirection: null,
+          motionDistance: 0,
+          motionDuration: 0,
+          motionActivatedAt: null,
+          spinDirection: 'cw',
+          spinSpeed: 0.12,
+          gameplayRadius: rewardTrioGameplayRadius,
+          visualScale: rewardTrioVisualScale,
+          gameplayOrbitPeriod: rewardTrioOrbitPeriod,
+          visualStretch: { x: 1, y: 1, z: 1 },
+          kind: 'normal',
+          branchSlot: null,
+          offerId: null,
+          onboarding: false,
+          eventType: 'none',
+          eventVisualKind: 'default',
+          guaranteedShopIcon: false,
+          colorHint: 'none',
+          isMilestone: false,
+          isGigantic: false,
+          milestoneOwned: true,
+          coinSlots: [],
+          enemySlot: null,
+          motionSeed: 0
+        });
+        generated.push(rewardNode);
+        previousLane = targetLane;
+        return;
+      }
+
       const plan: StructuralNodePlan = {
         absoluteMeters: pathDistanceToMeters(previous.pathDistance) + offset,
-        laneIndex,
-        sizeTier: descriptor.kind === 'main' && index >= 2 ? 'small' : index === 0 ? 'medium_small' : 'small',
+        laneIndex:
+          descriptor.kind === 'main' && index < 3
+            ? targetLane
+            : laneIndex,
+        sizeTier:
+          descriptor.kind === 'main'
+            ? 'small'
+            : index === 0
+              ? 'medium_small'
+              : 'small',
         shapeKind: 'round',
-        motionPattern: descriptor.kind === 'main' && index === 3 ? 'vertical' : 'none',
-        motionDirection: descriptor.kind === 'main' && index === 3 ? (laneIndex >= 5 ? 'down' : 'up') : null,
-        motionDistance: descriptor.kind === 'main' && index === 3 ? getPathLaneSpacing(score) * 0.84 : 0,
-        motionDuration: descriptor.kind === 'main' && index === 3 ? 1.2 : 0,
+        motionPattern: descriptor.kind === 'main' && index === 4 ? 'vertical' : 'none',
+        motionDirection: descriptor.kind === 'main' && index === 4 ? 'up' : null,
+        motionDistance: descriptor.kind === 'main' && index === 4 ? getPathLaneSpacing(score) * 0.96 : 0,
+        motionDuration: descriptor.kind === 'main' && index === 4 ? 1.28 : 0,
         eventType: 'none',
         guaranteedShopIcon: false,
         coinAngles: [],
@@ -971,7 +1187,377 @@ export class GamePathSystem {
       0,
       1
     );
-    return Math.round(THREE.MathUtils.lerp(POST_DENSE_MAIN_BLOCK_NODE_TARGET, FAR_MAIN_BLOCK_NODE_TARGET, taper));
+    const target = Math.round(THREE.MathUtils.lerp(POST_DENSE_MAIN_BLOCK_NODE_TARGET, FAR_MAIN_BLOCK_NODE_TARGET, taper));
+    if (descriptor.blockStartMeters >= 610) {
+      return Math.max(22, Math.round(target * 0.86));
+    }
+    if (descriptor.blockStartMeters >= 510) {
+      return Math.max(26, Math.round(target * 0.92));
+    }
+    return target;
+  }
+
+  private resolveFormationSliceCount(descriptor: StructuralBlockDescriptor, targetNodeCount: number) {
+    if (descriptor.kind === 'intro') {
+      return Math.max(10, Math.round(targetNodeCount * 0.5));
+    }
+
+    const ratio =
+      descriptor.blockStartMeters < 110
+        ? 0.34
+        : descriptor.blockStartMeters < 210
+          ? 0.37
+          : descriptor.blockStartMeters < 310
+            ? 0.43
+          : descriptor.blockStartMeters < 510
+            ? 0.5
+            : 0.6;
+    const minimumSlices =
+      descriptor.blockStartMeters < 210
+        ? 17
+        : descriptor.blockStartMeters < 510
+          ? 16
+          : 14;
+    return Math.max(minimumSlices, Math.round(targetNodeCount * ratio));
+  }
+
+  private buildFormationExpansionPlan(
+    descriptor: StructuralBlockDescriptor,
+    sliceCount: number,
+    targetNodeCount: number,
+    _bonusEvents: Map<number, StructuralSliceEventAssignment>,
+    rng: () => number
+  ) {
+    const expansions = Array.from({ length: sliceCount }, () => 0);
+    let remaining = Math.max(0, targetNodeCount - sliceCount);
+    if (remaining === 0 || sliceCount === 0) {
+      return expansions;
+    }
+
+    const eligible = Array.from({ length: sliceCount }, (_, index) => index);
+    if (eligible.length === 0) {
+      return expansions;
+    }
+
+    const spreadOrder = this.buildSliceSpreadOrder(eligible, rng);
+    const baselinePasses =
+      descriptor.kind === 'intro'
+        ? 2
+        : descriptor.blockStartMeters < 210
+          ? 3
+          : descriptor.blockStartMeters < 410
+            ? 2
+            : descriptor.blockStartMeters < 510
+              ? 1
+              : 0;
+
+    for (let pass = 0; pass < baselinePasses && remaining > 0; pass += 1) {
+      for (const targetIndex of spreadOrder) {
+        if (remaining <= 0) {
+          break;
+        }
+        if (expansions[targetIndex] >= this.resolveMaxExtraMembersPerSlice(descriptor, targetIndex, sliceCount)) {
+          continue;
+        }
+        expansions[targetIndex] += 1;
+        remaining -= 1;
+      }
+    }
+
+    if (remaining > 0 && descriptor.blockStartMeters < 110) {
+      for (const targetIndex of spreadOrder) {
+        if (remaining <= 0) {
+          break;
+        }
+        if (expansions[targetIndex] >= this.resolveMaxExtraMembersPerSlice(descriptor, targetIndex, sliceCount)) {
+          continue;
+        }
+        expansions[targetIndex] += 1;
+        remaining -= 1;
+      }
+    }
+
+    while (remaining > 0) {
+      const available = eligible
+        .filter((index) => expansions[index] < this.resolveMaxExtraMembersPerSlice(descriptor, index, sliceCount))
+        .sort((left, right) => {
+          if (expansions[left] !== expansions[right]) {
+            return expansions[left] - expansions[right];
+          }
+          return Math.abs(right - sliceCount * 0.5) - Math.abs(left - sliceCount * 0.5);
+        });
+      if (available.length === 0) {
+        break;
+      }
+      const targetIndex = available[Math.min(available.length - 1, Math.floor(rng() * Math.min(3, available.length)))]!;
+      expansions[targetIndex] += 1;
+      remaining -= 1;
+    }
+
+    return expansions;
+  }
+
+  private buildSliceSpreadOrder(indices: number[], rng: () => number) {
+    const sorted = indices.slice().sort((left, right) => left - right);
+    const order: number[] = [];
+    let left = 0;
+    let right = sorted.length - 1;
+
+    while (left <= right) {
+      const start = sorted[left++];
+      if (start !== undefined) {
+        order.push(start);
+      }
+      const end = sorted[right--];
+      if (end !== undefined && end !== start) {
+        order.push(end);
+      }
+    }
+
+    if (rng() < 0.5) {
+      order.reverse();
+    }
+
+    return order;
+  }
+
+  private buildTailRecoveryNodes(
+    previous: GamePathNode,
+    generated: GamePathNode[],
+    descriptor: StructuralBlockDescriptor,
+    safeEndMeters: number,
+    reservedRanges: PlacementReservedRange[],
+    gridState: BlockGridState,
+    rng: () => number
+  ) {
+    const cursor = generated[generated.length - 1] ?? previous;
+    const currentMeters = pathDistanceToMeters(cursor.pathDistance);
+    const gapMeters = safeEndMeters - currentMeters;
+    const recoveryStepMeters =
+      descriptor.kind === 'intro'
+        ? 1.04
+        : descriptor.blockStartMeters < 110
+          ? 1.32
+          : descriptor.blockStartMeters < 210
+            ? 1.58
+            : descriptor.blockStartMeters < 310
+              ? 1.82
+              : descriptor.blockStartMeters < 410
+                ? 2.08
+                : 2.42;
+    if (gapMeters <= (descriptor.kind === 'intro' ? 1.1 : recoveryStepMeters * 1.55)) {
+      return [] as GamePathNode[];
+    }
+
+    const targetCount = Math.max(
+      1,
+      Math.ceil(gapMeters / recoveryStepMeters)
+    );
+    const centers = this.distributeMeters(
+      currentMeters + (descriptor.kind === 'intro' ? 0.88 : Math.min(1.22, recoveryStepMeters * 0.82)),
+      safeEndMeters,
+      targetCount,
+      descriptor.kind === 'intro' ? 0.04 : 0.1,
+      rng
+    );
+    const recovered: GamePathNode[] = [];
+    let previousLane = this.resolveStartingLane(cursor.index, cursor.y);
+
+    centers.forEach((absoluteMeters, index) => {
+      const localGenerated = [...generated, ...recovered];
+      const localCursor = localGenerated[localGenerated.length - 1] ?? previous;
+      const liveMeters = pathDistanceToMeters(localCursor.pathDistance);
+      if (absoluteMeters < liveMeters - 0.02) {
+        return;
+      }
+
+      const score = previous.index + localGenerated.length;
+      const targetLane = this.resolveLaneFallback(previousLane, index % 2 === 0 ? 4 : 5, score);
+      const tailPlan: StructuralNodePlan = {
+        absoluteMeters,
+        laneIndex: targetLane,
+        sizeTier: descriptor.kind === 'intro' ? 'small' : 'very_small',
+        shapeKind: 'round',
+        motionPattern: 'none',
+        motionDirection: null,
+        motionDistance: 0,
+        motionDuration: 0,
+        eventType: 'none',
+        guaranteedShopIcon: false,
+        coinAngles: [],
+        enemyPole: null
+      };
+
+      let candidate = this.placeStructuralNode(previous, localGenerated, reservedRanges, tailPlan, descriptor, gridState, rng);
+      if (!candidate) {
+        const emergencyCandidate = this.buildGeneratedNode(localCursor, {
+          ...tailPlan,
+          absoluteMeters: Math.min(absoluteMeters, liveMeters + (descriptor.kind === 'intro' ? 0.92 : Math.max(1.18, recoveryStepMeters * 0.92)))
+        }, rng);
+        if (emergencyCandidate && this.validatePlacement([emergencyCandidate], this.nodes, localGenerated, reservedRanges)) {
+          candidate = emergencyCandidate;
+        }
+      }
+      if (!candidate) {
+        return;
+      }
+
+      recovered.push(candidate);
+      this.occupyGridNode(gridState, candidate);
+      previousLane = this.getLaneIndex(candidate.y, getPathLaneTargets(candidate.index));
+    });
+
+    return recovered;
+  }
+
+  private buildGapInfillNodes(
+    previous: GamePathNode,
+    generated: GamePathNode[],
+    descriptor: StructuralBlockDescriptor,
+    reservedRanges: PlacementReservedRange[],
+    gridState: BlockGridState,
+    rng: () => number
+  ) {
+    if (generated.length < 2) {
+      return generated;
+    }
+
+    const rebuilt: GamePathNode[] = [];
+    const maximumGapMeters = this.resolveMaximumForwardGapMeters(descriptor);
+
+    generated.forEach((nextNode, index) => {
+      const leftNode = rebuilt[rebuilt.length - 1] ?? previous;
+      const futureNodes = generated.slice(index);
+      const inserted = this.buildGapInfillBetween(
+        leftNode,
+        nextNode,
+        rebuilt,
+        futureNodes,
+        descriptor,
+        reservedRanges,
+        gridState,
+        maximumGapMeters,
+        rng
+      );
+      rebuilt.push(...inserted, nextNode);
+    });
+
+    return rebuilt;
+  }
+
+  private buildGapInfillBetween(
+    previous: GamePathNode,
+    nextNode: GamePathNode,
+    accepted: GamePathNode[],
+    futureNodes: GamePathNode[],
+    descriptor: StructuralBlockDescriptor,
+    reservedRanges: PlacementReservedRange[],
+    gridState: BlockGridState,
+    maximumGapMeters: number,
+    rng: () => number
+  ) {
+    const previousMeters = pathDistanceToMeters(previous.pathDistance);
+    const nextMeters = pathDistanceToMeters(nextNode.pathDistance);
+    const gapMeters = nextMeters - previousMeters;
+    if (gapMeters <= maximumGapMeters) {
+      return [] as GamePathNode[];
+    }
+
+    const insertCount = Math.min(
+      descriptor.kind === 'intro' || descriptor.blockStartMeters < 210 ? 4 : 3,
+      Math.max(1, Math.ceil(gapMeters / maximumGapMeters) - 1)
+    );
+    const anchors = this.distributeMeters(
+      previousMeters + gapMeters / (insertCount + 1),
+      nextMeters - gapMeters / (insertCount + 1),
+      insertCount,
+      0.02,
+      rng
+    );
+    const inserted: GamePathNode[] = [];
+    const futureTail = futureNodes.slice(1);
+
+    anchors.forEach((absoluteMeters, fillIndex) => {
+      const leftNode = inserted[inserted.length - 1] ?? previous;
+      const leftLane = this.getLaneIndex(leftNode.y, getPathLaneTargets(leftNode.index));
+      const rightLane = this.getLaneIndex(nextNode.y, getPathLaneTargets(nextNode.index));
+      const laneBias = fillIndex % 2 === 0 ? Math.max(leftLane, rightLane) : Math.min(leftLane, rightLane);
+      const targetLane = this.resolveLaneFallback(leftLane, Math.round((leftLane + rightLane + laneBias) / 3), leftNode.index + 1);
+      const plan: StructuralNodePlan = {
+        absoluteMeters,
+        laneIndex: targetLane,
+        sizeTier:
+          descriptor.kind === 'intro'
+            ? 'small'
+            : descriptor.blockStartMeters < 210
+              ? 'small'
+              : descriptor.blockStartMeters < 410
+                ? 'very_small'
+                : 'tiny',
+        shapeKind: 'round',
+        motionPattern: 'none',
+        motionDirection: null,
+        motionDistance: 0,
+        motionDuration: 0,
+        eventType: 'none',
+        guaranteedShopIcon: false,
+        coinAngles: [],
+        enemyPole: null
+      };
+
+      const candidate = this.placeStructuralNode(previous, [...accepted, ...inserted], reservedRanges, plan, descriptor, gridState, rng);
+      if (!candidate) {
+        return;
+      }
+
+      const candidateChain = [...inserted, candidate, nextNode];
+      if (!this.validatePlacement(candidateChain, this.nodes, [...accepted, ...futureTail], reservedRanges)) {
+        return;
+      }
+
+      inserted.push(candidate);
+      this.occupyGridNode(gridState, candidate);
+    });
+
+    return inserted;
+  }
+
+  private resolveMaximumForwardGapMeters(descriptor: StructuralBlockDescriptor) {
+    if (descriptor.kind === 'intro') {
+      return 1.02;
+    }
+    if (descriptor.blockStartMeters < 110) {
+      return 1.24;
+    }
+    if (descriptor.blockStartMeters < 210) {
+      return 1.38;
+    }
+    if (descriptor.blockStartMeters < 410) {
+      return 1.72;
+    }
+    if (descriptor.blockStartMeters < 610) {
+      return 2.08;
+    }
+    return 2.4;
+  }
+
+  private resolveMaxExtraMembersPerSlice(descriptor: StructuralBlockDescriptor, sliceIndex: number, sliceCount: number) {
+    if (sliceIndex === 0 || sliceIndex >= sliceCount - 1) {
+      return 1;
+    }
+    if (sliceIndex >= sliceCount - 3) {
+      return 1;
+    }
+    if (descriptor.kind === 'intro' || descriptor.blockStartMeters < 110) {
+      return 9;
+    }
+    if (descriptor.blockStartMeters < 210) {
+      return 8;
+    }
+    if (descriptor.blockStartMeters < 310) {
+      return 7;
+    }
+    return descriptor.blockStartMeters < 510 ? 6 : 4;
   }
 
   private buildBlockColumns(
@@ -1090,21 +1676,21 @@ export class GamePathSystem {
 
   private resolveLaneCoverageTarget(descriptor: StructuralBlockDescriptor) {
     if (descriptor.kind === 'intro' || descriptor.blockStartMeters < 110) {
-      return 8;
+      return 9;
     }
     if (descriptor.blockStartMeters < 210) {
-      return 5;
+      return 7;
     }
     if (descriptor.blockStartMeters < 310) {
-      return 4;
+      return 6;
     }
     if (descriptor.blockStartMeters < 410) {
-      return 3;
+      return 5;
     }
     if (descriptor.blockStartMeters < 510) {
-      return 2;
+      return 4;
     }
-    return 1;
+    return 2;
   }
 
   private buildLaneSequence(
@@ -1121,7 +1707,7 @@ export class GamePathSystem {
     const coverageTarget = this.resolveLaneCoverageTarget(descriptor);
     const dominantLane = this.resolveDominantLane(descriptor, coverageTarget, laneCount, rng);
     const lanePool = this.buildLanePool(coverageTarget, dominantLane, laneCount);
-    const earlySweep = descriptor.kind === 'intro' || descriptor.blockStartMeters < 110;
+    const earlySweep = descriptor.kind === 'intro' || descriptor.blockStartMeters < 310;
     const sequence: number[] = [];
     let currentLane = THREE.MathUtils.clamp(startingLane, 0, laneCount - 1);
     let pointer = earlySweep
@@ -1130,7 +1716,14 @@ export class GamePathSystem {
           Math.abs(lane - currentLane) < Math.abs((lanePool[bestIndex] ?? currentLane) - currentLane) ? index : bestIndex
         ), 0);
     let direction: 1 | -1 = rng() < 0.5 ? 1 : -1;
-    const lateRepeatChance = coverageTarget <= 1 ? 0.86 : coverageTarget === 2 ? 0.46 : coverageTarget === 3 ? 0.22 : 0.08;
+    const lateRepeatChance =
+      coverageTarget <= 2
+        ? 0.86
+        : coverageTarget <= 4
+          ? 0.46
+          : coverageTarget <= 5
+            ? 0.22
+            : 0.08;
 
     for (let index = 0; index < count; index += 1) {
       const templateLane = earlySweep
@@ -1153,6 +1746,17 @@ export class GamePathSystem {
       }
     }
 
+    const exitPattern = descriptor.kind === 'intro' ? [5, 6, 5] : [5, 6, 5, 6, 5];
+    exitPattern.slice(-Math.min(exitPattern.length, count)).forEach((lane, index, pattern) => {
+      const targetIndex = count - pattern.length + index;
+      if (targetIndex >= 0) {
+        sequence[targetIndex] = lane;
+      }
+    });
+    if (count > 0) {
+      sequence[0] = this.resolveLaneFallback(startingLane, sequence[0] ?? startingLane, 0);
+    }
+
     return sequence;
   }
 
@@ -1162,14 +1766,14 @@ export class GamePathSystem {
     laneCount: number,
     rng: () => number
   ) {
-    if (descriptor.kind === 'intro' || descriptor.blockStartMeters < 110) {
+    if (descriptor.kind === 'intro' || descriptor.blockStartMeters < 210) {
       return Math.floor(laneCount * 0.5);
     }
 
     const safeMin = coverageTarget <= 2 ? 0 : 1;
     const safeMax = coverageTarget <= 2 ? laneCount - 1 : laneCount - 2;
     return THREE.MathUtils.clamp(
-      Math.round((laneCount - 1) * (0.18 + rng() * 0.64)),
+      Math.round((laneCount - 1) * (descriptor.blockStartMeters < 410 ? 0.34 + rng() * 0.5 : 0.24 + rng() * 0.58)),
       safeMin,
       safeMax
     );
@@ -1205,12 +1809,12 @@ export class GamePathSystem {
     const laneSpacing = getPathLaneSpacing(score);
     const progression = clamp((descriptor.blockStartMeters - 10) / 500, 0, 1);
     if (motionPattern === 'vertical') {
-      return laneSpacing * THREE.MathUtils.lerp(1.18, 1.56, progression * 0.8 + rng() * 0.12);
+      return laneSpacing * THREE.MathUtils.lerp(1.34, 1.82, progression * 0.84 + rng() * 0.14);
     }
     if (motionPattern === 'horizontal') {
-      return DEFAULT_COLUMN_DISTANCE * THREE.MathUtils.lerp(0.62, 1.02, progression * 0.86 + rng() * 0.1);
+      return DEFAULT_COLUMN_DISTANCE * THREE.MathUtils.lerp(0.84, 1.24, progression * 0.9 + rng() * 0.1);
     }
-    return DEFAULT_COLUMN_DISTANCE * THREE.MathUtils.lerp(0.56, 0.88, progression * 0.72 + rng() * 0.12);
+    return DEFAULT_COLUMN_DISTANCE * THREE.MathUtils.lerp(0.74, 1.04, progression * 0.78 + rng() * 0.14);
   }
 
   private getPostMilestoneRewardReservedRange(previous: GamePathNode, descriptor: StructuralBlockDescriptor) {
@@ -1223,11 +1827,646 @@ export class GamePathSystem {
     } satisfies PlacementReservedRange;
   }
 
+  private createBlockGridState(
+    descriptor: StructuralBlockDescriptor,
+    safeStartMeters: number,
+    safeEndMeters: number,
+    reservedRanges: PlacementReservedRange[]
+  ) {
+    const startColumn = Math.max(0, Math.floor(Math.min(descriptor.blockStartMeters, safeStartMeters)) - 2);
+    const endColumn = Math.ceil(Math.max(descriptor.targetMilestoneMeters + 2, safeEndMeters + 1));
+    const occupancyMasks = Array.from({ length: endColumn - startColumn + 1 }, () => 0);
+    const state: BlockGridState = {
+      startColumn,
+      endColumn,
+      occupancyMasks
+    };
+
+    reservedRanges.forEach((range) => {
+      const start = Math.max(startColumn, Math.floor(this.getAbsoluteMetersForX(range.startX)));
+      const end = Math.min(endColumn, Math.ceil(this.getAbsoluteMetersForX(range.endX)));
+      this.fillGridRect(state, {
+        startColumn: start,
+        endColumn: end,
+        startSlot: 0,
+        endSlot: PLAYABLE_PATH_LANE_COUNT - 1
+      });
+    });
+
+    return state;
+  }
+
+  private getAbsoluteMetersForX(x: number) {
+    return (x - this.getPathDistanceOffset()) / DEFAULT_COLUMN_DISTANCE;
+  }
+
+  private buildGridProbeNode(
+    score: number,
+    absoluteMeters: number,
+    laneIndex: number,
+    sizeTier: GameShardSizeTier,
+    shapeKind: GameShardShapeKind,
+    milestoneOwned = false
+  ): GamePathNode {
+    const config = SIZE_TIER_CONFIG[sizeTier];
+    const gameplayRadius = THREE.MathUtils.lerp(config.radius[0], config.radius[1], 0.72);
+    const visualScale = THREE.MathUtils.lerp(config.visual[0], config.visual[1], 0.74);
+    const y = getPathLaneTargets(score)[laneIndex] ?? 0;
+    const visualStretch =
+      shapeKind === 'oval'
+        ? { x: 1.76, y: 0.82, z: 0.9 }
+        : shapeKind === 'triangular'
+          ? { x: 1.2, y: 1.24, z: 0.76 }
+          : { x: 1, y: 1, z: 1 };
+
+    return {
+      index: score,
+      x: this.getAbsoluteXForMeters(absoluteMeters),
+      y,
+      z: 0,
+      gameplayRadius,
+      visualScale,
+      pathDistance: absoluteMeters * DEFAULT_COLUMN_DISTANCE,
+      direction: 'right',
+      kind: 'normal',
+      sizeTier,
+      shapeKind,
+      spinDirection: 'cw',
+      spinSpeed: 0,
+      motionPattern: 'none',
+      motionMode: 'none',
+      motionDirection: null,
+      motionDistance: 0,
+      motionDuration: 0,
+      motionActivatedAt: null,
+      eventType: 'none',
+      eventVisualKind: 'default',
+      guaranteedShopIcon: false,
+      colorHint: 'none',
+      gameplayOrbitPeriod: 3.2,
+      branchSlot: null,
+      offerId: null,
+      onboarding: false,
+      isMilestone: false,
+      isGigantic: false,
+      milestoneOwned,
+      reservedMilestoneDistance: null,
+      coinSlots: [],
+      enemySlot: null,
+      motionSeed: 0,
+      visualStretch
+    };
+  }
+
+  private buildGridRectForNode(node: GamePathNode): GridRect {
+    const footprint = getNodePlacementFootprint(node);
+    const centerMeters = this.getAbsoluteMetersForX(node.x);
+    const halfWidthMeters = footprint.x / DEFAULT_COLUMN_DISTANCE;
+    let minMeters = centerMeters - halfWidthMeters;
+    let maxMeters = centerMeters + halfWidthMeters;
+    let minY = node.y - footprint.y;
+    let maxY = node.y + footprint.y;
+
+    if (node.motionMode === 'landing_once' && node.motionDirection && (node.motionDistance ?? 0) > 0) {
+      const motionVector = this.resolveMotionDirectionVector(node.motionDirection);
+      const endX = node.x + motionVector.x * (node.motionDistance ?? 0);
+      const endY = node.y + motionVector.y * (node.motionDistance ?? 0);
+      const endMeters = this.getAbsoluteMetersForX(endX);
+      minMeters = Math.min(minMeters, endMeters - halfWidthMeters);
+      maxMeters = Math.max(maxMeters, endMeters + halfWidthMeters);
+      minY = Math.min(minY, endY - footprint.y);
+      maxY = Math.max(maxY, endY + footprint.y);
+    }
+
+    return this.buildGridRectFromBounds(node.index, minMeters, maxMeters, minY, maxY, node.isMilestone);
+  }
+
+  private buildGridRectForPlan(
+    absoluteMeters: number,
+    laneIndex: number,
+    score: number,
+    sizeTier: GameShardSizeTier,
+    shapeKind: GameShardShapeKind
+  ) {
+    return this.buildGridRectForNode(this.buildGridProbeNode(score, absoluteMeters, laneIndex, sizeTier, shapeKind));
+  }
+
+  private buildGridRectFromBounds(
+    score: number,
+    minMeters: number,
+    maxMeters: number,
+    minY: number,
+    maxY: number,
+    milestone: boolean
+  ): GridRect {
+    const startColumn = Math.round(Math.min(minMeters, maxMeters));
+    const endColumn = Math.round(Math.max(minMeters, maxMeters));
+
+    if (milestone) {
+      const middleLow = Math.floor((PLAYABLE_PATH_LANE_COUNT - 2) * 0.5);
+      const middleHigh = middleLow + 1;
+      return {
+        startColumn,
+        endColumn,
+        startSlot: Math.max(0, middleLow - (MILESTONE_GRID_OCCUPIED_HALF_SLOTS - 1) - MILESTONE_GRID_SAFETY_SLOTS),
+        endSlot: Math.min(
+          PLAYABLE_PATH_LANE_COUNT - 1,
+          middleHigh + (MILESTONE_GRID_OCCUPIED_HALF_SLOTS - 1) + MILESTONE_GRID_SAFETY_SLOTS
+        )
+      };
+    }
+
+    const laneTargets = getPathLaneTargets(score);
+    const startSlot = this.getLaneIndex(minY, laneTargets);
+    const endSlot = this.getLaneIndex(maxY, laneTargets);
+    return {
+      startColumn: Math.min(startColumn, endColumn),
+      endColumn: Math.max(startColumn, endColumn),
+      startSlot: Math.min(startSlot, endSlot),
+      endSlot: Math.max(startSlot, endSlot)
+    };
+  }
+
+  private isGridPlacementAvailable(state: BlockGridState, node: GamePathNode) {
+    return this.isGridRectFree(state, this.buildGridRectForNode(node));
+  }
+
+  private occupyGridNode(state: BlockGridState, node: GamePathNode) {
+    this.fillGridRect(state, this.buildGridRectForNode(node));
+  }
+
+  private fillGridRect(state: BlockGridState, rect: GridRect) {
+    if (rect.endColumn < state.startColumn || rect.startColumn > state.endColumn) {
+      return;
+    }
+    const startColumn = Math.max(state.startColumn, rect.startColumn);
+    const endColumn = Math.min(state.endColumn, rect.endColumn);
+    const slotMask = this.buildGridSlotMask(rect.startSlot, rect.endSlot);
+
+    for (let column = startColumn; column <= endColumn; column += 1) {
+      state.occupancyMasks[column - state.startColumn] |= slotMask;
+    }
+  }
+
+  private isGridRectFree(state: BlockGridState, rect: GridRect) {
+    if (rect.startColumn < state.startColumn || rect.endColumn > state.endColumn) {
+      return false;
+    }
+
+    const slotMask = this.buildGridSlotMask(rect.startSlot, rect.endSlot);
+    for (let column = rect.startColumn; column <= rect.endColumn; column += 1) {
+      const mask = state.occupancyMasks[column - state.startColumn];
+      if ((mask & slotMask) !== 0) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private buildGridSlotMask(startSlot: number, endSlot: number) {
+    const clampedStart = THREE.MathUtils.clamp(startSlot, 0, PLAYABLE_PATH_LANE_COUNT - 1);
+    const clampedEnd = THREE.MathUtils.clamp(endSlot, 0, PLAYABLE_PATH_LANE_COUNT - 1);
+    let mask = 0;
+    for (let slot = Math.min(clampedStart, clampedEnd); slot <= Math.max(clampedStart, clampedEnd); slot += 1) {
+      mask |= 1 << slot;
+    }
+    return mask & GRID_FULL_SLOT_MASK;
+  }
+
+  private resolveMotionDirectionVector(direction: NonNullable<GamePathNode['motionDirection']>) {
+    switch (direction) {
+      case 'left':
+        return { x: -1, y: 0 };
+      case 'right':
+        return { x: 1, y: 0 };
+      case 'up':
+        return { x: 0, y: 1 };
+      case 'down':
+        return { x: 0, y: -1 };
+      case 'up_left':
+        return this.normalizeMotionVector(-1, 1);
+      case 'up_right':
+        return this.normalizeMotionVector(1, 1);
+      case 'down_left':
+        return this.normalizeMotionVector(-1, -1);
+      case 'down_right':
+      default:
+        return this.normalizeMotionVector(1, -1);
+    }
+  }
+
+  private normalizeMotionVector(x: number, y: number) {
+    const length = Math.hypot(x, y) || 1;
+    return { x: x / length, y: y / length };
+  }
+
+  private buildFormationPlans(
+    descriptor: StructuralBlockDescriptor,
+    sliceIndex: number,
+    centerMeters: number,
+    backboneLane: number,
+    nextBackboneLane: number,
+    extraMembers: number,
+    eventAssignment: StructuralSliceEventAssignment,
+    score: number,
+    gridState: BlockGridState,
+    rng: () => number
+  ) {
+    const eventType = eventAssignment.guaranteedShopIcon ? 'shop' : eventAssignment.eventType;
+    const isEventSlice = eventType !== 'none';
+    const planningState = this.cloneGridState(gridState);
+    const memberCount = Math.max(1, 1 + extraMembers);
+    const memberAnchors = this.buildFormationMemberMeters(centerMeters, memberCount, descriptor, rng);
+    const backboneMotion =
+      isEventSlice
+        ? 'none'
+        : this.pickBlockMotionPattern(
+            descriptor,
+            sliceIndex,
+            score,
+            descriptor.kind === 'intro' ? 'small' : 'medium_small',
+            rng
+          );
+    const backboneSizeTier =
+      eventType === 'shop'
+        ? (eventAssignment.guaranteedShopIcon ? 'medium' : 'medium_large')
+        : descriptor.kind === 'intro'
+          ? this.pickSizeTier(
+              sliceIndex % 3 === 0
+                ? ['small', 'medium_small', 'medium']
+                : ['very_small', 'small', 'medium_small'],
+              score,
+              rng
+            )
+          : this.pickSizeTier(
+              descriptor.blockStartMeters < 110
+                ? ['small', 'medium_small', 'medium']
+                : descriptor.blockStartMeters < 310
+                  ? ['very_small', 'small', 'medium_small', 'medium']
+                  : ['very_small', 'small', 'medium_small'],
+              score,
+              rng
+            );
+    const backboneShape = backboneMotion === 'none' ? this.pickShapeKind(['round', 'oval', 'triangular'], score, rng) : 'round';
+    const backboneLaneOrder = this.buildBackboneLanePreference(descriptor, backboneLane, nextBackboneLane, rng);
+    const backbonePlacement = eventAssignment.guaranteedShopIcon
+      ? this.pickGridLaneAtMeters(
+          planningState,
+          centerMeters,
+          backboneLaneOrder,
+          score,
+          backboneSizeTier,
+          backboneShape
+        )
+      : this.pickGridPlanAnchor(
+          planningState,
+          memberAnchors[0] ?? centerMeters,
+          backboneLaneOrder,
+          score,
+          backboneSizeTier,
+          backboneShape
+        );
+    const resolvedBackboneMeters = backbonePlacement?.absoluteMeters ?? memberAnchors[0] ?? centerMeters;
+    const resolvedBackboneLane = backbonePlacement?.laneIndex ?? backboneLane;
+    const plans: StructuralNodePlan[] = [
+      {
+        absoluteMeters: resolvedBackboneMeters,
+        laneIndex: resolvedBackboneLane,
+        sizeTier: backboneSizeTier,
+        shapeKind: backboneShape,
+        motionPattern: backboneMotion,
+        motionDirection:
+          backboneMotion === 'vertical'
+            ? (resolvedBackboneLane >= 5 ? 'down' : 'up')
+            : backboneMotion === 'drift'
+              ? (resolvedBackboneLane >= 5 ? 'down_right' : 'up_right')
+              : backboneMotion === 'horizontal'
+                ? 'right'
+                : null,
+        motionDistance: this.resolveMotionDistance(descriptor, backboneMotion, score, rng),
+        motionDuration: backboneMotion === 'none' ? 0 : THREE.MathUtils.lerp(MOTION_DURATION_MIN, MOTION_DURATION_MAX, rng()),
+        eventType,
+        guaranteedShopIcon: eventAssignment.guaranteedShopIcon,
+        coinAngles: this.buildPlanCoinAngles(descriptor, sliceIndex, eventType, score, rng),
+        enemyPole: this.pickPlanEnemyPole(eventType, backboneMotion, backboneShape, score, rng)
+      }
+    ];
+    this.fillGridRect(
+      planningState,
+      this.buildGridRectForPlan(resolvedBackboneMeters, resolvedBackboneLane, score, backboneSizeTier, backboneShape)
+    );
+
+    if (extraMembers <= 0) {
+      return plans;
+    }
+
+    const usedLanes = new Set<number>([resolvedBackboneLane]);
+
+    for (let memberIndex = 1; memberIndex <= extraMembers; memberIndex += 1) {
+      const supportTemplate = this.buildSupportPlan(
+        descriptor,
+        memberAnchors[memberIndex] ?? (centerMeters + memberIndex * 0.28),
+        resolvedBackboneLane,
+        score + memberIndex,
+        rng,
+        memberIndex >= 2
+      );
+      const placement = this.pickGridPlanAnchor(
+        planningState,
+        memberAnchors[memberIndex] ?? (centerMeters + memberIndex * 0.28),
+        this.buildSupportLanePreference(
+          descriptor,
+          resolvedBackboneLane,
+          nextBackboneLane,
+          usedLanes,
+          memberIndex,
+          rng
+        ),
+        score + memberIndex,
+        supportTemplate.sizeTier,
+        supportTemplate.shapeKind
+      );
+      if (!placement) {
+        continue;
+      }
+
+      const plan: StructuralNodePlan = {
+        ...supportTemplate,
+        absoluteMeters: placement.absoluteMeters,
+        laneIndex: placement.laneIndex
+      };
+      plans.push(plan);
+      usedLanes.add(placement.laneIndex);
+      this.fillGridRect(
+        planningState,
+        this.buildGridRectForPlan(
+          placement.absoluteMeters,
+          placement.laneIndex,
+          score + memberIndex,
+          supportTemplate.sizeTier,
+          supportTemplate.shapeKind
+        )
+      );
+    }
+
+    return plans.sort((left, right) => left.absoluteMeters - right.absoluteMeters);
+  }
+
+  private cloneGridState(state: BlockGridState): BlockGridState {
+    return {
+      startColumn: state.startColumn,
+      endColumn: state.endColumn,
+      occupancyMasks: [...state.occupancyMasks]
+    };
+  }
+
+  private buildFormationMemberMeters(
+    centerMeters: number,
+    memberCount: number,
+    descriptor: StructuralBlockDescriptor,
+    rng: () => number
+  ) {
+    if (memberCount <= 1) {
+      return [centerMeters];
+    }
+
+    const columnOffsets =
+      descriptor.kind === 'intro' || descriptor.blockStartMeters < 210
+        ? GRID_SLICE_MEMBER_OFFSETS
+        : descriptor.blockStartMeters < 410
+          ? [0, 0, 0.56, 0.56, 1.12, 1.12, 1.74, 2.22]
+          : [0, 0.14, 0.68, 1.1, 1.56, 2.02, 2.48, 2.94];
+    const spreadScale =
+      descriptor.kind === 'intro'
+        ? 1
+        : descriptor.blockStartMeters < 110
+          ? 0.98
+          : descriptor.blockStartMeters < 310
+            ? 0.94
+            : 0.9;
+
+    return columnOffsets
+      .slice(0, memberCount)
+      .map((offset, index) => {
+        const jitter = index < 3 ? 0 : (rng() - 0.5) * 0.06;
+        return centerMeters + offset * spreadScale + jitter;
+      })
+      .sort((left, right) => left - right);
+  }
+
+  private buildBackboneLanePreference(
+    descriptor: StructuralBlockDescriptor,
+    backboneLane: number,
+    nextBackboneLane: number,
+    _rng: () => number
+  ) {
+    return Array.from({ length: PLAYABLE_PATH_LANE_COUNT }, (_, laneIndex) => laneIndex)
+      .sort((left, right) => this.scoreBackboneLane(descriptor, right, backboneLane, nextBackboneLane) - this.scoreBackboneLane(descriptor, left, backboneLane, nextBackboneLane));
+  }
+
+  private scoreBackboneLane(
+    descriptor: StructuralBlockDescriptor,
+    laneIndex: number,
+    backboneLane: number,
+    nextBackboneLane: number
+  ) {
+    const center = (PLAYABLE_PATH_LANE_COUNT - 1) * 0.5;
+    const continuityPenalty = Math.abs(laneIndex - backboneLane) * 1.78 + Math.abs(laneIndex - nextBackboneLane) * 0.44;
+    const edgeBonus = descriptor.blockStartMeters < 410 ? Math.abs(laneIndex - center) * 0.42 : 0;
+    const upperBias =
+      descriptor.blockStartMeters < 210
+        ? laneIndex >= 7
+          ? 1.84
+          : laneIndex >= 5
+            ? 0.72
+            : 0
+        : descriptor.blockStartMeters < 410 && laneIndex >= 6
+          ? 0.86
+          : 0;
+    const lowerBias =
+      descriptor.blockStartMeters < 210
+        ? laneIndex <= 2
+          ? 1.38
+          : laneIndex <= 4
+            ? 0.44
+            : 0
+        : descriptor.blockStartMeters < 410 && laneIndex <= 3
+          ? 0.54
+          : 0;
+    return edgeBonus + upperBias + lowerBias - continuityPenalty;
+  }
+
+  private buildSupportLanePreference(
+    descriptor: StructuralBlockDescriptor,
+    backboneLane: number,
+    nextBackboneLane: number,
+    usedLanes: Set<number>,
+    memberIndex: number,
+    _rng: () => number
+  ) {
+    const center = (PLAYABLE_PATH_LANE_COUNT - 1) * 0.5;
+    const nextDelta = THREE.MathUtils.clamp(nextBackboneLane - backboneLane, -1, 1);
+
+    return Array.from({ length: PLAYABLE_PATH_LANE_COUNT }, (_, laneIndex) => laneIndex)
+      .sort((left, right) => {
+        const leftDistance = Math.abs(left - backboneLane);
+        const rightDistance = Math.abs(right - backboneLane);
+        const leftReusePenalty = usedLanes.has(left) ? 12 : 0;
+        const rightReusePenalty = usedLanes.has(right) ? 12 : 0;
+        const leftEdgeBias = Math.abs(left - center);
+        const rightEdgeBias = Math.abs(right - center);
+        const leftForwardBias = nextDelta === 0 ? 0.18 : Math.sign(left - backboneLane) === Math.sign(nextDelta) ? 0.92 : 0.16;
+        const rightForwardBias = nextDelta === 0 ? 0.18 : Math.sign(right - backboneLane) === Math.sign(nextDelta) ? 0.92 : 0.16;
+        const leftUpperBias =
+          descriptor.blockStartMeters < 210
+            ? left >= 7
+              ? 1.96
+              : left >= 5
+                ? 0.92
+                : 0
+            : descriptor.blockStartMeters < 410 && left >= 6
+              ? 1.08
+              : 0;
+        const rightUpperBias =
+          descriptor.blockStartMeters < 210
+            ? right >= 7
+              ? 1.96
+              : right >= 5
+                ? 0.92
+                : 0
+            : descriptor.blockStartMeters < 410 && right >= 6
+              ? 1.08
+              : 0;
+        const leftLowerBias =
+          descriptor.blockStartMeters < 210
+            ? left <= 2
+              ? 1.72
+              : left <= 4
+                ? 0.64
+                : 0
+            : descriptor.blockStartMeters < 410 && left <= 3
+              ? 0.84
+              : 0;
+        const rightLowerBias =
+          descriptor.blockStartMeters < 210
+            ? right <= 2
+              ? 1.72
+              : right <= 4
+                ? 0.64
+                : 0
+            : descriptor.blockStartMeters < 410 && right <= 3
+              ? 0.84
+              : 0;
+        const leftExtremeBoost = descriptor.blockStartMeters < 210 && (left <= 1 || left >= 8) ? 2.24 : 0;
+        const rightExtremeBoost = descriptor.blockStartMeters < 210 && (right <= 1 || right >= 8) ? 2.24 : 0;
+        const leftMemberBias = memberIndex === 1 ? leftDistance * 2.04 : leftDistance * 1.72 + leftEdgeBias * 0.86;
+        const rightMemberBias = memberIndex === 1 ? rightDistance * 2.04 : rightDistance * 1.72 + rightEdgeBias * 0.86;
+
+        return (
+          rightMemberBias +
+          rightForwardBias +
+          rightUpperBias +
+          rightLowerBias +
+          rightExtremeBoost -
+          rightReusePenalty
+        ) - (
+          leftMemberBias +
+          leftForwardBias +
+          leftUpperBias +
+          leftLowerBias +
+          leftExtremeBoost -
+          leftReusePenalty
+        );
+      });
+  }
+
+  private pickGridPlanAnchor(
+    state: BlockGridState,
+    centerMeters: number,
+    laneOrder: number[],
+    score: number,
+    sizeTier: GameShardSizeTier,
+    shapeKind: GameShardShapeKind
+  ) {
+    const meterOrder = [centerMeters, centerMeters + 0.04, centerMeters - 0.04, centerMeters + 0.26];
+
+    for (const absoluteMeters of meterOrder) {
+      for (const laneIndex of laneOrder) {
+        const rect = this.buildGridRectForPlan(absoluteMeters, laneIndex, score, sizeTier, shapeKind);
+        if (this.isGridRectFree(state, rect)) {
+          return { absoluteMeters, laneIndex };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private pickGridLaneAtMeters(
+    state: BlockGridState,
+    absoluteMeters: number,
+    laneOrder: number[],
+    score: number,
+    sizeTier: GameShardSizeTier,
+    shapeKind: GameShardShapeKind
+  ) {
+    for (const laneIndex of laneOrder) {
+      const rect = this.buildGridRectForPlan(absoluteMeters, laneIndex, score, sizeTier, shapeKind);
+      if (this.isGridRectFree(state, rect)) {
+        return { absoluteMeters, laneIndex };
+      }
+    }
+
+    return null;
+  }
+
+  private buildSupportPlan(
+    descriptor: StructuralBlockDescriptor,
+    absoluteMeters: number,
+    laneIndex: number,
+    score: number,
+    rng: () => number,
+    handoff: boolean
+  ): StructuralNodePlan {
+    const sizeTier = handoff
+      ? this.pickSizeTier(
+          descriptor.kind === 'intro'
+            ? ['tiny', 'very_small', 'small']
+            : ['tiny', 'very_small', 'small', 'medium_small'],
+          score,
+          rng
+        )
+      : this.pickSizeTier(
+          descriptor.kind === 'intro' || descriptor.blockStartMeters < 210
+            ? ['tiny', 'very_small', 'small', 'medium_small']
+            : ['very_small', 'small', 'medium_small'],
+          score,
+          rng
+        );
+    return {
+      absoluteMeters,
+      laneIndex,
+      sizeTier,
+      shapeKind: this.pickShapeKind(['round', 'oval', 'triangular'], score, rng),
+      motionPattern: 'none',
+      motionDirection: null,
+      motionDistance: 0,
+      motionDuration: 0,
+      eventType: 'none',
+      guaranteedShopIcon: false,
+      coinAngles: descriptor.kind === 'intro' && handoff && rng() < 0.42 ? [Math.PI * (0.28 + rng() * 0.92)] : [],
+      enemyPole: null
+    };
+  }
+
   private placeStructuralNode(
     previous: GamePathNode,
     generated: GamePathNode[],
     reservedRanges: PlacementReservedRange[],
     plan: StructuralNodePlan,
+    descriptor: StructuralBlockDescriptor,
+    gridState: BlockGridState,
     rng: () => number
   ) {
     const anchor = generated[generated.length - 1] ?? previous;
@@ -1235,52 +2474,160 @@ export class GamePathSystem {
     const laneCount = getPathLaneTargets(score).length;
     const laneOrder = this.buildLaneTrialOrder(plan.laneIndex, laneCount);
     const sizeOrder = this.buildSizeTrialOrder(plan.sizeTier);
-    const xOffsets = plan.guaranteedShopIcon ? [0] : [0, 0.12, -0.08, 0.24];
-    const motionVariants =
-      plan.motionPattern === 'none'
-        ? [{ pattern: 'none' as GameShardMotionPattern, direction: null, distance: 0, duration: 0 }]
-        : [
-            {
-              pattern: plan.motionPattern,
-              direction: plan.motionDirection,
-              distance: plan.motionDistance,
-              duration: plan.motionDuration
-            },
-            { pattern: 'none' as GameShardMotionPattern, direction: null, distance: 0, duration: 0 }
-          ];
+    const xOffsets = plan.guaranteedShopIcon ? [0] : [0, 0.08, -0.06, 0.18];
 
     for (const sizeTier of sizeOrder) {
       for (const laneIndex of laneOrder) {
-        for (const motion of motionVariants) {
-          for (const xOffset of xOffsets) {
-            const shapeKind =
-              motion.pattern !== 'none' || plan.eventType === 'shop'
-                ? 'round'
-                : plan.shapeKind;
-            const candidate = this.buildGeneratedNode(anchor, {
-              ...plan,
-              absoluteMeters: plan.absoluteMeters + xOffset,
-              laneIndex,
-              sizeTier,
-              shapeKind,
-              motionPattern: motion.pattern,
-              motionDirection: motion.direction,
-              motionDistance: motion.distance,
-              motionDuration: motion.duration
-            }, rng);
-            if (!candidate) {
-              continue;
-            }
-            if (!this.validatePlacement([candidate], this.nodes, generated, reservedRanges)) {
-              continue;
-            }
-            return candidate;
+        for (const xOffset of xOffsets) {
+          const candidateMeters = plan.absoluteMeters + xOffset;
+          if (
+            !plan.guaranteedShopIcon &&
+            descriptor.guaranteedShopMeters !== null &&
+            Math.abs(candidateMeters - descriptor.guaranteedShopMeters) < 0.9
+          ) {
+            continue;
           }
+          const shapeKind =
+            plan.motionPattern !== 'none' || plan.eventType === 'shop'
+              ? 'round'
+              : plan.shapeKind;
+          const candidate = this.buildGeneratedNode(anchor, {
+            ...plan,
+            absoluteMeters: candidateMeters,
+            laneIndex,
+            sizeTier,
+            shapeKind,
+            motionPattern: 'none',
+            motionDirection: null,
+            motionDistance: 0,
+            motionDuration: 0
+          }, rng);
+          if (!candidate) {
+            continue;
+          }
+
+          const resolvedCandidate = this.resolveGridMotionCandidate(candidate, plan, descriptor, gridState);
+          if (!this.validatePlacement([resolvedCandidate], this.nodes, generated, reservedRanges)) {
+            continue;
+          }
+          return resolvedCandidate;
         }
       }
     }
 
     return null;
+  }
+
+  private resolveGridMotionCandidate(
+    candidate: GamePathNode,
+    plan: StructuralNodePlan,
+    descriptor: StructuralBlockDescriptor,
+    gridState: BlockGridState
+  ) {
+    if (plan.motionPattern === 'none') {
+      return candidate;
+    }
+
+    const duration = plan.motionDuration > 0 ? plan.motionDuration : THREE.MathUtils.lerp(MOTION_DURATION_MIN, MOTION_DURATION_MAX, 0.58);
+    const preferredDirections: Array<GameShardMotionDirection | null> =
+      plan.motionPattern === 'vertical'
+        ? [plan.motionDirection ?? (candidate.y >= 0 ? 'down' : 'up'), candidate.y >= 0 ? 'up' : 'down']
+        : plan.motionPattern === 'horizontal'
+          ? [plan.motionDirection ?? 'right', 'right']
+          : [plan.motionDirection ?? (candidate.y >= 0 ? 'down_right' : 'up_right'), candidate.y >= 0 ? 'up_right' : 'down_right'];
+    const distanceBoost = descriptor.blockStartMeters < 110 ? 1.18 : descriptor.blockStartMeters < 310 ? 1.24 : 1.3;
+
+    for (const direction of preferredDirections) {
+      if (!direction) {
+        continue;
+      }
+      const distance = this.resolveGridMotionDistance(candidate, gridState, direction, plan.motionDistance * distanceBoost);
+      if (distance <= 0) {
+        continue;
+      }
+
+      const movingCandidate: GamePathNode = {
+        ...candidate,
+        motionPattern: plan.motionPattern,
+        motionMode: 'landing_once',
+        motionDirection: direction,
+        motionDistance: distance,
+        motionDuration: duration
+      };
+      if (this.isGridPlacementAvailable(gridState, movingCandidate)) {
+        return movingCandidate;
+      }
+    }
+
+    return candidate;
+  }
+
+  private resolveGridMotionDistance(
+    candidate: GamePathNode,
+    gridState: BlockGridState,
+    direction: GameShardMotionDirection,
+    desiredDistance: number
+  ) {
+    const step = this.resolveGridMotionStep(direction);
+    const baseRect = this.buildGridRectForNode(candidate);
+    const laneSpacing = getPathLaneSpacing(candidate.index);
+    const stepDistance =
+      step.columnDelta !== 0 && step.slotDelta !== 0
+        ? Math.hypot(DEFAULT_COLUMN_DISTANCE, laneSpacing)
+        : step.columnDelta !== 0
+          ? DEFAULT_COLUMN_DISTANCE
+          : laneSpacing;
+    const maxSteps = Math.max(1, Math.ceil(desiredDistance / Math.max(0.001, stepDistance)));
+    let freeSteps = 0;
+
+    for (let index = 1; index <= maxSteps; index += 1) {
+      const shiftedRect: GridRect = {
+        startColumn: baseRect.startColumn + step.columnDelta * index,
+        endColumn: baseRect.endColumn + step.columnDelta * index,
+        startSlot: baseRect.startSlot + step.slotDelta * index,
+        endSlot: baseRect.endSlot + step.slotDelta * index
+      };
+      if (
+        shiftedRect.startSlot < 0 ||
+        shiftedRect.endSlot >= PLAYABLE_PATH_LANE_COUNT ||
+        shiftedRect.startColumn < gridState.startColumn ||
+        shiftedRect.endColumn > gridState.endColumn
+      ) {
+        break;
+      }
+      if (!this.isGridRectFree(gridState, shiftedRect)) {
+        break;
+      }
+      freeSteps = index;
+    }
+
+    if (freeSteps === 0) {
+      return 0;
+    }
+
+    return Math.min(desiredDistance, freeSteps * stepDistance);
+  }
+
+  private resolveGridMotionStep(direction: GameShardMotionDirection) {
+    switch (direction) {
+      case 'left':
+        return { columnDelta: -1, slotDelta: 0 };
+      case 'right':
+        return { columnDelta: 1, slotDelta: 0 };
+      case 'up':
+        return { columnDelta: 0, slotDelta: 1 };
+      case 'down':
+        return { columnDelta: 0, slotDelta: -1 };
+      case 'up_left':
+        return { columnDelta: -1, slotDelta: 1 };
+      case 'up_right':
+        return { columnDelta: 1, slotDelta: 1 };
+      case 'down_left':
+        return { columnDelta: -1, slotDelta: -1 };
+      case 'down_right':
+      default:
+        return { columnDelta: 1, slotDelta: -1 };
+    }
   }
 
   private buildLaneTrialOrder(targetLane: number, laneCount: number) {
@@ -1316,19 +2663,20 @@ export class GamePathSystem {
   private buildGeneratedNode(previous: GamePathNode, plan: StructuralNodePlan, rng: () => number) {
     const score = previous.index + 1;
     const x = this.getAbsoluteXForMeters(plan.absoluteMeters);
-    if (x <= previous.x + DEFAULT_COLUMN_DISTANCE * 0.16) {
+    if (x < previous.x - DEFAULT_COLUMN_DISTANCE * 0.04) {
       return null;
     }
 
     const laneTargets = getPathLaneTargets(score);
     const targetLaneY = laneTargets[plan.laneIndex] ?? 0;
+    const introLift = plan.absoluteMeters <= INTRO_BLOCK_METERS ? INTRO_PATTERN_FIELD_LIFT : 0;
     const jitter =
-      plan.guaranteedShopIcon
+      plan.guaranteedShopIcon || plan.milestoneOwned
         ? 0
         : plan.sizeTier === 'large' || plan.sizeTier === 'medium_large'
           ? 0.22
           : 0.38;
-    const y = targetLaneY + (rng() - 0.5) * jitter;
+    const y = targetLaneY + introLift + (rng() - 0.5) * jitter;
     const sizeConfig = SIZE_TIER_CONFIG[plan.sizeTier];
     const gameplayRadius = sizeConfig.radius[0] + rng() * (sizeConfig.radius[1] - sizeConfig.radius[0]);
     const visualScale = sizeConfig.visual[0] + rng() * (sizeConfig.visual[1] - sizeConfig.visual[0]);
@@ -1394,12 +2742,16 @@ export class GamePathSystem {
     return targetMeters * DEFAULT_COLUMN_DISTANCE + this.getPathDistanceOffset();
   }
 
+  private getPathFieldCenterY(score: number) {
+    return getPathLaneVerticalOffset(score) + (score <= INTRO_BLOCK_METERS ? INTRO_PATTERN_FIELD_LIFT : 0);
+  }
+
   private buildMilestonePrototype(targetMilestoneMeters: number): GamePathNode {
     const milestoneVisualScale = MILESTONE_HALF_WIDTH / (1.25 * 0.92);
     return {
       index: -1,
       x: this.getAbsoluteXForMeters(targetMilestoneMeters),
-      y: 0,
+      y: this.getPathFieldCenterY(targetMilestoneMeters),
       z: 0,
       gameplayRadius: MILESTONE_HALF_WIDTH,
       visualScale: milestoneVisualScale,
@@ -1441,11 +2793,11 @@ export class GamePathSystem {
 
   private buildMilestoneNode(previous: GamePathNode, targetMilestoneMeters: number) {
     const prototype = this.buildMilestonePrototype(targetMilestoneMeters);
-    return this.buildNode({
+    const milestone = this.buildNode({
       previous,
       index: previous.index + 1,
       x: prototype.x,
-      y: 0,
+      y: prototype.y,
       direction: 'right',
       sizeTier: 'massive',
       shapeKind: 'round',
@@ -1475,6 +2827,10 @@ export class GamePathSystem {
       enemySlot: null,
       motionSeed: this.createIndexedRng(307, Math.round(targetMilestoneMeters * 10))() * Math.PI * 2
     });
+    return {
+      ...milestone,
+      pathDistance: prototype.pathDistance
+    };
   }
 
   private buildEmergencyBlock(previous: GamePathNode) {
@@ -1532,6 +2888,8 @@ export class GamePathSystem {
       z: 0,
       gameplayRadius: config.gameplayRadius,
       visualScale: config.visualScale,
+      // Structural generation now reasons in forward meters, so logical path distance
+      // should advance with forward travel rather than arc length from vertical spread.
       pathDistance: previous ? previous.pathDistance + segmentDistance : 0,
       direction: config.direction,
       kind: config.kind,

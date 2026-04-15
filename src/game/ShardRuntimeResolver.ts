@@ -12,7 +12,7 @@ export function getShapeOrientation(_node: GamePathNode, elapsedTime: number) {
   return _node.motionSeed + elapsedTime * _node.spinSpeed * speedFactor * direction;
 }
 
-export function resolveRuntimeNode(node: GamePathNode, elapsedTime: number, currentIndex: number): ResolvedGamePathNode {
+export function resolveRuntimeNode(node: GamePathNode, elapsedTime: number, _currentIndex: number): ResolvedGamePathNode {
   let resolvedX = node.x;
   let resolvedY = node.y;
   let resolvedMotionProgress = 0;
@@ -30,8 +30,8 @@ export function resolveRuntimeNode(node: GamePathNode, elapsedTime: number, curr
   } else if (node.motionMode === 'landing_once') {
     resolvedMotionProgress = 0;
   } else {
-    const profile = getDifficultyProfile(Math.max(node.index, currentIndex));
-    if (node.index > currentIndex + 1 && node.motionPattern !== 'none') {
+    const profile = getDifficultyProfile(node.index);
+    if (node.motionPattern !== 'none') {
       const phase = elapsedTime * (0.48 + profile.movementSpeed * 0.66) + node.motionSeed;
       const amplitude = profile.movementAmplitude * (0.44 + node.visualScale * 0.08);
 
