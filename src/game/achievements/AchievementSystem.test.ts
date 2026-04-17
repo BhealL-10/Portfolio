@@ -26,9 +26,9 @@ function consumeAllUnlockIds(system: AchievementSystem) {
 }
 
 describe('AchievementSystem', () => {
-  it('ships the full 114 achievement registry with 64 mysteries', () => {
-    expect(ACHIEVEMENT_REGISTRY).toHaveLength(114);
-    expect(ACHIEVEMENT_REGISTRY.filter((achievement) => achievement.hidden)).toHaveLength(64);
+  it('ships the expanded 167 achievement registry with 115 mysteries', () => {
+    expect(ACHIEVEMENT_REGISTRY).toHaveLength(167);
+    expect(ACHIEVEMENT_REGISTRY.filter((achievement) => achievement.hidden)).toHaveLength(115);
   });
 
   it('unlocks combat achievements cumulatively and queues unlock toasts once', () => {
@@ -62,7 +62,7 @@ describe('AchievementSystem', () => {
 
     const unlocked = system.getPanelSnapshot('en').entries.find((entry) => entry.id === 'shards_triangular_5');
     expect(unlocked?.unlocked).toBe(true);
-    expect(unlocked?.name).toBe('Mirror Fangs');
+    expect(unlocked?.name).toBe('These ones bite back');
     expect(unlocked?.reward?.name).toBe('Face motif 4');
   });
 
@@ -125,14 +125,17 @@ describe('AchievementSystem', () => {
     expect(unlockedEntry?.description).toBe('Réussir 300 atterrissages perfect.');
   });
 
-  it('maps the current registry rewards for perfect and front canon achievements', () => {
+  it('uses current reward names directly in the registry', () => {
     const firstRewardedPerfect = ACHIEVEMENT_REGISTRY.find((entry) => entry.id === 'skill_perfect_10');
     const frontCanonTrigger = ACHIEVEMENT_REGISTRY.find((entry) => entry.id === 'modules_front_canon_10');
 
-    expect(firstRewardedPerfect?.rewardId).toBe('avatar-face-7');
-    expect(frontCanonTrigger?.name.fr).toBe('Impulsion de Proue');
-    expect(frontCanonTrigger?.name.en).toBe('Prow Pulse');
+    expect(firstRewardedPerfect?.rewardId).toBe('avatar-eyes-7');
+    expect(frontCanonTrigger?.name.fr).toBe('Ça part tout seul');
+    expect(frontCanonTrigger?.name.en).toBe('It just goes off');
     expect(frontCanonTrigger?.rewardId).toBe('avatar-accessoire-11');
+    expect(ACHIEVEMENT_REGISTRY.some((entry) => entry.rewardId?.includes('avatar-background-'))).toBe(false);
+    expect(ACHIEVEMENT_REGISTRY.some((entry) => entry.rewardId?.includes('avatar-motif-'))).toBe(false);
+    expect(ACHIEVEMENT_REGISTRY.some((entry) => entry.rewardId?.includes('avatar-barbe-'))).toBe(false);
   });
 
   it('unlocks the first rewarded perfect achievement after 10 perfect landings', () => {
@@ -167,5 +170,83 @@ describe('AchievementSystem', () => {
     expect(resetSnapshot.profile.unlockedRewards).toHaveLength(0);
     expect(system.consumePendingUnlock()).toBeNull();
     expect(system.syncGlobalResetToken('leaderboard-reset-1')).toBe(false);
+  });
+
+  it('unlocks mirror achievements from the current mirror toggle pipeline', () => {
+    const system = new AchievementSystem(createStorage());
+    system.resetRun();
+
+    system.recordReverseLaunchFromAnchor();
+    system.recordMirrorModeToggled(true);
+    for (let index = 0; index < 5; index += 1) {
+      system.recordLanding({
+        grade: index < 3 ? 'perfect' : 'good',
+        twist: false,
+        shapeKind: 'round',
+        isMilestone: false,
+        inMirror: true
+      });
+    }
+    system.recordEnemyKill({ amount: 5, inMirror: true, fromBehind: true });
+    system.recordMirrorModeToggled(false);
+
+    const unlocked = consumeAllUnlockIds(system);
+    expect(unlocked).toContain('progress_reverse_launch_1');
+    expect(unlocked).toContain('mirror_mode_1');
+    expect(unlocked).toContain('mirror_land_5');
+    expect(unlocked).toContain('mirror_perfect_3');
+    expect(unlocked).toContain('mirror_kill_5');
+    expect(unlocked).toContain('mirror_back_kill_3');
+    expect(unlocked).toContain('mirror_return_1');
+  });
+
+  it('tracks new ambient enemy, shop, sprint-fish, fast-travel, and moving-shard achievements from real event hooks', () => {
+    const system = new AchievementSystem(createStorage());
+    system.resetRun();
+
+    system.recordAmbientEnemyKill('enemyTop');
+    system.recordAmbientEnemyKill('enemyBot');
+    system.recordSprintFishRide();
+    system.recordSprintFishRide();
+    system.recordSprintFishRide();
+    system.recordFastTravel('wrapper');
+    system.recordFastTravel('teleport');
+    system.recordFastTravel('warp');
+    system.recordFastTravel('wrapper');
+    system.recordFastTravel('wrapper');
+    system.recordFastTravel('wrapper');
+    system.recordFastTravel('wrapper');
+    system.recordNodeEventEncounter('shop');
+    system.recordNodeEventEncounter('gift');
+    system.recordItemAcquired({ kind: 'module', slot: 'wrapper', rarity: 'rare', baseId: 'wrapper' }, { purchased: true });
+    system.recordItemAcquired({ kind: 'module', slot: 'magnet', rarity: 'epic', baseId: 'magnet' }, { purchased: true });
+    system.recordItemAcquired({ kind: 'module', slot: 'front_canon', rarity: 'legendary', baseId: 'front_canon' }, { purchased: true });
+    for (let index = 0; index < 5; index += 1) {
+      system.recordLanding({
+        grade: 'good',
+        twist: false,
+        shapeKind: 'round',
+        isMilestone: index < 3,
+        motionPattern: 'vertical',
+        eventType: index < 3 ? 'shop' : 'none',
+        fromSprintFish: index < 3
+      });
+    }
+
+    const unlocked = consumeAllUnlockIds(system);
+    expect(unlocked).toContain('combat_enemy_top_1');
+    expect(unlocked).toContain('combat_enemy_bot_1');
+    expect(unlocked).toContain('modules_sprint_fish_1');
+    expect(unlocked).toContain('modules_sprint_fish_land_3');
+    expect(unlocked).toContain('modules_fast_travel_5');
+    expect(unlocked).toContain('economy_shop_visit_1');
+    expect(unlocked).toContain('economy_question_pickup_1');
+    expect(unlocked).toContain('economy_buy_rare_3');
+    expect(unlocked).toContain('modules_wrapper_1');
+    expect(unlocked).toContain('modules_magnet_1');
+    expect(unlocked).toContain('modules_front_canon_1');
+    expect(unlocked).toContain('shards_moving_land_5');
+    expect(unlocked).toContain('shards_shop_land_3');
+    expect(unlocked).toContain('shards_milestone_peek_3');
   });
 });

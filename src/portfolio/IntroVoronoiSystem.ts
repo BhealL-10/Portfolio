@@ -18,8 +18,7 @@ export class IntroVoronoiSystem {
   private readonly canvas: HTMLCanvasElement;
   private readonly context: CanvasRenderingContext2D;
   private readonly content: HTMLDivElement;
-  private readonly progress: HTMLDivElement;
-  private readonly logo: HTMLImageElement;
+  private readonly titleElement: HTMLHeadingElement;
   private readonly fracturedCellIds = new Set<number>();
   private fragments: Fragment[] = [];
   private clickCount = 0;
@@ -50,21 +49,19 @@ export class IntroVoronoiSystem {
     this.content = document.createElement('div');
     this.content.className = 'intro-layer__content';
     this.content.innerHTML = `
-      <div class="intro-layer__logo-wrap">
-        <img class="intro-layer__logo" alt="Ape Prod logo">
+      <div class="intro-layer__title-wrap">
+        <h1 class="intro-layer__title"></h1>
       </div>
-      <h1 class="intro-layer__title"></h1>
-      <p class="intro-layer__subtitle"></p>
-      <div class="intro-layer__progress"></div>
     `;
 
-    this.logo = this.content.querySelector<HTMLImageElement>('.intro-layer__logo')!;
-    this.progress = this.content.querySelector<HTMLDivElement>('.intro-layer__progress')!;
+    this.titleElement = this.content.querySelector<HTMLHeadingElement>('.intro-layer__title')!;
 
     this.element.append(this.canvas, this.content);
     host.appendChild(this.element);
 
     this.element.addEventListener('pointerdown', this.onPointerDown);
+    this.element.addEventListener('pointermove', this.onPointerMove);
+    this.element.addEventListener('pointerleave', this.onPointerLeave);
     this.i18n.onChange(() => {
       this.renderText();
       this.draw();
@@ -81,6 +78,18 @@ export class IntroVoronoiSystem {
 
   get isComplete() {
     return this.state === 'hidden';
+  }
+
+  get clickCountValue() {
+    return this.clickCount;
+  }
+
+  get clickThresholdValue() {
+    return this.clickThreshold;
+  }
+
+  get clickProgressRatio() {
+    return clamp(this.clickCount / this.clickThreshold, 0, 1);
   }
 
   hideImmediately() {
@@ -137,8 +146,6 @@ export class IntroVoronoiSystem {
       .forEach((cell) => this.fracturedCellIds.add(cell.id));
 
     this.clickCount += 1;
-    this.progress.style.setProperty('--intro-progress', String(this.clickCount / this.clickThreshold));
-    this.progress.textContent = `${this.clickCount}/${this.clickThreshold}`;
 
     if (this.clickCount >= this.clickThreshold) {
       this.startShatter();
@@ -279,12 +286,10 @@ export class IntroVoronoiSystem {
   }
 
   private renderText() {
-    this.content.querySelector<HTMLHeadingElement>('.intro-layer__title')!.textContent = this.i18n.t('introTitle');
-    this.content.querySelector<HTMLParagraphElement>('.intro-layer__subtitle')!.textContent = this.i18n.t('introSubtitle');
-    this.progress.textContent = `${this.clickCount}/${this.clickThreshold}`;
-    this.progress.style.setProperty('--intro-progress', String(this.clickCount / this.clickThreshold));
-    this.logo.src =
-      this.theme.current === 'dark' ? '/assets/images/shared/branding/ape-prod-intro-light.png' : '/assets/images/shared/branding/ape-prod-intro-dark.png';
+    const title = 'Ape Prod Portfolio (BhealL)';
+    this.titleElement.textContent = title;
+    this.titleElement.dataset.text = title;
+    this.syncPointerGlow(window.innerWidth * 0.5, window.innerHeight * 0.82);
   }
 
   private resize = () => {
@@ -292,4 +297,23 @@ export class IntroVoronoiSystem {
     this.canvas.height = window.innerHeight;
     this.draw();
   };
+
+  private onPointerMove = (event: PointerEvent) => {
+    this.syncPointerGlow(event.clientX, event.clientY);
+  };
+
+  private onPointerLeave = () => {
+    this.syncPointerGlow(window.innerWidth * 0.5, window.innerHeight * 0.82);
+  };
+
+  private syncPointerGlow(clientX: number, clientY: number) {
+    const x = clamp(clientX / Math.max(1, window.innerWidth), 0, 1);
+    const y = clamp(clientY / Math.max(1, window.innerHeight), 0, 1);
+    this.content.style.setProperty('--intro-pointer-x', `${(x * 100).toFixed(2)}%`);
+    this.content.style.setProperty('--intro-pointer-y', `${(y * 100).toFixed(2)}%`);
+    const offsetX = ((x - 0.5) * 24).toFixed(2);
+    const offsetY = ((y - 0.72) * 16).toFixed(2);
+    this.content.style.setProperty('--intro-pointer-offset-x', `${offsetX}px`);
+    this.content.style.setProperty('--intro-pointer-offset-y', `${offsetY}px`);
+  }
 }

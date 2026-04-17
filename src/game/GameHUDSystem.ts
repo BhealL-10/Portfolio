@@ -22,6 +22,7 @@ import {
   FULLSCREEN_BUTTON_ASSETS,
   getUIButtonAsset,
   HELP_ICON_ASSETS,
+  LANGUAGE_BUTTON_ASSETS,
   SAVE_BUTTON_ASSETS,
   SECONDARY_NAV_ASSETS,
   SOUND_BUTTON_ASSETS,
@@ -39,10 +40,6 @@ const MOMENTUM_BAR_ASSETS = {
   top: new URL('../../assets/images/game/ui/meters/momentum-overlay.png', import.meta.url).href
 };
 const COIN_ICON_URL = new URL('../../assets/images/game/sprites/pickups/coin-sheet.png', import.meta.url).href;
-const LANGUAGE_BUTTON_ASSETS = {
-  fr: new URL('../../assets/images/shared/localization/fr.svg', import.meta.url).href,
-  en: new URL('../../assets/images/shared/localization/en.svg', import.meta.url).href
-} as const;
 const GAME_OVER_HEADER_ASSETS = {
   dark: new URL('../../assets/images/game/ui/headers/game-over-title-dark.svg', import.meta.url).href,
   light: new URL('../../assets/images/game/ui/headers/game-over-title-light.svg', import.meta.url).href
@@ -3187,7 +3184,7 @@ export class GameHUDSystem {
       this.leaderboardEntriesCache = nextEntries;
       this.persistLeaderboardCache(nextEntries);
       this.markLeaderboardRegistrationCompleted();
-      const playerIndex = nextEntries.findIndex((entry) => entry.name === name);
+      const playerIndex = nextEntries.findIndex((candidate) => this.isCurrentPlayerEntry(candidate, name));
       if (playerIndex >= 0) {
         this.callbacks.onLeaderboardPosition(playerIndex + 1);
       }
@@ -3202,7 +3199,7 @@ export class GameHUDSystem {
       this.leaderboardEntriesCache = fallbackEntries;
       this.persistLeaderboardCache(fallbackEntries);
       this.markLeaderboardRegistrationCompleted();
-      const playerIndex = fallbackEntries.findIndex((entry) => entry.name === name);
+      const playerIndex = fallbackEntries.findIndex((candidate) => this.isCurrentPlayerEntry(candidate, name));
       if (playerIndex >= 0) {
         this.callbacks.onLeaderboardPosition(playerIndex + 1);
       }

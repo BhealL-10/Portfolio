@@ -56,13 +56,12 @@ const MILESTONE_BRANCH_REJOIN_PADDING = DEFAULT_COLUMN_DISTANCE * 1.1;
 const INTRO_BLOCK_METERS = 10;
 const MAIN_BLOCK_METERS = 100;
 const MAIN_BLOCK_SHOP_OFFSET_METERS = 50;
-const MAIN_BLOCK_SHOP_CLEARANCE_METERS = 3.9;
-const INTRO_BLOCK_NODE_TARGET = 30;
-const FIRST_MAIN_BLOCK_NODE_TARGET = 204;
-const POST_DENSE_MAIN_BLOCK_NODE_TARGET = 170;
-const FAR_MAIN_BLOCK_NODE_TARGET = 72;
-const DENSITY_TAPER_START_METERS = 260;
-const DENSITY_TAPER_END_METERS = 620;
+const MAIN_BLOCK_SHOP_CLEARANCE_METERS = 1.7;
+const INTRO_BLOCK_NODE_TARGET = 46;
+const FIRST_MAIN_BLOCK_NODE_TARGET = 278;
+const FAR_MAIN_BLOCK_NODE_TARGET = 102;
+const DENSITY_TAPER_START_METERS = 1010;
+const DENSITY_TAPER_END_METERS = 1210;
 const INTRO_COLUMN_JITTER_METERS = 0.08;
 const MAIN_COLUMN_JITTER_METERS = 0.34;
 const INTRO_BLOCK_START_PADDING_METERS = 0.72;
@@ -73,16 +72,18 @@ const POST_MILESTONE_REWARD_RESERVED_START_METERS = 1.9;
 const POST_MILESTONE_REWARD_RESERVED_END_METERS = 8.8;
 const POST_MILESTONE_CONTENT_START_METERS = 9.6;
 const MAX_LANE_DELTA_PER_STEP = 3;
-const EXTRA_EVENT_SAFE_GAP_METERS = 11;
-const EXTRA_EVENT_MAX_PER_BLOCK = 2;
+const EXTRA_EVENT_SAFE_GAP_METERS = 8.4;
+const EXTRA_EVENT_MAX_PER_BLOCK = 3;
 const INTRO_ONBOARDING_END_METERS = 18;
 const MOTION_DURATION_MIN = 1.2;
 const MOTION_DURATION_MAX = 1.82;
-const EARLY_FULL_HEIGHT_SWEEP_ORDER = [6, 7, 8, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 1, 2, 3, 4, 5] as const;
+const INTRO_FULL_HEIGHT_SWEEP_ORDER = [8, 5, 2, 7, 4, 1, 6, 3, 0, 8, 5, 2, 7, 4, 1, 6, 3, 0, 5, 4] as const;
+const EARLY_FULL_HEIGHT_SWEEP_ORDER = [8, 5, 2, 7, 4, 1, 9, 6, 3, 0, 8, 4, 2, 7, 5, 1, 9, 6, 3, 0] as const;
 const GRID_FULL_SLOT_MASK = (1 << PLAYABLE_PATH_LANE_COUNT) - 1;
 const MILESTONE_GRID_OCCUPIED_HALF_SLOTS = 3;
 const MILESTONE_GRID_SAFETY_SLOTS = 1;
-const GRID_SLICE_MEMBER_OFFSETS = [0, 0, 0, 0, 0.68, 0.68, 1.32, 1.96] as const;
+const INTRO_GRID_SLICE_MEMBER_OFFSETS = [0, 0, 0.16, 0.16, 0.48, 0.78, 1.08, 1.4] as const;
+const GRID_SLICE_MEMBER_OFFSETS = [0, 0.12, 0.34, 0.58, 0.84, 1.1, 1.38, 1.68] as const;
 const SPRINT_FISH_LANDING_SUPPORT_LANE_DELTA = 2;
 const INTRO_PATTERN_FIELD_LIFT = 0.9;
 
@@ -1007,8 +1008,129 @@ export class GamePathSystem {
     generated.push(...tailNodes);
 
     const densified = this.buildGapInfillNodes(previous, generated, descriptor, placementReservedRanges, gridState, rng);
-    this.ensureGuaranteedShopNode(densified, descriptor);
-    return densified;
+    const introBalanced = this.ensureIntroLowerRecoveryNodes(previous, densified, descriptor, placementReservedRanges, rng);
+    this.ensureGuaranteedShopNode(introBalanced, descriptor);
+    return introBalanced;
+  }
+
+  private ensureIntroLowerRecoveryNodes(
+    previous: GamePathNode,
+    generated: GamePathNode[],
+    descriptor: StructuralBlockDescriptor,
+    reservedRanges: PlacementReservedRange[],
+    rng: () => number
+  ) {
+    if (descriptor.kind !== 'intro' || generated.length === 0) {
+      return generated;
+    }
+
+    const getLowLaneIndices = (nodes: GamePathNode[]) =>
+      nodes
+        .filter((node) => !node.isMilestone)
+        .map((node) => this.getLaneIndex(node.y, getPathLaneTargets(node.index)))
+        .filter((laneIndex) => laneIndex <= 3);
+    const existingLowLanes = new Set(getLowLaneIndices(generated));
+    let lowNodeCount = getLowLaneIndices(generated).length;
+    if (lowNodeCount >= 3) {
+      return generated;
+    }
+
+    const appended = [...generated];
+    let cursor = appended[appended.length - 1] ?? previous;
+    for (const laneIndex of [3, 2, 1, 0]) {
+      if (existingLowLanes.has(laneIndex)) {
+        continue;
+      }
+      let candidate: GamePathNode | null = null;
+      for (const meterOffset of [0, 0.08, 0.2, 0.34, 0.48]) {
+        const nextCandidate = this.buildGeneratedNode(cursor, {
+          absoluteMeters: pathDistanceToMeters(cursor.pathDistance) + meterOffset,
+          laneIndex,
+          sizeTier: 'tiny',
+          shapeKind: 'round',
+          motionPattern: 'none',
+          motionDirection: null,
+          motionDistance: 0,
+          motionDuration: 0,
+          eventType: 'none',
+          guaranteedShopIcon: false,
+          coinAngles: [],
+          enemyPole: null
+        }, rng);
+        if (!nextCandidate || !this.validatePlacement([nextCandidate], this.nodes, appended, reservedRanges)) {
+          continue;
+        }
+        candidate = nextCandidate;
+        break;
+      }
+      if (!candidate) {
+        continue;
+      }
+      appended.push(candidate);
+      cursor = candidate;
+      existingLowLanes.add(laneIndex);
+      lowNodeCount += 1;
+      if (lowNodeCount >= 3) {
+        break;
+      }
+    }
+
+    if (lowNodeCount >= 3) {
+      return appended;
+    }
+
+    const rebalanceCandidates = appended
+      .map((node, index) => ({
+        index,
+        node,
+        laneIndex: this.getLaneIndex(node.y, getPathLaneTargets(node.index)),
+        distanceMeters: pathDistanceToMeters(node.pathDistance)
+      }))
+      .filter(
+        ({ node, laneIndex, distanceMeters }) =>
+          !node.isMilestone &&
+          laneIndex >= 2 &&
+          distanceMeters >= 1.4 &&
+          distanceMeters < descriptor.targetMilestoneMeters - 1.8
+      )
+      .sort((left, right) => right.distanceMeters - left.distanceMeters);
+
+    const desiredLowSlots = [
+      { targetMeters: 2.1, laneIndex: 2 },
+      { targetMeters: 4.6, laneIndex: 1 },
+      { targetMeters: 7.1, laneIndex: 0 }
+    ] as const;
+
+    for (const desiredSlot of desiredLowSlots) {
+      if (lowNodeCount >= 3) {
+        continue;
+      }
+      const candidatesByDistance = rebalanceCandidates
+        .filter(({ laneIndex }) => laneIndex > desiredSlot.laneIndex)
+        .sort(
+          (left, right) =>
+            Math.abs(left.distanceMeters - desiredSlot.targetMeters) - Math.abs(right.distanceMeters - desiredSlot.targetMeters)
+        );
+      for (const candidate of candidatesByDistance) {
+        const laneTargets = getPathLaneTargets(candidate.node.index);
+        const liftedTargetY =
+          (laneTargets[desiredSlot.laneIndex] ?? candidate.node.y) + INTRO_PATTERN_FIELD_LIFT + (rng() - 0.5) * 0.16;
+        const rebalancedNode = {
+          ...candidate.node,
+          y: liftedTargetY
+        };
+        const trial = [...appended];
+        trial[candidate.index] = rebalancedNode;
+        if (!this.validatePlacement(trial, this.nodes, [], reservedRanges)) {
+          continue;
+        }
+        appended[candidate.index] = rebalancedNode;
+        lowNodeCount += 1;
+        break;
+      }
+    }
+
+    return appended;
   }
 
   private ensureGuaranteedShopNode(generated: GamePathNode[], descriptor: StructuralBlockDescriptor) {
@@ -1078,8 +1200,8 @@ export class GamePathSystem {
       return [] as GamePathNode[];
     }
 
-    const exitOffsets = descriptor.kind === 'main' ? [2.85, 2.85, 2.85, 5.65, 7.85] : [1.15, 2.25];
-    const mainExitLanes = [7, 5, 3, 6, 4] as const;
+    const exitOffsets = descriptor.kind === 'main' ? [2.85, 2.85, 2.85, 4.35, 5.4, 6.55, 7.75, 8.95] : [1.15, 2.25, 3.2];
+    const mainExitLanes = [7, 5, 3, 8, 1, 6, 2, 4] as const;
     const generated: GamePathNode[] = [];
     let previousLane = this.resolveStartingLane(previous.index, previous.y);
     const rewardTrioSizeTier: GameShardSizeTier = 'medium_large';
@@ -1149,15 +1271,17 @@ export class GamePathSystem {
             : laneIndex,
         sizeTier:
           descriptor.kind === 'main'
-            ? 'small'
+            ? index >= 5
+              ? 'very_small'
+              : 'small'
             : index === 0
               ? 'medium_small'
               : 'small',
         shapeKind: 'round',
-        motionPattern: descriptor.kind === 'main' && index === 4 ? 'vertical' : 'none',
-        motionDirection: descriptor.kind === 'main' && index === 4 ? 'up' : null,
-        motionDistance: descriptor.kind === 'main' && index === 4 ? getPathLaneSpacing(score) * 0.96 : 0,
-        motionDuration: descriptor.kind === 'main' && index === 4 ? 1.28 : 0,
+        motionPattern: descriptor.kind === 'main' && index === exitOffsets.length - 1 ? 'vertical' : 'none',
+        motionDirection: descriptor.kind === 'main' && index === exitOffsets.length - 1 ? 'up' : null,
+        motionDistance: descriptor.kind === 'main' && index === exitOffsets.length - 1 ? getPathLaneSpacing(score) * 0.92 : 0,
+        motionDuration: descriptor.kind === 'main' && index === exitOffsets.length - 1 ? 1.18 : 0,
         eventType: 'none',
         guaranteedShopIcon: false,
         coinAngles: [],
@@ -1179,45 +1303,23 @@ export class GamePathSystem {
     if (descriptor.kind === 'intro') {
       return INTRO_BLOCK_NODE_TARGET;
     }
-    if (descriptor.blockStartMeters < DENSITY_TAPER_START_METERS) {
+    if (this.isHighDensityMainBlock(descriptor)) {
       return FIRST_MAIN_BLOCK_NODE_TARGET;
     }
-    const taper = THREE.MathUtils.smootherstep(
-      clamp((descriptor.blockStartMeters - DENSITY_TAPER_START_METERS) / Math.max(1, DENSITY_TAPER_END_METERS - DENSITY_TAPER_START_METERS), 0, 1),
-      0,
-      1
-    );
-    const target = Math.round(THREE.MathUtils.lerp(POST_DENSE_MAIN_BLOCK_NODE_TARGET, FAR_MAIN_BLOCK_NODE_TARGET, taper));
-    if (descriptor.blockStartMeters >= 610) {
-      return Math.max(22, Math.round(target * 0.86));
-    }
-    if (descriptor.blockStartMeters >= 510) {
-      return Math.max(26, Math.round(target * 0.92));
-    }
-    return target;
+    const taper = this.resolveMainDensityTaper(descriptor);
+    return Math.max(34, Math.round(THREE.MathUtils.lerp(FIRST_MAIN_BLOCK_NODE_TARGET, FAR_MAIN_BLOCK_NODE_TARGET, taper)));
   }
 
   private resolveFormationSliceCount(descriptor: StructuralBlockDescriptor, targetNodeCount: number) {
     if (descriptor.kind === 'intro') {
-      return Math.max(10, Math.round(targetNodeCount * 0.5));
+      return Math.max(16, Math.round(targetNodeCount * 0.62));
     }
-
-    const ratio =
-      descriptor.blockStartMeters < 110
-        ? 0.34
-        : descriptor.blockStartMeters < 210
-          ? 0.37
-          : descriptor.blockStartMeters < 310
-            ? 0.43
-          : descriptor.blockStartMeters < 510
-            ? 0.5
-            : 0.6;
-    const minimumSlices =
-      descriptor.blockStartMeters < 210
-        ? 17
-        : descriptor.blockStartMeters < 510
-          ? 16
-          : 14;
+    if (this.isHighDensityMainBlock(descriptor)) {
+      return Math.max(44, Math.round(targetNodeCount * 0.74));
+    }
+    const taper = this.resolveMainDensityTaper(descriptor);
+    const ratio = THREE.MathUtils.lerp(0.58, 0.44, taper);
+    const minimumSlices = Math.round(THREE.MathUtils.lerp(26, 16, taper));
     return Math.max(minimumSlices, Math.round(targetNodeCount * ratio));
   }
 
@@ -1243,13 +1345,11 @@ export class GamePathSystem {
     const baselinePasses =
       descriptor.kind === 'intro'
         ? 2
-        : descriptor.blockStartMeters < 210
-          ? 3
-          : descriptor.blockStartMeters < 410
-            ? 2
-            : descriptor.blockStartMeters < 510
-              ? 1
-              : 0;
+        : this.isHighDensityMainBlock(descriptor)
+          ? 2
+          : descriptor.blockStartMeters < 1410
+            ? 1
+            : 0;
 
     for (let pass = 0; pass < baselinePasses && remaining > 0; pass += 1) {
       for (const targetIndex of spreadOrder) {
@@ -1264,7 +1364,7 @@ export class GamePathSystem {
       }
     }
 
-    if (remaining > 0 && descriptor.blockStartMeters < 110) {
+    if (remaining > 0 && descriptor.kind !== 'intro' && descriptor.blockStartMeters < DENSITY_TAPER_START_METERS) {
       for (const targetIndex of spreadOrder) {
         if (remaining <= 0) {
           break;
@@ -1335,17 +1435,19 @@ export class GamePathSystem {
     const gapMeters = safeEndMeters - currentMeters;
     const recoveryStepMeters =
       descriptor.kind === 'intro'
-        ? 1.04
-        : descriptor.blockStartMeters < 110
-          ? 1.32
-          : descriptor.blockStartMeters < 210
-            ? 1.58
-            : descriptor.blockStartMeters < 310
-              ? 1.82
-              : descriptor.blockStartMeters < 410
-                ? 2.08
-                : 2.42;
-    if (gapMeters <= (descriptor.kind === 'intro' ? 1.1 : recoveryStepMeters * 1.55)) {
+        ? 0.9
+        : this.isHighDensityMainBlock(descriptor)
+          ? 1.04
+          : descriptor.blockStartMeters < 1410
+            ? 1.56
+            : 1.96;
+    const recoveryThreshold =
+      descriptor.kind === 'intro'
+        ? 1
+        : this.isHighDensityMainBlock(descriptor)
+          ? recoveryStepMeters * 1.22
+          : recoveryStepMeters * 1.48;
+    if (gapMeters <= recoveryThreshold) {
       return [] as GamePathNode[];
     }
 
@@ -1464,7 +1566,7 @@ export class GamePathSystem {
     }
 
     const insertCount = Math.min(
-      descriptor.kind === 'intro' || descriptor.blockStartMeters < 210 ? 4 : 3,
+      descriptor.kind === 'intro' || this.isHighDensityMainBlock(descriptor) ? 4 : 3,
       Math.max(1, Math.ceil(gapMeters / maximumGapMeters) - 1)
     );
     const anchors = this.distributeMeters(
@@ -1489,8 +1591,8 @@ export class GamePathSystem {
         sizeTier:
           descriptor.kind === 'intro'
             ? 'small'
-            : descriptor.blockStartMeters < 210
-              ? 'small'
+            : this.isHighDensityMainBlock(descriptor)
+              ? 'very_small'
               : descriptor.blockStartMeters < 410
                 ? 'very_small'
                 : 'tiny',
@@ -1505,7 +1607,20 @@ export class GamePathSystem {
         enemyPole: null
       };
 
-      const candidate = this.placeStructuralNode(previous, [...accepted, ...inserted], reservedRanges, plan, descriptor, gridState, rng);
+      let candidate = this.placeStructuralNode(previous, [...accepted, ...inserted], reservedRanges, plan, descriptor, gridState, rng);
+      if (!candidate) {
+        const emergencyCandidate = this.buildGeneratedNode(leftNode, {
+          ...plan,
+          sizeTier: descriptor.kind === 'intro' ? 'small' : 'tiny',
+          absoluteMeters: absoluteMeters + (fillIndex % 2 === 0 ? 0.02 : -0.02)
+        }, rng);
+        if (emergencyCandidate) {
+          const candidateChain = [...inserted, emergencyCandidate, nextNode];
+          if (this.validatePlacement(candidateChain, this.nodes, [...accepted, ...futureTail], reservedRanges)) {
+            candidate = emergencyCandidate;
+          }
+        }
+      }
       if (!candidate) {
         return;
       }
@@ -1524,21 +1639,15 @@ export class GamePathSystem {
 
   private resolveMaximumForwardGapMeters(descriptor: StructuralBlockDescriptor) {
     if (descriptor.kind === 'intro') {
-      return 1.02;
+      return 0.92;
     }
-    if (descriptor.blockStartMeters < 110) {
-      return 1.24;
+    if (this.isHighDensityMainBlock(descriptor)) {
+      return 1;
     }
-    if (descriptor.blockStartMeters < 210) {
-      return 1.38;
+    if (descriptor.blockStartMeters < 1410) {
+      return 1.64;
     }
-    if (descriptor.blockStartMeters < 410) {
-      return 1.72;
-    }
-    if (descriptor.blockStartMeters < 610) {
-      return 2.08;
-    }
-    return 2.4;
+    return 2;
   }
 
   private resolveMaxExtraMembersPerSlice(descriptor: StructuralBlockDescriptor, sliceIndex: number, sliceCount: number) {
@@ -1548,16 +1657,14 @@ export class GamePathSystem {
     if (sliceIndex >= sliceCount - 3) {
       return 1;
     }
-    if (descriptor.kind === 'intro' || descriptor.blockStartMeters < 110) {
-      return 9;
+    if (descriptor.kind === 'intro') {
+      return 10;
     }
-    if (descriptor.blockStartMeters < 210) {
-      return 8;
-    }
-    if (descriptor.blockStartMeters < 310) {
+    if (this.isHighDensityMainBlock(descriptor)) {
       return 7;
     }
-    return descriptor.blockStartMeters < 510 ? 6 : 4;
+    const taper = this.resolveMainDensityTaper(descriptor);
+    return Math.max(5, Math.round(THREE.MathUtils.lerp(8, 5, taper)));
   }
 
   private buildBlockColumns(
@@ -1617,9 +1724,11 @@ export class GamePathSystem {
       return assignments;
     }
 
+    const denseMainBlock = this.isHighDensityMainBlock(descriptor);
     let remaining =
-      (rng() < 0.26 + this.rewardChanceBias * 0.18 + this.shopChanceBias * 0.08 ? 1 : 0) +
-      (rng() < 0.08 + this.rewardChanceBias * 0.12 ? 1 : 0);
+      (rng() < (denseMainBlock ? 0.64 : 0.34) + this.rewardChanceBias * 0.24 + this.shopChanceBias * 0.08 ? 1 : 0) +
+      (rng() < (denseMainBlock ? 0.34 : 0.14) + this.rewardChanceBias * 0.18 ? 1 : 0) +
+      (rng() < (denseMainBlock ? 0.14 : 0.04) + this.rewardChanceBias * 0.12 ? 1 : 0);
     remaining = Math.min(EXTRA_EVENT_MAX_PER_BLOCK, remaining);
     const eligible = columns
       .map((absoluteMeters, index) => ({ absoluteMeters, index }))
@@ -1649,8 +1758,8 @@ export class GamePathSystem {
 
   private pickBonusEventType(rng: () => number): GameEventType {
     const roll = rng();
-    const shopThreshold = Math.min(0.32, 0.08 + this.shopChanceBias * 0.22);
-    const rewardThreshold = Math.min(0.92, 0.68 + this.rewardChanceBias * 0.22);
+    const shopThreshold = Math.min(0.28, 0.07 + this.shopChanceBias * 0.2);
+    const rewardThreshold = Math.min(0.97, 0.82 + this.rewardChanceBias * 0.14);
     if (roll < shopThreshold) {
       return 'shop';
     }
@@ -1675,22 +1784,11 @@ export class GamePathSystem {
   }
 
   private resolveLaneCoverageTarget(descriptor: StructuralBlockDescriptor) {
-    if (descriptor.kind === 'intro' || descriptor.blockStartMeters < 110) {
-      return 9;
+    if (descriptor.kind === 'intro' || this.isHighDensityMainBlock(descriptor)) {
+      return 10;
     }
-    if (descriptor.blockStartMeters < 210) {
-      return 7;
-    }
-    if (descriptor.blockStartMeters < 310) {
-      return 6;
-    }
-    if (descriptor.blockStartMeters < 410) {
-      return 5;
-    }
-    if (descriptor.blockStartMeters < 510) {
-      return 4;
-    }
-    return 2;
+    const taper = this.resolveMainDensityTaper(descriptor);
+    return Math.max(3, Math.round(THREE.MathUtils.lerp(8, 3, taper)));
   }
 
   private buildLaneSequence(
@@ -1707,7 +1805,8 @@ export class GamePathSystem {
     const coverageTarget = this.resolveLaneCoverageTarget(descriptor);
     const dominantLane = this.resolveDominantLane(descriptor, coverageTarget, laneCount, rng);
     const lanePool = this.buildLanePool(coverageTarget, dominantLane, laneCount);
-    const earlySweep = descriptor.kind === 'intro' || descriptor.blockStartMeters < 310;
+    const earlySweep = descriptor.kind === 'intro' || descriptor.blockStartMeters < DENSITY_TAPER_START_METERS;
+    const sweepOrder = descriptor.kind === 'intro' ? INTRO_FULL_HEIGHT_SWEEP_ORDER : EARLY_FULL_HEIGHT_SWEEP_ORDER;
     const sequence: number[] = [];
     let currentLane = THREE.MathUtils.clamp(startingLane, 0, laneCount - 1);
     let pointer = earlySweep
@@ -1727,7 +1826,7 @@ export class GamePathSystem {
 
     for (let index = 0; index < count; index += 1) {
       const templateLane = earlySweep
-        ? EARLY_FULL_HEIGHT_SWEEP_ORDER[index % EARLY_FULL_HEIGHT_SWEEP_ORDER.length] ?? dominantLane
+        ? sweepOrder[index % sweepOrder.length] ?? dominantLane
         : lanePool[pointer] ?? dominantLane;
       currentLane = this.resolveLaneFallback(currentLane, templateLane, Math.max(0, descriptor.index * 40 + index));
       sequence.push(currentLane);
@@ -1744,6 +1843,19 @@ export class GamePathSystem {
         direction = direction === 1 ? -1 : 1;
         pointer = THREE.MathUtils.clamp(pointer, 0, lanePool.length - 1);
       }
+    }
+
+    if (descriptor.kind === 'intro' && count >= 6) {
+      const introAnchorPattern = [
+        { ratio: 0.12, lane: 7 },
+        { ratio: 0.28, lane: 2 },
+        { ratio: 0.46, lane: 8 },
+        { ratio: 0.64, lane: 1 }
+      ] as const;
+      introAnchorPattern.forEach(({ ratio, lane }) => {
+        const anchorIndex = THREE.MathUtils.clamp(Math.round((count - 1) * ratio), 1, Math.max(1, count - 3));
+        sequence[anchorIndex] = lane;
+      });
     }
 
     const exitPattern = descriptor.kind === 'intro' ? [5, 6, 5] : [5, 6, 5, 6, 5];
@@ -1794,6 +1906,16 @@ export class GamePathSystem {
       Math.max(0, laneCount - span)
     );
     return Array.from({ length: span }, (_, index) => start + index);
+  }
+
+  private getLaneBand(laneIndex: number) {
+    if (laneIndex <= 2) {
+      return 0 as const;
+    }
+    if (laneIndex >= 7) {
+      return 2 as const;
+    }
+    return 1 as const;
   }
 
   private resolveMotionDistance(
@@ -2172,17 +2294,28 @@ export class GamePathSystem {
         rng,
         memberIndex >= 2
       );
+      const supportLaneOrder = this.buildSupportLanePreference(
+        descriptor,
+        resolvedBackboneLane,
+        nextBackboneLane,
+        usedLanes,
+        memberIndex,
+        rng
+      );
+      const prioritizedSupportLaneOrder =
+        descriptor.kind === 'intro' &&
+        sliceIndex % 3 === 1 &&
+        !Array.from(usedLanes).some((lane) => this.getLaneBand(lane) === 0)
+          ? [...new Set([1, 2, 0, ...supportLaneOrder])]
+          : descriptor.kind === 'intro' &&
+              sliceIndex % 3 === 0 &&
+              !Array.from(usedLanes).some((lane) => this.getLaneBand(lane) === 2)
+            ? [...new Set([8, 7, 9, ...supportLaneOrder])]
+          : supportLaneOrder;
       const placement = this.pickGridPlanAnchor(
         planningState,
         memberAnchors[memberIndex] ?? (centerMeters + memberIndex * 0.28),
-        this.buildSupportLanePreference(
-          descriptor,
-          resolvedBackboneLane,
-          nextBackboneLane,
-          usedLanes,
-          memberIndex,
-          rng
-        ),
+        prioritizedSupportLaneOrder,
         score + memberIndex,
         supportTemplate.sizeTier,
         supportTemplate.shapeKind
@@ -2232,19 +2365,21 @@ export class GamePathSystem {
     }
 
     const columnOffsets =
-      descriptor.kind === 'intro' || descriptor.blockStartMeters < 210
-        ? GRID_SLICE_MEMBER_OFFSETS
+      descriptor.kind === 'intro'
+        ? INTRO_GRID_SLICE_MEMBER_OFFSETS
+        : this.isHighDensityMainBlock(descriptor)
+          ? GRID_SLICE_MEMBER_OFFSETS
         : descriptor.blockStartMeters < 410
           ? [0, 0, 0.56, 0.56, 1.12, 1.12, 1.74, 2.22]
           : [0, 0.14, 0.68, 1.1, 1.56, 2.02, 2.48, 2.94];
     const spreadScale =
       descriptor.kind === 'intro'
         ? 1
-        : descriptor.blockStartMeters < 110
-          ? 0.98
-          : descriptor.blockStartMeters < 310
-            ? 0.94
-            : 0.9;
+        : this.isHighDensityMainBlock(descriptor)
+          ? 0.92
+          : descriptor.blockStartMeters < 1410
+            ? 0.9
+            : 0.86;
 
     return columnOffsets
       .slice(0, memberCount)
@@ -2273,28 +2408,30 @@ export class GamePathSystem {
   ) {
     const center = (PLAYABLE_PATH_LANE_COUNT - 1) * 0.5;
     const continuityPenalty = Math.abs(laneIndex - backboneLane) * 1.78 + Math.abs(laneIndex - nextBackboneLane) * 0.44;
-    const edgeBonus = descriptor.blockStartMeters < 410 ? Math.abs(laneIndex - center) * 0.42 : 0;
+    const denseField = descriptor.kind === 'intro' || this.isHighDensityMainBlock(descriptor);
+    const edgeBonus = denseField ? Math.abs(laneIndex - center) * 0.18 : descriptor.blockStartMeters < 1410 ? Math.abs(laneIndex - center) * 0.26 : 0;
+    const middleLift = denseField && laneIndex >= 3 && laneIndex <= 6 ? 1.22 : laneIndex >= 4 && laneIndex <= 5 ? 0.22 : 0;
     const upperBias =
-      descriptor.blockStartMeters < 210
+      denseField
         ? laneIndex >= 7
-          ? 1.84
+          ? 1.16
           : laneIndex >= 5
-            ? 0.72
+            ? 0.48
             : 0
-        : descriptor.blockStartMeters < 410 && laneIndex >= 6
+        : descriptor.blockStartMeters < 1410 && laneIndex >= 6
           ? 0.86
           : 0;
     const lowerBias =
-      descriptor.blockStartMeters < 210
+      denseField
         ? laneIndex <= 2
-          ? 1.38
+          ? 1.02
           : laneIndex <= 4
-            ? 0.44
+            ? 0.36
             : 0
-        : descriptor.blockStartMeters < 410 && laneIndex <= 3
+        : descriptor.blockStartMeters < 1410 && laneIndex <= 3
           ? 0.54
           : 0;
-    return edgeBonus + upperBias + lowerBias - continuityPenalty;
+    return edgeBonus + middleLift + upperBias + lowerBias - continuityPenalty;
   }
 
   private buildSupportLanePreference(
@@ -2307,6 +2444,9 @@ export class GamePathSystem {
   ) {
     const center = (PLAYABLE_PATH_LANE_COUNT - 1) * 0.5;
     const nextDelta = THREE.MathUtils.clamp(nextBackboneLane - backboneLane, -1, 1);
+    const denseField = descriptor.kind === 'intro' || this.isHighDensityMainBlock(descriptor);
+    const backboneBand = this.getLaneBand(backboneLane);
+    const usedBands = new Set(Array.from(usedLanes, (lane) => this.getLaneBand(lane)));
 
     return Array.from({ length: PLAYABLE_PATH_LANE_COUNT }, (_, laneIndex) => laneIndex)
       .sort((left, right) => {
@@ -2316,56 +2456,64 @@ export class GamePathSystem {
         const rightReusePenalty = usedLanes.has(right) ? 12 : 0;
         const leftEdgeBias = Math.abs(left - center);
         const rightEdgeBias = Math.abs(right - center);
+        const leftBand = this.getLaneBand(left);
+        const rightBand = this.getLaneBand(right);
         const leftForwardBias = nextDelta === 0 ? 0.18 : Math.sign(left - backboneLane) === Math.sign(nextDelta) ? 0.92 : 0.16;
         const rightForwardBias = nextDelta === 0 ? 0.18 : Math.sign(right - backboneLane) === Math.sign(nextDelta) ? 0.92 : 0.16;
         const leftUpperBias =
-          descriptor.blockStartMeters < 210
+          denseField
             ? left >= 7
-              ? 1.96
+              ? 1.42
               : left >= 5
-                ? 0.92
+                ? 0.56
                 : 0
-            : descriptor.blockStartMeters < 410 && left >= 6
+            : descriptor.blockStartMeters < 1410 && left >= 6
               ? 1.08
               : 0;
         const rightUpperBias =
-          descriptor.blockStartMeters < 210
+          denseField
             ? right >= 7
-              ? 1.96
+              ? 1.42
               : right >= 5
-                ? 0.92
+                ? 0.56
                 : 0
-            : descriptor.blockStartMeters < 410 && right >= 6
+            : descriptor.blockStartMeters < 1410 && right >= 6
               ? 1.08
               : 0;
         const leftLowerBias =
-          descriptor.blockStartMeters < 210
+          denseField
             ? left <= 2
-              ? 1.72
+              ? 1.26
               : left <= 4
-                ? 0.64
+                ? 0.44
                 : 0
-            : descriptor.blockStartMeters < 410 && left <= 3
+            : descriptor.blockStartMeters < 1410 && left <= 3
               ? 0.84
               : 0;
         const rightLowerBias =
-          descriptor.blockStartMeters < 210
+          denseField
             ? right <= 2
-              ? 1.72
+              ? 1.26
               : right <= 4
-                ? 0.64
+                ? 0.44
                 : 0
-            : descriptor.blockStartMeters < 410 && right <= 3
+            : descriptor.blockStartMeters < 1410 && right <= 3
               ? 0.84
               : 0;
-        const leftExtremeBoost = descriptor.blockStartMeters < 210 && (left <= 1 || left >= 8) ? 2.24 : 0;
-        const rightExtremeBoost = descriptor.blockStartMeters < 210 && (right <= 1 || right >= 8) ? 2.24 : 0;
+        const leftExtremeBoost = denseField && (left <= 1 || left >= 8) ? 1.14 : 0;
+        const rightExtremeBoost = denseField && (right <= 1 || right >= 8) ? 1.14 : 0;
+        const leftBandDiversity = !usedBands.has(leftBand) ? 3.1 : leftBand !== backboneBand ? 1.2 : -1.4;
+        const rightBandDiversity = !usedBands.has(rightBand) ? 3.1 : rightBand !== backboneBand ? 1.2 : -1.4;
+        const leftMiddleBonus = denseField && leftBand === 1 ? 1.18 : 0;
+        const rightMiddleBonus = denseField && rightBand === 1 ? 1.18 : 0;
         const leftMemberBias = memberIndex === 1 ? leftDistance * 2.04 : leftDistance * 1.72 + leftEdgeBias * 0.86;
         const rightMemberBias = memberIndex === 1 ? rightDistance * 2.04 : rightDistance * 1.72 + rightEdgeBias * 0.86;
 
         return (
           rightMemberBias +
           rightForwardBias +
+          rightBandDiversity +
+          rightMiddleBonus +
           rightUpperBias +
           rightLowerBias +
           rightExtremeBoost -
@@ -2373,6 +2521,8 @@ export class GamePathSystem {
         ) - (
           leftMemberBias +
           leftForwardBias +
+          leftBandDiversity +
+          leftMiddleBonus +
           leftUpperBias +
           leftLowerBias +
           leftExtremeBoost -
@@ -2389,7 +2539,16 @@ export class GamePathSystem {
     sizeTier: GameShardSizeTier,
     shapeKind: GameShardShapeKind
   ) {
-    const meterOrder = [centerMeters, centerMeters + 0.04, centerMeters - 0.04, centerMeters + 0.26];
+    const meterOrder = [
+      centerMeters,
+      centerMeters + 0.04,
+      centerMeters - 0.04,
+      centerMeters + 0.18,
+      centerMeters - 0.16,
+      centerMeters + 0.34,
+      centerMeters - 0.28,
+      centerMeters + 0.52
+    ];
 
     for (const absoluteMeters of meterOrder) {
       for (const laneIndex of laneOrder) {
@@ -2438,7 +2597,7 @@ export class GamePathSystem {
           rng
         )
       : this.pickSizeTier(
-          descriptor.kind === 'intro' || descriptor.blockStartMeters < 210
+          descriptor.kind === 'intro' || this.isHighDensityMainBlock(descriptor)
             ? ['tiny', 'very_small', 'small', 'medium_small']
             : ['very_small', 'small', 'medium_small'],
           score,
@@ -2474,7 +2633,7 @@ export class GamePathSystem {
     const laneCount = getPathLaneTargets(score).length;
     const laneOrder = this.buildLaneTrialOrder(plan.laneIndex, laneCount);
     const sizeOrder = this.buildSizeTrialOrder(plan.sizeTier);
-    const xOffsets = plan.guaranteedShopIcon ? [0] : [0, 0.08, -0.06, 0.18];
+    const xOffsets = plan.guaranteedShopIcon ? [0] : [0, 0.08, -0.06, 0.18, -0.14, 0.32, -0.24, 0.46];
 
     for (const sizeTier of sizeOrder) {
       for (const laneIndex of laneOrder) {
@@ -3025,17 +3184,28 @@ export class GamePathSystem {
       earlyIntroCoin
         ? 1
         : descriptor.kind === 'intro'
-          ? 0.3
+          ? 0.46
           : score < 40
-            ? 0.24
+            ? 0.34
             : score < 120
-              ? 0.18
-              : 0.12;
+              ? 0.28
+              : 0.2;
     if (rng() > coinChance) {
       return [] as number[];
     }
 
-    const count = descriptor.kind === 'main' && score > 80 && rng() < 0.24 ? 2 : 1;
+    const count =
+      descriptor.kind === 'intro'
+        ? (rng() < 0.32 ? 2 : 1)
+        : this.isHighDensityMainBlock(descriptor)
+          ? rng() < 0.22
+            ? 3
+            : rng() < 0.78
+              ? 2
+              : 1
+          : score > 80 && rng() < 0.34
+            ? 2
+            : 1;
     return Array.from({ length: count }, () => Math.PI * (0.18 + rng() * 1.48));
   }
 
@@ -3050,7 +3220,7 @@ export class GamePathSystem {
     if (!profile.enemyUnlocked || eventType !== 'none' || motionPattern !== 'none' || shapeKind !== 'round') {
       return null;
     }
-    const chance = score < 60 ? 0.12 : score < 120 ? 0.18 : 0.24;
+    const chance = score < 60 ? 0.22 : score < 120 ? 0.3 : 0.38;
     if (rng() > chance) {
       return null;
     }
@@ -3059,22 +3229,40 @@ export class GamePathSystem {
 
   private buildCoinSlots(coinAngles: number[], eventType: GameEventType, score: number, rng: () => number) {
     const decorateCoinSlot = (angle: number) => {
-      const airborneChance = score < 20 ? 0.36 : score < 70 ? 0.24 : score < 140 ? 0.17 : 0.12;
+      const airborneChance = score < 20 ? 0.52 : score < 70 ? 0.38 : score < 140 ? 0.28 : 0.2;
       const airborne = eventType !== 'shop' && rng() < airborneChance;
-      const liftBias = Math.sin(angle) * THREE.MathUtils.lerp(0.1, 0.42, rng());
+      const liftBias = Math.sin(angle) * THREE.MathUtils.lerp(0.16, 0.56, rng());
       return {
         angle,
         value: eventType === 'rare_item' ? 2 : 1,
         collected: false,
-        orbitScale: airborne ? THREE.MathUtils.lerp(1.18, 1.74, rng()) : 1,
-        forwardOffset: airborne ? THREE.MathUtils.lerp(0.8, 2.7, rng()) : 0,
-        verticalOffset: airborne ? THREE.MathUtils.lerp(-0.18, 1.18, rng()) + liftBias : 0
+        orbitScale: airborne ? THREE.MathUtils.lerp(1.26, 1.92, rng()) : 1,
+        forwardOffset: airborne ? THREE.MathUtils.lerp(1.1, 3.4, rng()) : 0,
+        verticalOffset: airborne ? THREE.MathUtils.lerp(-0.38, 1.42, rng()) + liftBias : 0
+      };
+    };
+
+    const buildCorridorCoinSlot = () => {
+      const angle = Math.PI * (0.22 + rng() * 1.36);
+      const forwardSign = rng() < 0.84 ? 1 : -1;
+      const verticalBias = Math.sin(angle) >= 0 ? 1 : -1;
+      return {
+        angle,
+        value: 1,
+        collected: false,
+        orbitScale: THREE.MathUtils.lerp(1.42, 2.06, rng()),
+        forwardOffset: THREE.MathUtils.lerp(1.8, 4.4, rng()) * forwardSign,
+        verticalOffset: THREE.MathUtils.lerp(0.42, 1.84, rng()) * verticalBias
       };
     };
 
     const slots = coinAngles.map((angle) => decorateCoinSlot(angle));
+    const corridorCoinChance = score < 24 ? 0.48 : score < 100 ? 0.38 : 0.26;
+    if (eventType === 'none' && slots.length > 0 && rng() < corridorCoinChance) {
+      slots.push(buildCorridorCoinSlot());
+    }
     if (slots.length === 0 && score < 12 && eventType === 'none') {
-      slots.push(decorateCoinSlot(Math.PI * (0.2 + rng() * 1.2)));
+      slots.push(buildCorridorCoinSlot());
     }
     return slots;
   }
@@ -3171,6 +3359,21 @@ export class GamePathSystem {
       return 'drift';
     }
     return 'horizontal';
+  }
+
+  private isHighDensityMainBlock(descriptor: StructuralBlockDescriptor) {
+    return descriptor.kind === 'main' && descriptor.blockStartMeters < DENSITY_TAPER_START_METERS;
+  }
+
+  private resolveMainDensityTaper(descriptor: StructuralBlockDescriptor) {
+    if (descriptor.kind === 'intro') {
+      return 0;
+    }
+    return THREE.MathUtils.smootherstep(
+      clamp((descriptor.blockStartMeters - DENSITY_TAPER_START_METERS) / Math.max(1, DENSITY_TAPER_END_METERS - DENSITY_TAPER_START_METERS), 0, 1),
+      0,
+      1
+    );
   }
 
   private createIndexedRng(stream: number, salt: number) {

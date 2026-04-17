@@ -2407,6 +2407,7 @@ html[data-theme='dark'] .game-hud__wallet {
 
 .game-hud__toast {
   position: relative;
+  --toast-copy-color: var(--overlay-copy-strong);
   min-width: 188px;
   max-width: min(420px, calc(100vw - 40px));
   display: flex;
@@ -2421,7 +2422,7 @@ html[data-theme='dark'] .game-hud__wallet {
   background: transparent;
   border: 0;
   box-shadow: none;
-  color: var(--overlay-copy-strong);
+  color: var(--toast-copy-color);
   transform: translateY(-16px);
   opacity: 0;
   transition: opacity 180ms ease, transform 220ms ease;
@@ -2430,11 +2431,13 @@ html[data-theme='dark'] .game-hud__wallet {
 
 html[data-theme='light'] .game-hud__toast,
 html[data-theme='light'] .game-hud__game-over-achievement-pill {
+  --toast-copy-color: #f6f0df;
   color: #f6f0df;
 }
 
 html[data-theme='dark'] .game-hud__toast,
 html[data-theme='dark'] .game-hud__game-over-achievement-pill {
+  --toast-copy-color: #14181f;
   color: #14181f;
 }
 
@@ -2491,6 +2494,7 @@ html[data-theme='dark'] .game-hud__toast::before {
   text-align: center;
   max-width: 100%;
   word-break: break-word;
+  color: var(--toast-copy-color);
 }
 
 .game-hud__toast[data-kind='achievement'] {
@@ -2505,7 +2509,8 @@ html[data-theme='dark'] .game-hud__toast::before {
   font-size: 0.68rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--overlay-copy-muted);
+  color: var(--toast-copy-color);
+  opacity: 0.82;
 }
 
 .game-hud__toast-reward {
@@ -2527,26 +2532,31 @@ html[data-theme='dark'] .game-hud__toast::before {
 .game-hud__toast[data-rarity='common'],
 .game-hud__game-over-achievement-pill[data-rarity='common'] {
   --achievement-rarity-color: #f2ddb8;
+  --toast-copy-color: #f2ddb8;
 }
 
 .game-hud__toast[data-rarity='uncommon'],
 .game-hud__game-over-achievement-pill[data-rarity='uncommon'] {
   --achievement-rarity-color: #75af80;
+  --toast-copy-color: #75af80;
 }
 
 .game-hud__toast[data-rarity='rare'],
 .game-hud__game-over-achievement-pill[data-rarity='rare'] {
   --achievement-rarity-color: #49bcff;
+  --toast-copy-color: #49bcff;
 }
 
 .game-hud__toast[data-rarity='epic'],
 .game-hud__game-over-achievement-pill[data-rarity='epic'] {
   --achievement-rarity-color: #d0a8ff;
+  --toast-copy-color: #d0a8ff;
 }
 
 .game-hud__toast[data-rarity='legendary'],
 .game-hud__game-over-achievement-pill[data-rarity='legendary'] {
   --achievement-rarity-color: #e9d18b;
+  --toast-copy-color: #e9d18b;
 }
 
 .game-hud__toast[data-kind='acquisition'] {
@@ -2559,7 +2569,8 @@ html[data-theme='dark'] .game-hud__toast::before {
   font-size: 0.72rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--overlay-copy-muted);
+  color: var(--toast-copy-color);
+  opacity: 0.84;
 }
 
 .game-hud__toast[data-kind='acquisition'] em {
@@ -2568,7 +2579,8 @@ html[data-theme='dark'] .game-hud__toast::before {
   line-height: 1.25;
   text-align: center;
   max-width: 28ch;
-  color: rgb(var(--overlay-fg-rgb) / 0.8);
+  color: var(--toast-copy-color);
+  opacity: 0.74;
 }
 
 .game-hud__toast-icon {
@@ -2704,7 +2716,8 @@ html[data-theme='dark'] .game-hud__toast::before {
   font-size: 0.62rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--overlay-copy-muted);
+  color: var(--toast-copy-color, var(--overlay-copy-muted));
+  opacity: 0.82;
 }
 
 html[data-theme='light'] .game-hud__game-over-achievement-pill {
@@ -3812,6 +3825,103 @@ html[data-theme='dark'] .game-hud__leaderboard-preview-rank {
 }
 
 @media (max-width: 680px) {
+  html[data-runtime-device='mobile'] .game-hud__game-over {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 8px;
+    padding: calc(var(--safe-top) + 8px) calc(var(--safe-right) + 8px) calc(var(--safe-bottom) + 8px) calc(var(--safe-left) + 8px);
+    align-content: start;
+    overflow-y: auto;
+  }
+
+  html[data-runtime-device='mobile'] .game-hud__game-over-side {
+    display: none;
+  }
+
+  html[data-runtime-device='mobile'] .game-hud__game-over-stack {
+    grid-column: 1;
+    width: min(100%, calc(100vw - 16px));
+  }
+
+  html[data-runtime-device='mobile'] .game-hud__game-over-panel {
+    min-height: 0;
+    margin-top: calc(var(--safe-top) + 40px);
+    padding:
+      clamp(72px, 20vw, 92px)
+      clamp(14px, 4.4vw, 18px)
+      clamp(18px, 5vw, 24px)
+      clamp(14px, 4.4vw, 18px);
+    gap: 10px;
+  }
+
+  html[data-runtime-device='mobile'] .game-hud__game-over-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  html[data-runtime-device='mobile'] .game-hud__game-over-gear,
+  html[data-runtime-device='mobile'] .game-hud__leaderboard,
+  html[data-runtime-device='mobile'] .game-hud__profile-achievements {
+    width: 100%;
+  }
+
+  html[data-runtime-device='mobile'] .game-hud__leaderboard {
+    min-height: 0;
+    max-height: min(44dvh, 340px);
+    margin-left: 0;
+    padding: 82px 16px 18px;
+  }
+
+  html[data-runtime-device='mobile'] .game-hud__leaderboard-list {
+    min-height: 0;
+    max-height: min(20dvh, 188px);
+  }
+
+  html[data-runtime-device='mobile'] .game-hud__leaderboard-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  html[data-runtime-device='mobile'] .game-hud__leaderboard-save-button {
+    justify-self: stretch;
+  }
+
+  html[data-runtime-device='mobile'] .game-hud__leaderboard-save-button .game-hud__svg-button-image img {
+    height: 32px;
+  }
+
+  html[data-runtime-device='mobile'] .game-hud__achievements {
+    align-items: stretch;
+    padding: calc(var(--safe-top) + 8px) calc(var(--safe-right) + 8px) calc(var(--safe-bottom) + 8px) calc(var(--safe-left) + 8px);
+  }
+
+  html[data-runtime-device='mobile'] .game-hud__achievements-shell {
+    width: 100%;
+    max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 16px);
+  }
+
+  html[data-runtime-device='mobile'] .game-hud__achievements-panel {
+    min-height: 0;
+    max-height: inherit;
+  }
+
+  html[data-runtime-device='mobile'] .game-hud__achievements-content {
+    width: min(100%, calc(100% - 18px));
+    max-height: inherit;
+    padding: 18px 10px 16px;
+    gap: 8px;
+  }
+
+  html[data-runtime-device='mobile'] .game-hud__achievements-scroll {
+    padding: 4px 2px 14px;
+  }
+
+  html[data-runtime-device='mobile'] .game-hud__achievement-section {
+    width: 100%;
+  }
+
+  html[data-runtime-device='mobile'] .game-hud__achievement-card,
+  html[data-runtime-device='mobile'] .game-hud__profile-achievements-card {
+    padding: 9px 10px;
+  }
+
   .game-hud__toast-stack {
     top: calc(var(--safe-top) + 88px);
     gap: 8px;

@@ -46,6 +46,7 @@ export class MobileControlsHud {
 
     (Object.entries(this.buttons) as Array<[MobileControlSlot, MobileControlButton]>).forEach(([slot, button]) => {
       button.element.dataset.slot = slot;
+      button.element.setAttribute('data-guide-hover', `game-control-${slot}`);
       this.element.appendChild(button.element);
     });
 

@@ -66,6 +66,14 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
     font-size: 0.74rem;
   }
 
+  html[data-runtime-device='desktop'] .navigation-hud__button--icon {
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    min-height: 30px;
+    padding: 0;
+  }
+
   html[data-runtime-device='desktop'] .primaterie-portal__chrome {
     top: calc(var(--safe-top) + 14px);
     left: calc(var(--safe-left) + 14px);
@@ -283,7 +291,11 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   }
 
   .guide-bubble__copy {
-    padding: 17% 15% 24% 17%;
+    padding:
+      calc(var(--guide-safe-top, 21%) - 1%)
+      calc(var(--guide-safe-right, 16%) - 1%)
+      calc(var(--guide-safe-bottom, 21%) + 2%)
+      calc(var(--guide-safe-left, 16%) + 1%);
   }
 
   :root {
@@ -320,13 +332,25 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
     padding: 10px 14px;
   }
 
+  .navigation-hud__button--icon {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+  }
+
   .focus-layer__grid,
   .about-layer__skills {
     grid-template-columns: 1fr;
   }
 
-  .intro-layer__logo-wrap {
-    width: min(220px, 52vw);
+  .intro-layer__content {
+    padding:
+      calc(var(--safe-top) + 20px)
+      calc(var(--safe-right) + 16px)
+      calc(var(--safe-bottom) + 42px)
+      calc(var(--safe-left) + 16px);
   }
 
   .focus-layer__panel,
@@ -344,15 +368,14 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   }
 
   .focus-layer__facet-nav {
-    grid-template-columns: minmax(0, 88px) minmax(0, 1fr) minmax(0, 88px);
+    grid-template-columns: 72px minmax(0, 1fr) 72px;
     gap: 8px;
   }
 
-  .focus-layer__facet-btn,
-  .focus-layer__slide-nav,
-  .focus-layer__close {
-    font-size: 0.68rem;
-    padding: 9px 12px;
+  .focus-layer__icon-button,
+  .about-layer__icon-button {
+    width: 58px;
+    height: 58px;
   }
 
   .focus-layer__body {
@@ -863,7 +886,32 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   }
 
   .guide-bubble__copy {
-    padding: 16% 14% 26% 16%;
+    padding:
+      calc(var(--guide-safe-top, 21%) - 2%)
+      calc(var(--guide-safe-right, 16%) - 2%)
+      calc(var(--guide-safe-bottom, 21%) + 4%)
+      calc(var(--guide-safe-left, 16%) + 1%);
+  }
+
+  .guide-bubble__help-button {
+    width: 30px;
+    height: 30px;
+  }
+
+  .guide-bubble__help-summary {
+    width: min(188px, 44vw) !important;
+  }
+
+  .guide-bubble__help-orb {
+    padding: 8px 9px;
+  }
+
+  .guide-bubble__help-orb-label {
+    font-size: 0.58rem;
+  }
+
+  .guide-bubble__help-summary-body {
+    font-size: clamp(0.68rem, 1.8vw, 0.82rem);
   }
 }
 

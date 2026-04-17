@@ -1,4 +1,6 @@
-import type { PortfolioProject } from '../types/content';
+import type { PortfolioProject, ProjectFacet, ProjectFacetAsset } from '../types/content';
+import { SECONDARY_NAV_ASSETS } from '../game/GameUiAssetResolver';
+import { observeThemeChanges, resolveDocumentTheme } from '../game/ThemeAssetResolver';
 import { I18nService } from './I18nService';
 
 interface FocusCallbacks {
@@ -33,6 +35,11 @@ export class FocusPresentationSystem {
     });
 
     this.i18n.onChange(() => this.render());
+    observeThemeChanges(() => {
+      if (this.project) {
+        this.render();
+      }
+    });
   }
 
   show(project: PortfolioProject, facetIndex: number) {
@@ -74,25 +81,34 @@ export class FocusPresentationSystem {
 
     const language = this.i18n.current;
     const facet = this.project.facets[this.facetIndex];
+    const theme = resolveDocumentTheme();
+    const closeIcon = SECONDARY_NAV_ASSETS.close[theme];
+    const prevIcon = SECONDARY_NAV_ASSETS.left[theme];
+    const nextIcon = SECONDARY_NAV_ASSETS.right[theme];
 
     this.panel.classList.toggle('is-facet-transitioning', this.facetTransitioning);
     this.panel.dataset.facetDirection = this.facetTransitionDirection > 0 ? 'next' : 'prev';
     this.panel.innerHTML = `
       <div class="focus-layer__panel-scroll">
       <div class="focus-layer__content">
-      <div class="focus-layer__header">
-        <button class="focus-layer__close" type="button">${this.i18n.t('close')}</button>
+      <div class="focus-layer__header" aria-hidden="true"></div>
+      <div class="focus-layer__close-row">
+        <button class="focus-layer__icon-button focus-layer__icon-button--close" type="button" aria-label="${this.i18n.t('close')}">
+          <img src="${closeIcon}" alt="" class="focus-layer__icon-button-art" />
+        </button>
       </div>
       <div class="focus-layer__title-block">
-        <p class="focus-layer__facet-category">${facet.categoryLabel[language]}</p>
         <div class="focus-layer__facet-nav">
-          <button class="focus-layer__facet-btn" type="button">${this.i18n.t('previous')}</button>
+          <button class="focus-layer__icon-button focus-layer__icon-button--nav" type="button" aria-label="${this.i18n.t('previous')}">
+            <img src="${prevIcon}" alt="" class="focus-layer__icon-button-art" />
+          </button>
           <div class="focus-layer__title-copy">
-            <h2>${this.project.title[language]}</h2>
+            <h2 class="focus-layer__title">${this.project.title[language]}</h2>
           </div>
-          <button class="focus-layer__facet-btn" type="button">${this.i18n.t('next')}</button>
+          <button class="focus-layer__icon-button focus-layer__icon-button--nav" type="button" aria-label="${this.i18n.t('next')}">
+            <img src="${nextIcon}" alt="" class="focus-layer__icon-button-art" />
+          </button>
         </div>
-        <p class="focus-layer__facet-progress">${this.facetIndex + 1} / ${this.project.facets.length}</p>
       </div>
       <div class="focus-layer__media">
         ${this.renderMedia(facet)}
@@ -103,24 +119,12 @@ export class FocusPresentationSystem {
           .map((paragraph) => `<p>${paragraph}</p>`)
           .join('')}
       </div>
-      <section class="focus-layer__section">
-        <h3>${this.i18n.t('technologies')}</h3>
-        <div class="focus-layer__tags">
-          ${facet.technologies.map((technology) => `<span>${technology[language]}</span>`).join('')}
-        </div>
-      </section>
-      <section class="focus-layer__section">
-        <h3>${this.i18n.t('links')}</h3>
-        <div class="focus-layer__links">
-          ${this.renderLinks()}
-        </div>
-      </section>
       </div>
       </div>
     `;
 
-    const closeButton = this.panel.querySelector<HTMLButtonElement>('.focus-layer__close');
-    const facetButtons = this.panel.querySelectorAll<HTMLButtonElement>('.focus-layer__facet-btn');
+    const closeButton = this.panel.querySelector<HTMLButtonElement>('.focus-layer__icon-button--close');
+    const facetButtons = this.panel.querySelectorAll<HTMLButtonElement>('.focus-layer__icon-button--nav');
     closeButton?.addEventListener('click', () => this.callbacks.onClose());
     facetButtons[0]?.addEventListener('click', () => this.callbacks.onPrevFacet());
     facetButtons[1]?.addEventListener('click', () => this.callbacks.onNextFacet());
@@ -129,71 +133,158 @@ export class FocusPresentationSystem {
   }
 
   private renderMedia(facet: PortfolioProject['facets'][number]) {
-    if (facet.media?.kind === 'youtube') {
+    const assets = this.getFacetAssets(facet);
+    const displayAssets = assets.filter((asset) => asset.kind !== 'site');
+    const actionAssets = assets.filter((asset) => asset.kind === 'site');
+
+    if (displayAssets.length === 1 && displayAssets[0]?.kind === 'youtube') {
+      const asset = displayAssets[0];
       return `
         <div class="focus-layer__video-shell">
           <iframe
             class="focus-layer__video-frame"
-            src="${facet.media.embedUrl}"
-            title="${facet.media.title ?? this.project?.title[this.i18n.current] ?? 'Project video'}"
+            src="${asset.embedUrl}"
+            title="${asset.title?.[this.i18n.current] ?? this.project?.title[this.i18n.current] ?? 'Project video'}"
             loading="lazy"
             referrerpolicy="strict-origin-when-cross-origin"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowfullscreen
           ></iframe>
         </div>
+        ${this.renderActionLinks(actionAssets)}
       `;
     }
 
-    const images = facet.images.slice(0, 12);
-    const currentImage = images[this.currentSlide] || '';
-    if (images.length === 0) {
-      return '';
+    const images = displayAssets.filter((asset) => asset.kind === 'image' || asset.kind === 'gif');
+    const hasMixedRichMedia = displayAssets.some((asset) => asset.kind === 'youtube');
+    const imageSources = images.map((asset) => asset.src).filter((value): value is string => Boolean(value)).slice(0, 12);
+
+    if (hasMixedRichMedia) {
+      return `
+        <div class="focus-layer__asset-stack">
+          ${displayAssets
+            .map((asset) => {
+              if (asset.kind === 'youtube') {
+                return `
+                  <div class="focus-layer__video-shell focus-layer__asset-card">
+                    <iframe
+                      class="focus-layer__video-frame"
+                      src="${asset.embedUrl}"
+                      title="${asset.title?.[this.i18n.current] ?? this.project?.title[this.i18n.current] ?? 'Project video'}"
+                      loading="lazy"
+                      referrerpolicy="strict-origin-when-cross-origin"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      allowfullscreen
+                    ></iframe>
+                  </div>
+                `;
+              }
+              return `<figure class="focus-layer__asset-card"><img class="focus-layer__image focus-layer__image--framed" src="${asset.src}" alt="Project media"></figure>`;
+            })
+            .join('')}
+        </div>
+        ${this.renderActionLinks(actionAssets)}
+      `;
     }
 
-    if (images.length === 1) {
-      return `<img class="focus-layer__image" src="${images[0]}" alt="Project media">`;
+    const currentImage = imageSources[this.currentSlide] || '';
+    if (imageSources.length === 0) {
+      return this.renderActionLinks(actionAssets);
+    }
+
+    if (imageSources.length === 1) {
+      return `<img class="focus-layer__image" src="${imageSources[0]}" alt="Project media">${this.renderActionLinks(actionAssets)}`;
     }
 
     if (this.gridView) {
       return `
         <div class="focus-layer__grid">
-          ${images
+          ${imageSources
             .map(
               (image, index) => `<button class="focus-layer__thumb" data-slide="${index}" type="button"><img src="${image}" alt="Project media ${index + 1}"></button>`
             )
             .join('')}
         </div>
+        ${this.renderActionLinks(actionAssets)}
       `;
     }
 
     return `
       <div class="focus-layer__slideshow">
-        <button class="focus-layer__slide-nav" data-slide-dir="-1" type="button">${this.i18n.t('previous')}</button>
+        <button class="focus-layer__icon-button focus-layer__icon-button--nav focus-layer__slide-nav" data-slide-dir="-1" type="button" aria-label="${this.i18n.t('previous')}">
+          <img src="${SECONDARY_NAV_ASSETS.left[resolveDocumentTheme()]}" alt="" class="focus-layer__icon-button-art" />
+        </button>
         <img class="focus-layer__image" src="${currentImage}" alt="Project media ${this.currentSlide + 1}">
-        <button class="focus-layer__slide-nav" data-slide-dir="1" type="button">${this.i18n.t('next')}</button>
+        <button class="focus-layer__icon-button focus-layer__icon-button--nav focus-layer__slide-nav" data-slide-dir="1" type="button" aria-label="${this.i18n.t('next')}">
+          <img src="${SECONDARY_NAV_ASSETS.right[resolveDocumentTheme()]}" alt="" class="focus-layer__icon-button-art" />
+        </button>
       </div>
-      <div class="focus-layer__facet-progress">${this.currentSlide + 1} / ${images.length}</div>
+      ${this.renderActionLinks(actionAssets)}
     `;
   }
 
-  private renderLinks() {
-    if (!this.project) return '';
-    const facet = this.project.facets[this.facetIndex];
-    const entries = Object.entries(facet.links).filter(([, href]) => href);
-    if (entries.length === 0) return `<span class="focus-layer__empty">${this.i18n.t('links')}</span>`;
+  private getFacetAssets(facet: ProjectFacet) {
+    const assets: ProjectFacetAsset[] = [...(facet.assets ?? [])];
 
-    return entries
-      .map(([key, href]) => `<a class="focus-layer__link" href="${href}" target="_blank" rel="noopener">${key.toUpperCase()}</a>`)
-      .join('');
+    if (assets.length === 0 && facet.media?.kind === 'youtube') {
+      assets.push({
+        kind: 'youtube',
+        embedUrl: facet.media.embedUrl,
+        title: facet.media.title ? { fr: facet.media.title, en: facet.media.title } : undefined
+      });
+    }
+
+    if (assets.length === 0 && facet.images.length > 0) {
+      facet.images.forEach((image) => {
+        assets.push({
+          kind: image.toLowerCase().endsWith('.gif') ? 'gif' : 'image',
+          src: image
+        });
+      });
+    }
+
+    const linkLabels: Record<string, { fr: string; en: string }> = {
+      github: { fr: 'GitHub', en: 'GitHub' },
+      demo: { fr: 'Site', en: 'Site' },
+      video: { fr: 'Video', en: 'Video' }
+    };
+
+    Object.entries(facet.links)
+      .filter(([, href]) => href)
+      .forEach(([key, href]) => {
+        if (assets.some((asset) => asset.kind === 'site' && asset.href === href)) {
+          return;
+        }
+        assets.push({
+          kind: 'site',
+          href: href ?? undefined,
+          label: linkLabels[key] ?? { fr: key.toUpperCase(), en: key.toUpperCase() }
+        });
+      });
+
+    return assets;
+  }
+
+  private renderActionLinks(assets: ProjectFacetAsset[]) {
+    if (assets.length === 0) {
+      return '';
+    }
+
+    return `
+      <div class="focus-layer__actions">
+        ${assets
+          .map((asset) => `<a class="focus-layer__action-link" href="${asset.href}" target="_blank" rel="noopener">${asset.label?.[this.i18n.current] ?? 'Open'}</a>`)
+          .join('')}
+      </div>
+    `;
   }
 
   private bindMediaEvents(facet: PortfolioProject['facets'][number]) {
-    if (facet.media?.kind === 'youtube') {
-      return;
-    }
-
-    const images = facet.images.slice(0, 12);
+    const images = this.getFacetAssets(facet)
+      .filter((asset) => asset.kind === 'image' || asset.kind === 'gif')
+      .map((asset) => asset.src)
+      .filter((value): value is string => Boolean(value))
+      .slice(0, 12);
     if (images.length <= 1) return;
 
     const image = this.panel.querySelector<HTMLImageElement>('.focus-layer__image');

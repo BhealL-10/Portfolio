@@ -25,7 +25,7 @@ export class CoinSystem {
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
     SpriteSheetPlane.preload(COIN_SPRITE_URL, { columns: 4, rows: 1 });
-    for (let index = 0; index < 36; index += 1) {
+    for (let index = 0; index < 56; index += 1) {
       const sprite = new SpriteSheetPlane({
         textureUrl: COIN_SPRITE_URL,
         layout: { columns: 4, rows: 1 },

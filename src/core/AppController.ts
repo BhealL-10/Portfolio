@@ -47,6 +47,7 @@ const primaterie_TO_GAME_CINEMATIC_HOLD_END = 0.28;
 const PLAYER_AVATAR_KEY = 'portfolio-game-player-avatar-v1';
 const PLAYER_LEADERBOARD_REGISTERED_KEY = 'portfolio-game-player-registered-v1';
 const GAME_HELP_TUTORIAL_COMPLETED_KEY = 'portfolio-game-help-tutorial-complete-v2';
+const GAME_GUIDE_EVENT_FLAGS_KEY = 'portfolio-game-guide-events-v1';
 
 type ProjectGameHudPayload = typeof import('../game/projectGameHudPayload').projectGameHudPayload;
 
@@ -58,6 +59,8 @@ interface LoadedGameRuntime {
   projectGameHudPayload: ProjectGameHudPayload;
   miniGamePortalCameraOffset: THREE.Vector3;
 }
+
+type IntroMirrorGuideStage = '0' | 'first_click' | '50' | '100';
 
 export class AppController {
   private readonly content = new ContentService();
@@ -121,6 +124,8 @@ export class AppController {
   private guideSettingsIntroShown = false;
   private showGameSettingsGuideUntil = 0;
   private showMirrorGuideUntil = 0;
+  private readonly introMirrorGuideStagesSeen = new Set<IntroMirrorGuideStage>();
+  private readonly gameGuideEventFlags = new Set<string>();
   private primateriePendingAction: {
     execute: () => void;
   } | null = null;
@@ -197,6 +202,7 @@ export class AppController {
     this.gameTransitionBlurOverlay = document.createElement('div');
     this.gameTransitionBlurOverlay.className = 'game-transition-blur-overlay';
     this.uiHost.appendChild(this.gameTransitionBlurOverlay);
+    this.restoreGameGuideEventFlags();
 
     this.interaction = new ShardInteractionSystem(
       this.renderer.renderer.domElement,
@@ -1022,6 +1028,14 @@ export class AppController {
       this.guide.trigger({ type: 'settings_hover', item: 'mute' }, target);
     } else if (key === 'game-settings-volume') {
       this.guide.trigger({ type: 'settings_hover', item: 'volume' }, target);
+    } else if (key === 'game-control-left') {
+      this.guide.trigger({ type: 'game_control_hint', item: 'left' }, target);
+    } else if (key === 'game-control-up') {
+      this.guide.trigger({ type: 'game_control_hint', item: 'up' }, target);
+    } else if (key === 'game-control-right') {
+      this.guide.trigger({ type: 'game_control_hint', item: 'right' }, target);
+    } else if (key === 'game-control-down') {
+      this.guide.trigger({ type: 'game_control_hint', item: 'down' }, target);
     }
 
     this.updateGuide();
@@ -1639,6 +1653,10 @@ export class AppController {
       } else if (!mirrorActive) {
         this.guideMirrorModeActive = false;
       }
+
+      if (this.mode.is('game')) {
+        this.updateRuntimeGameGuideTutorials();
+      }
     }
 
     if (this.mode.is('focus_enter') && this.world.isFocusSettled()) {
@@ -1850,7 +1868,7 @@ export class AppController {
         target,
         zone: 'intro'
       });
-      this.guide.trigger({ type: 'intro_mirror' }, target);
+      this.updateIntroMirrorGuide(target);
       return;
     }
 
@@ -1951,6 +1969,45 @@ export class AppController {
     });
   }
 
+  private updateIntroMirrorGuide(target: GuideTarget | null) {
+    const stage = this.getIntroMirrorGuideStage();
+    if (!stage || this.introMirrorGuideStagesSeen.has(stage)) {
+      return;
+    }
+
+    this.introMirrorGuideStagesSeen.add(stage);
+    switch (stage) {
+      case '0':
+        this.guide.trigger({ type: 'intro_mirror_0' }, target);
+        break;
+      case 'first_click':
+        this.guide.trigger({ type: 'intro_mirror_first_click' }, target);
+        break;
+      case '50':
+        this.guide.trigger({ type: 'intro_mirror_50' }, target);
+        break;
+      case '100':
+        this.guide.trigger({ type: 'intro_mirror_100' }, target);
+        break;
+    }
+  }
+
+  private getIntroMirrorGuideStage(): IntroMirrorGuideStage | null {
+    if (this.intro.clickProgressRatio >= 1) {
+      return '100';
+    }
+    if (this.intro.clickProgressRatio >= 0.5) {
+      return '50';
+    }
+    if (this.intro.clickCountValue >= 1) {
+      return 'first_click';
+    }
+    if (this.intro.clickCountValue === 0) {
+      return '0';
+    }
+    return null;
+  }
+
   private getGuideTargetFromElement(element: HTMLElement | null, hints?: Partial<GuideTarget>): GuideTarget | null {
     if (!element) {
       return null;
@@ -2026,6 +2083,18 @@ export class AppController {
     });
   }
 
+  private getGuideGameplayTarget() {
+    return (
+      this.getGuideUiTargetByKey('game-control-right') ??
+      this.getGuideUiTargetByKey('game-control-left') ??
+      this.createGuideTarget(window.innerWidth * 0.7, window.innerHeight * 0.72, 220, 180, {
+        guidePlacementHint: 'left',
+        bubblePlacementHint: 'upper-left',
+        flipGuideX: false
+      })
+    );
+  }
+
   private getActiveMiniGameOverlayTarget() {
     const avatarEditorVisible = this.getGuideUiTargetByKey('game-avatar-close') ?? this.getGuideUiTargetByKey('game-avatar-save');
     return this.getGuideUiTargetByKey('game-tutorial') ?? this.getGuideUiTargetByKey('game-achievements') ?? (avatarEditorVisible ? this.getGuideUiTargetByKey('game-avatar') : null);
@@ -2089,6 +2158,13 @@ export class AppController {
         flipGuideX: false
       };
     }
+    if (key.startsWith('game-control-')) {
+      return {
+        guidePlacementHint: 'left',
+        bubblePlacementHint: 'upper-left',
+        flipGuideX: false
+      };
+    }
     if (key.startsWith('game-settings-') || key === 'primaterie-theme' || key === 'primaterie-language') {
       const prefersFlipped = key !== 'game-settings-toggle';
       return prefersFlipped
@@ -2108,6 +2184,112 @@ export class AppController {
 
   private isSettingsMenuOpen() {
     return this.uiHost.querySelector('.game-hud__panel.is-settings-open') !== null;
+  }
+
+  private updateRuntimeGameGuideTutorials() {
+    const controls = this.game.getHudState().mobile;
+    const guideSignals = this.game.getGuideSignals();
+
+    if (controls.hasTeleport) {
+      this.triggerGameGuideEvent('control:left', () => {
+        this.guide.trigger({ type: 'game_control_hint', item: 'left' }, this.getGuideUiTargetByKey('game-control-left') ?? this.getGuideGameplayTarget());
+      });
+    }
+
+    if (controls.hasAirAction) {
+      this.triggerGameGuideEvent('control:up', () => {
+        this.guide.trigger({ type: 'game_control_hint', item: 'up' }, this.getGuideUiTargetByKey('game-control-up') ?? this.getGuideGameplayTarget());
+      });
+    }
+
+    if (controls.hasGrapple) {
+      this.triggerGameGuideEvent('control:right', () => {
+        this.guide.trigger({ type: 'game_control_hint', item: 'right' }, this.getGuideUiTargetByKey('game-control-right') ?? this.getGuideGameplayTarget());
+      });
+    }
+
+    if (controls.hasSouffleur) {
+      this.triggerGameGuideEvent('control:down', () => {
+        this.guide.trigger({ type: 'game_control_hint', item: 'down' }, this.getGuideUiTargetByKey('game-control-down') ?? this.getGuideGameplayTarget());
+      });
+    }
+
+    if (guideSignals.hasVisibleEnemy) {
+      this.triggerGameGuideEvent('enemy:first', () => {
+        this.guide.trigger({ type: 'game_enemy_intro' }, this.getGuideGameplayTarget());
+      });
+    }
+
+    if (guideSignals.hasVisibleEnemyTop) {
+      this.triggerGameGuideEvent('enemy:top', () => {
+        this.guide.trigger({ type: 'game_enemy_top_intro' }, this.getGuideGameplayTarget());
+      });
+    }
+
+    if (guideSignals.hasVisibleEnemyBot) {
+      this.triggerGameGuideEvent('enemy:bot', () => {
+        this.guide.trigger({ type: 'game_enemy_bot_intro' }, this.getGuideUiTargetByKey('game-control-right') ?? this.getGuideGameplayTarget());
+      });
+    }
+
+    if (guideSignals.hasVisibleQuestionReward) {
+      this.triggerGameGuideEvent('pickup:question', () => {
+        this.guide.trigger({ type: 'game_question_intro' }, this.getGuideGameplayTarget());
+      });
+    }
+
+    if (guideSignals.hasVisibleShop) {
+      this.triggerGameGuideEvent('shop:first', () => {
+        this.guide.trigger({ type: 'game_shop_intro' }, this.getGuideGameplayTarget());
+      });
+    }
+
+    if (guideSignals.hasVisibleMilestone) {
+      this.triggerGameGuideEvent('milestone:first', () => {
+        this.guide.trigger({ type: 'game_milestone_intro' }, this.getGuideGameplayTarget());
+      });
+    }
+  }
+
+  private restoreGameGuideEventFlags() {
+    try {
+      const raw = window.localStorage.getItem(GAME_GUIDE_EVENT_FLAGS_KEY);
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw) as string[];
+      parsed.forEach((flag) => {
+        if (typeof flag === 'string') {
+          this.gameGuideEventFlags.add(flag);
+        }
+      });
+    } catch {
+      this.gameGuideEventFlags.clear();
+    }
+  }
+
+  private persistGameGuideEventFlags() {
+    try {
+      window.localStorage.setItem(GAME_GUIDE_EVENT_FLAGS_KEY, JSON.stringify([...this.gameGuideEventFlags]));
+    } catch {
+      // Best-effort persistence only.
+    }
+  }
+
+  private markGameGuideEventSeen(flag: string) {
+    if (this.gameGuideEventFlags.has(flag)) {
+      return false;
+    }
+    this.gameGuideEventFlags.add(flag);
+    this.persistGameGuideEventFlags();
+    return true;
+  }
+
+  private triggerGameGuideEvent(flag: string, trigger: () => void) {
+    if (!this.markGameGuideEventSeen(flag)) {
+      return;
+    }
+    trigger();
   }
 
   private hasCompletedGuideObjective(objective: 'register-score' | 'avatar' | 'tutorial' | 'sound') {

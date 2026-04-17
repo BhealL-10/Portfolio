@@ -1,10 +1,5 @@
 import type { Language } from '../types/content';
-import { THEME_TOGGLE_ASSETS } from './GameUiAssetResolver';
-
-const LANGUAGE_BUTTON_ASSETS = {
-  fr: new URL('../../assets/images/shared/localization/fr.svg', import.meta.url).href,
-  en: new URL('../../assets/images/shared/localization/en.svg', import.meta.url).href
-} as const;
+import { LANGUAGE_BUTTON_ASSETS, THEME_TOGGLE_ASSETS } from './GameUiAssetResolver';
 
 const HUB_LOGO_ASSETS = {
   dark: new URL('../../assets/images/shared/branding/primaterie-mark-light.svg', import.meta.url).href,
@@ -13,12 +8,12 @@ const HUB_LOGO_ASSETS = {
 
 const COMMUNITY_BUTTON_ASSETS = {
   discord: {
-    dark: new URL('../../assets/images/portfolio/projects/shared/discord-btn-dark.png', import.meta.url).href,
-    light: new URL('../../assets/images/portfolio/projects/shared/discord-btn-light.png', import.meta.url).href
+    dark: new URL('../../assets/images/portfolio/projects/shared/discord-btn-light.png', import.meta.url).href,
+    light: new URL('../../assets/images/portfolio/projects/shared/discord-btn-dark.png', import.meta.url).href
   },
   patreon: {
-    dark: new URL('../../assets/images/portfolio/projects/shared/patreon-btn-dark.png', import.meta.url).href,
-    light: new URL('../../assets/images/portfolio/projects/shared/patreon-btn-light.png', import.meta.url).href
+    dark: new URL('../../assets/images/portfolio/projects/shared/patreon-btn-light.png', import.meta.url).href,
+    light: new URL('../../assets/images/portfolio/projects/shared/patreon-btn-dark.png', import.meta.url).href
   }
 } as const;
 

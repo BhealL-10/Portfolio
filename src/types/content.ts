@@ -12,6 +12,17 @@ export interface ProjectLinkSet {
   video?: string | null;
 }
 
+export type ProjectFacetAssetKind = 'image' | 'gif' | 'youtube' | 'site';
+
+export interface ProjectFacetAsset {
+  kind: ProjectFacetAssetKind;
+  src?: string;
+  href?: string;
+  embedUrl?: string;
+  title?: LocalizedText;
+  label?: LocalizedText;
+}
+
 export interface ProjectFacet {
   id: 0 | 1 | 2;
   categoryKey: string;
@@ -19,6 +30,7 @@ export interface ProjectFacet {
   description: LocalizedText;
   technologies: LocalizedText[];
   images: string[];
+  assets?: ProjectFacetAsset[];
   media: {
     kind: 'youtube';
     embedUrl: string;
@@ -46,13 +58,24 @@ export interface PortfolioProject {
 
 export interface AboutSectionContent {
   title: LocalizedText;
-  paragraphs: [LocalizedText, LocalizedText];
-  skills: Array<{
-    title: LocalizedText;
-    body: LocalizedText;
-  }>;
-  contactTitle: LocalizedText;
-  contactText: LocalizedText;
+  emailAddress: string;
+  directLabel: LocalizedText;
+  directHint: LocalizedText;
+  formTitle: LocalizedText;
+  formIntro: LocalizedText;
+  fields: {
+    name: LocalizedText;
+    email: LocalizedText;
+    interest: LocalizedText;
+    message: LocalizedText;
+  };
+  placeholders: {
+    name: LocalizedText;
+    email: LocalizedText;
+    interest: LocalizedText;
+    message: LocalizedText;
+  };
+  submitLabel: LocalizedText;
 }
 
 export interface ContactLink {

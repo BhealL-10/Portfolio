@@ -7,6 +7,14 @@ import {
   getRarityRank
 } from './roguelite';
 
+function createDeterministicRng(seed: number) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 0x100000000;
+  };
+}
+
 describe('roguelite milestones', () => {
   it('returns the expected milestone sequence', () => {
     expect(getNextUpgradeMilestone(0)).toBe(10);
@@ -59,6 +67,25 @@ describe('buildUpgradeOffers', () => {
     state = applyItemToRunState(state, 'plane_common');
     const offers = buildUpgradeOffers(60, state, () => 0.1);
     expect(offers.some((offer) => offer.item.id === 'plane_common')).toBe(false);
+  });
+
+  it('makes shop inventories more premium than milestone rewards at the same progression', () => {
+    const scores = [10, 35, 60, 95, 140];
+    const runState = createRunUpgradeState();
+    let milestoneRankTotal = 0;
+    let shopRankTotal = 0;
+
+    scores.forEach((score, scoreIndex) => {
+      for (let iteration = 0; iteration < 16; iteration += 1) {
+        const seed = (scoreIndex + 1) * 1000 + iteration * 17 + score;
+        const milestoneOffers = buildUpgradeOffers(score, runState, createDeterministicRng(seed), 3, 'milestone');
+        const shopOffers = buildUpgradeOffers(score, runState, createDeterministicRng(seed), 3, 'shop');
+        milestoneRankTotal += milestoneOffers.reduce((sum, offer) => sum + getRarityRank(offer.item.rarity), 0);
+        shopRankTotal += shopOffers.reduce((sum, offer) => sum + getRarityRank(offer.item.rarity), 0);
+      }
+    });
+
+    expect(shopRankTotal).toBeGreaterThan(milestoneRankTotal);
   });
 });
 

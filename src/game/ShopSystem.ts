@@ -51,7 +51,7 @@ export class ShopSystem {
 
   openForRun(score: number, runState: RunUpgradeState) {
     const discount = Math.max(0, Math.min(0.45, runState.modifiers.shopDiscount));
-    const offers = buildUpgradeOffers(score, runState);
+    const offers = buildUpgradeOffers(score, runState, Math.random, 3, 'shop');
     this.activeOffers = offers.slice(0, 3).map((offer, index) => ({
       angle: Math.PI * (0.2 + index * 0.55),
       price: this.getPriceForOffer(offer, discount),
@@ -177,15 +177,25 @@ export class ShopSystem {
   private getPriceForOffer(offer: RogueliteItemOffer, discount: number) {
     const rarityPrice =
       offer.item.rarity === 'legendary'
-        ? 16
+        ? 20
         : offer.item.rarity === 'epic'
-          ? 11
+          ? 14
           : offer.item.rarity === 'rare'
-            ? 7
+            ? 9
             : offer.item.rarity === 'uncommon'
-              ? 4
-              : 2;
-    const stackPremium = Math.max(0, offer.stackCount - 1) * (offer.item.rarity === 'common' ? 1 : 2);
+              ? 5
+              : 3;
+    const stackPremium =
+      Math.max(0, offer.stackCount - 1) *
+      (offer.item.rarity === 'legendary'
+        ? 5
+        : offer.item.rarity === 'epic'
+          ? 4
+          : offer.item.rarity === 'rare'
+            ? 3
+            : offer.item.rarity === 'uncommon'
+              ? 2
+              : 1);
     return Math.max(1, Math.round((rarityPrice + stackPremium) * (1 - discount)));
   }
 }

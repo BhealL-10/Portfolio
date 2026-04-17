@@ -1,9 +1,21 @@
-import type { LocalizedText, PortfolioProject } from '../types/content';
+import type { Language, LocalizedText, PortfolioProject } from '../types/content';
 import { damp } from '../core/math';
+import { HELP_ICON_ASSETS } from '../game/GameUiAssetResolver';
+import { resolveDocumentTheme } from '../game/ThemeAssetResolver';
+import {
+  type GuideInterruptibility,
+  type GuideRevealMode,
+  type GuideSegment,
+  type GuideSequence,
+  type GuideTextAnimation,
+  type GuideToken,
+  parseDialogueToSequence
+} from './guideDialogue';
 import { I18nService } from './I18nService';
 
 const GUIDE_FLAG_STORAGE_KEY = 'portfolio-contextual-guide-flags-v2';
 const GUIDE_ANCHOR_STORAGE_KEY = 'portfolio-contextual-guide-anchor-v1';
+const GUIDE_HISTORY_STORAGE_KEY = 'portfolio-contextual-guide-history-v1';
 const GUIDE_PANEL_ASPECT_RATIO = 4981 / 4678;
 const GUIDE_FRAME_COUNT = 5;
 const GUIDE_DRAG_THRESHOLD = 10;
@@ -14,9 +26,14 @@ const GUIDE_CURSOR_OFFSET_Y = 16;
 const GUIDE_BUBBLE_GAP_X = 12;
 const GUIDE_BUBBLE_GAP_Y = 10;
 const GUIDE_EDGE_ZONE = 0.18;
-const GUIDE_TEXT_REVEAL_MS_PER_CHARACTER = 24;
-const GUIDE_TEXT_REVEAL_MIN_DURATION_MS = 280;
-const GUIDE_TEXT_REVEAL_MAX_DURATION_MS = 1800;
+const GUIDE_HISTORY_LIMIT = 18;
+const GUIDE_HELP_MAX_VISIBLE_ORBITS = 7;
+const GUIDE_HELP_PAGE_CONTENT_LIMIT = 5;
+const GUIDE_HELP_ORBIT_RADII = [112, 96, 104, 122, 130, 118, 108] as const;
+const GUIDE_HELP_ORBIT_BUTTON_SIZES = [72, 68, 74, 82, 80, 74, 70] as const;
+const GUIDE_HELP_ORBIT_ANGLES = [-72, -26, 18, 58, 104, 146, 184] as const;
+const GUIDE_HELP_SUMMARY_WIDTH = 214;
+const GUIDE_HELP_SUMMARY_SAFE_AREA = { top: 0.18, right: 0.18, bottom: 0.28, left: 0.2 } as const;
 
 const GUIDE_SPRITES = {
   arrive: new URL('../../assets/images/shared/branding/guide/guide-arrive.png', import.meta.url).href,
@@ -28,6 +45,23 @@ const GUIDE_SPRITES = {
 } as const;
 
 type GuideAnimationName = 'arrive' | 'idle' | 'idle2' | 'leave' | 'talk_hold' | 'talk_release';
+type TriggerSource = 'auto' | 'history' | 'help';
+type GuideBubbleThemeMode = 'light-bubble' | 'dark-bubble';
+type GuideTextContrastMode = 'ink-dark' | 'ink-light';
+type GuideImpactWordColorMode = 'mirror-dark' | 'mirror-light';
+type GuidePunctuationAccentMode = 'accent-cycle';
+type GuideHelpTopic =
+  | 'intro_mirror'
+  | 'portfolio_navigation'
+  | 'focus_zone'
+  | 'slot_goal'
+  | 'primaterie_hub'
+  | 'primaterie_contact'
+  | 'game_rules'
+  | 'game_score_save'
+  | 'game_settings'
+  | 'game_achievements'
+  | 'about_zone';
 
 const GUIDE_ANIMATIONS: Record<
   GuideAnimationName,
@@ -53,6 +87,16 @@ const DEFAULT_SPEAKER_TITLE = {
 
 const VIEWPORT_MARGIN = 18;
 const TARGET_GAP = 22;
+
+const GUIDE_SAFE_AREAS = {
+  'left-above': { top: 0.16, right: 0.16, bottom: 0.28, left: 0.2 },
+  'right-above': { top: 0.16, right: 0.2, bottom: 0.28, left: 0.16 },
+  'left-below': { top: 0.24, right: 0.16, bottom: 0.18, left: 0.2 },
+  'right-below': { top: 0.24, right: 0.2, bottom: 0.18, left: 0.16 },
+  focus: { top: 0.18, right: 0.16, bottom: 0.24, left: 0.18 }
+} as const;
+
+const GUIDE_TOKEN_PUNCTUATION_RE = /^[!?….,;:()]+$/;
 
 export interface GuideTarget {
   x: number;
@@ -82,7 +126,10 @@ export interface GuidePresenceContext {
 }
 
 export type GuideCue =
-  | { type: 'intro_mirror' }
+  | { type: 'intro_mirror_0' }
+  | { type: 'intro_mirror_first_click' }
+  | { type: 'intro_mirror_50' }
+  | { type: 'intro_mirror_100' }
   | { type: 'hub_arrival' }
   | { type: 'orbit_hover'; project: PortfolioProject }
   | { type: 'portfolio_scroll'; project: PortfolioProject; direction: 1 | -1 }
@@ -100,23 +147,15 @@ export type GuideCue =
   | { type: 'avatar_hover'; item: 'overview' | 'ears' | 'parts' | 'save' | 'close' }
   | { type: 'tutorial_hover'; item: 'entry' | 'nav' | 'close' }
   | { type: 'achievements_hover'; item: 'entry' | 'filters' | 'close' }
-  | { type: 'settings_hover'; item: 'entry' | 'help' | 'theme' | 'language' | 'fullscreen' | 'mute' | 'volume' };
-
-type DialogueAnimation = 'static' | 'wiggle' | 'shake' | 'pulse' | 'subtle-bounce';
-
-interface GuideMessage {
-  id: string;
-  priority: number;
-  durationMs: number;
-  title: LocalizedText;
-  body: LocalizedText;
-  target: GuideTarget | null;
-  createdAt: number;
-  parts?: LocalizedText[];
-  currentPartIndex?: number;
-  partStartedAt?: number;
-  animation?: DialogueAnimation;
-}
+  | { type: 'settings_hover'; item: 'entry' | 'help' | 'theme' | 'language' | 'fullscreen' | 'mute' | 'volume' }
+  | { type: 'game_control_hint'; item: 'left' | 'up' | 'right' | 'down' }
+  | { type: 'game_enemy_intro' }
+  | { type: 'game_enemy_top_intro' }
+  | { type: 'game_enemy_bot_intro' }
+  | { type: 'game_question_intro' }
+  | { type: 'game_shop_intro' }
+  | { type: 'game_milestone_intro' }
+  | { type: 'help_topic'; topic: GuideHelpTopic };
 
 interface GuidePlacement {
   characterLeft: number;
@@ -138,64 +177,94 @@ interface GuideAnchor {
   y: number;
 }
 
+interface GuideMessage {
+  id: string;
+  priority: number;
+  title: LocalizedText;
+  target: GuideTarget | null;
+  createdAt: number;
+  sequence: GuideSequence;
+  category: string;
+  contextKey: GuidePresenceContext['zone'];
+  replacementKey: string;
+  queueBehavior: 'replace' | 'stack';
+  critical: boolean;
+  replayEligible: boolean;
+  source: TriggerSource;
+}
+
+interface GuidePlaybackState {
+  message: GuideMessage;
+  segmentIndex: number;
+  segmentStartedAt: number;
+  startedAt: number;
+}
+
+interface GuidePlaybackProgress {
+  segment: GuideSegment;
+  renderSegment: GuideSegment;
+  segmentIndex: number;
+  renderSegmentIndex: number;
+  elapsedMs: number;
+  revealComplete: boolean;
+  boundaryReached: boolean;
+  segmentComplete: boolean;
+  visibleUnitCount: number;
+}
+
+interface GuideHistoryEntry {
+  id: string;
+  messageId: string;
+  title: LocalizedText;
+  label: LocalizedText;
+  description: LocalizedText;
+  category: string;
+  contextKey: GuidePresenceContext['zone'];
+  sequence: GuideSequence;
+  recordedAt: number;
+  firstDiscovery: boolean;
+  source: TriggerSource;
+}
+
+interface GuideCatalogueEntry {
+  id: string;
+  kind: 'topic' | 'replay' | 'page_prev' | 'page_next';
+  label: LocalizedText;
+  description: LocalizedText;
+  cue?: GuideCue;
+  historyId?: string;
+  firstDiscovery?: boolean;
+  pageDelta?: -1 | 1;
+}
+
+interface GuideTriggerOptions {
+  bypassGuards?: boolean;
+  source?: TriggerSource;
+}
+
+interface GuideTokenRenderRef {
+  token: GuideToken;
+  element: HTMLSpanElement;
+  ink: HTMLSpanElement;
+}
+
+interface GuideHelpBubblePlacement {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  flipX: boolean;
+  flipY: boolean;
+  bubbleX: 'left' | 'right';
+  bubbleY: 'above' | 'below';
+}
+
 function loc(fr: string, en: string): LocalizedText {
   return { fr, en };
 }
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
-}
-
-function splitDialogueIntoParts(text: LocalizedText): LocalizedText[] {
-  const idealWordsPerPart = 12;
-  const maxLength = 85;
-  
-  const splitText = (line: string): string[] => {
-    if (line.length <= maxLength) {
-      return [line];
-    }
-    
-    const words = line.split(/\s+/);
-    const parts: string[] = [];
-    let currentPart = '';
-    
-    for (const word of words) {
-      const testLine = currentPart ? `${currentPart} ${word}` : word;
-      
-      if (testLine.length <= maxLength && (currentPart.split(/\s+/).length < idealWordsPerPart || currentPart === '')) {
-        currentPart = testLine;
-      } else {
-        if (currentPart) {
-          parts.push(currentPart);
-        }
-        currentPart = word;
-      }
-    }
-    
-    if (currentPart) {
-      parts.push(currentPart);
-    }
-    
-    return parts.length > 1 ? parts : [line];
-  };
-  
-  const frParts = splitText(text.fr);
-  const enParts = splitText(text.en);
-  const maxParts = Math.max(frParts.length, enParts.length);
-  
-  if (maxParts <= 1) {
-    return [text];
-  }
-  
-  const result: LocalizedText[] = [];
-  for (let i = 0; i < maxParts; i++) {
-    result.push({
-      fr: frParts[i] || frParts[frParts.length - 1],
-      en: enParts[i] || enParts[enParts.length - 1]
-    });
-  }
-  
-  return result;
 }
 
 function rectsOverlap(a: { left: number; top: number; right: number; bottom: number }, b: { left: number; top: number; right: number; bottom: number }) {
@@ -232,58 +301,31 @@ function expandRect(rect: { left: number; top: number; right: number; bottom: nu
 function getOrbitHoverBody(project: PortfolioProject): LocalizedText {
   switch (project.numericId) {
     case 1:
-      return loc(
-        'Le point de départ.',
-        'The starting point.'
-      );
+      return loc('Le point de départ.', 'The starting point.');
     case 2:
-      return loc(
-        'Direction artistique.',
-        'Art direction.'
-      );
+      return loc('Direction artistique.', 'Art direction.');
     case 3:
-      return loc(
-        'Cinéma.',
-        'Cinema.'
-      );
+      return loc('Cinéma.', 'Cinema.');
     case 4:
-      return loc(
-        'Jeux vidéo.',
-        'Video games.'
-      );
+      return loc('Jeux vidéo.', 'Video games.');
     case 5:
-      return loc(
-        'Collaborations.',
-        'Collaborations.'
-      );
+      return loc('Collaborations.', 'Collaborations.');
     case 6:
-      return loc(
-        'Projets en cours.',
-        'Ongoing projects.'
-      );
+      return loc('Projets en cours.', 'Ongoing projects.');
     default:
-      return loc(
-        'Euh ?',
-        'This fragment is about another corner of my universe. Go take a look.'
-      );
+      return loc('Euh ?', 'This fragment is about another corner of my universe. Go take a look.');
   }
 }
 
 function getFocusBody(project: PortfolioProject, facetIndex: number): LocalizedText {
   const bespokeLines: Partial<Record<number, [LocalizedText, LocalizedText, LocalizedText]>> = {
     1: [
-      loc(
-        'Bienvenue dans mon univers.',
-        'Welcome to my universe.'
-      ),
+      loc('Bienvenue dans mon univers.', 'Welcome to my universe.'),
       loc(
         'Polyvalence et idées, C’est mon deuxieme prenom.. euuh... plutot mon deuxieme et troiseme prenom.',
         'Versatility and ideas, that’s my middle name.. uh... more like my middle and last name.'
       ),
-      loc(
-        'Aka Le Roi du freestyle',
-        'Aka The King of Freestyle'
-      )
+      loc('Aka Le Roi du freestyle', 'Aka The King of Freestyle')
     ],
     2: [
       loc(
@@ -294,38 +336,20 @@ function getFocusBody(project: PortfolioProject, facetIndex: number): LocalizedT
         'Cohérence et profondeur, autrement dit détails que 90% des gens ne remarquent pas mais qui font tout le sel.',
         'Coherence and depth, otherwise known as details that 90% of people don’t notice but make all the difference.'
       ),
-      loc(
-        'Darwin n’a cas bien se tenir',
-        'Darwin better watch out'
-      )
+      loc('Darwin n’a cas bien se tenir', 'Darwin better watch out')
     ],
     3: [
-      loc(
-        'Premier saut, on a dit.. pas premier atterrissage',
-        'First leap, we said.. not first landing'
-      ),
+      loc('Premier saut, on a dit.. pas premier atterrissage', 'First leap, we said.. not first landing'),
       loc(
         'J’ai déjà dit que la polyvalence c’est mon deuxième prénom, ou peut-être mon troisième, je ne sais plus.',
         'I’ve already said that versatility is my middle name, or maybe my third name, I can’t remember.'
       ),
-      loc(
-        'A cœur vaillant rien d’impossible. Surtout si c’est un Primate.',
-        'Nothing is impossible to a willing heart. Especially if it’s a Primate.'
-      )
+      loc('A cœur vaillant rien d’impossible. Surtout si c’est un Primate.', 'Nothing is impossible to a willing heart. Especially if it’s a Primate.')
     ],
     4: [
-      loc(
-        'J’ai mis tous ce que j’aime dans ce RPG, et même un peu plus.',
-        'I put everything I love into this RPG, and even a bit more.'
-      ),
-      loc(
-        'Ta toujours pas tester la Primaterie ?',
-        'Have you tried the Primaterie yet?'
-      ),
-      loc(
-        'J’ai la vision dimensionnelle... tu vois ce que je veux dire ?',
-        'I have the dimensional vision... you know what I mean?'
-      )
+      loc('J’ai mis tous ce que j’aime dans ce RPG, et même un peu plus.', 'I put everything I love into this RPG, and even a bit more.'),
+      loc('Ta toujours pas tester la Primaterie ?', 'Have you tried the Primaterie yet?'),
+      loc('J’ai la vision dimensionnelle... tu vois ce que je veux dire ?', 'I have the dimensional vision... you know what I mean?')
     ],
     5: [
       loc(
@@ -336,20 +360,14 @@ function getFocusBody(project: PortfolioProject, facetIndex: number): LocalizedT
         'Petite collab ? Grande collab ? Je suis partant pour tout ce qui me fait sortir de ma zone de confort.',
         'Small collaboration? Big collaboration? I’m up for anything that gets me out of my comfort zone.'
       ),
-      loc(
-        'J’adore Tom Hanks',
-        'I love Tom Hanks'
-      )
+      loc('J’adore Tom Hanks', 'I love Tom Hanks')
     ],
     6: [
       loc(
         'En cours, sa aussi c’est mon quatrieme prenom honteux. on en a tous un non ? Bert... c’est pas mieux...',
         'Ongoing, that’s also my shameful fourth name. We all have one, right? Bert... that’s not better...'
       ),
-      loc(
-        'Il me cole aux baskets ce nom mais promis, sa change bientot.',
-        'That name is sticking to my sneakers but I promise, it’s changing soon.'
-      ),
+      loc('Il me cole aux baskets ce nom mais promis, sa change bientot.', 'That name is sticking to my sneakers but I promise, it’s changing soon.'),
       loc(
         'Bon, si tu n’as toujours pas essayé la Primaterie, c’est que tu n’as pas encore placé les projets entre mes mains.',
         'Well if you still haven’t tried the Primaterie, it’s because you haven’t placed the projects in my hands.'
@@ -372,30 +390,18 @@ function getFocusBody(project: PortfolioProject, facetIndex: number): LocalizedT
 function getPrimaterieHoverBody(item: 'portfolio' | 'adventure' | 'discord' | 'patreon' | 'theme' | 'language'): LocalizedText {
   switch (item) {
     case 'portfolio':
-      return loc(
-        'Tu peux allez regarder les autre projets que j’ai fait ici.',
-        'You can go check out the other projects I made here.'
-      );
+      return loc('Tu peux allez regarder les autre projets que j’ai fait ici.', 'You can go check out the other projects I made here.');
     case 'adventure':
-      return loc(
-        'T’es prêt pour l’aventure ?',
-        'Are you ready for an adventure?'
-      );
+      return loc('T’es prêt pour l’aventure ?', 'Are you ready for an adventure?');
     case 'discord':
-      return loc(
-        'Rejoins la Primaterie.',
-        'Come into the Primaterie.'
-      );
+      return loc('Rejoins la Primaterie.', 'Come into the Primaterie.');
     case 'patreon':
       return loc(
         'La trésorerie fait peur ! Soutiens un primate indépendant et passionné et aide-moi à financer mes projets.',
         'The treasury is scary! Support a passionate independent ape creator and help me fund my projects.'
       );
     case 'theme':
-      return loc(
-        'Attention les yeux !',
-        'Feast your eyes on this!'
-      );
+      return loc('Attention les yeux !', 'Feast your eyes on this!');
     case 'language':
       return loc(
         'Tu peux aussi me faire changer de langue ici. YES YES SPEAK ENGLISH VERY GOOD',
@@ -407,15 +413,9 @@ function getPrimaterieHoverBody(item: 'portfolio' | 'adventure' | 'discord' | 'p
 function getGameOverHoverBody(item: 'score' | 'avatar' | 'save' | 'leaderboard' | 'replay' | 'menu'): LocalizedText {
   switch (item) {
     case 'score':
-      return loc(
-        'Ici, tu peu regarder ton kiki meter.',
-        'Here, you can look at your score.'
-      );
+      return loc('Ici, tu peu regarder ton kiki meter.', 'Here, you can look at your score.');
     case 'avatar':
-      return loc(
-        'Pense à personnaliser ton Primate.',
-        'Think about customizing your Primate.'
-      );
+      return loc('Pense à personnaliser ton Primate.', 'Think about customizing your Primate.');
     case 'save':
       return loc(
         'N’oublie pas d’entrer ton nom au moins une fois, ça sauvegardera automatiquement ton score. Sinon ta run s’évapore et je fais comme si de rien n’était.',
@@ -424,19 +424,12 @@ function getGameOverHoverBody(item: 'score' | 'avatar' | 'save' | 'leaderboard' 
     case 'leaderboard':
       return loc(
         'Le leaderboard montre comment tu t’es débrouillé par rapport aux plus grands Primates qui ont naviguer sur ces verres.',
-        'The leaderboard shows how you fared against the greatest Primates who have navigate on these glasses.',
-
+        'The leaderboard shows how you fared against the greatest Primates who have navigate on these glasses.'
       );
     case 'replay':
-      return loc(
-        'Tu veux retenter ta chance ?',
-        'Do you want to try again?'
-      );
+      return loc('Tu veux retenter ta chance ?', 'Do you want to try again?');
     case 'menu':
-      return loc(
-        'Pfff... LOOSER !',
-        'Pfff... LOOSER !'
-      );
+      return loc('Pfff... LOOSER !', 'Pfff... LOOSER !');
   }
 }
 
@@ -453,15 +446,9 @@ function getAvatarHoverBody(item: 'overview' | 'ears' | 'parts' | 'save' | 'clos
         'Ears count too. Try a few shapes before you save your masterpiece.'
       );
     case 'parts':
-      return loc(
-        'Trouve ton style unique !',
-        'Find your unique style!'
-      );
+      return loc('Trouve ton style unique !', 'Find your unique style!');
     case 'save':
-      return loc(
-        'Quand ta monstruosité te plaît, valide-la ici.',
-        'Once your little monstrosity looks right, lock it in here.'
-      );
+      return loc('Quand ta monstruosité te plaît, valide-la ici.', 'Once your little monstrosity looks right, lock it in here.');
     case 'close':
       return loc(
         'Et ça, c’est pour refermer l’atelier si tu as fini de jouer au chirurgien.',
@@ -478,15 +465,9 @@ function getTutorialHoverBody(item: 'entry' | 'nav' | 'close'): LocalizedText {
         'Take the time to read the rules of the Primaterie. It could help you, I promise.'
       );
     case 'nav':
-      return loc(
-        'Prend le temps j’ai dit ! Pourquoi etre pressé ?',
-        'Take your time I said! Why be in a hurry?'
-      );
+      return loc('Prend le temps j’ai dit ! Pourquoi etre pressé ?', 'Take your time I said! Why be in a hurry?');
     case 'close':
-      return loc(
-        'Bon c’est fini ? L’aventure ne va pas attendre toute la journée !',
-        'Done already? The adventure won’t wait all day!'
-      );
+      return loc('Bon c’est fini ? L’aventure ne va pas attendre toute la journée !', 'Done already? The adventure won’t wait all day!');
   }
 }
 
@@ -498,15 +479,9 @@ function getAchievementsHoverBody(item: 'entry' | 'filters' | 'close'): Localize
         'Here you can look at all your achievements and what you have already accomplished. You’re quite the champion!'
       );
     case 'filters':
-      return loc(
-        'Trie pour trouver plus facilement ce que tu cherches.',
-        'Filter to more easily find what you are looking for.'
-      );
+      return loc('Trie pour trouver plus facilement ce que tu cherches.', 'Filter to more easily find what you are looking for.');
     case 'close':
-      return loc(
-        'Tu peux refermer là. Les trophées ne vont pas s’enfuir.',
-        'You can close it there. The trophies are not going anywhere.'
-      );
+      return loc('Tu peux refermer là. Les trophées ne vont pas s’enfuir.', 'You can close it there. The trophies are not going anywhere.');
   }
 }
 
@@ -523,30 +498,196 @@ function getSettingsHoverBody(item: 'entry' | 'help' | 'theme' | 'language' | 'f
         'Help is there if you want the basics again without me reciting them forever.'
       );
     case 'theme':
-      return loc(
-        'Là, tu changes l’ambiance du jeu.',
-        'That one changes the game’s mood.'
-      );
+      return loc('Là, tu changes l’ambiance du jeu.', 'That one changes the game’s mood.');
     case 'language':
-      return loc(
-        'ME SPEAK ENGLISH VERY WELL YES YES! Je t’ai deja dit ?.',
-        'MOI PARLER FRANCAIS OUI OUI! Did I already tell you?'
-      );
+      return loc('ME SPEAK ENGLISH VERY WELL YES YES! Je t’ai deja dit ?.', 'MOI PARLER FRANCAIS OUI OUI! Did I already tell you?');
     case 'fullscreen':
-      return loc(
-        'Mode plein écran',
-        'Fullscreen mode'
-      );
+      return loc('Mode plein écran', 'Fullscreen mode');
     case 'mute':
       return loc(
         'Coupe ou rends le son ici. Simple, net, sans me faire mimer le silence.',
         'Cut or restore the sound there. Clean and simple, no need to make me mime silence.'
       );
     case 'volume':
+      return loc('La barre te laisse doser le son.', 'That bar lets you tune the sound.');
+  }
+}
+
+function getGameControlBody(item: 'left' | 'up' | 'right' | 'down'): LocalizedText {
+  switch (item) {
+    case 'left':
       return loc(
-        'La barre te laisse doser le son.',
-        'That bar lets you tune the sound.'
+        'Flèche gauche: le Wrapper te projette vers une shard sûre plus loin. Pratique pour couper court ou casser un choix de shop.',
+        'Left arrow: the Wrapper throws you to a safe shard farther ahead. Handy for cutting through danger or cancelling a shop choice.'
       );
+    case 'up':
+      return loc(
+        'Flèche haute: elle ne sert qu’en l’air. Elle déclenche ton impulsion aérienne, ou un flap bonus si tu as encore des charges.',
+        'Up arrow only works in the air. It triggers your airborne impulse, or a bonus flap if you still have charges.'
+      );
+    case 'right':
+      return loc(
+        'Flèche droite: le grappin attrape une shard ou certains ennemis du bas pendant le vol. Re-lance-la pour décrocher ou tirer ton sprint.',
+        'Right arrow: the grapple catches a shard or some lower enemies while you are flying. Press it again to release or finish the pull.'
+      );
+    case 'down':
+      return loc(
+        'Flèche basse: sur une shard tu charges ton départ. En plein vol, si tu as le Souffleur, elle entretient ton boost.',
+        'Down arrow: on a shard it charges your launch. In mid-air, if you own the blower, it keeps your boost alive.'
+      );
+  }
+}
+
+function getHelpTopicCopy(topic: GuideHelpTopic) {
+  switch (topic) {
+    case 'intro_mirror':
+      return {
+        title: loc('Miroir', 'Mirror'),
+        body: loc(
+          'Le miroir n’est pas décoratif. Tapote-le plusieurs fois pour casser l’intro et ouvrir le portfolio.',
+          'The mirror is not decorative. Tap it a few times to crack the intro open and reveal the portfolio.'
+        )
+      };
+    case 'portfolio_navigation':
+      return {
+        title: loc('Navigation', 'Navigation'),
+        body: loc(
+          'Survole un éclat pour sentir sa vibe. Clique pour entrer en focus. Depuis le focus, glisse ou utilise les flèches pour tourner autour du projet.',
+          'Hover a shard to feel its vibe. Click to focus it. Once inside, drag or use the arrow keys to rotate around the project.'
+        )
+      };
+    case 'focus_zone':
+      return {
+        title: loc('Focus', 'Focus'),
+        body: loc(
+          'Ici, chaque facette raconte un angle précis du projet. Le guide se cale en bas pour ne pas mâcher la scène.',
+          'Each facet here tells a specific angle of the project. The guide drops low so it does not chew up the scene.'
+        )
+      };
+    case 'slot_goal':
+      return {
+        title: loc('Fragments', 'Shards'),
+        body: loc(
+          'Prends une shard et promène-la. La bonne place réagit quand tu approches. Une fois tout remis entre mes mains, la suite s’ouvre.',
+          'Grab a shard and move it around. The correct slot reacts when you get close. Put every shard back in my hands and the next step opens.'
+        )
+      };
+    case 'primaterie_hub':
+      return {
+        title: loc('Primaterie', 'Primaterie'),
+        body: loc(
+          'La Primaterie sert de hub. Tu peux repartir vers le portfolio, lancer l’aventure, ou fouiller les accès Discord, Patreon, thème et langue.',
+          'The Primaterie is the hub. You can jump back to the portfolio, launch the adventure, or dig through Discord, Patreon, theme and language options.'
+        )
+      };
+    case 'primaterie_contact':
+      return {
+        title: loc('Contacts', 'Contacts'),
+        body: loc(
+          'Discord pour rejoindre le terrier, Patreon pour soutenir les projets, portfolio pour revoir les créations. Tout est là, tranquillement.',
+          'Discord to join the lair, Patreon to support the projects, portfolio to revisit the work. Everything is parked right there.'
+        )
+      };
+    case 'game_rules':
+      return {
+        title: loc('Règles', 'Rules'),
+        body: loc(
+          'Bas charge ton départ sur une shard. Haut déclenche une impulsion seulement en l’air. Gauche active le Wrapper, droite le grappin. L’idée, c’est de garder ton rythme sans te faire coincer.',
+          'Down charges your launch on a shard. Up only fires an airborne impulse while flying. Left uses the Wrapper, right uses the grapple. The trick is to keep your rhythm without getting pinned.'
+        )
+      };
+    case 'game_score_save':
+      return {
+        title: loc('Score', 'Score'),
+        body: loc(
+          'Au game over, écris ton nom au moins une fois puis save. Sans ça, le score, la run et la gloire repartent dans le néant.',
+          'At game over, type your name at least once and then save. Without that, the score, the run and the glory drift back into the void.'
+        )
+      };
+    case 'game_settings':
+      return {
+        title: loc('Réglages', 'Settings'),
+        body: loc(
+          'Le panneau réglages permet de revoir l’aide, changer le thème, la langue, le plein écran et le son. Oui, même le volume dramatique.',
+          'The settings panel lets you replay help, switch theme, language, fullscreen and audio. Yes, even the dramatic volume.'
+        )
+      };
+    case 'game_achievements':
+      return {
+        title: loc('Succès', 'Achievements'),
+        body: loc(
+          'Les succès servent de mémoire méta. Tu peux filtrer, lire les conditions et récupérer les récompenses avatar liées à ta progression.',
+          'Achievements are the meta memory. You can filter them, read the conditions and collect the avatar rewards tied to your progress.'
+        )
+      };
+    case 'about_zone':
+      return {
+        title: loc('Outro', 'Outro'),
+        body: loc(
+          'Cette zone sert à souffler un peu, lire le contexte et retrouver les infos utiles sans casser tout le flow du portfolio.',
+          'This area is here so you can breathe a little, read the context and recover the useful info without wrecking the portfolio flow.'
+        )
+      };
+  }
+}
+
+function getHelpTopicLabel(topic: GuideHelpTopic) {
+  switch (topic) {
+    case 'intro_mirror':
+      return {
+        label: loc('Comment casser le miroir ?', 'How do I crack the mirror?'),
+        description: loc('Rejouer l’explication de l’intro.', 'Replay the intro explanation.')
+      };
+    case 'portfolio_navigation':
+      return {
+        label: loc('Se déplacer', 'Move around'),
+        description: loc('Bases du portfolio.', 'Portfolio basics.')
+      };
+    case 'focus_zone':
+      return {
+        label: loc('Le focus', 'Focus mode'),
+        description: loc('Voir le projet.', 'See the project.')
+      };
+    case 'slot_goal':
+      return {
+        label: loc('Les fragments', 'The shards'),
+        description: loc('Remets-les en place.', 'Put them back.')
+      };
+    case 'primaterie_hub':
+      return {
+        label: loc('Cette zone', 'This zone'),
+        description: loc('Vue d’ensemble.', 'Quick overview.')
+      };
+    case 'primaterie_contact':
+      return {
+        label: loc('Les contacts', 'Contacts'),
+        description: loc('Discord et liens.', 'Links and contact.')
+      };
+    case 'game_rules':
+      return {
+        label: loc('Jouer', 'Play'),
+        description: loc('Commandes principales.', 'Main controls.')
+      };
+    case 'game_score_save':
+      return {
+        label: loc('Sauver', 'Save score'),
+        description: loc('Nom, save, classement.', 'Name, save, board.')
+      };
+    case 'game_settings':
+      return {
+        label: loc('Réglages', 'Settings'),
+        description: loc('Audio, langue, thème.', 'Audio, language, theme.')
+      };
+    case 'game_achievements':
+      return {
+        label: loc('Succès', 'Achievements'),
+        description: loc('Progression et récompenses.', 'Progress and rewards.')
+      };
+    case 'about_zone':
+      return {
+        label: loc('Le contact', 'Contact'),
+        description: loc('Mail et formulaire.', 'Mail and form.')
+      };
   }
 }
 
@@ -558,8 +699,17 @@ export class GuideBubbleSystem {
   private readonly panel: HTMLDivElement;
   private readonly panelArt: HTMLDivElement;
   private readonly titleElement: HTMLParagraphElement;
-  private readonly bodyElement: HTMLParagraphElement;
+  private readonly bodyElement: HTMLDivElement;
   private readonly bubbleCopy: HTMLDivElement;
+  private readonly helpButton: HTMLButtonElement;
+  private readonly helpButtonIcon: HTMLImageElement;
+  private readonly helpSummaryPanel: HTMLDivElement;
+  private readonly helpSummaryArt: HTMLDivElement;
+  private readonly helpSummaryCopy: HTMLDivElement;
+  private readonly helpSummaryTitle: HTMLParagraphElement;
+  private readonly helpSummaryBody: HTMLParagraphElement;
+  private readonly helpOrbit: HTMLDivElement;
+  private readonly helpOrbitList: HTMLDivElement;
 
   private currentPresence: GuidePresenceContext = {
     visible: true,
@@ -573,10 +723,11 @@ export class GuideBubbleSystem {
   private currentAnimation: GuideAnimationName = 'idle';
   private animationElapsed = 0;
   private animationLoops = 0;
-  private currentMessage: GuideMessage | null = null;
+  private playback: GuidePlaybackState | null = null;
   private readonly queue: GuideMessage[] = [];
   private readonly seenFlags = new Set<string>();
   private readonly cooldowns = new Map<string, number>();
+  private readonly history: GuideHistoryEntry[] = [];
   private desiredCharacterLeft = 0;
   private desiredCharacterTop = 0;
   private desiredCharacterSize = 112;
@@ -597,8 +748,12 @@ export class GuideBubbleSystem {
   private currentPanelFlipY = false;
   private currentPanelBubbleX: GuidePlacement['bubbleX'] = 'left';
   private currentPanelBubbleY: GuidePlacement['bubbleY'] = 'above';
-  private renderedMessageId: string | null = null;
-  private renderedMessageRevealCount = 0;
+  private lastRenderSignature = '';
+  private lastRenderedSegmentKey: string | null = null;
+  private renderedSegmentElement: HTMLDivElement | null = null;
+  private renderedTokenRefs: GuideTokenRenderRef[] = [];
+  private lastTokenFitSignature = '';
+  private lastSegmentFitSignature = '';
   private anchor: GuideAnchor = { x: 0.08, y: 0.7 };
   private dragPointerId: number | null = null;
   private dragMoved = false;
@@ -609,10 +764,17 @@ export class GuideBubbleSystem {
   private cursorX = window.innerWidth * 0.58;
   private cursorY = window.innerHeight * 0.46;
   private idleVariationAt = performance.now() + this.randomIdleDelay();
+  private helpPanelOpen = false;
+  private helpEntries: GuideCatalogueEntry[] = [];
+  private hoveredHelpEntryId: string | null = null;
+  private helpPageIndex = 0;
+  private helpSwipePointerId: number | null = null;
+  private helpSwipeStartX = 0;
 
   constructor(private readonly host: HTMLElement, private readonly i18n: I18nService) {
     this.loadFlags();
     this.loadAnchor();
+    this.loadHistory();
 
     this.element = document.createElement('div');
     this.element.className = 'guide-bubble';
@@ -627,6 +789,34 @@ export class GuideBubbleSystem {
     this.characterElement.className = 'guide-bubble__character';
     this.characterShell.appendChild(this.characterElement);
 
+    this.helpButton = document.createElement('button');
+    this.helpButton.type = 'button';
+    this.helpButton.className = 'guide-bubble__help-button';
+    this.helpButton.setAttribute('aria-label', 'Guide help');
+    this.helpButtonIcon = document.createElement('img');
+    this.helpButtonIcon.className = 'guide-bubble__help-icon';
+    this.helpButtonIcon.alt = '';
+    this.helpButton.appendChild(this.helpButtonIcon);
+
+    this.helpSummaryPanel = document.createElement('div');
+    this.helpSummaryPanel.className = 'guide-bubble__help-summary';
+    this.helpSummaryPanel.hidden = true;
+
+    this.helpSummaryArt = document.createElement('div');
+    this.helpSummaryArt.className = 'guide-bubble__help-summary-art';
+
+    this.helpSummaryCopy = document.createElement('div');
+    this.helpSummaryCopy.className = 'guide-bubble__help-summary-copy';
+
+    this.helpSummaryTitle = document.createElement('p');
+    this.helpSummaryTitle.className = 'guide-bubble__help-summary-title';
+
+    this.helpSummaryBody = document.createElement('p');
+    this.helpSummaryBody.className = 'guide-bubble__help-summary-body';
+
+    this.helpSummaryCopy.append(this.helpSummaryBody);
+    this.helpSummaryPanel.append(this.helpSummaryArt, this.helpSummaryCopy);
+
     this.panel = document.createElement('div');
     this.panel.className = 'guide-bubble__panel';
 
@@ -640,27 +830,50 @@ export class GuideBubbleSystem {
     this.titleElement.className = 'guide-bubble__title';
     this.titleElement.hidden = true;
 
-    this.bodyElement = document.createElement('p');
+    this.bodyElement = document.createElement('div');
     this.bodyElement.className = 'guide-bubble__body';
 
+    this.helpOrbit = document.createElement('div');
+    this.helpOrbit.className = 'guide-bubble__help-orbit';
+    this.helpOrbit.hidden = true;
+
+    this.helpOrbitList = document.createElement('div');
+    this.helpOrbitList.className = 'guide-bubble__help-orbit-list';
+
+    this.helpOrbit.append(this.helpOrbitList);
     this.bubbleCopy.append(this.titleElement, this.bodyElement);
     this.panel.append(this.panelArt, this.bubbleCopy);
-    this.element.append(this.characterShell, this.panel);
+    this.element.append(this.characterShell, this.helpButton, this.panel, this.helpSummaryPanel, this.helpOrbit);
     this.host.appendChild(this.element);
 
     this.setAnimation('idle', true);
     this.applyAnimationFrame();
     this.applyVisuals();
     this.bindPointerEvents();
-    this.i18n.onChange(() => this.render());
+    this.i18n.onChange(() => {
+      this.render();
+      this.renderHelpOrbit();
+      this.renderHelpSummary();
+    });
   }
 
   setPresence(context: GuidePresenceContext) {
+    const previousZone = this.currentPresence.zone;
     this.currentPresence = context;
+    if (this.helpPanelOpen && previousZone !== context.zone) {
+      this.helpEntries = this.buildHelpEntries();
+      this.helpPageIndex = 0;
+      this.hoveredHelpEntryId = null;
+      this.renderHelpOrbit();
+      this.applyVisuals();
+    }
   }
 
   setSuspended(suspended: boolean) {
     this.suspended = suspended;
+    if (suspended) {
+      this.closeHelpCatalogue(false);
+    }
   }
 
   resetHoverCooldown(key: string | null) {
@@ -678,96 +891,40 @@ export class GuideBubbleSystem {
     this.cooldowns.delete(`guide:orbit-hover-cooldown:${projectId}`);
   }
 
-  trigger(cue: GuideCue, target: GuideTarget | null) {
-    if (this.manuallyDisabled) {
+  trigger(cue: GuideCue, target: GuideTarget | null, options: GuideTriggerOptions = {}) {
+    if (this.manuallyDisabled && options.source !== 'history' && options.source !== 'help') {
       return;
     }
-    const message = this.buildMessage(cue, target);
+
+    const message = this.buildMessage(cue, target, options);
     if (!message) {
       return;
     }
 
-    if (this.currentMessage && this.currentMessage.id === message.id) {
-      this.currentMessage = message;
-      this.render();
-      return;
-    }
-
-    if (this.currentMessage && message.priority >= this.currentMessage.priority) {
-      const now = performance.now();
-      this.currentMessage = {
-        ...message,
-        createdAt: now,
-        currentPartIndex: 0,
-        partStartedAt: now
-      };
-      this.queue.length = 0;
-      this.render();
-      return;
-    }
-
-    const existingIndex = this.queue.findIndex((entry) => entry.id === message.id);
-    if (existingIndex >= 0) {
-      this.queue.splice(existingIndex, 1, message);
-    } else {
-      this.queue.push(message);
-    }
-    this.queue.sort((left, right) => right.priority - left.priority || left.createdAt - right.createdAt);
+    this.enqueueMessage(message);
   }
 
   update(deltaTime: number) {
     const now = performance.now();
-    
-    // Handle multi-part dialogue advancement
-    if (this.currentMessage && this.currentMessage.parts && (this.currentMessage.currentPartIndex ?? 0) < (this.currentMessage.parts.length - 1)) {
-      const currentPart = this.currentMessage.parts[this.currentMessage.currentPartIndex ?? 0];
-      const revealDuration = clamp(
-        Array.from(currentPart[this.i18n.current]).length * GUIDE_TEXT_REVEAL_MS_PER_CHARACTER,
-        GUIDE_TEXT_REVEAL_MIN_DURATION_MS,
-        GUIDE_TEXT_REVEAL_MAX_DURATION_MS
-      );
-      const partDuration = revealDuration + 800; // Hold for 800ms after reveal
-      const partStartedAt = this.currentMessage.partStartedAt ?? now;
-      
-      if (now >= partStartedAt + partDuration) {
-        // Advance to next part
-        this.currentMessage = {
-          ...this.currentMessage,
-          currentPartIndex: (this.currentMessage.currentPartIndex ?? 0) + 1,
-          partStartedAt: now
-        };
-        this.renderedMessageRevealCount = 0;
-        this.renderedMessageId = null;
-        this.render();
+    this.advancePlayback(now);
+
+    if (!this.playback && this.queue.length > 0) {
+      const nextMessage = this.queue.shift() ?? null;
+      if (nextMessage) {
+        this.activateMessage(nextMessage, now);
       }
     }
-    
-    if (this.currentMessage && !this.manuallyDisabled && now >= this.currentMessage.createdAt + this.currentMessage.durationMs) {
-      this.currentMessage = null;
+
+    const progress = this.playback ? this.getPlaybackProgress(this.playback, now) : null;
+    const renderSignature = progress ? `${this.playback?.message.id}:${progress.segmentIndex}:${progress.renderSegmentIndex}:${progress.visibleUnitCount}` : 'none';
+    if (renderSignature !== this.lastRenderSignature) {
       this.render();
     }
 
-    if (!this.currentMessage && this.queue.length > 0) {
-      const nextMessage = this.queue.shift() ?? null;
-      if (nextMessage) {
-        this.currentMessage = {
-          ...nextMessage,
-          createdAt: now,
-          currentPartIndex: 0,
-          partStartedAt: now
-        };
-        this.render();
-      }
-    }
-
-    if (this.currentMessage) {
-      const revealCount = this.getRevealCharacterCount(this.currentMessage, now);
-      if (this.renderedMessageId !== this.currentMessage.id || revealCount !== this.renderedMessageRevealCount) {
-        this.render();
-      }
-    }
-
-    const desiredVisible = !this.suspended && !this.manuallyDisabled && (this.currentPresence.visible || this.currentMessage !== null || this.queue.length > 0);
+    const desiredVisible =
+      !this.suspended &&
+      !this.manuallyDisabled &&
+      (this.currentPresence.visible || this.playback !== null || this.queue.length > 0 || this.helpPanelOpen);
     if (desiredVisible && !this.visible && this.currentAnimation !== 'arrive') {
       this.visible = true;
       this.setAnimation('arrive', true);
@@ -776,7 +933,7 @@ export class GuideBubbleSystem {
     }
 
     if (desiredVisible && this.currentAnimation !== 'arrive' && this.currentAnimation !== 'leave') {
-      if (this.currentMessage) {
+      if (this.playback) {
         if (this.currentAnimation !== 'talk_hold') {
           this.setAnimation('talk_hold', true);
         }
@@ -791,73 +948,292 @@ export class GuideBubbleSystem {
 
     this.updateAnimation(deltaTime, desiredVisible);
     this.updatePlacement(deltaTime);
-    this.panelVisible = this.currentMessage !== null && this.visible && !this.suspended && this.dragPointerId === null && !this.manuallyDisabled;
+    this.panelVisible = this.playback !== null && this.visible && !this.suspended && this.dragPointerId === null && !this.manuallyDisabled;
     this.applyVisuals();
   }
 
-  private buildMessage(cue: GuideCue, target: GuideTarget | null) {
+  private get currentMessage() {
+    return this.playback?.message ?? null;
+  }
+
+  private enqueueMessage(message: GuideMessage) {
+    const now = performance.now();
+
+    if (this.playback && this.playback.message.id === message.id && message.source === 'auto') {
+      this.playback.message = {
+        ...this.playback.message,
+        target: message.target,
+        createdAt: this.playback.message.createdAt
+      };
+      return;
+    }
+
+    const queuedMatchIndex = this.queue.findIndex((entry) => entry.replacementKey === message.replacementKey);
+    if (queuedMatchIndex >= 0 && message.queueBehavior === 'replace') {
+      this.queue.splice(queuedMatchIndex, 1, message);
+    } else if (queuedMatchIndex < 0) {
+      this.queue.push(message);
+    } else {
+      this.queue.push(message);
+    }
+    this.queue.sort((left, right) => right.priority - left.priority || left.createdAt - right.createdAt);
+
+    if (!this.playback) {
+      const nextMessage = this.queue.shift() ?? null;
+      if (nextMessage) {
+        this.activateMessage(nextMessage, now);
+      }
+      return;
+    }
+
+    const interruptibleIndex = this.queue.findIndex((candidate) => this.canInterruptCurrentMessage(candidate, now));
+    if (interruptibleIndex >= 0) {
+      const [candidate] = this.queue.splice(interruptibleIndex, 1);
+      if (candidate) {
+        this.activateMessage(candidate, now);
+      }
+    }
+  }
+
+  private activateMessage(message: GuideMessage, now: number) {
+    this.playback = {
+      message,
+      segmentIndex: 0,
+      segmentStartedAt: now,
+      startedAt: now
+    };
+    this.lastRenderSignature = '';
+    this.recordHistory(message);
+    this.render();
+  }
+
+  private finishPlayback(now: number) {
+    this.playback = null;
+    this.lastRenderSignature = 'none';
+    this.render();
+
+    const nextMessage = this.queue.shift() ?? null;
+    if (nextMessage) {
+      this.activateMessage(nextMessage, now);
+    }
+  }
+
+  private advancePlayback(now: number) {
+    if (!this.playback) {
+      return;
+    }
+
+    const progress = this.getPlaybackProgress(this.playback, now);
+    const interruptibleIndex = this.queue.findIndex((candidate) => this.canInterruptCurrentMessage(candidate, now, progress));
+    if (interruptibleIndex >= 0) {
+      const [candidate] = this.queue.splice(interruptibleIndex, 1);
+      if (candidate) {
+        this.activateMessage(candidate, now);
+      }
+      return;
+    }
+
+    if (!progress.segmentComplete) {
+      return;
+    }
+
+    if (this.playback.segmentIndex < this.playback.message.sequence.segments.length - 1) {
+      this.playback.segmentIndex += 1;
+      this.playback.segmentStartedAt = now;
+      this.lastRenderSignature = '';
+      this.render();
+      return;
+    }
+
+    this.finishPlayback(now);
+  }
+
+  private getPlaybackProgress(playback: GuidePlaybackState, now: number): GuidePlaybackProgress {
+    const segment = playback.message.sequence.segments[playback.segmentIndex] ?? playback.message.sequence.segments[0];
+    const elapsedMs = now - playback.segmentStartedAt;
+    const revealComplete = elapsedMs >= segment.revealDurationMs;
+    const boundaryReached = elapsedMs >= segment.revealDurationMs + segment.minReadableDurationMs;
+    const segmentComplete = elapsedMs >= segment.revealDurationMs + segment.holdDurationMs;
+
+    let renderSegmentIndex = playback.segmentIndex;
+    let renderSegment = segment;
+    let visibleUnitCount = this.getVisibleUnitCount(segment, elapsedMs, this.i18n.current);
+
+    if (segment.revealMode === 'pause' && playback.segmentIndex > 0) {
+      renderSegmentIndex = playback.segmentIndex - 1;
+      renderSegment = playback.message.sequence.segments[renderSegmentIndex] ?? segment;
+      visibleUnitCount = this.getRenderableUnitCount(renderSegment, this.i18n.current);
+    }
+
+    return {
+      segment,
+      renderSegment,
+      segmentIndex: playback.segmentIndex,
+      renderSegmentIndex,
+      elapsedMs,
+      revealComplete,
+      boundaryReached,
+      segmentComplete,
+      visibleUnitCount
+    };
+  }
+
+  private canInterruptCurrentMessage(candidate: GuideMessage, now: number, progress = this.playback ? this.getPlaybackProgress(this.playback, now) : null) {
+    if (!this.playback || !progress) {
+      return true;
+    }
+    if (candidate.critical) {
+      return true;
+    }
+    if (candidate.replacementKey === this.playback.message.replacementKey && candidate.priority >= this.playback.message.priority) {
+      return progress.boundaryReached || progress.segment.revealMode === 'pause';
+    }
+    if (candidate.priority < this.playback.message.priority) {
+      return false;
+    }
+
+    switch (progress.segment.interruptibility) {
+      case 'immediate':
+        return true;
+      case 'segment-boundary':
+        return progress.boundaryReached;
+      case 'locked':
+        return progress.segmentComplete || candidate.priority >= this.playback.message.priority + 1;
+      case 'critical-only':
+        return false;
+      default:
+        return false;
+    }
+  }
+
+  private buildMessage(cue: GuideCue, target: GuideTarget | null, options: GuideTriggerOptions = {}) {
     const now = performance.now();
     const enqueue = (
       id: string,
       body: LocalizedText,
-      options: {
+      config: {
         title?: LocalizedText;
         priority?: number;
-        durationMs?: number;
         firstTimeKey?: string;
         cooldownKey?: string;
         cooldownMs?: number;
-        animation?: DialogueAnimation;
+        category?: string;
+        replacementKey?: string;
+        queueBehavior?: 'replace' | 'stack';
+        critical?: boolean;
+        replayEligible?: boolean;
+        pace?: 'whisper' | 'steady' | 'punchy' | 'dramatic';
+        tone?: string;
+        emphasisKeywords?: string[];
+        impactWords?: string[];
+        preferredRevealMode?: GuideRevealMode;
+        defaultAnimation?: GuideTextAnimation;
+        defaultInterruptibility?: GuideInterruptibility;
       } = {}
     ) => {
-      const firstTimeKey = options.firstTimeKey;
-      if (firstTimeKey && this.seenFlags.has(firstTimeKey)) {
-        return null;
+      const bypassGuards = options.bypassGuards === true;
+      if (!bypassGuards) {
+        const firstTimeKey = config.firstTimeKey;
+        if (firstTimeKey && this.seenFlags.has(firstTimeKey)) {
+          return null;
+        }
+        const cooldownKey = config.cooldownKey;
+        const cooldownUntil = cooldownKey ? this.cooldowns.get(cooldownKey) ?? 0 : 0;
+        if (cooldownKey && now < cooldownUntil) {
+          return null;
+        }
+        if (firstTimeKey) {
+          this.markSeen(firstTimeKey);
+        }
+        if (cooldownKey) {
+          this.cooldowns.set(cooldownKey, now + (config.cooldownMs ?? 9000));
+        }
       }
-      const cooldownKey = options.cooldownKey;
-      const cooldownUntil = cooldownKey ? this.cooldowns.get(cooldownKey) ?? 0 : 0;
-      if (cooldownKey && now < cooldownUntil) {
-        return null;
-      }
-      if (firstTimeKey) {
-        this.markSeen(firstTimeKey);
-      }
-      if (cooldownKey) {
-        this.cooldowns.set(cooldownKey, now + (options.cooldownMs ?? 9000));
-      }
-      
-      const parts = splitDialogueIntoParts(body);
-      
+
+      const sequence = parseDialogueToSequence(body, {
+        idBase: id,
+        pace: config.pace ?? (config.priority && config.priority >= 4 ? 'dramatic' : 'steady'),
+        tone: config.tone,
+        replayEligible: config.replayEligible ?? true,
+        emphasisKeywords: config.emphasisKeywords,
+        impactWords: config.impactWords,
+        preferredRevealMode: config.preferredRevealMode,
+        defaultAnimation: config.defaultAnimation,
+        defaultInterruptibility: config.defaultInterruptibility ?? (config.priority && config.priority >= 4 ? 'locked' : 'segment-boundary')
+      });
+
       return {
         id,
-        priority: options.priority ?? 2,
-        durationMs: options.durationMs ?? 3000,
-        title: options.title ?? DEFAULT_SPEAKER_TITLE,
-        body,
+        priority: config.priority ?? 2,
+        title: config.title ?? DEFAULT_SPEAKER_TITLE,
         target,
         createdAt: now,
-        parts,
-        currentPartIndex: 0,
-        partStartedAt: now,
-        animation: options.animation ?? 'static'
+        sequence,
+        category: config.category ?? cue.type,
+        contextKey: this.getCueContextKey(cue),
+        replacementKey: config.replacementKey ?? id,
+        queueBehavior: config.queueBehavior ?? 'replace',
+        critical: config.critical ?? false,
+        replayEligible: sequence.replayEligible,
+        source: options.source ?? 'auto'
       } satisfies GuideMessage;
     };
 
     switch (cue.type) {
-      case 'intro_mirror':
+      case 'intro_mirror_0':
+        return enqueue('intro-mirror-0', loc('Touche le miroir.', 'Touch the mirror.'), {
+          title: loc('Miroir', 'Mirror'),
+          priority: 4,
+          cooldownKey: 'guide:intro-mirror-stage-0-cooldown',
+          cooldownMs: 2400,
+          tone: 'callout',
+          preferredRevealMode: 'char',
+          defaultAnimation: 'static',
+          replayEligible: true
+        });
+      case 'intro_mirror_first_click':
         return enqueue(
-          'intro-mirror',
-          loc(
-            'Touch the mirror!',
-            'Touche le miroir!'
-          ),
+          'intro-mirror-first-click',
+          loc('Oui, comme ça. Continue, le miroir cède morceau par morceau.', 'Yes, like that. Keep going, the mirror gives way piece by piece.'),
           {
             title: loc('Miroir', 'Mirror'),
             priority: 4,
-            durationMs: 4200,
-            cooldownKey: 'guide:intro-mirror-cooldown',
-            cooldownMs: 1800,
-            animation: 'wiggle'
+            cooldownKey: 'guide:intro-mirror-stage-first-click-cooldown',
+            cooldownMs: 2400,
+            tone: 'focus',
+            preferredRevealMode: 'word',
+            defaultAnimation: 'bounce-subtle',
+            replayEligible: true
+          }
+        );
+      case 'intro_mirror_50':
+        return enqueue(
+          'intro-mirror-50',
+          loc('Moitié faite. Encore quelques impacts et tout s’ouvre.', 'Halfway there. A few more hits and everything opens up.'),
+          {
+            title: loc('Miroir', 'Mirror'),
+            priority: 4,
+            cooldownKey: 'guide:intro-mirror-stage-50-cooldown',
+            cooldownMs: 2400,
+            tone: 'focus',
+            preferredRevealMode: 'stagger',
+            defaultAnimation: 'hold-breath',
+            replayEligible: true
+          }
+        );
+      case 'intro_mirror_100':
+        return enqueue(
+          'intro-mirror-100',
+          loc('Parfait. Le passage est prêt.', 'Perfect. The way through is ready.'),
+          {
+            title: loc('Miroir', 'Mirror'),
+            priority: 5,
+            cooldownKey: 'guide:intro-mirror-stage-100-cooldown',
+            cooldownMs: 3200,
+            tone: 'exclaim',
+            preferredRevealMode: 'impact',
+            defaultAnimation: 'punch-in',
+            replayEligible: true
           }
         );
       case 'hub_arrival':
@@ -870,129 +1246,135 @@ export class GuideBubbleSystem {
           {
             title: loc('Entrée', 'Arrival'),
             priority: 4,
-            durationMs: 4800,
-            firstTimeKey: 'guide:hub-arrival'
+            firstTimeKey: 'guide:hub-arrival',
+            tone: 'welcome',
+            pace: 'dramatic',
+            replayEligible: true
           }
         );
       case 'orbit_hover':
         return enqueue(`orbit-hover:${cue.project.id}`, getOrbitHoverBody(cue.project), {
           title: cue.project.title,
           priority: 2,
-          durationMs: 3000,
           cooldownKey: `guide:orbit-hover-cooldown:${cue.project.id}`,
-          cooldownMs: 5600
+          cooldownMs: 5600,
+          queueBehavior: 'stack',
+          replayEligible: false,
+          pace: 'punchy'
         });
       case 'portfolio_scroll':
         return enqueue(
           `portfolio-scroll:${cue.project.id}:${cue.direction > 0 ? 'next' : 'prev'}`,
-          cue.direction > 0
-            ? loc(
-                `${cue.project.title.fr}`,
-                `${cue.project.title.en}`
-              )
-            : loc(
-                'Hehe',
-                'Hehe'
-              ),
+          cue.direction > 0 ? loc(`${cue.project.title.fr}`, `${cue.project.title.en}`) : loc('Euh?', 'Hmm?'),
           {
             title: loc('Profondeur', 'Depth'),
             priority: 3,
-            durationMs: 3600,
             cooldownKey: `guide:portfolio-scroll-cooldown:${cue.project.id}:${cue.direction > 0 ? 'next' : 'prev'}`,
-            cooldownMs: 1000
+            cooldownMs: 1000,
+            queueBehavior: 'stack',
+            replayEligible: false,
+            preferredRevealMode: cue.direction > 0 ? 'impact' : 'burst',
+            defaultAnimation: cue.direction > 0 ? 'punch-in' : 'bounce-subtle',
+            impactWords: [cue.project.title.fr, cue.project.title.en]
           }
         );
       case 'focus_enter':
         return enqueue(`focus:${cue.project.id}:${cue.facetIndex}`, getFocusBody(cue.project, cue.facetIndex), {
           title: cue.project.facets[cue.facetIndex]?.categoryLabel ?? cue.project.title,
           priority: 3,
-          durationMs: 3000,
           cooldownKey: `guide:focus-cooldown:${cue.project.id}:${cue.facetIndex}`,
-          cooldownMs: 5600
+          cooldownMs: 5600,
+          replayEligible: true,
+          tone: 'focus',
+          pace: 'dramatic'
         });
       case 'mirror_reveal':
-        return enqueue(
-          'mirror-reveal',
-          loc(
-            'Oupss.',
-            'Oupss.'
-          ),
-          {
-            title: loc('Miroir', 'Mirror'),
-            priority: 5,
-            durationMs: 3200,
-            cooldownKey: 'guide:mirror-reveal-cooldown',
-            cooldownMs: 3000,
-            animation: 'shake'
-          }
-        );
+        return enqueue('mirror-reveal', loc('Oupss.', 'Oupss.'), {
+          title: loc('Miroir', 'Mirror'),
+          priority: 5,
+          cooldownKey: 'guide:mirror-reveal-cooldown',
+          cooldownMs: 3000,
+          critical: true,
+          preferredRevealMode: 'impact',
+          defaultAnimation: 'punch-in',
+          impactWords: ['oupss', 'oups'],
+          replayEligible: true
+        });
       case 'drag_first':
-        return enqueue(
-          'drag-first',
-          loc(
-            'T’es un petit malin toi, hein ?',
-            'You’re a clever one, aren’t you?'
-          ),
-          {
-            title: loc('Traque', 'Hunt'),
-            priority: 4,
-            durationMs: 3600,
-            firstTimeKey: 'guide:drag-first',
-            animation: 'wiggle'
-          }
-        );
+        return enqueue('drag-first', loc('T’es un petit malin toi, hein ?', 'You’re a clever one, aren’t you?'), {
+          title: loc('Traque', 'Hunt'),
+          priority: 4,
+          firstTimeKey: 'guide:drag-first',
+          tone: 'comic',
+          replayEligible: true,
+          defaultAnimation: 'wiggle-horizontal'
+        });
       case 'slot_placed':
         return enqueue(
           `slot-placed:${cue.project.id}:${cue.remainingSlots}`,
           cue.remainingSlots >= 5
-            ? loc(
-                'Ohoh... Intéressant hein ?',
-                'Ohoh... Interesting, huh?'
-              )
+            ? loc('Ohoh... Intéressant hein ?', 'Ohoh... Interesting, huh?')
             : cue.remainingSlots >= 4
-              ? loc(
-                  'Hmmm... Là tu commences à voir ou toujours pas ?',
-                  'Hmmm... Now you’re starting to see, or not yet?'
-                )
+              ? loc('Hmmm... Là tu commences à voir ou toujours pas ?', 'Hmmm... Now you’re starting to see, or not yet?')
               : cue.remainingSlots === 3
-                ? loc(
-                    'J’aime les gens curieux comme toi.',
-                    'I like curious people like you.'
-                  )
+                ? loc('J’aime les gens curieux comme toi.', 'I like curious people like you.')
                 : cue.remainingSlots === 2
-                  ? loc(
-                      'Plus que deux morceaux à replacer.',
-                      'Only two pieces left to place..'
-                    )
+                  ? loc('Plus que deux morceaux à replacer.', 'Only two pieces left to place..')
                   : cue.remainingSlots === 1
-                    ? loc(
-                        'Tu y es presque.',
-                        'You’re almost there.'
-                      )
+                    ? loc('Tu y es presque.', 'You’re almost there.')
                     : loc(
                         'Mouhaha, tu n’es pas prêt pour la suite, prépare toi à être prêt... Je veux dire tu vois ce que je veux dire... BON ALLEZ GO !',
-                        'Mouhaha, you’re not ready for what’s next, get ready to be ready... I mean you get it, LET’S GO'
+                        'Mouhaha, you’re not ready for what’s next, get ready to be ready... I mean you get it... LET’S GO!'
                       ),
           {
             title: loc('Déclic', 'Click'),
             priority: 4,
-            durationMs: 3400
+            queueBehavior: 'stack',
+            replayEligible: true,
+            pace: cue.remainingSlots === 0 ? 'dramatic' : 'steady',
+            impactWords: ['Primate', 'Primaterie', 'Aventure', 'Adventure', 'projet', 'project'],
+            defaultAnimation: cue.remainingSlots === 0 ? 'punch-in' : 'static'
+          }
+        );
+      case 'two_slots_left':
+        return enqueue('two-slots-left', loc('Plus que deux morceaux. Là, le secret commence à sentir le danger.', 'Two shards left. The secret is starting to smell dangerous.'), {
+          title: loc('Fragments', 'Shards'),
+          priority: 4,
+          replacementKey: 'slot-progress',
+          replayEligible: true,
+          pace: 'dramatic'
+        });
+      case 'one_slot_left':
+        return enqueue('one-slot-left', loc('Encore un. Respire, vise, et ne fais pas le clown maintenant.', 'Just one more. Breathe, aim, and do not clown around now.'), {
+          title: loc('Fragments', 'Shards'),
+          priority: 4,
+          replacementKey: 'slot-progress',
+          replayEligible: true,
+          pace: 'dramatic',
+          defaultAnimation: 'hold-breath'
+        });
+      case 'slots_complete':
+        return enqueue(
+          'slots-complete',
+          loc('BOOM. Tout est à sa place. Le passage s’ouvre.', 'BOOM. Everything is back in place. The passage opens.'),
+          {
+            title: loc('Ouverture', 'Opening'),
+            priority: 5,
+            critical: true,
+            pace: 'dramatic',
+            impactWords: ['boom', 'ouverture', 'opens'],
+            defaultAnimation: 'punch-in',
+            replayEligible: true
           }
         );
       case 'primaterie_arrival':
-        return enqueue(
-          'primaterie-arrival',
-          loc(
-            'Bienvenue dans la Primaterie..',
-            'Welcome to the Primaterie..'
-          ),
-          {
-            title: loc('Primaterie', 'Primaterie'),
-            priority: 4,
-            durationMs: 4400,
-            firstTimeKey: 'guide:primaterie-arrival'
-          }
-        );
+        return enqueue('primaterie-arrival', loc('Bienvenue dans la Primaterie..', 'Welcome to the Primaterie..'), {
+          title: loc('Primaterie', 'Primaterie'),
+          priority: 4,
+          firstTimeKey: 'guide:primaterie-arrival',
+          replayEligible: true,
+          pace: 'dramatic'
+        });
       case 'primaterie_hover':
         return enqueue(`primaterie-hover:${cue.item}`, getPrimaterieHoverBody(cue.item), {
           title:
@@ -1008,9 +1390,11 @@ export class GuideBubbleSystem {
                       ? loc('Thème', 'Theme')
                       : loc('Langue', 'Language'),
           priority: cue.item === 'discord' || cue.item === 'patreon' ? 3 : 2,
-          durationMs: 3000,
           cooldownKey: `guide:primaterie-hover-cooldown:${cue.item}`,
-          cooldownMs: 5600
+          cooldownMs: 5600,
+          queueBehavior: 'stack',
+          replayEligible: true,
+          pace: cue.item === 'discord' || cue.item === 'patreon' ? 'dramatic' : 'punchy'
         });
       case 'game_over_intro':
         return enqueue(
@@ -1022,9 +1406,12 @@ export class GuideBubbleSystem {
           {
             title: loc('Retour des morts', 'Back From The Dead'),
             priority: 5,
-            durationMs: 4600,
             firstTimeKey: 'guide:first-game-over',
-            animation: 'shake'
+            critical: true,
+            replayEligible: true,
+            pace: 'dramatic',
+            impactWords: ['save', 'nom', 'name'],
+            defaultAnimation: 'hold-breath'
           }
         );
       case 'game_over_hover':
@@ -1042,9 +1429,11 @@ export class GuideBubbleSystem {
                       ? loc('Rejouer', 'Replay')
                       : loc('Menu', 'Menu'),
           priority: 3,
-          durationMs: 3000,
           cooldownKey: `guide:game-over-hover-cooldown:${cue.item}`,
-          cooldownMs: 5600
+          cooldownMs: 5600,
+          queueBehavior: 'stack',
+          replayEligible: true,
+          pace: cue.item === 'menu' ? 'punchy' : 'steady'
         });
       case 'avatar_hover':
         return enqueue(`avatar-hover:${cue.item}`, getAvatarHoverBody(cue.item), {
@@ -1059,51 +1448,182 @@ export class GuideBubbleSystem {
                     ? loc('Fermer', 'Close')
                     : loc('Avatar', 'Avatar'),
           priority: 3,
-          durationMs: 3000,
           cooldownKey: `guide:avatar-hover-cooldown:${cue.item}`,
-          cooldownMs: 5600
+          cooldownMs: 5600,
+          queueBehavior: 'stack',
+          replayEligible: true
         });
       case 'tutorial_hover':
         return enqueue(`tutorial-hover:${cue.item}`, getTutorialHoverBody(cue.item), {
           title: loc('Tutoriel', 'Tutorial'),
           priority: 3,
-          durationMs: 3000,
           cooldownKey: `guide:tutorial-hover-cooldown:${cue.item}`,
-          cooldownMs: 5600
+          cooldownMs: 5600,
+          queueBehavior: 'stack',
+          replayEligible: true
         });
       case 'achievements_hover':
         return enqueue(`achievements-hover:${cue.item}`, getAchievementsHoverBody(cue.item), {
           title: loc('Succès', 'Achievements'),
           priority: 3,
-          durationMs: 3000,
           cooldownKey: `guide:achievements-hover-cooldown:${cue.item}`,
-          cooldownMs: 5600
+          cooldownMs: 5600,
+          queueBehavior: 'stack',
+          replayEligible: true
         });
       case 'settings_hover':
         return enqueue(`settings-hover:${cue.item}`, getSettingsHoverBody(cue.item), {
           title: loc('Réglages', 'Settings'),
           priority: cue.item === 'entry' ? 4 : 3,
-          durationMs: 3000,
           cooldownKey: `guide:settings-hover-cooldown:${cue.item}`,
-          cooldownMs: 5600
+          cooldownMs: 5600,
+          queueBehavior: 'stack',
+          replayEligible: true
         });
+      case 'game_control_hint':
+        return enqueue(`game-control-hint:${cue.item}`, getGameControlBody(cue.item), {
+          title:
+            cue.item === 'left'
+              ? loc('Gauche', 'Left')
+              : cue.item === 'up'
+                ? loc('Haut', 'Up')
+                : cue.item === 'right'
+                  ? loc('Droite', 'Right')
+                  : loc('Bas', 'Down'),
+          priority: 4,
+          firstTimeKey: `guide:game-control-hint:${cue.item}`,
+          cooldownKey: `guide:game-control-hint-cooldown:${cue.item}`,
+          cooldownMs: 3200,
+          replayEligible: true,
+          queueBehavior: 'stack',
+          pace: cue.item === 'down' ? 'steady' : 'dramatic'
+        });
+      case 'game_enemy_intro':
+        return enqueue(
+          'game-enemy-intro',
+          loc(
+            'Premier ennemi en vue. Si tu arrives dans son dos ou avec assez d’élan, tu le casses. Si tu le manges de face sans plan B, c’est lui qui gagne.',
+            'First enemy in sight. Come in from behind or with enough momentum and you break it. Hit it head-on without a backup plan and it wins.'
+          ),
+          {
+            title: loc('Danger', 'Danger'),
+            priority: 4,
+            firstTimeKey: 'guide:game-enemy-intro',
+            replayEligible: true,
+            tone: 'combat',
+            pace: 'dramatic'
+          }
+        );
+      case 'game_enemy_top_intro':
+        return enqueue(
+          'game-enemy-top-intro',
+          loc(
+            'Ceux du haut explosent au contact, même si tu n’es pas posé. Profite de leur trajectoire, puis repars avant la punition.',
+            'Top enemies pop on contact even if you are not landed. Use their path, then get out before the punishment catches up.'
+          ),
+          {
+            title: loc('Ennemi haut', 'Top enemy'),
+            priority: 4,
+            firstTimeKey: 'guide:game-enemy-top-intro',
+            replayEligible: true,
+            tone: 'combat',
+            defaultAnimation: 'punch-in'
+          }
+        );
+      case 'game_enemy_bot_intro':
+        return enqueue(
+          'game-enemy-bot-intro',
+          loc(
+            'Ceux du bas sortent tard et repoussent si tu les touches mal. Le grappin peut aussi s’y accrocher quand ils sont visibles.',
+            'Bottom enemies rise late and shove you back if you hit them poorly. The grapple can hook onto them once they are visible.'
+          ),
+          {
+            title: loc('Ennemi bas', 'Bottom enemy'),
+            priority: 4,
+            firstTimeKey: 'guide:game-enemy-bot-intro',
+            replayEligible: true,
+            tone: 'combat',
+            defaultAnimation: 'hold-breath'
+          }
+        );
+      case 'game_question_intro':
+        return enqueue(
+          'game-question-intro',
+          loc(
+            'Le point d’interrogation annonce un cadeau flou: récompense aléatoire, rareté, ou autre surprise utile. Approche pour voir ce qu’il cache.',
+            'That question mark means a fuzzy gift: random reward, rare loot, or another useful surprise. Move in and see what it hides.'
+          ),
+          {
+            title: loc('Mystère', 'Mystery'),
+            priority: 4,
+            firstTimeKey: 'guide:game-question-intro',
+            replayEligible: true,
+            tone: 'comic',
+            defaultAnimation: 'delayed-drop'
+          }
+        );
+      case 'game_shop_intro':
+        return enqueue(
+          'game-shop-intro',
+          loc(
+            'Shop repéré. C’est là que tu dépenses tes pièces pour t’améliorer. Tu peux acheter direct, ou couper le choix avec le Wrapper si tu veux filer.',
+            'Shop spotted. This is where your coins turn into upgrades. Buy directly, or break out with the Wrapper if you want to keep moving.'
+          ),
+          {
+            title: loc('Shop', 'Shop'),
+            priority: 4,
+            firstTimeKey: 'guide:game-shop-intro',
+            replayEligible: true,
+            tone: 'help',
+            pace: 'dramatic'
+          }
+        );
+      case 'game_milestone_intro':
+        return enqueue(
+          'game-milestone-intro',
+          loc(
+            'Une milestone bloque le tempo un instant pour te proposer des améliorations. Pose-toi, lis les branches, puis choisis ce qui pousse ton run.',
+            'A milestone pauses the tempo for a moment and offers upgrades. Land, read the branches, then pick what pushes your run forward.'
+          ),
+          {
+            title: loc('Milestone', 'Milestone'),
+            priority: 4,
+            firstTimeKey: 'guide:game-milestone-intro',
+            replayEligible: true,
+            tone: 'focus',
+            defaultAnimation: 'hold-breath'
+          }
+        );
+      case 'help_topic': {
+        const topicCopy = getHelpTopicCopy(cue.topic);
+        return enqueue(`help-topic:${cue.topic}`, topicCopy.body, {
+          title: topicCopy.title,
+          priority: 4,
+          replacementKey: `help-topic:${cue.topic}`,
+          replayEligible: true,
+          pace: 'dramatic',
+          tone: 'help',
+          defaultAnimation: 'delayed-drop'
+        });
+      }
     }
   }
 
   private updatePlacement(deltaTime: number) {
     const viewportWidth = this.host.clientWidth || window.innerWidth;
     const isMobile = viewportWidth <= MOBILE_GUIDE_BREAKPOINT;
+    const activeTarget = this.currentMessage?.target ?? this.currentPresence.target;
     const placement = this.manuallyDisabled
       ? null
       : this.currentPresence.zone === 'focus'
-        ? this.resolvePlacement(this.currentMessage?.target ?? this.currentPresence.target ?? this.resolveCursorTarget())
-        : (this.currentMessage?.target ?? this.currentPresence.target)?.fixedPlacementMode === 'achievements'
-          ? this.resolvePlacement(this.currentMessage?.target ?? this.currentPresence.target ?? this.resolveCursorTarget())
-        : isMobile
-          ? this.resolveMobilePlacement()
-          : this.currentMessage
-            ? this.resolveCursorPlacement(this.currentMessage.target ?? this.currentPresence.target)
-            : this.resolveAnchorPlacement();
+        ? this.resolvePlacement(activeTarget ?? this.resolveCursorTarget())
+        : activeTarget?.fixedPlacementMode === 'achievements'
+          ? this.resolvePlacement(activeTarget ?? this.resolveCursorTarget())
+          : isMobile
+            ? this.resolveMobilePlacement()
+            : this.currentMessage
+              ? this.resolveCursorPlacement(activeTarget)
+              : this.resolveAnchorPlacement();
 
     if (!placement) {
       this.panelVisible = false;
@@ -1433,7 +1953,7 @@ export class GuideBubbleSystem {
       if (this.currentAnimation === 'arrive') {
         this.animationElapsed = 0;
         this.animationLoops = 0;
-        this.setAnimation(this.currentMessage ? 'talk_hold' : 'idle', true);
+        this.setAnimation(this.playback ? 'talk_hold' : 'idle', true);
       } else if (this.currentAnimation === 'talk_release') {
         this.animationElapsed = 0;
         this.animationLoops = 0;
@@ -1454,7 +1974,7 @@ export class GuideBubbleSystem {
         this.animationLoops += 1;
         if (this.currentAnimation === 'idle2' && this.animationLoops >= 1) {
           this.idleVariationAt = performance.now() + this.randomIdleDelay();
-          this.setAnimation(this.currentMessage ? 'talk_hold' : 'idle', true);
+          this.setAnimation(this.playback ? 'talk_hold' : 'idle', true);
         }
       }
     } else if (!desiredVisible && this.currentAnimation !== 'leave') {
@@ -1487,14 +2007,26 @@ export class GuideBubbleSystem {
 
   private applyVisuals() {
     const showCharacter = (this.visible && !this.suspended) || (this.manuallyDisabled && !this.suspended);
+    const bubbleThemeMode = this.getBubbleThemeMode();
+    const textContrastMode = this.getTextContrastMode(bubbleThemeMode);
+    const impactWordColorMode = this.getImpactWordColorMode(bubbleThemeMode);
+    const punctuationAccentMode = this.getPunctuationAccentMode();
     this.element.setAttribute('data-visible', String(showCharacter));
     this.element.setAttribute('data-disabled', String(this.manuallyDisabled));
+    this.element.setAttribute('data-help-open', String(this.helpPanelOpen));
+    this.element.setAttribute('data-bubble-theme-mode', bubbleThemeMode);
+    this.element.setAttribute('data-text-contrast-mode', textContrastMode);
+    this.element.setAttribute('data-impact-word-color-mode', impactWordColorMode);
+    this.element.setAttribute('data-punctuation-accent-mode', punctuationAccentMode);
     this.element.setAttribute('aria-hidden', String(!showCharacter));
     this.element.setAttribute('data-panel-visible', String(this.panelVisible));
     this.element.setAttribute('data-zone', this.currentPresence.zone);
     this.panel.setAttribute('data-visible', String(this.panelVisible));
     this.panel.setAttribute('data-bubble-x', this.currentPanelBubbleX);
     this.panel.setAttribute('data-bubble-y', this.currentPanelBubbleY);
+    this.bodyElement.setAttribute('data-text-contrast-mode', textContrastMode);
+    this.bodyElement.setAttribute('data-impact-word-color-mode', impactWordColorMode);
+    this.bodyElement.setAttribute('data-punctuation-accent-mode', punctuationAccentMode);
 
     this.characterShell.style.transform = `translate3d(${this.currentCharacterLeft.toFixed(2)}px, ${this.currentCharacterTop.toFixed(2)}px, 0) scaleX(${this.currentCharacterFlipX ? -1 : 1})`;
     this.characterShell.style.width = `${this.currentCharacterSize.toFixed(2)}px`;
@@ -1503,6 +2035,49 @@ export class GuideBubbleSystem {
     this.panel.style.width = `${this.currentPanelWidth.toFixed(2)}px`;
     this.panel.style.height = `${this.currentPanelHeight.toFixed(2)}px`;
     this.panelArt.style.transform = `scale(${this.currentPanelFlipX ? -1 : 1}, ${this.currentPanelFlipY ? -1 : 1})`;
+
+    const safeArea = this.resolveSafeAreaPreset();
+    this.bubbleCopy.style.setProperty('--guide-safe-top', `${(safeArea.top * 100).toFixed(2)}%`);
+    this.bubbleCopy.style.setProperty('--guide-safe-right', `${(safeArea.right * 100).toFixed(2)}%`);
+    this.bubbleCopy.style.setProperty('--guide-safe-bottom', `${(safeArea.bottom * 100).toFixed(2)}%`);
+    this.bubbleCopy.style.setProperty('--guide-safe-left', `${(safeArea.left * 100).toFixed(2)}%`);
+    if (this.lastRenderedSegmentKey) {
+      this.applyTokenFit(this.lastRenderedSegmentKey);
+    }
+
+    const helpVisible = showCharacter && !this.manuallyDisabled && !this.suspended;
+    this.helpButton.hidden = !helpVisible;
+    this.helpButton.setAttribute('aria-label', this.i18n.current === 'fr' ? 'Aide du guide' : 'Guide help');
+    if (helpVisible) {
+      const helpLeft = this.currentCharacterLeft + this.currentCharacterSize * (this.currentCharacterFlipX ? 0.08 : 0.82);
+      const helpTop = this.currentCharacterTop + this.currentCharacterSize * 0.02;
+      this.helpButton.style.transform = `translate3d(${helpLeft.toFixed(2)}px, ${helpTop.toFixed(2)}px, 0)`;
+      const inverseTheme = resolveDocumentTheme() === 'dark' ? 'light' : 'dark';
+      const helpIconSrc = HELP_ICON_ASSETS[inverseTheme];
+      if (this.helpButtonIcon.src !== helpIconSrc) {
+        this.helpButtonIcon.src = helpIconSrc;
+      }
+    }
+
+    this.helpSummaryPanel.hidden = !this.helpPanelOpen || !helpVisible;
+    if (this.helpPanelOpen && helpVisible) {
+      const summaryPlacement = this.resolveHelpSummaryPlacement();
+      this.helpSummaryPanel.style.transform = `translate3d(${summaryPlacement.left.toFixed(2)}px, ${summaryPlacement.top.toFixed(2)}px, 0)`;
+      this.helpSummaryPanel.style.width = `${summaryPlacement.width.toFixed(2)}px`;
+      this.helpSummaryPanel.style.height = `${summaryPlacement.height.toFixed(2)}px`;
+      this.helpSummaryPanel.setAttribute('data-bubble-x', summaryPlacement.bubbleX);
+      this.helpSummaryPanel.setAttribute('data-bubble-y', summaryPlacement.bubbleY);
+      this.helpSummaryArt.style.transform = `scale(${summaryPlacement.flipX ? -1 : 1}, ${summaryPlacement.flipY ? -1 : 1})`;
+      this.helpSummaryCopy.style.setProperty('--guide-help-safe-top', `${(GUIDE_HELP_SUMMARY_SAFE_AREA.top * 100).toFixed(2)}%`);
+      this.helpSummaryCopy.style.setProperty('--guide-help-safe-right', `${(GUIDE_HELP_SUMMARY_SAFE_AREA.right * 100).toFixed(2)}%`);
+      this.helpSummaryCopy.style.setProperty('--guide-help-safe-bottom', `${(GUIDE_HELP_SUMMARY_SAFE_AREA.bottom * 100).toFixed(2)}%`);
+      this.helpSummaryCopy.style.setProperty('--guide-help-safe-left', `${(GUIDE_HELP_SUMMARY_SAFE_AREA.left * 100).toFixed(2)}%`);
+    }
+
+    this.helpOrbit.hidden = !this.helpPanelOpen || !helpVisible;
+    if (this.helpPanelOpen && helpVisible) {
+      this.positionHelpOrbit();
+    }
 
     if (this.manuallyDisabled) {
       this.characterElement.style.backgroundImage = `url("${GUIDE_SPRITES.constant}")`;
@@ -1513,114 +2088,426 @@ export class GuideBubbleSystem {
     }
   }
 
+  private resolveSafeAreaPreset() {
+    if (this.currentPresence.zone === 'focus') {
+      return GUIDE_SAFE_AREAS.focus;
+    }
+    const key = `${this.currentPanelBubbleX}-${this.currentPanelBubbleY}` as keyof typeof GUIDE_SAFE_AREAS;
+    return GUIDE_SAFE_AREAS[key] ?? GUIDE_SAFE_AREAS['left-above'];
+  }
+
+  private getBubbleThemeMode(): GuideBubbleThemeMode {
+    return resolveDocumentTheme() === 'dark' ? 'light-bubble' : 'dark-bubble';
+  }
+
+  private getTextContrastMode(bubbleThemeMode: GuideBubbleThemeMode): GuideTextContrastMode {
+    return bubbleThemeMode === 'dark-bubble' ? 'ink-light' : 'ink-dark';
+  }
+
+  private getImpactWordColorMode(bubbleThemeMode: GuideBubbleThemeMode): GuideImpactWordColorMode {
+    return bubbleThemeMode === 'dark-bubble' ? 'mirror-light' : 'mirror-dark';
+  }
+
+  private getPunctuationAccentMode(): GuidePunctuationAccentMode {
+    return 'accent-cycle';
+  }
+
+  private positionHelpOrbit() {
+    const viewportWidth = this.host.clientWidth || window.innerWidth;
+    const viewportHeight = this.host.clientHeight || window.innerHeight;
+    const centerX = this.currentCharacterLeft + this.currentCharacterSize * 0.5;
+    const centerY = this.currentCharacterTop + this.currentCharacterSize * 0.48;
+    const maxOrbitRadius = Math.min(138, Math.max(90, viewportWidth * 0.12));
+    const orbitLeft = clamp(centerX, VIEWPORT_MARGIN + maxOrbitRadius, viewportWidth - VIEWPORT_MARGIN - maxOrbitRadius);
+    const orbitTop = clamp(centerY, VIEWPORT_MARGIN + maxOrbitRadius, viewportHeight - VIEWPORT_MARGIN - maxOrbitRadius);
+    this.helpOrbit.style.transform = `translate3d(${orbitLeft.toFixed(2)}px, ${orbitTop.toFixed(2)}px, 0)`;
+  }
+
+  private resolveHelpSummaryPlacement(): GuideHelpBubblePlacement {
+    const viewportWidth = this.host.clientWidth || window.innerWidth;
+    const viewportHeight = this.host.clientHeight || window.innerHeight;
+    const width = clamp(Math.min(viewportWidth * 0.24, GUIDE_HELP_SUMMARY_WIDTH), 184, 228);
+    const height = width / GUIDE_PANEL_ASPECT_RATIO;
+    const panelRect = this.panelVisible
+      ? expandRect(buildRect(this.currentPanelLeft, this.currentPanelTop, this.currentPanelWidth, this.currentPanelHeight), 10)
+      : null;
+
+    const candidates = [
+      {
+        left: this.currentCharacterLeft - width * 0.78,
+        top: this.currentCharacterTop - height * 0.82,
+        bubbleX: 'left' as const,
+        bubbleY: 'above' as const
+      },
+      {
+        left: this.currentCharacterLeft + this.currentCharacterSize * 0.42,
+        top: this.currentCharacterTop - height * 0.8,
+        bubbleX: 'right' as const,
+        bubbleY: 'above' as const
+      },
+      {
+        left: this.currentCharacterLeft - width * 0.72,
+        top: this.currentCharacterTop + this.currentCharacterSize * 0.56,
+        bubbleX: 'left' as const,
+        bubbleY: 'below' as const
+      },
+      {
+        left: this.currentCharacterLeft + this.currentCharacterSize * 0.44,
+        top: this.currentCharacterTop + this.currentCharacterSize * 0.6,
+        bubbleX: 'right' as const,
+        bubbleY: 'below' as const
+      }
+    ];
+
+    let bestPlacement: GuideHelpBubblePlacement | null = null;
+    let bestPenalty = Number.POSITIVE_INFINITY;
+
+    candidates.forEach((candidate) => {
+      const clampedLeft = clamp(candidate.left, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportWidth - width - VIEWPORT_MARGIN));
+      const clampedTop = clamp(candidate.top, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportHeight - height - VIEWPORT_MARGIN));
+      const rect = buildRect(clampedLeft, clampedTop, width, height);
+      let penalty = Math.abs(clampedLeft - candidate.left) + Math.abs(clampedTop - candidate.top);
+      if (panelRect && rectsOverlap(expandRect(rect, 6), panelRect)) {
+        penalty += 420;
+      }
+
+      if (penalty < bestPenalty) {
+        bestPenalty = penalty;
+        bestPlacement = {
+          left: clampedLeft,
+          top: clampedTop,
+          width,
+          height,
+          flipX: candidate.bubbleX === 'left',
+          flipY: candidate.bubbleY === 'below',
+          bubbleX: candidate.bubbleX,
+          bubbleY: candidate.bubbleY
+        };
+      }
+    });
+
+    return (
+      bestPlacement ?? {
+        left: clamp(this.currentCharacterLeft - width * 0.78, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportWidth - width - VIEWPORT_MARGIN)),
+        top: clamp(this.currentCharacterTop - height * 0.82, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewportHeight - height - VIEWPORT_MARGIN)),
+        width,
+        height,
+        flipX: true,
+        flipY: false,
+        bubbleX: 'left',
+        bubbleY: 'above'
+      }
+    );
+  }
+
   private render() {
-    const message = this.currentMessage;
-    if (!message) {
-      this.renderedMessageId = null;
-      this.renderedMessageRevealCount = 0;
+    const playback = this.playback;
+    if (!playback) {
+      this.lastRenderSignature = 'none';
+      this.lastRenderedSegmentKey = null;
+      this.renderedSegmentElement = null;
+      this.lastTokenFitSignature = '';
+      this.lastSegmentFitSignature = '';
+      this.renderedTokenRefs = [];
       this.titleElement.textContent = '';
-      this.bodyElement.textContent = '';
-      this.bodyElement.style.fontSize = '';
-      this.bodyElement.style.fontStyle = '';
-      this.bodyElement.style.letterSpacing = '';
-      this.bodyElement.style.lineHeight = '';
-      this.bodyElement.style.textAlign = '';
+      this.bodyElement.replaceChildren();
+      this.bodyElement.removeAttribute('data-tone');
+      this.bodyElement.removeAttribute('data-animation');
       return;
     }
-    
-    // Get current part if multi-part dialogue
-    const currentPartIndex = message.currentPartIndex ?? 0;
-    const parts = message.parts ?? [message.body];
-    const currentPart = parts[currentPartIndex] || message.body;
-    const fullText = currentPart[this.i18n.current];
-    
-    const revealCount = this.getRevealCharacterCount(message, performance.now());
-    this.renderedMessageId = message.id;
-    this.renderedMessageRevealCount = revealCount;
-    this.titleElement.textContent = '';
-    
-    const revealedText = Array.from(fullText).slice(0, revealCount).join('');
-    this.bodyElement.textContent = revealedText;
-    
-    // Apply adaptive font sizing based on text length - much more aggressive now
-    const fontSize = this.getAdaptiveBodyFontSize(fullText);
-    this.bodyElement.style.fontSize = fontSize;
-    
-    // Apply animation styling based on message animation type
-    const animation = message.animation ?? 'static';
-    this.bodyElement.setAttribute('data-animation', animation);
-    
-    // Center alignment and strong line spacing for comic bubble feel
-    this.bodyElement.style.textAlign = 'center';
-    this.bodyElement.style.lineHeight = '1.5';
-    this.bodyElement.style.fontFamily = "'Tribal Garamond', serif";
-    
-    // Expressive styling based on content
-    if (fullText.includes('!')) {
-      this.bodyElement.style.fontWeight = 'bold';
-    } else {
-      this.bodyElement.style.fontWeight = 'normal';
+
+    const progress = this.getPlaybackProgress(playback, performance.now());
+    const segment = progress.renderSegment;
+    const language = this.i18n.current;
+    const signature = `${playback.message.id}:${progress.segmentIndex}:${progress.renderSegmentIndex}:${progress.visibleUnitCount}`;
+    this.lastRenderSignature = signature;
+
+    this.titleElement.textContent = playback.message.title[language];
+    this.bodyElement.setAttribute('data-tone', segment.tone ?? 'neutral');
+    this.bodyElement.setAttribute('data-animation', segment.animation);
+    this.bodyElement.style.fontSize = this.getSegmentFontSize(segment, language);
+    const segmentKey = `${playback.message.id}:${progress.renderSegmentIndex}:${language}`;
+    const tokens = segment.tokens[language];
+    this.ensureSegmentDom(segmentKey, segment, tokens);
+
+    const renderMode = segment.revealMode;
+    const wordVisibleCount = this.getVisibleWordCount(segment, progress.visibleUnitCount, language);
+    let visibleWordBudget = wordVisibleCount;
+    let visibleCharacterBudget = progress.visibleUnitCount;
+    let previousWordVisible = false;
+
+    this.renderedTokenRefs.forEach(({ token, element, ink }) => {
+      const tokenState = this.getTokenRenderState(token, renderMode, visibleWordBudget, visibleCharacterBudget, previousWordVisible);
+      if (!GUIDE_TOKEN_PUNCTUATION_RE.test(token.text) && tokenState.visibleWordConsumed) {
+        visibleWordBudget -= 1;
+      }
+      if (renderMode === 'char' && tokenState.visibleCharacterConsumed > 0) {
+        visibleCharacterBudget -= tokenState.visibleCharacterConsumed;
+      }
+      if (!GUIDE_TOKEN_PUNCTUATION_RE.test(token.text)) {
+        previousWordVisible = tokenState.revealed;
+      }
+      element.setAttribute('data-visible', String(tokenState.revealed));
+      ink.textContent = tokenState.text;
+    });
+  }
+
+  private ensureSegmentDom(segmentKey: string, segment: GuideSegment, tokens: GuideToken[]) {
+    if (this.lastRenderedSegmentKey === segmentKey) {
+      return;
+    }
+
+    const segmentElement = document.createElement('div');
+    segmentElement.className = 'guide-bubble__segment';
+    segmentElement.setAttribute('data-tone', segment.tone ?? 'neutral');
+    segmentElement.setAttribute('data-emphasis', segment.emphasis);
+    segmentElement.setAttribute('data-animation', segment.animation);
+    segmentElement.style.setProperty('--guide-segment-scale', String(segment.scaleMultiplier ?? 1));
+
+    this.renderedTokenRefs = tokens.map((token, tokenIndex) => this.buildTokenElement(token, tokenIndex > 0 && !token.joinLeft));
+    this.renderedTokenRefs.forEach(({ element }) => segmentElement.appendChild(element));
+    this.bodyElement.replaceChildren(segmentElement);
+    this.renderedSegmentElement = segmentElement;
+    this.lastRenderedSegmentKey = segmentKey;
+    this.lastTokenFitSignature = '';
+    this.lastSegmentFitSignature = '';
+    this.applyTokenFit(segmentKey);
+  }
+
+  private buildTokenElement(token: GuideToken, spaced: boolean): GuideTokenRenderRef {
+    const tokenElement = document.createElement('span');
+    tokenElement.className = 'guide-bubble__token';
+    tokenElement.dataset.tokenText = token.text;
+    tokenElement.setAttribute('data-kind', token.kind);
+    tokenElement.setAttribute('data-accent-mode', token.accentMode);
+    if (token.punctuationKind) {
+      tokenElement.setAttribute('data-punctuation-kind', token.punctuationKind);
+    }
+    tokenElement.setAttribute('data-emphasis', token.emphasis);
+    tokenElement.setAttribute('data-animation', token.animation);
+    tokenElement.setAttribute('data-visible', 'false');
+    tokenElement.style.setProperty('--guide-token-scale', String(token.scaleMultiplier ?? 1));
+    if (token.joinLeft) {
+      tokenElement.classList.add('guide-bubble__token--join-left');
+    } else if (spaced) {
+      tokenElement.classList.add('guide-bubble__token--spaced');
+    }
+    if (token.joinRight) {
+      tokenElement.classList.add('guide-bubble__token--join-right');
+    }
+
+    const ghost = document.createElement('span');
+    ghost.className = 'guide-bubble__token-ghost';
+    ghost.textContent = token.text;
+
+    const ink = document.createElement('span');
+    ink.className = 'guide-bubble__token-ink';
+    ink.textContent = '';
+
+    tokenElement.append(ghost, ink);
+    return {
+      token,
+      element: tokenElement,
+      ink
+    };
+  }
+
+  private applyTokenFit(segmentKey: string) {
+    const safeRect = this.bodyElement.getBoundingClientRect();
+    const safeWidth = safeRect.width;
+    if (!safeWidth || !safeRect.height || !this.renderedSegmentElement) {
+      return;
+    }
+
+    const fitSignature = `${segmentKey}:${Math.round(safeRect.width)}:${Math.round(safeRect.height)}`;
+    if (this.lastTokenFitSignature === fitSignature) {
+      return;
+    }
+    this.lastTokenFitSignature = fitSignature;
+
+    const maxTokenWidth = safeWidth * 0.84;
+    this.renderedTokenRefs.forEach(({ token, element }) => {
+      element.style.removeProperty('--guide-fit-scale');
+      element.removeAttribute('data-fit');
+      if (!token.fitEligible) {
+        return;
+      }
+      const tokenWidth = element.getBoundingClientRect().width;
+      if (!tokenWidth || tokenWidth <= maxTokenWidth) {
+        return;
+      }
+      const fitScale = clamp(maxTokenWidth / tokenWidth, 0.46, 1);
+      element.style.setProperty('--guide-fit-scale', fitScale.toFixed(3));
+      element.setAttribute('data-fit', fitScale < 0.74 ? 'tight' : 'reduced');
+    });
+    this.applySegmentFit(segmentKey, safeRect);
+  }
+
+  private applySegmentFit(segmentKey: string, safeRect = this.bodyElement.getBoundingClientRect()) {
+    if (!this.renderedSegmentElement || !safeRect.width || !safeRect.height) {
+      return;
+    }
+
+    const fitSignature = `${segmentKey}:${Math.round(safeRect.width)}:${Math.round(safeRect.height)}`;
+    if (this.lastSegmentFitSignature === fitSignature) {
+      return;
+    }
+    this.lastSegmentFitSignature = fitSignature;
+    this.renderedSegmentElement.style.removeProperty('--guide-segment-fit-scale');
+
+    let fitScale = 1;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const segmentRect = this.renderedSegmentElement.getBoundingClientRect();
+      if (!segmentRect.width || !segmentRect.height) {
+        break;
+      }
+      const widthScale = Math.min(1, (safeRect.width * 0.955) / segmentRect.width);
+      const heightScale = Math.min(1, (safeRect.height * 0.94) / segmentRect.height);
+      const nextScale = Math.min(widthScale, heightScale);
+      if (nextScale >= 0.995) {
+        break;
+      }
+      fitScale = clamp(fitScale * nextScale, 0.48, 1);
+      this.renderedSegmentElement.style.setProperty('--guide-segment-fit-scale', fitScale.toFixed(3));
     }
   }
 
-  private getRevealCharacterCount(message: GuideMessage, now: number) {
-    const currentPartIndex = message.currentPartIndex ?? 0;
-    const parts = message.parts ?? [message.body];
-    const currentPart = parts[currentPartIndex] || message.body;
-    const text = currentPart[this.i18n.current];
-    
-    const characters = Array.from(text);
-    if (characters.length <= 0) {
-      return 0;
+  private getTokenRenderState(
+    token: GuideToken,
+    renderMode: GuideRevealMode,
+    visibleWordBudget: number,
+    visibleCharacterBudget: number,
+    previousWordVisible: boolean
+  ) {
+    const isPunctuation = GUIDE_TOKEN_PUNCTUATION_RE.test(token.text);
+    if (renderMode === 'pause') {
+      return { text: token.text, revealed: true, visibleWordConsumed: false, visibleCharacterConsumed: 0 };
     }
-    
-    const revealDuration = clamp(
-      characters.length * GUIDE_TEXT_REVEAL_MS_PER_CHARACTER,
-      GUIDE_TEXT_REVEAL_MIN_DURATION_MS,
-      GUIDE_TEXT_REVEAL_MAX_DURATION_MS
-    );
-    
-    const partStartedAt = message.partStartedAt ?? message.createdAt;
-    const progress = clamp((now - partStartedAt) / revealDuration, 0, 1);
-    return clamp(Math.ceil(characters.length * progress), 0, characters.length);
+    if (renderMode === 'char') {
+      if (isPunctuation) {
+        const charCount = Array.from(token.text).length;
+        const revealed = previousWordVisible && visibleCharacterBudget >= charCount;
+        return {
+          text: revealed ? token.text : '',
+          revealed,
+          visibleWordConsumed: false,
+          visibleCharacterConsumed: revealed ? charCount : 0
+        };
+      }
+      const characters = Array.from(token.text);
+      const visibleChars = clamp(visibleCharacterBudget, 0, characters.length);
+      return {
+        text: characters.slice(0, visibleChars).join(''),
+        revealed: visibleChars > 0,
+        visibleWordConsumed: false,
+        visibleCharacterConsumed: visibleChars
+      };
+    }
+    if (isPunctuation) {
+      return {
+        text: previousWordVisible ? token.text : '',
+        revealed: previousWordVisible,
+        visibleWordConsumed: false,
+        visibleCharacterConsumed: 0
+      };
+    }
+
+    const revealed = visibleWordBudget > 0;
+    return {
+      text: revealed ? token.text : '',
+      revealed,
+      visibleWordConsumed: revealed,
+      visibleCharacterConsumed: 0
+    };
   }
 
-  private getAdaptiveBodyFontSize(text: LocalizedText | string): string {
-    // Get the text string
-    const textStr = typeof text === 'string' ? text : text.en || text.fr || '';
-    const length = textStr.length;
-    
-    // AGGRESSIVE SIZING FOR COMIC IMPACT
-    // Short text = dramatically larger
-    // Medium text = large
-    // Long text = appropriately sized
-    
-    // Very short micro-phrases (single words, 2-3 word bursts)
-    if (length <= 15) {
-      return 'clamp(1.6rem, 3.5vw, 2.2rem)';
+  private getVisibleUnitCount(segment: GuideSegment, elapsedMs: number, language: Language) {
+    const rawProgress = clamp(elapsedMs / Math.max(1, segment.revealDurationMs), 0, 1);
+    const progress = segment.revealMode === 'char' ? this.easeRevealProgress(rawProgress) : rawProgress;
+    const maxUnits = this.getRenderableUnitCount(segment, language);
+
+    switch (segment.revealMode) {
+      case 'pause':
+        return 0;
+      case 'impact':
+        return progress >= 0.92 ? maxUnits : 0;
+      case 'burst': {
+        const totalWords = this.getWordCount(segment, language);
+        const burstSize = Math.max(1, Math.ceil(totalWords / 2));
+        const steps = Math.ceil(totalWords / burstSize);
+        const visibleBursts = clamp(Math.ceil(progress * steps), 0, steps);
+        return Math.min(totalWords, visibleBursts * burstSize);
+      }
+      case 'stagger':
+      case 'word':
+        return Math.ceil(progress * this.getWordCount(segment, language));
+      case 'char':
+      default:
+        return progress >= 1 ? maxUnits : Math.floor(progress * maxUnits);
     }
-    // Short lines (quick reactions, exclamations)
-    if (length <= 25) {
-      return 'clamp(1.3rem, 2.8vw, 1.9rem)';
+  }
+
+  private easeRevealProgress(progress: number) {
+    return 1 - Math.pow(1 - progress, 1.26);
+  }
+
+  private getRenderableUnitCount(segment: GuideSegment, language: Language) {
+    if (segment.revealMode === 'char') {
+      return segment.tokens[language].reduce((total, token) => total + Array.from(token.text).length, 0);
     }
-    // Medium-short (comfortable phrase)
-    if (length <= 40) {
-      return 'clamp(1.1rem, 2.3vw, 1.6rem)';
+    return this.getWordCount(segment, language);
+  }
+
+  private getWordCount(segment: GuideSegment, language: Language) {
+    return segment.tokens[language].filter((token) => !GUIDE_TOKEN_PUNCTUATION_RE.test(token.text)).length;
+  }
+
+  private getVisibleWordCount(segment: GuideSegment, visibleUnitCount: number, language: Language) {
+    if (segment.revealMode === 'char') {
+      return this.getWordCountFromCharacters(segment.tokens[language], visibleUnitCount);
     }
-    // Medium (balanced multi-word line)
-    if (length <= 60) {
-      return 'clamp(0.95rem, 1.9vw, 1.3rem)';
+    return visibleUnitCount;
+  }
+
+  private getWordCountFromCharacters(tokens: GuideToken[], visibleCharacterBudget: number) {
+    let remaining = visibleCharacterBudget;
+    let visibleWords = 0;
+
+    tokens.forEach((token) => {
+      if (GUIDE_TOKEN_PUNCTUATION_RE.test(token.text)) {
+        if (remaining >= Array.from(token.text).length) {
+          remaining -= Array.from(token.text).length;
+        }
+        return;
+      }
+      const charCount = Array.from(token.text).length;
+      if (remaining <= 0) {
+        return;
+      }
+      visibleWords += 1;
+      remaining -= Math.min(remaining, charCount);
+    });
+
+    return visibleWords;
+  }
+
+  private getSegmentFontSize(segment: GuideSegment, language: Language) {
+    const tokens = segment.tokens[language].filter((token) => !GUIDE_TOKEN_PUNCTUATION_RE.test(token.text));
+    const wordCount = Math.max(1, tokens.length);
+    const longestToken = tokens.reduce((longest, token) => Math.max(longest, token.text.length), 0);
+    const emphasisBoost = segment.emphasis === 'impact' ? 0.08 : segment.emphasis === 'strong' ? 0.05 : 0;
+    const density = wordCount * 0.52 + longestToken * 0.18;
+
+    if (density <= 4.5) {
+      return `clamp(${(1.34 + emphasisBoost).toFixed(2)}rem, 3.3vw, ${(2.05 + emphasisBoost).toFixed(2)}rem)`;
     }
-    // Medium-long (tighter three-liner)
-    if (length <= 80) {
-      return 'clamp(0.85rem, 1.6vw, 1.2rem)';
+    if (density <= 7) {
+      return `clamp(${(1.12 + emphasisBoost).toFixed(2)}rem, 2.6vw, ${(1.7 + emphasisBoost).toFixed(2)}rem)`;
     }
-    // Long text (post-split, rarely seen)
-    if (length <= 100) {
-      return 'clamp(0.8rem, 1.4vw, 1.1rem)';
+    if (density <= 10) {
+      return `clamp(${(0.98 + emphasisBoost).toFixed(2)}rem, 2vw, ${(1.34 + emphasisBoost).toFixed(2)}rem)`;
     }
-    // Extra long (emergency backup)
-    return 'clamp(0.75rem, 1.2vw, 1rem)';
+    return `clamp(${(0.85 + emphasisBoost * 0.5).toFixed(2)}rem, 1.55vw, ${(1.12 + emphasisBoost * 0.4).toFixed(2)}rem)`;
   }
 
   private loadFlags() {
@@ -1637,6 +2524,26 @@ export class GuideBubbleSystem {
       });
     } catch {
       this.seenFlags.clear();
+    }
+  }
+
+  private loadHistory() {
+    try {
+      const raw = window.sessionStorage.getItem(GUIDE_HISTORY_STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw) as GuideHistoryEntry[];
+      if (!Array.isArray(parsed)) {
+        return;
+      }
+      parsed.forEach((entry) => {
+        if (typeof entry?.id === 'string' && entry.sequence && entry.label && entry.description) {
+          this.history.push(entry);
+        }
+      });
+    } catch {
+      this.history.length = 0;
     }
   }
 
@@ -1675,6 +2582,57 @@ export class GuideBubbleSystem {
     }
   }
 
+  private saveHistory() {
+    try {
+      window.sessionStorage.setItem(GUIDE_HISTORY_STORAGE_KEY, JSON.stringify(this.history.slice(0, GUIDE_HISTORY_LIMIT)));
+    } catch {
+      // Session persistence is best-effort only.
+    }
+  }
+
+  private recordHistory(message: GuideMessage) {
+    if (!message.replayEligible) {
+      return;
+    }
+
+    const existingIndex = this.history.findIndex((entry) => entry.messageId === message.id);
+    const label = this.buildHistoryLabel(message);
+    const description = message.sequence.text;
+    const firstDiscovery = existingIndex < 0;
+    const entry: GuideHistoryEntry = {
+      id: `${message.id}:${Date.now()}`,
+      messageId: message.id,
+      title: message.title,
+      label,
+      description,
+      category: message.category,
+      contextKey: message.contextKey,
+      sequence: message.sequence,
+      recordedAt: Date.now(),
+      firstDiscovery,
+      source: message.source
+    };
+
+    if (existingIndex >= 0) {
+      this.history.splice(existingIndex, 1);
+    }
+    this.history.unshift(entry);
+    this.history.splice(GUIDE_HISTORY_LIMIT);
+    this.saveHistory();
+    if (this.helpPanelOpen) {
+      this.helpEntries = this.buildHelpEntries();
+      this.renderHelpOrbit();
+    }
+  }
+
+  private buildHistoryLabel(message: GuideMessage) {
+    const firstSegment = message.sequence.segments[0];
+    if (message.title.fr !== DEFAULT_SPEAKER_TITLE.fr || message.title.en !== DEFAULT_SPEAKER_TITLE.en) {
+      return message.title;
+    }
+    return firstSegment?.text ?? message.sequence.text;
+  }
+
   private bindPointerEvents() {
     window.addEventListener('pointermove', (event) => {
       if (event.pointerType === 'touch') {
@@ -1683,6 +2641,56 @@ export class GuideBubbleSystem {
       this.cursorX = clamp(event.clientX, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, (this.host.clientWidth || window.innerWidth) - VIEWPORT_MARGIN));
       this.cursorY = clamp(event.clientY, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, (this.host.clientHeight || window.innerHeight) - VIEWPORT_MARGIN));
     });
+
+    this.helpButton.addEventListener('pointerenter', () => {
+      if (!this.manuallyDisabled && !this.suspended) {
+        this.openHelpCatalogue();
+      }
+    });
+    this.helpButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (this.helpPanelOpen) {
+        this.closeHelpCatalogue();
+      } else {
+        this.openHelpCatalogue();
+      }
+    });
+    this.helpOrbit.addEventListener(
+      'wheel',
+      (event) => {
+        if (!this.helpPanelOpen || this.getHelpPageCount() <= 1) {
+          return;
+        }
+        event.preventDefault();
+        const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+        if (Math.abs(delta) < 1) {
+          return;
+        }
+        this.changeHelpPage(delta > 0 ? 1 : -1);
+      },
+      { passive: false }
+    );
+    this.helpOrbit.addEventListener('pointerdown', (event) => {
+      if (!this.helpPanelOpen || this.getHelpPageCount() <= 1) {
+        return;
+      }
+      this.helpSwipePointerId = event.pointerId;
+      this.helpSwipeStartX = event.clientX;
+    });
+    const finishHelpSwipe = (event: PointerEvent) => {
+      if (this.helpSwipePointerId !== event.pointerId) {
+        return;
+      }
+      const deltaX = event.clientX - this.helpSwipeStartX;
+      this.helpSwipePointerId = null;
+      if (Math.abs(deltaX) < 28 || this.getHelpPageCount() <= 1) {
+        return;
+      }
+      this.changeHelpPage(deltaX < 0 ? 1 : -1);
+    };
+    this.helpOrbit.addEventListener('pointerup', finishHelpSwipe);
+    this.helpOrbit.addEventListener('pointercancel', finishHelpSwipe);
 
     this.characterShell.addEventListener('pointerdown', (event) => {
       if ((!this.visible && !this.manuallyDisabled) || this.suspended) {
@@ -1755,12 +2763,27 @@ export class GuideBubbleSystem {
       event.preventDefault();
       this.toggleManualVisibility();
     });
+
+    window.addEventListener('pointerdown', (event) => {
+      if (!this.helpPanelOpen) {
+        return;
+      }
+      const target = event.target as Node | null;
+      if (!target) {
+        return;
+      }
+      if (this.helpOrbit.contains(target) || this.helpButton.contains(target) || this.helpSummaryPanel.contains(target)) {
+        return;
+      }
+      this.closeHelpCatalogue();
+    });
   }
 
   private toggleManualVisibility() {
     this.manuallyDisabled = !this.manuallyDisabled;
-    this.currentMessage = null;
+    this.playback = null;
     this.queue.length = 0;
+    this.closeHelpCatalogue(false);
     this.render();
     if (!this.manuallyDisabled) {
       this.cooldowns.clear();
@@ -1768,6 +2791,348 @@ export class GuideBubbleSystem {
     } else {
       this.panelVisible = false;
     }
+  }
+
+  private openHelpCatalogue() {
+    this.helpPanelOpen = true;
+    this.helpEntries = this.buildHelpEntries();
+    this.helpPageIndex = 0;
+    this.hoveredHelpEntryId = null;
+    this.renderHelpOrbit();
+    this.applyVisuals();
+  }
+
+  private closeHelpCatalogue(applyVisuals = true) {
+    this.helpPanelOpen = false;
+    this.helpEntries = [];
+    this.hoveredHelpEntryId = null;
+    this.helpPageIndex = 0;
+    this.helpSwipePointerId = null;
+    this.helpSummaryPanel.hidden = true;
+    this.helpOrbit.hidden = true;
+    this.renderHelpSummary();
+    if (applyVisuals) {
+      this.applyVisuals();
+    }
+  }
+
+  private renderHelpOrbit() {
+    if (!this.helpPanelOpen) {
+      return;
+    }
+
+    this.helpOrbitList.replaceChildren();
+    this.renderHelpSummary();
+
+    if (this.helpEntries.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'guide-bubble__help-empty';
+      empty.textContent = this.i18n.current === 'fr' ? 'Rien à rejouer ici pour le moment.' : 'Nothing to replay here yet.';
+      this.helpOrbitList.appendChild(empty);
+      return;
+    }
+
+    const visibleEntries = this.getVisibleHelpEntries();
+    const orbitLayout = this.buildHelpOrbitLayout(visibleEntries.length);
+    visibleEntries.forEach((entry, index) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'guide-bubble__help-orb';
+      button.setAttribute('data-kind', entry.kind);
+      const layout = orbitLayout[index] ?? { x: 0, y: 0, size: 74, delay: 0, tilt: 0 };
+      button.style.setProperty('--guide-orb-x', `${layout.x.toFixed(2)}px`);
+      button.style.setProperty('--guide-orb-y', `${layout.y.toFixed(2)}px`);
+      button.style.setProperty('--guide-orb-size', `${layout.size.toFixed(2)}px`);
+      button.style.setProperty('--guide-orb-delay', `${layout.delay.toFixed(2)}s`);
+      button.style.setProperty('--guide-orb-tilt', `${layout.tilt.toFixed(2)}deg`);
+      button.setAttribute('aria-label', entry.label[this.i18n.current]);
+      button.title = entry.description[this.i18n.current];
+
+      const label = document.createElement('span');
+      label.className = 'guide-bubble__help-orb-label';
+      label.textContent = entry.label[this.i18n.current];
+
+      const meta = document.createElement('span');
+      meta.className = 'guide-bubble__help-orb-meta';
+      meta.textContent =
+        entry.kind === 'topic'
+          ? this.i18n.current === 'fr'
+            ? 'Aide'
+            : 'Help'
+          : entry.kind === 'replay'
+            ? entry.firstDiscovery
+              ? this.i18n.current === 'fr'
+                ? 'Nouveau'
+                : 'First'
+              : this.i18n.current === 'fr'
+                ? 'Replay'
+                : 'Replay'
+            : this.i18n.current === 'fr'
+              ? 'Page'
+              : 'Page';
+
+      button.append(label, meta);
+      const setHint = () => {
+        this.hoveredHelpEntryId = entry.id;
+        this.renderHelpSummary();
+      };
+      const clearHint = () => {
+        if (this.hoveredHelpEntryId !== entry.id) {
+          return;
+        }
+        this.hoveredHelpEntryId = null;
+        this.renderHelpSummary();
+      };
+      button.addEventListener('pointerenter', setHint);
+      button.addEventListener('pointerleave', clearHint);
+      button.addEventListener('focus', setHint);
+      button.addEventListener('blur', clearHint);
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if ((entry.kind === 'page_prev' || entry.kind === 'page_next') && entry.pageDelta) {
+          this.changeHelpPage(entry.pageDelta);
+          return;
+        }
+        if (entry.kind === 'topic' && entry.cue) {
+          this.trigger(entry.cue, this.currentMessage?.target ?? this.currentPresence.target, {
+            bypassGuards: true,
+            source: 'help'
+          });
+        } else if (entry.kind === 'replay' && entry.historyId) {
+          this.replayHistoryEntry(entry.historyId);
+        }
+        this.closeHelpCatalogue();
+      });
+      this.helpOrbitList.appendChild(button);
+    });
+  }
+
+  private renderHelpSummary() {
+    const language = this.i18n.current;
+    if (!this.helpPanelOpen) {
+      this.helpSummaryTitle.textContent = '';
+      this.helpSummaryBody.textContent = '';
+      return;
+    }
+
+    if (this.helpEntries.length === 0) {
+      this.helpSummaryBody.textContent =
+        language === 'fr' ? 'Rien à rejouer ici pour le moment.' : 'Nothing to replay here yet.';
+      return;
+    }
+
+    const hoveredEntry = this.helpEntries.find((entry) => entry.id === this.hoveredHelpEntryId) ?? null;
+    if (hoveredEntry) {
+      this.helpSummaryBody.textContent = hoveredEntry.description[language];
+      return;
+    }
+
+    const pageCount = this.getHelpPageCount();
+    this.helpSummaryBody.textContent =
+      pageCount > 1
+        ? language === 'fr'
+          ? `Tu n’as pas compris quoi ? Fais tourner les éclats ${this.helpPageIndex + 1}/${pageCount}.`
+          : `What did you miss? Rotate the shards ${this.helpPageIndex + 1}/${pageCount}.`
+        : language === 'fr'
+          ? 'Tu n’as pas compris quoi ?'
+          : 'What did you miss?';
+  }
+
+  private buildHelpOrbitLayout(count: number) {
+    const viewportWidth = this.host.clientWidth || window.innerWidth;
+    const isMobile = viewportWidth <= MOBILE_GUIDE_BREAKPOINT;
+    const templateIndexes =
+      count <= 1
+        ? [3]
+        : Array.from({ length: count }, (_, index) =>
+            Math.round((index * (GUIDE_HELP_ORBIT_ANGLES.length - 1)) / Math.max(1, count - 1))
+          );
+
+    return templateIndexes.map((templateIndex, index) => {
+      const angle = GUIDE_HELP_ORBIT_ANGLES[templateIndex] ?? GUIDE_HELP_ORBIT_ANGLES[GUIDE_HELP_ORBIT_ANGLES.length - 1] ?? 0;
+      const radius = GUIDE_HELP_ORBIT_RADII[templateIndex] ?? GUIDE_HELP_ORBIT_RADII[GUIDE_HELP_ORBIT_RADII.length - 1];
+      const mobileRadius = isMobile ? radius * 0.84 : radius;
+      const radian = (angle * Math.PI) / 180;
+      return {
+        x: Math.cos(radian) * mobileRadius,
+        y: Math.sin(radian) * mobileRadius,
+        size: isMobile
+          ? (GUIDE_HELP_ORBIT_BUTTON_SIZES[templateIndex] ?? GUIDE_HELP_ORBIT_BUTTON_SIZES[GUIDE_HELP_ORBIT_BUTTON_SIZES.length - 1]) * 0.86
+          : GUIDE_HELP_ORBIT_BUTTON_SIZES[templateIndex] ?? GUIDE_HELP_ORBIT_BUTTON_SIZES[GUIDE_HELP_ORBIT_BUTTON_SIZES.length - 1],
+        delay: index * 0.14,
+        tilt: angle < 0 ? -8 : angle > 120 ? 7 : 4
+      };
+    });
+  }
+
+  private buildHelpEntries() {
+    const entries: GuideCatalogueEntry[] = [];
+    const topics = this.getHelpTopicsForContext(this.currentPresence.zone);
+    topics.forEach((topic) => {
+      const label = getHelpTopicLabel(topic);
+      entries.push({
+        id: `topic:${topic}`,
+        kind: 'topic',
+        label: label.label,
+        description: label.description,
+        cue: { type: 'help_topic', topic }
+      });
+    });
+
+    this.history
+      .filter((entry) => entry.contextKey === this.currentPresence.zone)
+      .forEach((entry) => {
+        entries.push({
+          id: `replay:${entry.id}`,
+          kind: 'replay',
+          label: entry.label,
+          description: entry.description,
+          historyId: entry.id,
+          firstDiscovery: entry.firstDiscovery
+        });
+      });
+
+    const unique = new Map<string, GuideCatalogueEntry>();
+    entries.forEach((entry) => {
+      const key = `${entry.kind}:${entry.label.fr}:${entry.label.en}`;
+      if (!unique.has(key)) {
+        unique.set(key, entry);
+      }
+    });
+
+    return [...unique.values()];
+  }
+
+  private getHelpPageCount() {
+    if (this.helpEntries.length <= GUIDE_HELP_MAX_VISIBLE_ORBITS) {
+      return 1;
+    }
+    return Math.max(1, Math.ceil(this.helpEntries.length / GUIDE_HELP_PAGE_CONTENT_LIMIT));
+  }
+
+  private getVisibleHelpEntries() {
+    if (this.helpEntries.length <= GUIDE_HELP_MAX_VISIBLE_ORBITS) {
+      return this.helpEntries;
+    }
+
+    const pageCount = this.getHelpPageCount();
+    this.helpPageIndex = clamp(this.helpPageIndex, 0, Math.max(0, pageCount - 1));
+    const start = this.helpPageIndex * GUIDE_HELP_PAGE_CONTENT_LIMIT;
+    const pageEntries = this.helpEntries.slice(start, start + GUIDE_HELP_PAGE_CONTENT_LIMIT);
+    return [this.buildHelpPagerEntry(-1), ...pageEntries, this.buildHelpPagerEntry(1)];
+  }
+
+  private buildHelpPagerEntry(pageDelta: -1 | 1): GuideCatalogueEntry {
+    return {
+      id: `page:${pageDelta > 0 ? 'next' : 'prev'}:${this.helpPageIndex}`,
+      kind: pageDelta > 0 ? 'page_next' : 'page_prev',
+      label: pageDelta > 0 ? loc('Suite', 'Next') : loc('Retour', 'Back'),
+      description:
+        pageDelta > 0
+          ? loc('Fais tourner les éclats d’aide vers la page suivante.', 'Rotate the help shards to the next page.')
+          : loc('Reviens aux éclats d’aide précédents.', 'Go back to the previous help shards.'),
+      pageDelta
+    };
+  }
+
+  private changeHelpPage(delta: -1 | 1) {
+    const pageCount = this.getHelpPageCount();
+    if (pageCount <= 1) {
+      return;
+    }
+
+    this.helpPageIndex = (this.helpPageIndex + delta + pageCount) % pageCount;
+    this.hoveredHelpEntryId = null;
+    this.renderHelpOrbit();
+    this.applyVisuals();
+  }
+
+  private getCueContextKey(cue: GuideCue): GuidePresenceContext['zone'] {
+    switch (cue.type) {
+      case 'intro_mirror_0':
+      case 'intro_mirror_first_click':
+      case 'intro_mirror_50':
+      case 'intro_mirror_100':
+      case 'mirror_reveal':
+        return 'intro';
+      case 'hub_arrival':
+      case 'orbit_hover':
+      case 'portfolio_scroll':
+        return 'orbit';
+      case 'focus_enter':
+        return 'focus';
+      case 'drag_first':
+        return 'drag';
+      case 'slot_placed':
+      case 'two_slots_left':
+      case 'one_slot_left':
+      case 'slots_complete':
+        return 'slots';
+      case 'primaterie_arrival':
+      case 'primaterie_hover':
+        return 'primaterie';
+      case 'game_over_intro':
+      case 'game_over_hover':
+      case 'avatar_hover':
+      case 'tutorial_hover':
+      case 'achievements_hover':
+      case 'settings_hover':
+        return this.currentPresence.zone === 'game' ? 'game' : 'game_over';
+      case 'help_topic':
+        return this.currentPresence.zone;
+      default:
+        return this.currentPresence.zone;
+    }
+  }
+
+  private getHelpTopicsForContext(zone: GuidePresenceContext['zone']) {
+    switch (zone) {
+      case 'intro':
+        return ['intro_mirror', 'portfolio_navigation'] satisfies GuideHelpTopic[];
+      case 'orbit':
+        return ['portfolio_navigation', 'focus_zone'] satisfies GuideHelpTopic[];
+      case 'focus':
+        return ['focus_zone', 'portfolio_navigation'] satisfies GuideHelpTopic[];
+      case 'drag':
+      case 'slots':
+        return ['slot_goal', 'portfolio_navigation'] satisfies GuideHelpTopic[];
+      case 'primaterie':
+        return ['primaterie_hub', 'primaterie_contact'] satisfies GuideHelpTopic[];
+      case 'game':
+        return ['game_rules', 'game_settings', 'game_achievements'] satisfies GuideHelpTopic[];
+      case 'game_over':
+        return ['game_score_save', 'game_rules', 'game_settings'] satisfies GuideHelpTopic[];
+      case 'about':
+        return ['about_zone', 'primaterie_contact'] satisfies GuideHelpTopic[];
+      case 'hidden':
+      default:
+        return [] satisfies GuideHelpTopic[];
+    }
+  }
+
+  private replayHistoryEntry(historyId: string) {
+    const entry = this.history.find((candidate) => candidate.id === historyId);
+    if (!entry) {
+      return;
+    }
+
+    const message: GuideMessage = {
+      id: `${entry.messageId}:replay:${Date.now()}`,
+      priority: 4,
+      title: entry.title,
+      target: this.currentMessage?.target ?? this.currentPresence.target,
+      createdAt: performance.now(),
+      sequence: entry.sequence,
+      category: entry.category,
+      contextKey: this.currentPresence.zone,
+      replacementKey: `${entry.messageId}:replay`,
+      queueBehavior: 'replace',
+      critical: false,
+      replayEligible: true,
+      source: 'history'
+    };
+    this.enqueueMessage(message);
   }
 
   private setAnchorFromPixelPosition(left: number, top: number, characterSize: number, viewportWidth: number, viewportHeight: number) {

@@ -773,9 +773,15 @@ export function getModuleGaugeConfig(item: RogueliteItemDefinition | null) {
   return item.gaugeConfig[item.rarity] ?? null;
 }
 
-export function buildUpgradeOffers(score: number, runState: RunUpgradeState, rng = Math.random, count = 3): RogueliteItemOffer[] {
+export function buildUpgradeOffers(
+  score: number,
+  runState: RunUpgradeState,
+  rng = Math.random,
+  count = 3,
+  context: 'milestone' | 'shop' = 'milestone'
+): RogueliteItemOffer[] {
   const allowedRarities = allowedRaritiesForScore(score);
-  const rarityWeightMap = resolveOfferRarityWeights(score, runState);
+  const rarityWeightMap = resolveOfferRarityWeights(score, runState, context);
   const offers: RogueliteItemOffer[] = [];
   const usedBaseIds = new Set<string>();
   const eligibleBlueprints = ITEM_BLUEPRINTS.filter((blueprint) => {
@@ -932,7 +938,7 @@ function pickNextRarity(
   return options[options.length - 1] ?? null;
 }
 
-function resolveOfferRarityWeights(score: number, runState: RunUpgradeState) {
+function resolveOfferRarityWeights(score: number, runState: RunUpgradeState, context: 'milestone' | 'shop') {
   const weights = { ...rarityWeights };
   const rareBias = Math.max(0, runState.modifiers.rareItemBias);
 
@@ -951,6 +957,14 @@ function resolveOfferRarityWeights(score: number, runState: RunUpgradeState) {
   } else if (score < 100) {
     weights.rare += 2 + rareBias * 3;
     weights.epic += 1 + rareBias * 2;
+  }
+
+  if (context === 'shop') {
+    weights.common *= score < 60 ? 0.56 : 0.5;
+    weights.uncommon *= score < 60 ? 0.9 : 0.82;
+    weights.rare *= score < 20 ? 1.65 : score < 100 ? 1.85 : 1.72;
+    weights.epic = score < 60 ? weights.epic * 1.6 + 1 : weights.epic * 2.25 + 2;
+    weights.legendary = score < 100 ? weights.legendary + 1 + rareBias : weights.legendary * 2.6 + 2 + rareBias * 2;
   }
 
   return weights;

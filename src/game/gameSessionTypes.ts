@@ -291,3 +291,12 @@ export interface GameHudSnapshot {
     }>;
   };
 }
+
+export interface GameGuideSignals {
+  hasVisibleEnemy: boolean;
+  hasVisibleEnemyTop: boolean;
+  hasVisibleEnemyBot: boolean;
+  hasVisibleQuestionReward: boolean;
+  hasVisibleShop: boolean;
+  hasVisibleMilestone: boolean;
+}

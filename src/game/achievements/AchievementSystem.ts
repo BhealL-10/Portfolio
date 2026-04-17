@@ -1,6 +1,7 @@
 import type { Language } from '../../types/content';
 import { clamp } from '../../core/math';
 import type { RogueliteItemDefinition, RogueliteModuleSlot } from '../roguelite';
+import type { GameEventType, GameShardMotionPattern } from '../gameSessionTypes';
 import { ACHIEVEMENT_REGISTRY, ACHIEVEMENT_REGISTRY_BY_ID } from './AchievementRegistry';
 import {
   clearAchievementPersistence,
@@ -74,6 +75,9 @@ interface LandingAchievementEvent {
   shapeKind: 'round' | 'oval' | 'triangular';
   isMilestone: boolean;
   inMirror?: boolean;
+  motionPattern?: GameShardMotionPattern;
+  eventType?: GameEventType;
+  fromSprintFish?: boolean;
 }
 
 interface EnemyKillAchievementEvent {
@@ -88,6 +92,9 @@ interface EnemyKillAchievementEvent {
 interface ItemAchievementOptions {
   purchased?: boolean;
 }
+
+type AmbientEnemyAchievementKind = 'enemyTop' | 'enemyBot';
+type FastTravelAchievementKind = 'wrapper' | 'teleport' | 'warp';
 
 function createRunState(): AchievementRunState {
   return {
@@ -155,6 +162,9 @@ const LANDING_CHAIN_ACHIEVEMENT_IDS = [
 const EARLY_FAIL_STREAK_ACHIEVEMENT_ID = 'progress_early_fail_streak_5';
 const FAIL_STREAK_ACHIEVEMENT_ID = 'progress_fail_streak_10';
 const NO_MILESTONE_REWARD_ACHIEVEMENT_ID = 'shards_100_without_milestone_reward';
+const MOVING_LANDING_ACHIEVEMENT_ID = 'shards_moving_land_5';
+const SHOP_LANDING_ACHIEVEMENT_ID = 'shards_shop_land_3';
+const MILESTONE_PEEK_ACHIEVEMENT_ID = 'shards_milestone_peek_3';
 const AIR_MODULE_COMBO_ACHIEVEMENT_ID = 'modules_air_combo_3';
 const REVERSE_LAUNCH_ACHIEVEMENT_IDS = ['progress_reverse_launch_1', 'progress_reverse_launch_5', 'progress_reverse_launch_15'] as const;
 const MIRROR_MODE_ACHIEVEMENT_ID = 'mirror_mode_1';
@@ -188,14 +198,24 @@ const TRIPLE_KILL_ACHIEVEMENT_ID = 'combat_triple_kill_5s';
 const BACK_DOUBLE_KILL_ACHIEVEMENT_ID = 'combat_back_double_kill_5s';
 const MIRROR_KILL_ACHIEVEMENT_ID = 'mirror_kill_5';
 const MIRROR_BACK_KILL_ACHIEVEMENT_ID = 'mirror_back_kill_3';
+const ENEMY_TOP_KILL_ACHIEVEMENT_IDS = ['combat_enemy_top_1', 'combat_enemy_top_10'] as const;
+const ENEMY_BOT_KILL_ACHIEVEMENT_IDS = ['combat_enemy_bot_1', 'combat_enemy_bot_15'] as const;
 
 const COIN_ACHIEVEMENT_IDS = ['economy_coins_20', 'economy_coins_100', 'economy_coins_300', 'economy_coins_500', 'economy_coins_700', 'economy_coins_1200'] as const;
 const SHOP_ACHIEVEMENT_IDS = ['economy_buy_1', 'economy_buy_5', 'economy_buy_15', 'economy_buy_30'] as const;
+const SHOP_VISIT_ACHIEVEMENT_ID = 'economy_shop_visit_1';
+const QUESTION_REWARD_ACHIEVEMENT_ID = 'economy_question_pickup_1';
+const PURCHASE_RARE_ACHIEVEMENT_ID = 'economy_buy_rare_3';
 
 const UNIQUE_MODULE_ACHIEVEMENT_IDS = ['modules_unique_3', 'modules_unique_6', 'modules_unique_9', 'modules_unique_12'] as const;
 const MOMENTUM_MAX_HOLD_IDS = ['momentum_hold_max_5', 'momentum_hold_max_10', 'momentum_hold_max_20'] as const;
 const MOMENTUM_HIGH_HOLD_IDS = ['momentum_hold_high_15', 'momentum_hold_high_45', 'momentum_hold_high_90', 'momentum_hold_high_120'] as const;
 const CANON_COMBO_ACHIEVEMENT_IDS = ['modules_canon_combo_1', 'modules_canon_combo_5'] as const;
+const SPRINT_FISH_ACHIEVEMENT_IDS = ['modules_sprint_fish_1', 'modules_sprint_fish_5'] as const;
+const SPRINT_FISH_LANDING_ACHIEVEMENT_ID = 'modules_sprint_fish_land_3';
+const FAST_TRAVEL_ACHIEVEMENT_IDS = ['modules_fast_travel_5', 'modules_fast_travel_20'] as const;
+const AUTO_TELEPORT_ACHIEVEMENT_ID = 'modules_auto_teleport_5';
+const WARP_ACHIEVEMENT_ID = 'modules_warp_3';
 
 const MODULE_ACQUISITION_IDS: Partial<Record<RogueliteModuleSlot, string>> = {
   plane: 'modules_plane_1',
@@ -203,7 +223,12 @@ const MODULE_ACQUISITION_IDS: Partial<Record<RogueliteModuleSlot, string>> = {
   souffleur: 'modules_souffleur_1',
   propulseur: 'modules_propulseur_1',
   reacteur_back: 'modules_reacteur_back_1',
-  reacteur_front: 'modules_reacteur_front_1'
+  reacteur_front: 'modules_reacteur_front_1',
+  magnet: 'modules_magnet_1',
+  wrapper: 'modules_wrapper_1',
+  big_canon: 'modules_big_canon_1',
+  front_canon: 'modules_front_canon_1',
+  grappin: 'modules_grappin_1'
 };
 
 const MODULE_ACTIVATION_IDS: Partial<Record<RogueliteModuleSlot, readonly string[]>> = {
@@ -331,6 +356,9 @@ export class AchievementSystem {
     this.mutate(() => {
       if (options.purchased) {
         this.incrementAll(SHOP_ACHIEVEMENT_IDS, 1);
+        if (item.rarity === 'rare' || item.rarity === 'epic' || item.rarity === 'legendary') {
+          this.incrementProgress(PURCHASE_RARE_ACHIEVEMENT_ID, 1);
+        }
       }
 
       if (item.baseId === 'gravity_belt') {
@@ -391,9 +419,21 @@ export class AchievementSystem {
 
       if (event.isMilestone) {
         this.incrementAll(MILESTONE_ACHIEVEMENT_IDS, 1);
+        if (!this.runState.milestoneRewardClaimed) {
+          this.incrementProgress(MILESTONE_PEEK_ACHIEVEMENT_ID, 1);
+        }
       }
       if (event.shapeKind === 'triangular') {
         this.incrementAll(TRIANGULAR_SHARD_ACHIEVEMENT_IDS, 1);
+      }
+      if (event.motionPattern && event.motionPattern !== 'none') {
+        this.incrementProgress(MOVING_LANDING_ACHIEVEMENT_ID, 1);
+      }
+      if (event.eventType === 'shop') {
+        this.incrementProgress(SHOP_LANDING_ACHIEVEMENT_ID, 1);
+      }
+      if (event.fromSprintFish) {
+        this.incrementProgress(SPRINT_FISH_LANDING_ACHIEVEMENT_ID, 1);
       }
       if (event.twist) {
         this.runState.twistStreak += 1;
@@ -480,9 +520,49 @@ export class AchievementSystem {
     this.runState.milestoneRewardClaimed = true;
   }
 
+  recordNodeEventEncounter(type: GameEventType) {
+    this.mutate(() => {
+      if (type === 'shop') {
+        this.raiseProgress(SHOP_VISIT_ACHIEVEMENT_ID, 1);
+        return;
+      }
+      if (type === 'gift' || type === 'rare_item') {
+        this.raiseProgress(QUESTION_REWARD_ACHIEVEMENT_ID, 1);
+      }
+    });
+  }
+
   recordReverseLaunchFromAnchor() {
     this.mutate(() => {
       this.incrementAll(REVERSE_LAUNCH_ACHIEVEMENT_IDS, 1);
+    });
+  }
+
+  recordAmbientEnemyKill(kind: AmbientEnemyAchievementKind) {
+    this.mutate(() => {
+      if (kind === 'enemyTop') {
+        this.incrementAll(ENEMY_TOP_KILL_ACHIEVEMENT_IDS, 1);
+        return;
+      }
+      this.incrementAll(ENEMY_BOT_KILL_ACHIEVEMENT_IDS, 1);
+    });
+  }
+
+  recordSprintFishRide() {
+    this.mutate(() => {
+      this.incrementAll(SPRINT_FISH_ACHIEVEMENT_IDS, 1);
+    });
+  }
+
+  recordFastTravel(kind: FastTravelAchievementKind) {
+    this.mutate(() => {
+      this.incrementAll(FAST_TRAVEL_ACHIEVEMENT_IDS, 1);
+      if (kind === 'teleport') {
+        this.incrementProgress(AUTO_TELEPORT_ACHIEVEMENT_ID, 1);
+      }
+      if (kind === 'warp') {
+        this.incrementProgress(WARP_ACHIEVEMENT_ID, 1);
+      }
     });
   }
 

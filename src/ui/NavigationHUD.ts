@@ -1,10 +1,7 @@
 import type { Language, PortfolioProject } from '../types/content';
+import { LANGUAGE_BUTTON_ASSETS, THEME_TOGGLE_ASSETS } from '../game/GameUiAssetResolver';
+import { observeThemeChanges, resolveDocumentTheme } from '../game/ThemeAssetResolver';
 import { I18nService } from './I18nService';
-
-const LANGUAGE_BUTTON_ASSETS = {
-  fr: new URL('../../assets/images/shared/localization/fr.svg', import.meta.url).href,
-  en: new URL('../../assets/images/shared/localization/en.svg', import.meta.url).href
-} as const;
 
 interface NavigationHUDCallbacks {
   onThemeToggle: () => void;
@@ -19,7 +16,9 @@ export class NavigationHUD {
   readonly topbar: HTMLDivElement;
   private activeChip: HTMLDivElement;
   private themeButton: HTMLButtonElement;
+  private themeButtonIcon: HTMLImageElement;
   private languageButton: HTMLButtonElement;
+  private languageButtonIcon: HTMLImageElement;
   private homeButton: HTMLButtonElement;
   private unlockChip: HTMLDivElement;
   private projectRail: HTMLDivElement;
@@ -42,8 +41,18 @@ export class NavigationHUD {
     this.activeChip = document.createElement('div');
     this.activeChip.className = 'navigation-hud__chip';
 
-    this.themeButton = this.createButton(() => callbacks.onThemeToggle());
-    this.languageButton = this.createButton(() => callbacks.onLanguageToggle());
+    this.themeButton = this.createButton(() => callbacks.onThemeToggle(), 'navigation-hud__button--icon');
+    this.themeButtonIcon = document.createElement('img');
+    this.themeButtonIcon.className = 'navigation-hud__button-icon';
+    this.themeButtonIcon.alt = '';
+    this.themeButton.appendChild(this.themeButtonIcon);
+
+    this.languageButton = this.createButton(() => callbacks.onLanguageToggle(), 'navigation-hud__button--icon');
+    this.languageButtonIcon = document.createElement('img');
+    this.languageButtonIcon.className = 'navigation-hud__language-icon';
+    this.languageButtonIcon.alt = '';
+    this.languageButton.appendChild(this.languageButtonIcon);
+
     this.homeButton = this.createButton(() => callbacks.onHome());
     this.unlockChip = document.createElement('div');
     this.unlockChip.className = 'navigation-hud__chip navigation-hud__chip--status';
@@ -78,6 +87,7 @@ export class NavigationHUD {
     host.appendChild(this.element);
 
     this.i18n.onChange(() => this.renderStatic());
+    observeThemeChanges(() => this.renderStatic());
     this.setOutroVisible(false);
     this.renderStatic();
   }
@@ -120,21 +130,23 @@ export class NavigationHUD {
     this.outroDot.tabIndex = visible ? 0 : -1;
   }
 
-  private createButton(onClick: () => void) {
+  private createButton(onClick: () => void, extraClassName?: string) {
     const button = document.createElement('button');
-    button.className = 'navigation-hud__button';
+    button.className = extraClassName ? `navigation-hud__button ${extraClassName}` : 'navigation-hud__button';
     button.type = 'button';
     button.addEventListener('click', onClick);
     return button;
   }
 
   private renderStatic() {
-    const themeIsDark = document.documentElement.dataset.theme === 'dark';
+    const theme = resolveDocumentTheme();
     const minimalPortfolioChrome = !this.gameModeActive;
     this.themeButton.setAttribute('aria-label', this.i18n.t('theme'));
-    this.themeButton.innerHTML = `<span class="navigation-hud__button-icon" aria-hidden="true">${themeIsDark ? '🌙' : '☀️'}</span>`;
+    this.themeButton.classList.toggle('is-dark-theme', theme === 'dark');
+    this.themeButton.classList.toggle('is-light-theme', theme === 'light');
+    this.themeButtonIcon.src = THEME_TOGGLE_ASSETS[theme];
     this.languageButton.setAttribute('aria-label', this.i18n.t('language'));
-    this.languageButton.innerHTML = `<img class="navigation-hud__language-icon" src="${LANGUAGE_BUTTON_ASSETS[this.i18n.current]}" alt="" />`;
+    this.languageButtonIcon.src = LANGUAGE_BUTTON_ASSETS[this.i18n.current];
     this.homeButton.textContent = this.gameModeActive ? this.i18n.t('gamePortfolio') : this.i18n.t('home');
     this.activeChip.hidden = minimalPortfolioChrome;
     this.homeButton.hidden = minimalPortfolioChrome;

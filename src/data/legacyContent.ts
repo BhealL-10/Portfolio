@@ -1,4 +1,4 @@
-import type { LocalizedText, PortfolioProject, ProjectFacet, ProjectLinkSet } from '../types/content';
+import type { LocalizedText, PortfolioProject, ProjectFacet, ProjectFacetAsset, ProjectLinkSet } from '../types/content';
 import { getShardRole } from '../portfolio/shardLayout';
 
 // Legacy data kept as source-of-truth during migration.
@@ -65,6 +65,30 @@ function normalizeLinks(links: ProjectLinkSet | undefined): ProjectLinkSet {
   };
 }
 
+function buildFacetAssets(metaFacet: LegacyMetadataFacet): ProjectFacetAsset[] {
+  const assets: ProjectFacetAsset[] = [];
+
+  (metaFacet.images ?? []).forEach((image) => {
+    const src = `/${image}`;
+    assets.push({
+      kind: src.toLowerCase().endsWith('.gif') ? 'gif' : 'image',
+      src
+    });
+  });
+
+  if (metaFacet.links?.demo) {
+    assets.push({ kind: 'site', href: metaFacet.links.demo, label: { fr: 'Site', en: 'Site' } });
+  }
+  if (metaFacet.links?.github) {
+    assets.push({ kind: 'site', href: metaFacet.links.github, label: { fr: 'GitHub', en: 'GitHub' } });
+  }
+  if (metaFacet.links?.video) {
+    assets.push({ kind: 'site', href: metaFacet.links.video, label: { fr: 'Video', en: 'Video' } });
+  }
+
+  return assets;
+}
+
 function buildFacet(
   index: number,
   frFacet: LegacyTranslationFacet,
@@ -90,6 +114,7 @@ function buildFacet(
       en: enFacet.technologies[techIndex] || tech
     })),
     images: metaFacet.images ? metaFacet.images.map((image) => `/${image}`) : [],
+    assets: buildFacetAssets(metaFacet),
     media: null,
     links: normalizeLinks(metaFacet.links),
     featured: Boolean(metaFacet.featured)
@@ -200,6 +225,14 @@ if (cinemaProject) {
     embedUrl: 'https://www.youtube-nocookie.com/embed/pTmAQQ7RNNQ?rel=0&modestbranding=1&playsinline=1',
     title: 'Mon premier court-metrage'
   };
+  cinemaProject.facets[0].assets = [
+    {
+      kind: 'youtube',
+      embedUrl: 'https://www.youtube-nocookie.com/embed/pTmAQQ7RNNQ?rel=0&modestbranding=1&playsinline=1',
+      title: { fr: 'Mon premier court-metrage', en: 'My first short film' }
+    },
+    ...(cinemaProject.facets[0].assets ?? []).filter((asset) => !(asset.kind === 'site' && asset.href === cinemaProject.facets[0].links.video))
+  ];
 }
 
 export function getProjectCount() {

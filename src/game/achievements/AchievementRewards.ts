@@ -85,5 +85,8 @@ for (const reward of ACHIEVEMENT_REWARDS) {
     continue;
   }
   const humanIndex = reward.avatarUnlocks[0]!.index + 1;
-  ACHIEVEMENT_REWARDS_BY_ID.set(`avatar-${legacyLayer}-${humanIndex}`, reward);
+  const legacyId = `avatar-${legacyLayer}-${humanIndex}`;
+  if (!ACHIEVEMENT_REWARDS_BY_ID.has(legacyId)) {
+    ACHIEVEMENT_REWARDS_BY_ID.set(legacyId, reward);
+  }
 }
