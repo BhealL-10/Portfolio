@@ -612,7 +612,8 @@ body {
   min-height: 0;
   display: grid;
   place-items: center;
-  line-height: 1.35;
+  font-size: clamp(0.96rem, 1.24vw, 1.08rem);
+  line-height: 1.42;
   font-family: 'Tribal Garamond', serif;
   color: var(--guide-text-contrast-color);
   text-shadow: 0 1px 0 var(--guide-copy-shadow), 0 6px 18px rgb(0 0 0 / 0.08);
@@ -632,8 +633,8 @@ body {
 
 .guide-bubble__help-summary-body {
   font-family: 'Tribal Garamond', serif;
-  font-size: clamp(0.72rem, 1.02vw, 0.86rem);
-  line-height: 1.16;
+  font-size: clamp(0.84rem, 1.1vw, 0.98rem);
+  line-height: 1.24;
 }
 
 .guide-bubble__segment {

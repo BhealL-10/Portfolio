@@ -2495,19 +2495,19 @@ export class GuideBubbleSystem {
     const tokens = segment.tokens[language].filter((token) => !GUIDE_TOKEN_PUNCTUATION_RE.test(token.text));
     const wordCount = Math.max(1, tokens.length);
     const longestToken = tokens.reduce((longest, token) => Math.max(longest, token.text.length), 0);
-    const emphasisBoost = segment.emphasis === 'impact' ? 0.08 : segment.emphasis === 'strong' ? 0.05 : 0;
+    const emphasisBoost = segment.emphasis === 'impact' ? 0.12 : segment.emphasis === 'strong' ? 0.08 : 0.04;
     const density = wordCount * 0.52 + longestToken * 0.18;
 
     if (density <= 4.5) {
-      return `clamp(${(1.34 + emphasisBoost).toFixed(2)}rem, 3.3vw, ${(2.05 + emphasisBoost).toFixed(2)}rem)`;
+      return `clamp(${(1.44 + emphasisBoost).toFixed(2)}rem, 3.6vw, ${(2.18 + emphasisBoost).toFixed(2)}rem)`;
     }
     if (density <= 7) {
-      return `clamp(${(1.12 + emphasisBoost).toFixed(2)}rem, 2.6vw, ${(1.7 + emphasisBoost).toFixed(2)}rem)`;
+      return `clamp(${(1.22 + emphasisBoost).toFixed(2)}rem, 2.9vw, ${(1.84 + emphasisBoost).toFixed(2)}rem)`;
     }
     if (density <= 10) {
-      return `clamp(${(0.98 + emphasisBoost).toFixed(2)}rem, 2vw, ${(1.34 + emphasisBoost).toFixed(2)}rem)`;
+      return `clamp(${(1.06 + emphasisBoost).toFixed(2)}rem, 2.2vw, ${(1.46 + emphasisBoost).toFixed(2)}rem)`;
     }
-    return `clamp(${(0.85 + emphasisBoost * 0.5).toFixed(2)}rem, 1.55vw, ${(1.12 + emphasisBoost * 0.4).toFixed(2)}rem)`;
+    return `clamp(${(0.92 + emphasisBoost * 0.5).toFixed(2)}rem, 1.72vw, ${(1.22 + emphasisBoost * 0.45).toFixed(2)}rem)`;
   }
 
   private loadFlags() {

@@ -16,6 +16,7 @@ import { GRADE_SPRITE_ASSET_URLS } from './GradeSpriteResolver';
 import { MobileControlsHud } from './MobileControlsHud';
 import { MOBILE_CHARGE_ASSETS, MOBILE_CONTROL_ASSETS } from './MobileControlLayoutResolver';
 import { RewardBranchLabelLayoutResolver } from './RewardBranchLabelLayoutResolver';
+import { AvatarMomentumHudWidget, AVATAR_MOMENTUM_HUD_ASSET_URLS } from './AvatarMomentumHudWidget';
 import {
   ACHIEVEMENT_ICON_ASSETS,
   ACHIEVEMENT_RARITY_ICON_ASSETS,
@@ -358,7 +359,9 @@ export class GameHUDSystem {
   private momentumBarLabel: HTMLSpanElement;
   private momentumBarValue: HTMLSpanElement;
   private momentumDock: HTMLDivElement;
+  private momentumMeter: HTMLDivElement;
   private momentumShell: HTMLDivElement;
+  private avatarMomentumWidget: AvatarMomentumHudWidget;
   private equipmentDock: HTMLDivElement;
   private chargeFill: HTMLDivElement;
   private orbitGraceIndicator: HTMLDivElement;
@@ -705,6 +708,7 @@ export class GameHUDSystem {
     this.momentumBarLabel = this.element.querySelector<HTMLSpanElement>('[data-momentum-bar-label]')!;
     this.momentumBarValue = this.element.querySelector<HTMLSpanElement>('[data-momentum-bar-value]')!;
     this.momentumDock = this.element.querySelector<HTMLDivElement>('.game-hud__momentum-dock')!;
+    this.momentumMeter = this.element.querySelector<HTMLDivElement>('.game-hud__momentum-meter')!;
     this.momentumShell = this.element.querySelector<HTMLDivElement>('.game-hud__momentum-shell')!;
     this.equipmentDock = this.element.querySelector<HTMLDivElement>('.game-hud__equipment-dock')!;
     this.chargeFill = this.element.querySelector<HTMLDivElement>('[data-charge-fill]')!;
@@ -800,6 +804,9 @@ export class GameHUDSystem {
     this.element.appendChild(this.landingFeedbackDisplay.element);
     this.playerAvatarSelection = this.readPlayerAvatarSelection();
     this.draftAvatarSelection = { ...this.playerAvatarSelection };
+    this.avatarMomentumWidget = new AvatarMomentumHudWidget();
+    this.momentumMeter.appendChild(this.avatarMomentumWidget.element);
+    this.syncAvatarMomentumWidgetAvatar();
     this.topRightCluster = new TopRightUiCluster(
       this.element.querySelector<HTMLDivElement>('.game-hud__top-right-anchor')!,
       this.panel,
@@ -1110,7 +1117,7 @@ export class GameHUDSystem {
   }
 
   preloadAssets() {
-    return this.ensureUiAssetsPreloaded();
+    return Promise.all([this.ensureUiAssetsPreloaded(), this.ensureAvatarAssetsLoaded()]).then(() => undefined);
   }
 
   private ensureUiAssetsPreloaded() {
@@ -1174,6 +1181,7 @@ export class GameHUDSystem {
         this.avatarAssetsLoaded = true;
         this.playerAvatarSelection = this.normalizeAvatarSelection(this.playerAvatarSelection, '', true);
         this.draftAvatarSelection = this.normalizeAvatarSelection(this.draftAvatarSelection, '', true);
+        this.syncAvatarMomentumWidgetAvatar();
         if (this.currentRunSummary) {
           this.renderLeaderboard();
         }
@@ -1257,6 +1265,16 @@ export class GameHUDSystem {
     const fillPhase = Math.floor(performance.now() / fillIntervalMs) % 4;
     this.momentumShell.style.setProperty('--momentum-frame', String(fillPhase));
     this.settingsVolumeMeterFill.style.setProperty('--sound-ui-frame', String(this.audioMuted ? 0 : fillPhase));
+    this.avatarMomentumWidget.update({
+      momentumGauge: payload.momentumGauge,
+      landingFeedback: payload.landingFeedback
+        ? {
+            serial: payload.landingFeedback.serial,
+            grade: payload.landingFeedback.grade,
+            twist: payload.landingFeedback.twist
+          }
+        : null
+    });
     this.chargeFill.style.setProperty('--charge-ratio', payload.chargeRatio.toFixed(3));
     this.orbitGraceIndicator.classList.toggle('is-visible', payload.orbitGraceActive);
     this.orbitGraceIndicator.style.setProperty('--orbit-grace-progress', payload.orbitGraceProgress.toFixed(3));
@@ -1487,9 +1505,11 @@ export class GameHUDSystem {
             : '';
           return `
             <div class="game-hud__toast is-visible" data-kind="achievement" data-rarity="${toast.value.rarity}" style="--toast-progress:${toast.value.progress.toFixed(3)}">
-              <span>${this.i18n.current === 'fr' ? 'Succès' : 'Achievement'}</span>
-              <strong>${toast.value.name}</strong>
-              ${rewardMarkup}
+              <div class="game-hud__toast-copy">
+                <span class="game-hud__toast-eyebrow">${this.i18n.current === 'fr' ? 'Succès' : 'Achievement'}</span>
+                <strong class="game-hud__toast-title">${toast.value.name}</strong>
+                ${rewardMarkup}
+              </div>
             </div>
           `;
         }
@@ -1503,8 +1523,10 @@ export class GameHUDSystem {
         return `
           <div class="game-hud__toast is-visible" data-kind="acquisition" data-rarity="${toast.value.offer.item.rarity}" style="--toast-progress:${toast.value.progress.toFixed(3)}">
             <img src="${toast.value.offer.item.hudIconSrc}" alt="" class="game-hud__toast-icon" />
-            ${showCopy ? `<span>${label}</span><strong>${name}</strong>` : ''}
-            <em>${meta}</em>
+            <div class="game-hud__toast-copy">
+              ${showCopy ? `<span class="game-hud__toast-eyebrow">${label}</span><strong class="game-hud__toast-title">${name}</strong>` : ''}
+              <em class="game-hud__toast-meta">${meta}</em>
+            </div>
           </div>
         `;
       })
@@ -3693,6 +3715,7 @@ export class GameHUDSystem {
   }
 
   private renderAvatarDependentViews() {
+    this.syncAvatarMomentumWidgetAvatar();
     this.renderLeaderboard();
     this.renderAchievementsContent(this.currentAchievements, true);
     this.renderGameOverMode(null);
@@ -3759,6 +3782,16 @@ export class GameHUDSystem {
 
     window.dispatchEvent(new CustomEvent(PLAYER_AVATAR_UPDATED_EVENT, { detail: { selection: this.playerAvatarSelection } }));
     this.renderAvatarDependentViews();
+  }
+
+  private syncAvatarMomentumWidgetAvatar() {
+    if (!this.avatarAssetsLoaded) {
+      this.avatarMomentumWidget.setAvatarMarkup('');
+      return;
+    }
+
+    const selection = this.normalizeAvatarSelection(this.playerAvatarSelection, '', true);
+    this.avatarMomentumWidget.setAvatarMarkup(this.renderAvatarMarkup(selection, 'game-hud__avatar-body-stack'));
   }
 
   private clearScoreFeed() {
@@ -4069,6 +4102,7 @@ export class GameHUDSystem {
     const achievementRarityAssets = Object.values(ACHIEVEMENT_RARITY_ICON_ASSETS);
     const preloadedAssets = [
       ...Object.values(GRADE_SPRITE_ASSET_URLS).flatMap((assetSet) => Object.values(assetSet)),
+      ...AVATAR_MOMENTUM_HUD_ASSET_URLS,
       ...Object.values(MOMENTUM_BAR_ASSETS),
       COIN_ICON_URL,
       EQUIPMENT_UI_ASSETS.bgBoat,

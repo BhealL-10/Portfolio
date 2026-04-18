@@ -411,6 +411,8 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
 .game-hud__momentum-meter {
   margin-top: 0;
   grid-column: 1;
+  position: relative;
+  width: min(100%, 460px);
 }
 
 .game-hud__equipment-dock {
@@ -568,7 +570,7 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
   --momentum-ratio: 0;
   --momentum-frame: 0;
   position: relative;
-  width: min(100%, 460px);
+  width: 100%;
   aspect-ratio: 512 / 64;
   isolation: isolate;
   contain: paint;
@@ -623,6 +625,85 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
   inset: 0;
   height: 100%;
   z-index: 2;
+}
+
+.game-hud__momentum-avatar-widget {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 10.164201916099371%;
+  aspect-ratio: var(--game-hud-avatar-frame-width, 750) / var(--game-hud-avatar-frame-height, 1000);
+  pointer-events: none;
+  isolation: isolate;
+  z-index: 3;
+  overflow: hidden;
+  contain: paint;
+}
+
+.game-hud__momentum-avatar-widget-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.game-hud__momentum-avatar-widget-layer--aura {
+  z-index: 1;
+  filter: drop-shadow(0 0 10px rgb(255 255 255 / 0.18));
+}
+
+.game-hud__momentum-avatar-widget-layer--avatar {
+  left: var(--game-hud-avatar-slot-left, 28.8117472%);
+  top: var(--game-hud-avatar-slot-top, 7.7655639%);
+  width: var(--game-hud-avatar-slot-size, 41.6058666667%);
+  aspect-ratio: 1;
+  z-index: 2;
+  overflow: hidden;
+}
+
+.game-hud__momentum-avatar-widget-layer--front {
+  z-index: 3;
+}
+
+.game-hud__momentum-avatar-widget-strip,
+.game-hud__momentum-avatar-widget-mask-strip {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 400%;
+  height: 100%;
+  max-width: none;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  transform-origin: top left;
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+.game-hud__momentum-avatar-widget-mask-strip {
+  background: transparent;
+  -webkit-mask-image: var(--game-hud-avatar-aura-mask);
+  mask-image: var(--game-hud-avatar-aura-mask);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+}
+
+.game-hud__momentum-avatar-widget-mask-strip--base {
+  opacity: 1;
+}
+
+.game-hud__momentum-avatar-widget-mask-strip--rainbow {
+  opacity: 0;
+  mix-blend-mode: screen;
+}
+
+.game-hud__momentum-avatar-widget-mask-strip--highlight {
+  opacity: 0.22;
+  mix-blend-mode: screen;
 }
 
 .game-hud__orbit-grace {
@@ -2408,16 +2489,18 @@ html[data-theme='dark'] .game-hud__wallet {
 .game-hud__toast {
   position: relative;
   --toast-copy-color: var(--overlay-copy-strong);
-  min-width: 188px;
+  min-width: 220px;
   max-width: min(420px, calc(100vw - 40px));
-  display: flex;
+  width: fit-content;
+  display: inline-grid;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  justify-content: center;
   justify-items: center;
-  padding: 16px 30px;
-  border-radius: 999px;
+  padding: 18px 24px;
+  border-radius: 28px;
+  min-height: 84px;
   white-space: normal;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
   backdrop-filter: none;
   background: transparent;
   border: 0;
@@ -2431,25 +2514,25 @@ html[data-theme='dark'] .game-hud__wallet {
 
 html[data-theme='light'] .game-hud__toast,
 html[data-theme='light'] .game-hud__game-over-achievement-pill {
-  --toast-copy-color: #f6f0df;
-  color: #f6f0df;
+  --toast-copy-color: var(--overlay-copy-strong);
+  color: var(--overlay-copy-strong);
 }
 
 html[data-theme='dark'] .game-hud__toast,
 html[data-theme='dark'] .game-hud__game-over-achievement-pill {
-  --toast-copy-color: #14181f;
-  color: #14181f;
+  --toast-copy-color: var(--overlay-copy-strong);
+  color: var(--overlay-copy-strong);
 }
 
 .game-hud__toast::before {
   content: '';
   position: absolute;
-  inset: -12px -18px;
+  inset: 0;
   z-index: -1;
   background-image: url('../../assets/images/game/ui/backgrounds/bg-achievement-toast-dark.svg');
   background-position: center;
   background-repeat: no-repeat;
-  background-size: 120% 120%;
+  background-size: 100% 100%;
   filter: none;
 }
 
@@ -2457,7 +2540,7 @@ html[data-theme='dark'] .game-hud__game-over-achievement-pill {
 .game-hud__game-over-achievement-pill::after {
   content: '';
   position: absolute;
-  inset: -4px;
+  inset: 0;
   pointer-events: none;
   mask-position: center;
   mask-repeat: no-repeat;
@@ -2488,13 +2571,34 @@ html[data-theme='dark'] .game-hud__toast::before {
   transform: translateY(0);
 }
 
-.game-hud__toast strong {
-  font-size: 0.84rem;
-  line-height: 1.25;
-  text-align: center;
+.game-hud__toast-copy {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.game-hud__toast-eyebrow,
+.game-hud__toast-reward em,
+.game-hud__toast-meta {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: currentColor;
+  opacity: 0.86;
+}
+
+.game-hud__toast-title {
+  display: block;
+  font-size: 0.94rem;
+  line-height: 1.28;
+  text-align: inherit;
   max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
   word-break: break-word;
-  color: var(--toast-copy-color);
+  text-wrap: pretty;
+  color: currentColor;
 }
 
 .game-hud__toast[data-kind='achievement'] {
@@ -2504,13 +2608,9 @@ html[data-theme='dark'] .game-hud__toast::before {
   text-align: center;
 }
 
-.game-hud__toast[data-kind='achievement'] span,
-.game-hud__toast-reward em {
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--toast-copy-color);
-  opacity: 0.82;
+.game-hud__toast[data-kind='achievement'] .game-hud__toast-copy {
+  justify-items: center;
+  text-align: center;
 }
 
 .game-hud__toast-reward {
@@ -2529,58 +2629,60 @@ html[data-theme='dark'] .game-hud__toast::before {
   border-radius: 10px;
 }
 
-.game-hud__toast[data-rarity='common'],
-.game-hud__game-over-achievement-pill[data-rarity='common'] {
+html .game-hud__toast[data-rarity='common'],
+html .game-hud__game-over-achievement-pill[data-rarity='common'] {
   --achievement-rarity-color: #f2ddb8;
   --toast-copy-color: #f2ddb8;
+  color: #f2ddb8;
 }
 
-.game-hud__toast[data-rarity='uncommon'],
-.game-hud__game-over-achievement-pill[data-rarity='uncommon'] {
+html .game-hud__toast[data-rarity='uncommon'],
+html .game-hud__game-over-achievement-pill[data-rarity='uncommon'] {
   --achievement-rarity-color: #75af80;
   --toast-copy-color: #75af80;
+  color: #75af80;
 }
 
-.game-hud__toast[data-rarity='rare'],
-.game-hud__game-over-achievement-pill[data-rarity='rare'] {
+html .game-hud__toast[data-rarity='rare'],
+html .game-hud__game-over-achievement-pill[data-rarity='rare'] {
   --achievement-rarity-color: #49bcff;
   --toast-copy-color: #49bcff;
+  color: #49bcff;
 }
 
-.game-hud__toast[data-rarity='epic'],
-.game-hud__game-over-achievement-pill[data-rarity='epic'] {
+html .game-hud__toast[data-rarity='epic'],
+html .game-hud__game-over-achievement-pill[data-rarity='epic'] {
   --achievement-rarity-color: #d0a8ff;
   --toast-copy-color: #d0a8ff;
+  color: #d0a8ff;
 }
 
-.game-hud__toast[data-rarity='legendary'],
-.game-hud__game-over-achievement-pill[data-rarity='legendary'] {
+html .game-hud__toast[data-rarity='legendary'],
+html .game-hud__game-over-achievement-pill[data-rarity='legendary'] {
   --achievement-rarity-color: #e9d18b;
   --toast-copy-color: #e9d18b;
+  color: #e9d18b;
 }
 
 .game-hud__toast[data-kind='acquisition'] {
   display: grid;
-  gap: 6px;
-  justify-items: center;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 14px;
+  justify-items: start;
+  text-align: left;
 }
 
-.game-hud__toast[data-kind='acquisition'] span {
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--toast-copy-color);
-  opacity: 0.84;
+.game-hud__toast[data-kind='acquisition'] .game-hud__toast-copy {
+  justify-items: start;
+  text-align: left;
 }
 
-.game-hud__toast[data-kind='acquisition'] em {
+.game-hud__toast-meta {
   font-style: normal;
-  font-size: 0.64rem;
-  line-height: 1.25;
-  text-align: center;
+  line-height: 1.3;
   max-width: 28ch;
-  color: var(--toast-copy-color);
-  opacity: 0.74;
+  text-wrap: balance;
 }
 
 .game-hud__toast-icon {
@@ -2588,6 +2690,7 @@ html[data-theme='dark'] .game-hud__toast::before {
   height: 38px;
   object-fit: contain;
   filter: drop-shadow(0 0 8px rgb(var(--color-fg-rgb) / 0.16));
+  align-self: center;
 }
 
 @keyframes game-hud-score-burst {
@@ -2687,22 +2790,24 @@ html[data-theme='dark'] .game-hud__toast::before {
   padding: 16px 24px;
   background-position: center;
   background-repeat: no-repeat;
-  background-size: 120% 120%;
+  background-size: 100% 100%;
   text-align: center;
   font-size: 0.76rem;
   line-height: 1.3;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: normal;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
   word-break: break-word;
-  color: var(--color-fg);
+  color: var(--toast-copy-color, var(--overlay-copy-strong));
 }
 
 .game-hud__game-over-achievement-pill strong {
-  font-size: 0.78rem;
-  line-height: 1.25;
+  font-size: 0.84rem;
+  line-height: 1.28;
   text-align: center;
+  max-width: 100%;
+  text-wrap: pretty;
 }
 
 .game-hud__game-over-achievement-reward {
@@ -3111,7 +3216,8 @@ html[data-theme='dark'] .game-hud__avatar-editor {
 }
 
 .game-hud__avatar-preview-stack,
-.game-hud__leaderboard-avatar-stack {
+.game-hud__leaderboard-avatar-stack,
+.game-hud__avatar-body-stack {
   position: relative;
   display: block;
   width: 100%;
@@ -3145,7 +3251,8 @@ html[data-theme='dark'] .game-hud__avatar-editor {
 }
 
 .game-hud__avatar-preview-stack-layer,
-.game-hud__leaderboard-avatar-stack-layer {
+.game-hud__leaderboard-avatar-stack-layer,
+.game-hud__avatar-body-stack-layer {
   position: absolute;
   inset: 0;
   width: 100%;
