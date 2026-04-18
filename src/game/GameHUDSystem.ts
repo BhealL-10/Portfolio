@@ -490,7 +490,7 @@ export class GameHUDSystem {
     if (!nextSelection) {
       return;
     }
-    this.playerAvatarSelection = this.normalizeAvatarSelection(nextSelection, '', true);
+    this.playerAvatarSelection = this.normalizeAvatarSelection(nextSelection, '', this.avatarAssetsLoaded);
     if (!this.avatarEditorOpen) {
       this.draftAvatarSelection = { ...this.playerAvatarSelection };
     }
@@ -1038,6 +1038,9 @@ export class GameHUDSystem {
     this.closeHelp();
     this.leaderboardEntriesCache = this.readLocalLeaderboardCache();
     this.renderStatic();
+    if (this.shouldHydratePlayerAvatarFromLeaderboard()) {
+      void this.ensureLeaderboardLoaded({ forceRefresh: true });
+    }
   }
 
   setVisible(visible: boolean) {
@@ -3310,6 +3313,7 @@ export class GameHUDSystem {
       const nextEntries = this.normalizeLeaderboardEntries(payload.entries);
       this.leaderboardEntriesCache = nextEntries;
       this.persistLeaderboardCache(nextEntries);
+      this.maybeHydratePlayerAvatarFromLeaderboard(nextEntries);
       this.leaderboardSyncState = 'idle';
       if (options?.rerender) {
         this.renderLeaderboard();
@@ -3320,6 +3324,7 @@ export class GameHUDSystem {
         return;
       }
       this.leaderboardEntriesCache = this.readLocalLeaderboardCache();
+      this.maybeHydratePlayerAvatarFromLeaderboard(this.leaderboardEntriesCache);
       this.leaderboardSyncState = 'error';
       if (options?.rerender) {
         this.renderLeaderboard();
@@ -3958,13 +3963,54 @@ export class GameHUDSystem {
   private readPlayerAvatarSelection() {
     const raw = window.localStorage.getItem(PLAYER_AVATAR_KEY);
     if (!raw) {
-      return this.normalizeAvatarSelection(undefined, '', true);
+      return this.normalizeAvatarSelection(undefined, '', this.avatarAssetsLoaded);
     }
     try {
-      return this.normalizeAvatarSelection(JSON.parse(raw), '', true);
+      return this.normalizeAvatarSelection(JSON.parse(raw), '', this.avatarAssetsLoaded);
     } catch {
-      return this.normalizeAvatarSelection(undefined, '', true);
+      return this.normalizeAvatarSelection(undefined, '', this.avatarAssetsLoaded);
     }
+  }
+
+  private shouldHydratePlayerAvatarFromLeaderboard() {
+    const raw = window.localStorage.getItem(PLAYER_AVATAR_KEY);
+    if (!raw) {
+      return true;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as Partial<AvatarSelection> | null;
+      const normalizedLocal = this.normalizeAvatarSelection(parsed, '', false);
+      const normalizedDefault = this.normalizeAvatarSelection(undefined, '', false);
+      return this.areAvatarSelectionsEqual(normalizedLocal, normalizedDefault);
+    } catch {
+      return true;
+    }
+  }
+
+  private maybeHydratePlayerAvatarFromLeaderboard(entries: LeaderboardEntry[]) {
+    if (!this.shouldHydratePlayerAvatarFromLeaderboard()) {
+      return;
+    }
+
+    const currentEntry = entries.find((entry) => this.isCurrentPlayerEntry(entry));
+    if (!currentEntry?.avatar) {
+      return;
+    }
+
+    const remoteAvatar = this.normalizeAvatarSelection(currentEntry.avatar, '', this.avatarAssetsLoaded);
+    const defaultAvatar = this.normalizeAvatarSelection(undefined, '', this.avatarAssetsLoaded);
+    if (this.areAvatarSelectionsEqual(remoteAvatar, defaultAvatar)) {
+      return;
+    }
+
+    this.playerAvatarSelection = remoteAvatar;
+    if (!this.avatarEditorOpen) {
+      this.draftAvatarSelection = { ...remoteAvatar };
+    }
+    window.localStorage.setItem(PLAYER_AVATAR_KEY, JSON.stringify(remoteAvatar));
+    this.syncAvatarMomentumWidgetAvatar();
+    this.renderAvatarDependentViews();
   }
 
   private resolveAvatarSelection(entry: LeaderboardEntry) {

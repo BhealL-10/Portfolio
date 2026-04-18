@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   deriveAvatarMomentumSpriteMetrics,
   resolveAvatarMomentumFrontAnimationKind,
+  resolveAvatarMomentumFrontFrameSequence,
+  resolveAvatarMomentumLandingImpulseStrength,
   resolveMomentumAuraBaseColor,
   resolveMomentumAuraRainbowOpacity,
   resolveAvatarMomentumWidgetGeometry
@@ -32,6 +34,10 @@ describe('AvatarMomentumHudWidget helpers', () => {
     expect(resolveAvatarMomentumFrontAnimationKind('perfect', false)).toBe('success');
   });
 
+  it('uses the longer readable front-frame sequence with a looping 2/3 middle before frame 4', () => {
+    expect(resolveAvatarMomentumFrontFrameSequence()).toEqual([0, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 3]);
+  });
+
   it('keeps the HUD placement scaled from the avatar placeholder geometry', () => {
     const geometry = resolveAvatarMomentumWidgetGeometry();
 
@@ -51,5 +57,20 @@ describe('AvatarMomentumHudWidget helpers', () => {
     expect(resolveMomentumAuraRainbowOpacity(0)).toBe(0);
     expect(resolveMomentumAuraRainbowOpacity(0.9)).toBeGreaterThan(0);
     expect(resolveMomentumAuraRainbowOpacity(1)).toBe(1);
+  });
+
+  it('scales landing impulse strength with grade quality and boosts twist slightly', () => {
+    expect(resolveAvatarMomentumLandingImpulseStrength('miss', false)).toBeLessThan(
+      resolveAvatarMomentumLandingImpulseStrength('good', false)
+    );
+    expect(resolveAvatarMomentumLandingImpulseStrength('good', false)).toBeLessThan(
+      resolveAvatarMomentumLandingImpulseStrength('super', false)
+    );
+    expect(resolveAvatarMomentumLandingImpulseStrength('super', false)).toBeLessThan(
+      resolveAvatarMomentumLandingImpulseStrength('perfect', false)
+    );
+    expect(resolveAvatarMomentumLandingImpulseStrength('perfect', true)).toBeGreaterThan(
+      resolveAvatarMomentumLandingImpulseStrength('perfect', false)
+    );
   });
 });

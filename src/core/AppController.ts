@@ -1753,9 +1753,12 @@ export class AppController {
     if (parallaxVisible && gameRuntime) {
       this.parallaxLayers.setMirrorMode(this.game.isMirrorModeActive());
       this.parallaxLayers.setCoverageAnchorX(this.game.getParallaxCoverageAnchorX());
+      this.parallaxLayers.setLandingFeedback(this.game.getParallaxLandingFeedback());
       this.parallaxLayers.setViewState(this.game.getParallaxViewState());
       this.parallaxLayers.setMusicReactiveState(musicReactiveState);
       this.parallaxLayers.setTransitionState(this.mode.is('game_transition') && !this.gameTransitionReturningToHub, this.gameTransitionProgress);
+    } else {
+      this.parallaxLayers.setLandingFeedback(null);
     }
     this.parallaxLayers.setVisible(parallaxVisible);
     this.parallaxLayers.update(deltaTime);

@@ -3,11 +3,13 @@ import type { LandingGrade } from './gameSessionTypes';
 
 const FRAME_COUNT = 4 as const;
 const AURA_FRAME_DURATION_MS = 150;
-const FRONT_FRAME_DURATION_MS = 110;
+const FRONT_FRAME_DURATION_MS = 138;
 const AURA_HIGHLIGHT_DECAY_MS = 1280;
 const MOMENTUM_RAINBOW_START = 0.82;
 const COLOR_LERP_ALPHA = 0.18;
 const OPACITY_LERP_ALPHA = 0.16;
+const LANDING_IMPULSE_DURATION_MS = 360;
+const FRONT_ANIMATION_SEQUENCE = [0, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 3] as const;
 
 const AURA_SPRITE_URL = new URL('../../assets/Avatar_asset/grade-sprite/auragradeavatar.png', import.meta.url).href;
 const FAIL_SPRITE_URL = new URL('../../assets/Avatar_asset/grade-sprite/gradeavatarfailsprite.png', import.meta.url).href;
@@ -177,6 +179,22 @@ export function resolveMomentumAuraRainbowOpacity(momentumGauge: number) {
   return smoothstep(MOMENTUM_RAINBOW_START, 1, momentumGauge);
 }
 
+export function resolveAvatarMomentumFrontFrameSequence() {
+  return [...FRONT_ANIMATION_SEQUENCE];
+}
+
+export function resolveAvatarMomentumLandingImpulseStrength(grade: LandingGrade, twist: boolean) {
+  const baseStrength =
+    grade === 'miss'
+      ? 0.075
+      : grade === 'good'
+        ? 0.105
+        : grade === 'super'
+          ? 0.13
+          : 0.16;
+  return baseStrength + (twist ? 0.018 : 0);
+}
+
 export function resolveAvatarMomentumWidgetGeometry(): AvatarMomentumWidgetGeometry {
   const scale = HUD_BAR_LAYOUT.avatarSize / BODY_LAYOUT.avatarSize;
   const widgetWidth = BODY_LAYOUT.frameWidth * scale;
@@ -245,6 +263,8 @@ export class AvatarMomentumHudWidget {
   private rainbowOpacity = 0;
   private highlightOpacity = 0.22;
   private highlightStartedAt = -AURA_HIGHLIGHT_DECAY_MS;
+  private landingImpulseStartedAt = -LANDING_IMPULSE_DURATION_MS;
+  private landingImpulseStrength = 0;
 
   constructor() {
     this.element = document.createElement('div');
@@ -316,17 +336,27 @@ export class AvatarMomentumHudWidget {
         kind: resolveAvatarMomentumFrontAnimationKind(payload.landingFeedback.grade, payload.landingFeedback.twist),
         startedAt: now
       };
+      this.landingImpulseStartedAt = now;
+      this.landingImpulseStrength = resolveAvatarMomentumLandingImpulseStrength(
+        payload.landingFeedback.grade,
+        payload.landingFeedback.twist
+      );
     }
 
     const auraFrame = Math.floor(now / AURA_FRAME_DURATION_MS) % FRAME_COUNT;
     this.applyAuraFrame(auraFrame);
     this.applyAuraVisuals(payload.momentumGauge, now);
+    this.applyLandingImpulse(now);
 
     if (this.frontAnimation) {
       const elapsed = Math.max(0, now - this.frontAnimation.startedAt);
-      if (elapsed < FRAME_COUNT * FRONT_FRAME_DURATION_MS) {
-        const frameIndex = Math.min(FRAME_COUNT - 1, Math.floor(elapsed / FRONT_FRAME_DURATION_MS));
-        this.applyFrontFrame(frameIndex, this.frontAnimation.kind);
+      const totalDuration = FRONT_ANIMATION_SEQUENCE.length * FRONT_FRAME_DURATION_MS;
+      if (elapsed < totalDuration) {
+        const sequenceIndex = Math.min(
+          FRONT_ANIMATION_SEQUENCE.length - 1,
+          Math.floor(elapsed / FRONT_FRAME_DURATION_MS)
+        );
+        this.applyFrontFrame(FRONT_ANIMATION_SEQUENCE[sequenceIndex]!, this.frontAnimation.kind);
         return;
       }
       this.frontAnimation = null;
@@ -409,5 +439,19 @@ export class AvatarMomentumHudWidget {
     this.auraRainbowStrip.style.opacity = this.rainbowOpacity.toFixed(3);
     this.auraHighlightStrip.style.background = formatRgb(this.highlightAuraColor);
     this.auraHighlightStrip.style.opacity = this.highlightOpacity.toFixed(3);
+  }
+
+  private applyLandingImpulse(now: number) {
+    const elapsed = Math.max(0, now - this.landingImpulseStartedAt);
+    if (elapsed >= LANDING_IMPULSE_DURATION_MS || this.landingImpulseStrength <= 0.0001) {
+      this.element.style.transform = 'scale(1)';
+      return;
+    }
+
+    const progress = elapsed / LANDING_IMPULSE_DURATION_MS;
+    const envelope = Math.sin(progress * Math.PI);
+    const settle = 1 - progress * 0.18;
+    const scale = 1 + this.landingImpulseStrength * envelope * settle;
+    this.element.style.transform = `scale(${scale.toFixed(4)})`;
   }
 }

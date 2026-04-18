@@ -638,6 +638,8 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
   z-index: 3;
   overflow: hidden;
   contain: paint;
+  transform-origin: 50% 50%;
+  will-change: transform;
 }
 
 .game-hud__momentum-avatar-widget-layer {

@@ -2280,6 +2280,19 @@ export class GameSessionController {
     return this.getCameraPose().lookAt.x;
   }
 
+  getParallaxLandingFeedback() {
+    if (!this.landingFeedback) {
+      return null;
+    }
+
+    return {
+      serial: this.landingFeedback.serial,
+      grade: this.landingFeedback.grade,
+      twist: this.landingFeedback.twist,
+      progress: this.landingFeedback.progress
+    };
+  }
+
   getParallaxViewState() {
     const currentNode = this.state === 'portal_preview' ? this.getPortalPreviewNode() : this.getResolvedNode(this.attachedIndex);
     const milestoneView = currentNode.isGigantic && this.playerState !== 'airborne';

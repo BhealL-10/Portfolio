@@ -91,8 +91,8 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
 
   html[data-runtime-device='desktop'] .primaterie-portal__social {
     bottom: calc(var(--safe-bottom) + 14px);
-    width: 58px;
-    height: 58px;
+    width: 100px;
+    height: 100px;
   }
 
   html[data-runtime-device='desktop'] .primaterie-portal__actions {

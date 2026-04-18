@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { damp } from '../core/math';
 import type { MusicReactiveState } from '../game/GameAudioSystem';
+import type { LandingGrade } from '../game/gameSessionTypes';
 import type { ThemeMode } from '../types/content';
 import {
   PARALLAX_GLOBAL_Y_OFFSET_PX,
@@ -41,6 +42,13 @@ export interface ParallaxLayerViewState {
   isMilestoneView: boolean;
 }
 
+export interface ParallaxLandingFeedbackState {
+  serial: number;
+  grade: LandingGrade;
+  twist: boolean;
+  progress: number;
+}
+
 export class ParallaxLayerSystem {
   private readonly root = new THREE.Group();
   private readonly strips = new Map<LayerCategory, ParallaxStrip>();
@@ -75,6 +83,7 @@ export class ParallaxLayerSystem {
   private smoothedMelody = 0;
   private smoothedEnergy = 0;
   private smoothedMomentumRatio = 0;
+  private landingFeedback: ParallaxLandingFeedbackState | null = null;
   private hasPlayedLayerIntro = false;
   private introTransitionRequested = false;
   private introTransitionActive = false;
@@ -196,6 +205,10 @@ export class ParallaxLayerSystem {
     this.targetMelody = reactive.melodyIntensity;
     this.targetEnergy = reactive.overallEnergy;
     this.targetMomentumRatio = reactive.momentumRatio;
+  }
+
+  setLandingFeedback(feedback: ParallaxLandingFeedbackState | null) {
+    this.landingFeedback = feedback;
   }
 
   resetForRun(worldX = this.coverageInputX) {
@@ -390,7 +403,15 @@ export class ParallaxLayerSystem {
       bassIntensity: this.smoothedBass,
       midIntensity: this.smoothedMid,
       melodyIntensity: this.smoothedMelody,
-      overallEnergy: this.smoothedEnergy
+      overallEnergy: this.smoothedEnergy,
+      landingFeedback:
+        this.landingFeedback && this.landingFeedback.progress <= 0.24
+          ? {
+              serial: this.landingFeedback.serial,
+              grade: this.landingFeedback.grade,
+              twist: this.landingFeedback.twist
+            }
+          : null
     });
   }
 
