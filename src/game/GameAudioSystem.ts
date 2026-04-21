@@ -16,7 +16,8 @@ type BusKey = 'music' | 'feedback' | 'combat' | 'ambient';
 type LoopKey = 'blower' | 'glide' | 'on_shard';
 
 interface AudioSettings {
-  volume: number;
+  musicVolume: number;
+  sfxVolume: number;
   muted: boolean;
 }
 
@@ -191,6 +192,8 @@ export class GameAudioSystem {
   private readonly activeLoops = new Map<LoopKey, ActiveLoop>();
   private readonly sfxCooldownUntil = new Map<string, number>();
   private masterGain: GainNode | null = null;
+  private musicChannelGain: GainNode | null = null;
+  private sfxChannelGain: GainNode | null = null;
   private musicBusGain: GainNode | null = null;
   private feedbackBusGain: GainNode | null = null;
   private combatBusGain: GainNode | null = null;
@@ -208,8 +211,14 @@ export class GameAudioSystem {
   private musicPlaybackRate = 1;
   private musicTrackAnalysisElapsed = 0;
   private nextOrderedLoopIndex = 0;
-  private volume = this.readStoredVolume();
+  private musicVolume = this.readStoredChannelVolume('musicVolume');
+  private sfxVolume = this.readStoredChannelVolume('sfxVolume');
   private muted = this.readStoredMuted();
+
+  constructor() {
+    this.persistChannelVolume('musicVolume', this.musicVolume);
+    this.persistChannelVolume('sfxVolume', this.sfxVolume);
+  }
 
   onSettingsChange(listener: (settings: AudioSettings) => void) {
     this.settingsListeners.add(listener);
@@ -219,7 +228,8 @@ export class GameAudioSystem {
 
   getSettings(): AudioSettings {
     return {
-      volume: this.volume,
+      musicVolume: this.musicVolume,
+      sfxVolume: this.sfxVolume,
       muted: this.muted
     };
   }
@@ -278,9 +288,27 @@ export class GameAudioSystem {
   }
 
   setVolume(nextVolume: number) {
-    this.volume = clamp(nextVolume, 0, 1);
-    window.localStorage.setItem(AUDIO_STORAGE_KEYS.volume, this.volume.toFixed(3));
-    this.applyMasterGain();
+    const resolvedVolume = clamp(nextVolume, 0, 1);
+    this.musicVolume = resolvedVolume;
+    this.sfxVolume = resolvedVolume;
+    this.persistChannelVolume('musicVolume', resolvedVolume);
+    this.persistChannelVolume('sfxVolume', resolvedVolume);
+    this.applyMusicGain();
+    this.applySfxGain();
+    this.emitSettingsChange();
+  }
+
+  setMusicVolume(nextVolume: number) {
+    this.musicVolume = clamp(nextVolume, 0, 1);
+    this.persistChannelVolume('musicVolume', this.musicVolume);
+    this.applyMusicGain();
+    this.emitSettingsChange();
+  }
+
+  setSfxVolume(nextVolume: number) {
+    this.sfxVolume = clamp(nextVolume, 0, 1);
+    this.persistChannelVolume('sfxVolume', this.sfxVolume);
+    this.applySfxGain();
     this.emitSettingsChange();
   }
 
@@ -518,6 +546,8 @@ export class GameAudioSystem {
     }
     this.context = new AudioContext();
     this.masterGain = this.context.createGain();
+    this.musicChannelGain = this.context.createGain();
+    this.sfxChannelGain = this.context.createGain();
     this.musicBusGain = this.context.createGain();
     this.feedbackBusGain = this.context.createGain();
     this.combatBusGain = this.context.createGain();
@@ -526,11 +556,15 @@ export class GameAudioSystem {
     this.feedbackBusGain.gain.value = resolveAudioBusGain('feedback');
     this.combatBusGain.gain.value = resolveAudioBusGain('combat');
     this.ambientBusGain.gain.value = resolveAudioBusGain('ambient');
-    this.musicBusGain.connect(this.masterGain);
-    this.feedbackBusGain.connect(this.masterGain);
-    this.combatBusGain.connect(this.masterGain);
-    this.ambientBusGain.connect(this.masterGain);
+    this.musicBusGain.connect(this.musicChannelGain);
+    this.feedbackBusGain.connect(this.sfxChannelGain);
+    this.combatBusGain.connect(this.sfxChannelGain);
+    this.ambientBusGain.connect(this.sfxChannelGain);
+    this.musicChannelGain.connect(this.masterGain);
+    this.sfxChannelGain.connect(this.masterGain);
     this.masterGain.connect(this.context.destination);
+    this.applyMusicGain();
+    this.applySfxGain();
     this.applyMasterGain();
   }
 
@@ -560,14 +594,25 @@ export class GameAudioSystem {
   }
 
   private applyMasterGain() {
-    if (!this.masterGain || !this.context) {
+    this.applyGainNode(this.masterGain, this.muted ? 0 : AUDIO_GLOBAL_CONFIG.defaultMasterVolume);
+  }
+
+  private applyMusicGain() {
+    this.applyGainNode(this.musicChannelGain, this.musicVolume);
+  }
+
+  private applySfxGain() {
+    this.applyGainNode(this.sfxChannelGain, this.sfxVolume);
+  }
+
+  private applyGainNode(node: GainNode | null, value: number) {
+    if (!node || !this.context) {
       return;
     }
-    const nextValue = this.muted ? 0 : this.volume;
     const now = this.context.currentTime;
-    this.masterGain.gain.cancelScheduledValues(now);
-    this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-    this.masterGain.gain.linearRampToValueAtTime(nextValue, now + 0.05);
+    node.gain.cancelScheduledValues(now);
+    node.gain.setValueAtTime(node.gain.value, now);
+    node.gain.linearRampToValueAtTime(value, now + 0.05);
   }
 
   private emitSettingsChange() {
@@ -1111,12 +1156,25 @@ export class GameAudioSystem {
     return options[Math.floor(Math.random() * options.length)] ?? options[0] ?? '';
   }
 
-  private readStoredVolume() {
-    const rawStored = window.localStorage.getItem(AUDIO_STORAGE_KEYS.volume);
-    if (rawStored === null) {
+  private persistChannelVolume(channel: 'musicVolume' | 'sfxVolume', value: number) {
+    try {
+      window.localStorage.setItem(AUDIO_STORAGE_KEYS[channel], value.toFixed(3));
+    } catch {
+      // Ignore storage write failures and keep the in-memory value.
+    }
+  }
+
+  private readStoredChannelVolume(channel: 'musicVolume' | 'sfxVolume') {
+    const rawStored = window.localStorage.getItem(AUDIO_STORAGE_KEYS[channel]);
+    if (rawStored !== null) {
+      const stored = Number(rawStored);
+      return Number.isFinite(stored) ? clamp(stored, 0, 1) : AUDIO_GLOBAL_CONFIG.defaultMasterVolume;
+    }
+    const rawStoredLegacyVolume = window.localStorage.getItem(AUDIO_STORAGE_KEYS.volume);
+    if (rawStoredLegacyVolume === null) {
       return AUDIO_GLOBAL_CONFIG.defaultMasterVolume;
     }
-    const stored = Number(rawStored);
+    const stored = Number(rawStoredLegacyVolume);
     return Number.isFinite(stored) ? clamp(stored, 0, 1) : AUDIO_GLOBAL_CONFIG.defaultMasterVolume;
   }
 

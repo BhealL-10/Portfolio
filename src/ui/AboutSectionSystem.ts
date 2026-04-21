@@ -67,7 +67,6 @@ export class AboutSectionSystem {
         (link, index) => `
           <a class="about-layer__link about-layer__link--svg" data-shape="${String(((index + 1) % 4) + 2)}" href="${link.href}" target="${link.id === 'email' ? '_self' : '_blank'}" rel="noopener">
             <span class="about-layer__link-icon" aria-hidden="true">${CONTACT_LINK_ICONS[link.id]}</span>
-            <span class="about-layer__link-label">${link.label[language]}</span>
           </a>
         `
       )

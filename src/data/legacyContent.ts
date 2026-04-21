@@ -8,16 +8,20 @@ import { projectsMetadata } from '../../assets/js/data/projects_metadata.js';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import { projectTranslations } from '../../assets/js/data/translations.js';
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore
-import { SHARD_LOGOS_CONFIG } from '../../assets/js/config/shardLogosConfig.js';
-
 const defaultLogo = {
-  dark: '/assets/images/shared/branding/ape-prod-mark-dark.svg',
-  light: '/assets/images/shared/branding/ape-prod-mark-light.svg',
+  src: '/assets/images/shared/branding/ape-prod-mark-dark.svg',
   scale: 0.7,
   opacity: 1
 };
+
+const PROJECT_SHARD_IMAGES = [
+  '/assets/images/shared/branding/shardprojet1.png',
+  '/assets/images/shared/branding/shardprojet2.png',
+  '/assets/images/shared/branding/shardprojet3.png',
+  '/assets/images/shared/branding/shardprojet4.png',
+  '/assets/images/shared/branding/shardprojet5.png',
+  '/assets/images/shared/branding/shardprojet6.png'
+] as const;
 
 const categoryLabels: Record<string, LocalizedText> = {
   presentation: { fr: 'Présentation', en: 'Introduction' },
@@ -121,15 +125,12 @@ function buildFacet(
   };
 }
 
-function resolveLogoConfig(projectId: number) {
-  const config = SHARD_LOGOS_CONFIG as Record<string, Partial<typeof defaultLogo>>;
-  const entry = config[String(projectId)] || {};
-
+function resolveLogoConfig(_role: PortfolioProject['role'], order: number) {
+  const projectIndex = Math.max(0, order);
   return {
-    dark: entry.dark ? `/${entry.dark}` : defaultLogo.dark,
-    light: entry.light ? `/${entry.light}` : defaultLogo.light,
-    scale: typeof entry.scale === 'number' ? entry.scale : defaultLogo.scale,
-    opacity: typeof entry.opacity === 'number' ? entry.opacity : defaultLogo.opacity
+    src: PROJECT_SHARD_IMAGES[projectIndex] ?? defaultLogo.src,
+    scale: defaultLogo.scale,
+    opacity: defaultLogo.opacity
   };
 }
 
@@ -161,7 +162,7 @@ export const portfolioProjects: PortfolioProject[] = metadata.map((projectMeta, 
       fr: role === 'hint' ? 'INDICE' : frProject.title,
       en: role === 'hint' ? 'HINT' : enProject.title
     },
-    logo: resolveLogoConfig(projectMeta.id),
+    logo: resolveLogoConfig(role, index),
     facets:
       role === 'hint'
         ? ([
@@ -218,7 +219,7 @@ export const portfolioProjects: PortfolioProject[] = metadata.map((projectMeta, 
   };
 });
 
-const cinemaProject = portfolioProjects.find((project) => project.numericId === 4);
+const cinemaProject = portfolioProjects.find((project) => project.numericId === 3);
 if (cinemaProject) {
   cinemaProject.facets[0].media = {
     kind: 'youtube',
@@ -232,6 +233,25 @@ if (cinemaProject) {
       title: { fr: 'Mon premier court-metrage', en: 'My first short film' }
     },
     ...(cinemaProject.facets[0].assets ?? []).filter((asset) => !(asset.kind === 'site' && asset.href === cinemaProject.facets[0].links.video))
+  ];
+}
+
+const generativeAiProject = portfolioProjects.find((project) => project.numericId === 5);
+if (generativeAiProject) {
+  generativeAiProject.facets[1].media = {
+    kind: 'youtube',
+    embedUrl: 'https://www.youtube-nocookie.com/embed/3p0FSGJf2a8?start=487&rel=0&modestbranding=1&playsinline=1',
+    title: 'Video'
+  };
+  generativeAiProject.facets[1].assets = [
+    {
+      kind: 'youtube',
+      embedUrl: 'https://www.youtube-nocookie.com/embed/3p0FSGJf2a8?start=487&rel=0&modestbranding=1&playsinline=1',
+      title: { fr: 'Video', en: 'Video' }
+    },
+    ...(generativeAiProject.facets[1].assets ?? []).filter(
+      (asset) => !(asset.kind === 'site' && asset.href === generativeAiProject.facets[1].links.video)
+    )
   ];
 }
 

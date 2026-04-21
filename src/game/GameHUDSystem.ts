@@ -102,8 +102,20 @@ interface GameHUDCallbacks {
   onThemeToggle: () => void;
   onLanguageToggle: () => void;
   onAudioMuteToggle: () => void;
-  onAudioVolumeChange: (value: number) => void;
+  onAudioMusicVolumeChange: (value: number) => void;
+  onAudioSfxVolumeChange: (value: number) => void;
   onGameOverStatReveal: (record: boolean) => void;
+}
+
+type AudioChannel = 'music' | 'sfx';
+
+interface SettingsVolumeControl {
+  channel: AudioChannel;
+  button: HTMLButtonElement;
+  label: HTMLSpanElement;
+  value: HTMLSpanElement;
+  meter: HTMLSpanElement;
+  meterFill: HTMLSpanElement;
 }
 
 interface GameHUDPayload {
@@ -372,11 +384,7 @@ export class GameHUDSystem {
   private settingsLanguageButton: HTMLButtonElement;
   private settingsMuteButton: HTMLButtonElement;
   private settingsHelpButton: HTMLButtonElement;
-  private settingsVolumeLabel: HTMLSpanElement;
-  private settingsVolumeValue: HTMLSpanElement;
-  private settingsVolumeButton: HTMLButtonElement;
-  private settingsVolumeMeter: HTMLSpanElement;
-  private settingsVolumeMeterFill: HTMLSpanElement;
+  private readonly settingsVolumeControls = {} as Record<AudioChannel, SettingsVolumeControl>;
   private settingsFullscreenButton: HTMLButtonElement;
   private branchLayer: HTMLDivElement;
   private stashBar: HTMLDivElement;
@@ -453,7 +461,8 @@ export class GameHUDSystem {
   private stopObservingLocale: () => void = () => {};
   private readonly rewardBranchLayout = new RewardBranchLabelLayoutResolver();
   private audioMuted = false;
-  private audioVolume = 0.86;
+  private audioMusicVolume = 0.86;
+  private audioSfxVolume = 0.86;
   private lastScoreFeedSerial = 0;
   private readonly scoreFeedTimeouts = new Set<number>();
   private readonly helpPagesCache = new Map<string, string[]>();
@@ -466,7 +475,7 @@ export class GameHUDSystem {
   private helpAutoOpenedThisSession = false;
   private helpFirstRunLocked = false;
   private readonly helpVisitedPages = new Set<number>();
-  private volumeDragPointerId: number | null = null;
+  private volumeDragState: { channel: AudioChannel; pointerId: number } | null = null;
   private lastFullscreenTouchAt = 0;
   private renderedLeaderboardEntries: Array<LeaderboardEntry | null> = [];
   private leaderboardEntriesCache: LeaderboardEntry[] = [];
@@ -552,12 +561,19 @@ export class GameHUDSystem {
           <button type="button" data-settings-theme></button>
           <button type="button" data-settings-fullscreen class="mobile-only"></button>
           <button type="button" data-settings-mute></button>
-          <button type="button" class="game-hud__settings-volume" data-settings-volume>
-            <span class="game-hud__settings-volume-copy" data-settings-volume-label></span>
-            <span class="game-hud__settings-volume-meter" data-settings-volume-meter aria-hidden="true">
+          <button type="button" class="game-hud__settings-volume" data-settings-volume="music">
+            <span class="game-hud__settings-volume-copy" data-settings-volume-label="music"></span>
+            <span class="game-hud__settings-volume-meter" data-settings-volume-meter="music" aria-hidden="true">
               <span class="game-hud__settings-volume-meter-fill"></span>
             </span>
-            <strong class="game-hud__settings-volume-value" data-settings-volume-value>86%</strong>
+            <strong class="game-hud__settings-volume-value" data-settings-volume-value="music">86%</strong>
+          </button>
+          <button type="button" class="game-hud__settings-volume" data-settings-volume="sfx">
+            <span class="game-hud__settings-volume-copy" data-settings-volume-label="sfx"></span>
+            <span class="game-hud__settings-volume-meter" data-settings-volume-meter="sfx" aria-hidden="true">
+              <span class="game-hud__settings-volume-meter-fill"></span>
+            </span>
+            <strong class="game-hud__settings-volume-value" data-settings-volume-value="sfx">86%</strong>
           </button>
         </div>
       </div>
@@ -720,11 +736,8 @@ export class GameHUDSystem {
     this.settingsThemeButton = this.element.querySelector<HTMLButtonElement>('[data-settings-theme]')!;
     this.settingsLanguageButton = this.element.querySelector<HTMLButtonElement>('[data-settings-language]')!;
     this.settingsMuteButton = this.element.querySelector<HTMLButtonElement>('[data-settings-mute]')!;
-    this.settingsVolumeLabel = this.element.querySelector<HTMLSpanElement>('[data-settings-volume-label]')!;
-    this.settingsVolumeValue = this.element.querySelector<HTMLSpanElement>('[data-settings-volume-value]')!;
-    this.settingsVolumeButton = this.element.querySelector<HTMLButtonElement>('[data-settings-volume]')!;
-    this.settingsVolumeMeter = this.element.querySelector<HTMLSpanElement>('[data-settings-volume-meter]')!;
-    this.settingsVolumeMeterFill = this.element.querySelector<HTMLSpanElement>('.game-hud__settings-volume-meter-fill')!;
+    this.settingsVolumeControls.music = this.createSettingsVolumeControl('music');
+    this.settingsVolumeControls.sfx = this.createSettingsVolumeControl('sfx');
     this.settingsFullscreenButton = this.element.querySelector<HTMLButtonElement>('[data-settings-fullscreen]')!;
     this.branchLayer = this.element.querySelector<HTMLDivElement>('.game-hud__branch-layer')!;
     this.stashBar = this.element.querySelector<HTMLDivElement>('.game-hud__stash')!;
@@ -798,7 +811,8 @@ export class GameHUDSystem {
     this.settingsThemeButton.setAttribute('data-guide-hover', 'game-settings-theme');
     this.settingsLanguageButton.setAttribute('data-guide-hover', 'game-settings-language');
     this.settingsMuteButton.setAttribute('data-guide-hover', 'game-settings-mute');
-    this.settingsVolumeButton.setAttribute('data-guide-hover', 'game-settings-volume');
+    this.settingsVolumeControls.music.button.setAttribute('data-guide-hover', 'game-settings-volume');
+    this.settingsVolumeControls.sfx.button.setAttribute('data-guide-hover', 'game-settings-volume');
     this.settingsFullscreenButton.setAttribute('data-guide-hover', 'game-settings-fullscreen');
     this.landingFeedbackDisplay = new LandingGradeDisplay();
     this.element.appendChild(this.landingFeedbackDisplay.element);
@@ -885,38 +899,49 @@ export class GameHUDSystem {
       }
       void this.toggleFullscreen();
     });
-    const updateVolumeFromPointer = (clientX: number) => {
-      const rect = this.settingsVolumeMeter.getBoundingClientRect();
+    const updateVolumeFromPointer = (channel: AudioChannel, clientX: number) => {
+      const control = this.settingsVolumeControls[channel];
+      const rect = control.meter.getBoundingClientRect();
       if (rect.width <= 0) {
         return;
       }
       const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-      this.audioVolume = ratio;
-      callbacks.onAudioVolumeChange(ratio);
+      if (channel === 'music') {
+        this.audioMusicVolume = ratio;
+        callbacks.onAudioMusicVolumeChange(ratio);
+      } else {
+        this.audioSfxVolume = ratio;
+        callbacks.onAudioSfxVolumeChange(ratio);
+      }
       this.renderAudioControls();
     };
-    this.settingsVolumeButton.addEventListener('pointerdown', (event) => {
-      this.volumeDragPointerId = event.pointerId;
-      this.settingsVolumeButton.setPointerCapture(event.pointerId);
-      updateVolumeFromPointer(event.clientX);
-    });
-    this.settingsVolumeButton.addEventListener('pointermove', (event) => {
-      if (this.volumeDragPointerId !== event.pointerId) {
-        return;
-      }
-      updateVolumeFromPointer(event.clientX);
-    });
-    const releaseVolumePointer = (event: PointerEvent) => {
-      if (this.volumeDragPointerId !== event.pointerId) {
-        return;
-      }
-      this.settingsVolumeButton.releasePointerCapture(event.pointerId);
-      this.volumeDragPointerId = null;
+    const bindVolumePointerEvents = (channel: AudioChannel) => {
+      const control = this.settingsVolumeControls[channel];
+      control.button.addEventListener('pointerdown', (event) => {
+        this.volumeDragState = { channel, pointerId: event.pointerId };
+        control.button.setPointerCapture(event.pointerId);
+        updateVolumeFromPointer(channel, event.clientX);
+      });
+      control.button.addEventListener('pointermove', (event) => {
+        if (this.volumeDragState?.pointerId !== event.pointerId || this.volumeDragState.channel !== channel) {
+          return;
+        }
+        updateVolumeFromPointer(channel, event.clientX);
+      });
+      const releaseVolumePointer = (event: PointerEvent) => {
+        if (this.volumeDragState?.pointerId !== event.pointerId || this.volumeDragState.channel !== channel) {
+          return;
+        }
+        control.button.releasePointerCapture(event.pointerId);
+        this.volumeDragState = null;
+      };
+      control.button.addEventListener('pointerup', releaseVolumePointer);
+      control.button.addEventListener('pointercancel', releaseVolumePointer);
     };
-    this.settingsVolumeButton.addEventListener('pointerup', releaseVolumePointer);
+    bindVolumePointerEvents('music');
+    bindVolumePointerEvents('sfx');
     document.addEventListener('fullscreenchange', this.handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', this.handleFullscreenChange);
-    this.settingsVolumeButton.addEventListener('pointercancel', releaseVolumePointer);
     this.helpPrevButton.addEventListener('click', () => this.setHelpPage(this.helpPageIndex - 1));
     this.helpNextButton.addEventListener('click', () => this.setHelpPage(this.helpPageIndex + 1));
     this.helpCloseButton.addEventListener('click', () => this.requestCloseHelp());
@@ -1200,6 +1225,23 @@ export class GameHUDSystem {
     return this.avatarAssetsPromise;
   }
 
+  private createSettingsVolumeControl(channel: AudioChannel): SettingsVolumeControl {
+    const button = this.element.querySelector<HTMLButtonElement>(`[data-settings-volume="${channel}"]`)!;
+    const label = this.element.querySelector<HTMLSpanElement>(`[data-settings-volume-label="${channel}"]`)!;
+    const value = this.element.querySelector<HTMLSpanElement>(`[data-settings-volume-value="${channel}"]`)!;
+    const meter = this.element.querySelector<HTMLSpanElement>(`[data-settings-volume-meter="${channel}"]`)!;
+    const meterFill = meter.querySelector<HTMLSpanElement>('.game-hud__settings-volume-meter-fill')!;
+    return { channel, button, label, value, meter, meterFill };
+  }
+
+  private getAudioChannelLabel(channel: AudioChannel) {
+    return channel === 'music' ? this.i18n.t('gameMusic') : this.i18n.t('gameSoundEffects');
+  }
+
+  private getAudioChannelVolume(channel: AudioChannel) {
+    return channel === 'music' ? this.audioMusicVolume : this.audioSfxVolume;
+  }
+
   private ensureLeaderboardLoaded(options?: { rerender?: boolean; forceRefresh?: boolean }) {
     if (this.leaderboardLoaded && !options?.forceRefresh && !options?.rerender) {
       return Promise.resolve();
@@ -1219,8 +1261,9 @@ export class GameHUDSystem {
     return this.leaderboardLoadPromise;
   }
 
-  setAudioControls(settings: { volume: number; muted: boolean }) {
-    this.audioVolume = Math.min(1, Math.max(0, settings.volume));
+  setAudioControls(settings: { musicVolume: number; sfxVolume: number; muted: boolean }) {
+    this.audioMusicVolume = Math.min(1, Math.max(0, settings.musicVolume));
+    this.audioSfxVolume = Math.min(1, Math.max(0, settings.sfxVolume));
     this.audioMuted = settings.muted;
     this.renderAudioControls();
   }
@@ -1267,7 +1310,9 @@ export class GameHUDSystem {
     const fillIntervalMs = 120;
     const fillPhase = Math.floor(performance.now() / fillIntervalMs) % 4;
     this.momentumShell.style.setProperty('--momentum-frame', String(fillPhase));
-    this.settingsVolumeMeterFill.style.setProperty('--sound-ui-frame', String(this.audioMuted ? 0 : fillPhase));
+    Object.values(this.settingsVolumeControls).forEach((control) => {
+      control.meterFill.style.setProperty('--sound-ui-frame', String(this.audioMuted ? 0 : fillPhase));
+    });
     this.avatarMomentumWidget.update({
       momentumGauge: payload.momentumGauge,
       landingFeedback: payload.landingFeedback
@@ -2093,13 +2138,17 @@ export class GameHUDSystem {
     this.settingsMuteButton.innerHTML = this.audioMuted
       ? `<img class="game-hud__settings-sound-off-icon" src="${SOUND_BUTTON_ASSETS.off[theme]}" alt="" />`
       : `<img class="game-hud__settings-sound-on-icon" src="${SOUND_BUTTON_ASSETS.on[theme]}" alt="" />`;
-    this.settingsVolumeLabel.textContent = '';
-    this.settingsVolumeValue.textContent = '';
-    this.settingsVolumeButton.setAttribute('aria-label', this.i18n.t('gameAudio'));
-    this.settingsVolumeButton.style.setProperty('--sound-volume-ratio', this.audioVolume.toFixed(3));
-    this.settingsVolumeMeter.style.setProperty('--sound-ui-sprite', `url('${SOUND_BUTTON_ASSETS.sprite}')`);
-    this.settingsVolumeMeterFill.style.setProperty('--sound-ui-sprite', `url('${SOUND_BUTTON_ASSETS.sprite}')`);
-    this.settingsVolumeMeter.classList.toggle('is-muted', this.audioMuted);
+    Object.values(this.settingsVolumeControls).forEach((control) => {
+      const label = this.getAudioChannelLabel(control.channel);
+      const volume = this.getAudioChannelVolume(control.channel);
+      control.label.textContent = label;
+      control.value.textContent = '';
+      control.button.setAttribute('aria-label', `${label} ${Math.round(volume * 100)}%`);
+      control.button.style.setProperty('--sound-volume-ratio', volume.toFixed(3));
+      control.meter.style.setProperty('--sound-ui-sprite', `url('${SOUND_BUTTON_ASSETS.sprite}')`);
+      control.meterFill.style.setProperty('--sound-ui-sprite', `url('${SOUND_BUTTON_ASSETS.sprite}')`);
+      control.meter.classList.toggle('is-muted', this.audioMuted);
+    });
   }
 
   private renderAchievementsButton() {

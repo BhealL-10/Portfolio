@@ -305,8 +305,12 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
   transition-delay: 260ms;
 }
 
-.game-hud__panel.is-settings-open .game-hud__settings-grid > .game-hud__settings-volume {
+.game-hud__panel.is-settings-open .game-hud__settings-grid > .game-hud__settings-volume[data-settings-volume='music'] {
   transition-delay: 300ms;
+}
+
+.game-hud__panel.is-settings-open .game-hud__settings-grid > .game-hud__settings-volume[data-settings-volume='sfx'] {
+  transition-delay: 340ms;
 }
 
 .game-hud__panel.is-settings-open {
@@ -798,8 +802,9 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
   min-height: 32px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
   align-items: center;
-  gap: 0;
+  gap: 4px;
   width: 100%;
   padding: 6px 8px;
   border-radius: 12px;
@@ -811,7 +816,16 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
   touch-action: none;
 }
 
-.game-hud__settings-volume-copy,
+.game-hud__settings-volume-copy {
+  display: block;
+  justify-self: center;
+  font-size: 0.62rem;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--overlay-copy-muted);
+}
+
 .game-hud__settings-volume-value {
   display: none;
 }

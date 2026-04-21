@@ -100,7 +100,7 @@ export const projectTranslations = {
       facettes: [
         {
           category: "business",
-          longDescription: "Création du site web et de l’identité visuelle pour une entreprise de nettoyage. Direction : symbole validé, nature, propreté, écologique, confiance. J’ai réalisé : design, logo, site complet.",
+          longDescription: " Création du site web et de l’identité visuelle pour une entreprise de nettoyage. V-propreté.net Direction : symbole validé, nature, propreté, écologique, confiance. J’ai réalisé : design, logo, site complet.",
           technologies: ["Identité Visuelle", "Design Web", "Logo", "Confiance", "Écologie"]
         },
         {

@@ -354,7 +354,8 @@ export class AppController {
           onThemeToggle: () => this.theme.toggle(),
           onLanguageToggle: () => this.i18n.toggle(),
           onAudioMuteToggle: () => audio.toggleMute(),
-          onAudioVolumeChange: (value) => audio.setVolume(value),
+          onAudioMusicVolumeChange: (value) => audio.setMusicVolume(value),
+          onAudioSfxVolumeChange: (value) => audio.setSfxVolume(value),
           onGameOverStatReveal: (record) => {
             audio.handleEvent({ type: 'land', kind: 'reward' });
             if (record) {
@@ -2307,8 +2308,20 @@ export class AppController {
         return window.localStorage.getItem(GAME_HELP_TUTORIAL_COMPLETED_KEY) === '1';
       }
       const muted = window.localStorage.getItem(AUDIO_STORAGE_KEYS.muted) === '1';
-      const volume = Number.parseFloat(window.localStorage.getItem(AUDIO_STORAGE_KEYS.volume) ?? '1');
-      return !muted && Number.isFinite(volume) && volume > 0.01;
+      const musicVolume = Number.parseFloat(
+        window.localStorage.getItem(AUDIO_STORAGE_KEYS.musicVolume)
+          ?? window.localStorage.getItem(AUDIO_STORAGE_KEYS.volume)
+          ?? '1'
+      );
+      const sfxVolume = Number.parseFloat(
+        window.localStorage.getItem(AUDIO_STORAGE_KEYS.sfxVolume)
+          ?? window.localStorage.getItem(AUDIO_STORAGE_KEYS.volume)
+          ?? '1'
+      );
+      return !muted && (
+        (Number.isFinite(musicVolume) && musicVolume > 0.01)
+        || (Number.isFinite(sfxVolume) && sfxVolume > 0.01)
+      );
     } catch {
       return false;
     }

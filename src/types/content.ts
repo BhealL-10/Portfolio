@@ -48,8 +48,7 @@ export interface PortfolioProject {
   date: string;
   title: LocalizedText;
   logo: {
-    dark: string;
-    light: string;
+    src: string;
     scale: number;
     opacity: number;
   };

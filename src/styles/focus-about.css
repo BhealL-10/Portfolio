@@ -383,8 +383,7 @@
   padding: 18px 20px;
   border: 1px solid color-mix(in srgb, var(--accent-color) 28%, rgb(var(--color-fg-rgb) / 0.18));
   background:
-    linear-gradient(160deg, rgb(var(--color-fg-rgb) / 0.98), rgb(var(--color-fg-rgb) / 0.92)),
-    linear-gradient(135deg, rgb(var(--color-bg-rgb) / 0.04), transparent 54%);
+    linear-gradient(256deg, rgb(94 88 78 / 98%), rgb(var(--color-fg-rgb) / 0.92)), linear-gradient(135deg, rgb(var(--color-bg-rgb) / 0.04), transparent 54%);
   box-shadow: 0 22px 48px rgb(var(--color-fg-rgb) / 0.08);
 }
 
@@ -516,14 +515,16 @@ html[data-theme='dark'] .about-layer__submit::before {
 }
 
 .about-layer__link--svg {
-  min-width: 128px;
-  padding-inline: 20px;
+  width: 72px;
+  min-width: 72px;
+  min-height: 72px;
+  padding: 0;
   background-image: var(--hud-shape-5);
 }
 
 .about-layer__link-icon {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -534,11 +535,6 @@ html[data-theme='dark'] .about-layer__submit::before {
   display: block;
   width: 100%;
   height: 100%;
-}
-
-.about-layer__link-label {
-  position: relative;
-  top: 1px;
 }
 
 .focus-layer__thumb {

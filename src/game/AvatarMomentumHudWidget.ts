@@ -367,8 +367,14 @@ export class AvatarMomentumHudWidget {
 
   private primeSpriteMetrics() {
     const registerSprite = (key: SpriteAssetKey, src: string) => {
-      const image = getSharedImageAsset(src, {
-        onLoad: () => this.captureSpriteMetrics(key, image)
+      let image: HTMLImageElement | null = null;
+      image = getSharedImageAsset(src, {
+        onLoad: () => {
+          if (!image) {
+            return;
+          }
+          this.captureSpriteMetrics(key, image);
+        }
       });
       if (image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
         this.captureSpriteMetrics(key, image);

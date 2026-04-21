@@ -12,13 +12,13 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/portfolio/projects/ape-prod/cover.png"],
+        images: ["assets/images/portfolio/projects/ape-prod/cover2.png"],
         links: { github: null, demo: null, video: null },
         featured: true
       },
       { 
         id: 2,
-        images: [],
+        images: ["assets/images/portfolio/projects/ape-prod/cover.png"],
         links: { github: "https://github.com/orgs/ApeProd", demo: null, video: null },
         featured: false
       },
@@ -38,19 +38,19 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/portfolio/projects/tono-discord-bot/cover.png"],
-        links: { github: "https://github.com/bheall/Tono_Discord_Bot", demo: null, video: null },
+        images: ["assets/images/portfolio/projects/tono-discord-bot/coverstick1.png"],
+        links: { github: null, demo: null, video: null },
         featured: true
       },
       { 
         id: 2,
-        images: [],
+        images: ["assets/images/portfolio/projects/tono-discord-bot/coverstick2.png"],
         links: { github: null, demo: null, video: null },
         featured: false
       },
       { 
         id: 3,
-        images: [],
+        images: ["assets/images/portfolio/projects/tono-discord-bot/coverstick3.png"],
         links: { github: null, demo: null, video: null },
         featured: false
       }
@@ -64,19 +64,19 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/portfolio/projects/davinci-resolve/cover.png"],
+        images: [],
         links: { github: null, demo: null, video: null },
         featured: true
       },
       { 
         id: 2,
-        images: [],
+        images: ["assets/images/portfolio/projects/davinci-resolve/poweroger2.png"],
         links: { github: null, demo: null, video: null },
         featured: false
       },
       { 
         id: 3,
-        images: [],
+        images: ["assets/images/portfolio/projects/davinci-resolve/poweroger3.png"],
         links: { github: null, demo: null, video: null },
         featured: false
       }
@@ -90,19 +90,19 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: [],
+        images: ["assets/images/portfolio/projects/game/game1.png"],
         links: { github: null, demo: null, video: null },
         featured: true
       },
       { 
         id: 2,
-        images: [],
+        images: ["assets/images/portfolio/projects/game/game2.png"],
         links: { github: null, demo: null, video: null },
         featured: false
       },
       { 
         id: 3,
-        images: [],
+        images: ["assets/images/portfolio/projects/game/game3.png"],
         links: { github: null, demo: null, video: null },
         featured: false
       }
@@ -116,19 +116,19 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/portfolio/projects/generative-ai/cover.png"],
-        links: { github: null, demo: null, video: null },
+        images: ["assets/images/portfolio/projects/generative-ai/collab1.png"],
+        links: { github: null, demo: "https://xn--v-propret-j4a.net/", video: null },
         featured: true
       },
       { 
         id: 2,
         images: [],
-        links: { github: null, demo: null, video: null },
+        links: { github: null, demo: null, video: "https://www.youtube.com/watch?v=3p0FSGJf2a8&t=487s" },
         featured: false
       },
       { 
         id: 3,
-        images: [],
+        images: ["assets/images/portfolio/projects/generative-ai/collab3.png"],
         links: { github: null, demo: null, video: null },
         featured: false
       }
@@ -142,19 +142,19 @@ export const projectsMetadata = [
     facettes: [
       { 
         id: 1,
-        images: ["assets/images/portfolio/projects/discord-bots/cover.png"],
+        images: ["assets/images/portfolio/projects/discord-bots/project1.png"],
         links: { github: null, demo: null, video: null },
         featured: true
       },
       { 
         id: 2,
-        images: [],
+        images: ["assets/images/portfolio/projects/discord-bots/project2.png"],
         links: { github: null, demo: null, video: null },
         featured: false
       },
       { 
         id: 3,
-        images: [],
+        images: ["assets/images/portfolio/projects/discord-bots/project3.png"],
         links: { github: null, demo: null, video: null },
         featured: false
       }

@@ -81,8 +81,8 @@ const GUIDE_ANIMATIONS: Record<
 };
 
 const DEFAULT_SPEAKER_TITLE = {
-  fr: 'Le guide',
-  en: 'The guide'
+  fr: 'Stickmankey',
+  en: 'Stickmankey'
 } satisfies LocalizedText;
 
 const VIEWPORT_MARGIN = 18;
@@ -494,8 +494,8 @@ function getSettingsHoverBody(item: 'entry' | 'help' | 'theme' | 'language' | 'f
       );
     case 'help':
       return loc(
-        'L’aide est là si tu veux revoir les bases sans que je te les récite en boucle.',
-        'Help is there if you want the basics again without me reciting them forever.'
+        'Regarde ces images de tutoriels qui m’ont pris des heures à faire... sniff...',
+        'Look at these tutorial images that took me hours... sniff...'
       );
     case 'theme':
       return loc('Là, tu changes l’ambiance du jeu.', 'That one changes the game’s mood.');
@@ -505,8 +505,8 @@ function getSettingsHoverBody(item: 'entry' | 'help' | 'theme' | 'language' | 'f
       return loc('Mode plein écran', 'Fullscreen mode');
     case 'mute':
       return loc(
-        'Coupe ou rends le son ici. Simple, net, sans me faire mimer le silence.',
-        'Cut or restore the sound there. Clean and simple, no need to make me mime silence.'
+        'Ah OUAIS !? Tu veux couper le son, tu n’as vraiment pas de goût mais bon, c’est pas grave...',
+        'Damn, you want to turn off the sound... ok, you don’t have a taste for it but that’s fine...'
       );
     case 'volume':
       return loc('La barre te laisse doser le son.', 'That bar lets you tune the sound.');
@@ -517,23 +517,23 @@ function getGameControlBody(item: 'left' | 'up' | 'right' | 'down'): LocalizedTe
   switch (item) {
     case 'left':
       return loc(
-        'Flèche gauche: le Wrapper te projette vers une shard sûre plus loin. Pratique pour couper court ou casser un choix de shop.',
-        'Left arrow: the Wrapper throws you to a safe shard farther ahead. Handy for cutting through danger or cancelling a shop choice.'
+        '🢀: le Wrapper te projette vers une shard sûre plus loin.',
+        '🢀: the Wrapper throws you to a safe shard farther ahead.'
       );
     case 'up':
       return loc(
-        'Flèche haute: elle ne sert qu’en l’air. Elle déclenche ton impulsion aérienne, ou un flap bonus si tu as encore des charges.',
-        'Up arrow only works in the air. It triggers your airborne impulse, or a bonus flap if you still have charges.'
+        '🢁: ne sert qu’en l’air. Elle déclenche tes impulsions aériennes',
+        '🢁: only works in the air. It triggers your airborne impulses'
       );
     case 'right':
       return loc(
-        'Flèche droite: le grappin attrape une shard ou certains ennemis du bas pendant le vol. Re-lance-la pour décrocher ou tirer ton sprint.',
-        'Right arrow: the grapple catches a shard or some lower enemies while you are flying. Press it again to release or finish the pull.'
+        '🢂: Le grappin attrape une shard et meme certains ennemis. Réappui pour relacher ou maintiens pour te rapprocher.',
+        '🢂: the grapple catches a shard and even some enemies. Press again to release or hold to move closer.'
       );
     case 'down':
       return loc(
-        'Flèche basse: sur une shard tu charges ton départ. En plein vol, si tu as le Souffleur, elle entretient ton boost.',
-        'Down arrow: on a shard it charges your launch. In mid-air, if you own the blower, it keeps your boost alive.'
+        '🢃 te permet de prendre de l’élan et de sauter quand tu relache, le boost fonctionne aussi dans les air avec le souffleur.',
+        '🢃 lets you gain speed and jump when you release it, the boost also works in the air with the blower.'
       );
   }
 }
@@ -544,56 +544,56 @@ function getHelpTopicCopy(topic: GuideHelpTopic) {
       return {
         title: loc('Miroir', 'Mirror'),
         body: loc(
-          'Le miroir n’est pas décoratif. Tapote-le plusieurs fois pour casser l’intro et ouvrir le portfolio.',
-          'The mirror is not decorative. Tap it a few times to crack the intro open and reveal the portfolio.'
+          'Entrer dans mon univers demande un minimum de curiosité.',
+          'Entering my world requires a minimum of curiosity.'
         )
       };
     case 'portfolio_navigation':
       return {
         title: loc('Navigation', 'Navigation'),
         body: loc(
-          'Survole un éclat pour sentir sa vibe. Clique pour entrer en focus. Depuis le focus, glisse ou utilise les flèches pour tourner autour du projet.',
-          'Hover a shard to feel its vibe. Click to focus it. Once inside, drag or use the arrow keys to rotate around the project.'
+          'Chaque sphere représente un projet.',
+          'Each shard represents a project.'
         )
       };
     case 'focus_zone':
       return {
         title: loc('Focus', 'Focus'),
         body: loc(
-          'Ici, chaque facette raconte un angle précis du projet. Le guide se cale en bas pour ne pas mâcher la scène.',
-          'Each facet here tells a specific angle of the project. The guide drops low so it does not chew up the scene.'
+          'Prend le temps de regarder les détails de chaque projet.',
+          'Take the time to look at the details of each project.'
         )
       };
     case 'slot_goal':
       return {
         title: loc('Fragments', 'Shards'),
         body: loc(
-          'Prends une shard et promène-la. La bonne place réagit quand tu approches. Une fois tout remis entre mes mains, la suite s’ouvre.',
-          'Grab a shard and move it around. The correct slot reacts when you get close. Put every shard back in my hands and the next step opens.'
+          'J’aime bien caché des petits secrets un peu partout.',
+          'I like to hide little secrets here and there.'
         )
       };
     case 'primaterie_hub':
       return {
         title: loc('Primaterie', 'Primaterie'),
         body: loc(
-          'La Primaterie sert de hub. Tu peux repartir vers le portfolio, lancer l’aventure, ou fouiller les accès Discord, Patreon, thème et langue.',
-          'The Primaterie is the hub. You can jump back to the portfolio, launch the adventure, or dig through Discord, Patreon, theme and language options.'
+          'La Primaterie ? encore une singerie de primate pour les primates.',
+          'The Primaterie ? yet another primate song for the primates.'
         )
       };
     case 'primaterie_contact':
       return {
         title: loc('Contacts', 'Contacts'),
         body: loc(
-          'Discord pour rejoindre le terrier, Patreon pour soutenir les projets, portfolio pour revoir les créations. Tout est là, tranquillement.',
-          'Discord to join the lair, Patreon to support the projects, portfolio to revisit the work. Everything is parked right there.'
+          'Contact moi sur Discord ou par mail',
+          'Contact me on Discord or by email'
         )
       };
     case 'game_rules':
       return {
         title: loc('Règles', 'Rules'),
         body: loc(
-          'Bas charge ton départ sur une shard. Haut déclenche une impulsion seulement en l’air. Gauche active le Wrapper, droite le grappin. L’idée, c’est de garder ton rythme sans te faire coincer.',
-          'Down charges your launch on a shard. Up only fires an airborne impulse while flying. Left uses the Wrapper, right uses the grapple. The trick is to keep your rhythm without getting pinned.'
+          'Maintien la touche 🢃 enfoncée pour charger ton départ sur une shard. 🢁 déclenche une impulsion seulement en l’air. 🢀 active le Wrapper, 🢂 pour le grappin. L’idée.',
+          'Hold 🢃 to charge your launch on a shard. 🢁 triggers an impulse only in the air. 🢀 activates the Wrapper, 🢂 for the grapple. That’s the idea.'
         )
       };
     case 'game_score_save':
@@ -608,24 +608,24 @@ function getHelpTopicCopy(topic: GuideHelpTopic) {
       return {
         title: loc('Réglages', 'Settings'),
         body: loc(
-          'Le panneau réglages permet de revoir l’aide, changer le thème, la langue, le plein écran et le son. Oui, même le volume dramatique.',
-          'The settings panel lets you replay help, switch theme, language, fullscreen and audio. Yes, even the dramatic volume.'
+          'Les réglages, c’est important. Surtout pour les primates sensibles comme toi.',
+          'Settings are important. Especially for sensitive primates like you.'
         )
       };
     case 'game_achievements':
       return {
         title: loc('Succès', 'Achievements'),
         body: loc(
-          'Les succès servent de mémoire méta. Tu peux filtrer, lire les conditions et récupérer les récompenses avatar liées à ta progression.',
-          'Achievements are the meta memory. You can filter them, read the conditions and collect the avatar rewards tied to your progress.'
+          'Deviens une légende de la Primaterie en complétant les succès. Certains sont bien cachés, à toi de les trouver.',
+          'Become a legend of the Primaterie by completing achievements. Some are well hidden, it’s up to you to find them.'
         )
       };
     case 'about_zone':
       return {
         title: loc('Outro', 'Outro'),
         body: loc(
-          'Cette zone sert à souffler un peu, lire le contexte et retrouver les infos utiles sans casser tout le flow du portfolio.',
-          'This area is here so you can breathe a little, read the context and recover the useful info without wrecking the portfolio flow.'
+          'Tant que tu es là, si tu veux en savoir plus sur moi, mes projets ou juste me dire coucou, tu peux me contacter ici.',
+          'While you are here, if you want to know more about me, my projects or just say hello, you can contact me here.'
         )
       };
   }
@@ -1181,7 +1181,7 @@ export class GuideBubbleSystem {
 
     switch (cue.type) {
       case 'intro_mirror_0':
-        return enqueue('intro-mirror-0', loc('Touche le miroir.', 'Touch the mirror.'), {
+        return enqueue('intro-mirror-0', loc('Hmm. en voila en autre !', 'Hmm. there it is again!'), {
           title: loc('Miroir', 'Mirror'),
           priority: 4,
           cooldownKey: 'guide:intro-mirror-stage-0-cooldown',
@@ -1194,7 +1194,7 @@ export class GuideBubbleSystem {
       case 'intro_mirror_first_click':
         return enqueue(
           'intro-mirror-first-click',
-          loc('Oui, comme ça. Continue, le miroir cède morceau par morceau.', 'Yes, like that. Keep going, the mirror gives way piece by piece.'),
+          loc('Je vois... Tes curieux toi ?', 'I see... you’re a curious one, aren’t you?'),
           {
             title: loc('Miroir', 'Mirror'),
             priority: 4,
@@ -1209,7 +1209,7 @@ export class GuideBubbleSystem {
       case 'intro_mirror_50':
         return enqueue(
           'intro-mirror-50',
-          loc('Moitié faite. Encore quelques impacts et tout s’ouvre.', 'Halfway there. A few more hits and everything opens up.'),
+          loc('Bon, tu ma l’air déterminé, et j’aime ça', 'Alright, you seem determined, and I like that'),
           {
             title: loc('Miroir', 'Mirror'),
             priority: 4,
@@ -1224,7 +1224,7 @@ export class GuideBubbleSystem {
       case 'intro_mirror_100':
         return enqueue(
           'intro-mirror-100',
-          loc('Parfait. Le passage est prêt.', 'Perfect. The way through is ready.'),
+          loc('Allez c’est décidé, je vais te laisser entrer dans mon monde.', 'Alright, it’s decided, I’ll let you enter my world.'),
           {
             title: loc('Miroir', 'Mirror'),
             priority: 5,
@@ -1240,8 +1240,8 @@ export class GuideBubbleSystem {
         return enqueue(
           'hub-arrival',
           loc(
-            'Bienvenue chez moi. J’ai rangé mes projets en éclats, donc forcément il faut fouiller un peu.',
-            'Welcome to my place. I sorted my projects into shards, so obviously you have to dig a little.'
+            'Bienvenue a toi Primate !',
+            'Welcome, Primate!'
           ),
           {
             title: loc('Entrée', 'Arrival'),

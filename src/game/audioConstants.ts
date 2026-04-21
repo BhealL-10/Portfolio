@@ -1,5 +1,7 @@
 export const AUDIO_STORAGE_KEYS = {
   volume: 'portfolio-game-audio-volume-v1',
+  musicVolume: 'portfolio-game-audio-music-volume-v2',
+  sfxVolume: 'portfolio-game-audio-sfx-volume-v2',
   muted: 'portfolio-game-audio-muted-v1'
 } as const;
 

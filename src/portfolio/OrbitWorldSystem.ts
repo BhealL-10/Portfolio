@@ -1973,7 +1973,7 @@ export class OrbitWorldSystem {
   }
 
   private createLogoPlanes(entity: ShardEntity) {
-    const texturePath = this.theme === 'dark' ? entity.project.logo.dark : entity.project.logo.light;
+    const texturePath = entity.project.logo.src;
     const planeSize = 1.7 * entity.project.logo.scale;
     const angles = [0, Math.PI * (2 / 3), Math.PI * (4 / 3)];
     const texture = getSharedTextureAsset(texturePath, {
@@ -2011,7 +2011,7 @@ export class OrbitWorldSystem {
   }
 
   private updateLogoTexture(entity: ShardEntity) {
-    const texturePath = this.theme === 'dark' ? entity.project.logo.dark : entity.project.logo.light;
+    const texturePath = entity.project.logo.src;
     const texture = getSharedTextureAsset(texturePath, {
       colorSpace: THREE.SRGBColorSpace,
       anisotropy: 4
@@ -2023,7 +2023,7 @@ export class OrbitWorldSystem {
   }
 
   private syncMiniLogoPlanes(entity: GameFieldEntity, project: PortfolioProject | null, opacity: number, scale: number) {
-    const texturePath = project ? (this.theme === 'dark' ? project.logo.dark : project.logo.light) : DEFAULT_MINI_LOGO_TEXTURE;
+    const texturePath = project?.logo.src ?? DEFAULT_MINI_LOGO_TEXTURE;
     if (entity.logoKey !== texturePath) {
       entity.logoKey = texturePath;
       const texture = getSharedTextureAsset(texturePath, {
