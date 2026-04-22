@@ -92,15 +92,15 @@ function isCooldownReady(ratio: number) {
   return ratio <= 0.001;
 }
 
-function resolveIndicatorTheme() {
+function resolveIndicatorTheme(): 'dark' | 'light' {
   return resolveDocumentTheme() === 'dark' ? 'light' : 'dark';
 }
 
-export function getMobileControlAsset(kind: keyof typeof MOBILE_CONTROL_ASSETS, theme = resolveIndicatorTheme()) {
+export function getMobileControlAsset(kind: keyof typeof MOBILE_CONTROL_ASSETS, theme: 'dark' | 'light' = resolveIndicatorTheme()) {
   return MOBILE_CONTROL_ASSETS[kind][theme];
 }
 
-export function getMobileChargeAsset(level: number, theme = resolveIndicatorTheme()) {
+export function getMobileChargeAsset(level: number, theme: 'dark' | 'light' = resolveIndicatorTheme()) {
   return MOBILE_CHARGE_ASSETS[Math.max(0, Math.min(MOBILE_CHARGE_ASSETS.length - 1, level - 1))][theme];
 }
 

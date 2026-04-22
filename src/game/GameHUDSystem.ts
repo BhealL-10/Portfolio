@@ -1,8 +1,16 @@
 import type { RogueliteItemKind, RogueliteItemOffer, RogueliteRarity } from './roguelite';
 import { getItemById, rarityLabels, rogueliteItems } from './roguelite';
-import { drawImageIfReady, preloadImageAsset } from '../core/browserAssetCache';
+import { drawImageIfReady, preloadImageAsset, preloadImageAssetDetailed } from '../core/browserAssetCache';
 import { isMobileRuntime } from '../core/device';
-import { recordGameBootDiagnostic, recordGameBootDiagnosticError } from '../core/gameBootDiagnostics';
+import {
+  recordGameBootDiagnostic,
+  recordGameBootDiagnosticError,
+  recordGameBootStepFail,
+  recordGameBootStepOk,
+  recordGameBootStepStart,
+  runGameBootStep,
+  safeDebugWarn
+} from '../core/gameBootDiagnostics';
 import { I18nService } from '../ui/I18nService';
 import type { AcquisitionFeedback, GameOverCause, GamePlayerMotionState, LandingGrade } from './gameSessionTypes';
 import {
@@ -880,15 +888,28 @@ export class GameHUDSystem {
     this.achievementsButton.addEventListener('click', () => {
       this.toggleAchievements();
     });
-    this.mobileControls = new MobileControlsHud(
-      this.element.querySelector<HTMLDivElement>('.game-hud__mobile-controls-anchor')!,
-      {
-        teleport: this.i18n.current === 'fr' ? 'Téléporteur' : 'Teleporter',
-        boost: this.i18n.current === 'fr' ? 'Boost' : 'Boost',
-        grapple: this.i18n.current === 'fr' ? 'Grappin' : 'Grapple',
-        charge: this.i18n.current === 'fr' ? 'Charge' : 'Charge'
-      }
-    );
+    recordGameBootStepStart('mobile_controls_init', {
+      locale: this.i18n.current
+    });
+    try {
+      this.mobileControls = new MobileControlsHud(
+        this.element.querySelector<HTMLDivElement>('.game-hud__mobile-controls-anchor')!,
+        {
+          teleport: this.i18n.current === 'fr' ? 'Téléporteur' : 'Teleporter',
+          boost: this.i18n.current === 'fr' ? 'Boost' : 'Boost',
+          grapple: this.i18n.current === 'fr' ? 'Grappin' : 'Grapple',
+          charge: this.i18n.current === 'fr' ? 'Charge' : 'Charge'
+        }
+      );
+      recordGameBootStepOk('mobile_controls_init', {
+        locale: this.i18n.current
+      });
+    } catch (error) {
+      recordGameBootStepFail('mobile_controls_init', error, {
+        locale: this.i18n.current
+      });
+      throw error;
+    }
 
     this.exitButton.addEventListener('click', callbacks.onExit);
     this.restartButton.addEventListener('click', callbacks.onRestart);
@@ -1234,7 +1255,15 @@ export class GameHUDSystem {
       return pending;
     }
 
-    const request = this.preloadUiAssets(locale, theme)
+    const request = runGameBootStep(
+      'theme_language_asset_resolution',
+      () => this.preloadUiAssets(locale, theme),
+      {
+        locale,
+        theme,
+        stateKey
+      }
+    )
       .then(() => {
         this.uiAssetStatesReady.add(stateKey);
       })
@@ -1276,7 +1305,7 @@ export class GameHUDSystem {
       })
       .catch((error) => {
         this.helpPagesPromises.delete(cacheKey);
-        console.warn('[GameHUDSystem] Failed to load deferred help assets.', error);
+        safeDebugWarn('[GameHUDSystem] Failed to load deferred help assets.', error);
         return [];
       });
 
@@ -1307,7 +1336,7 @@ export class GameHUDSystem {
         return selectedPage;
       })
       .catch((error) => {
-        console.warn('[GameHUDSystem] Failed to preload a game over rule asset.', error);
+        safeDebugWarn('[GameHUDSystem] Failed to preload a game over rule asset.', error);
         return '';
       })
       .finally(() => {
@@ -1349,7 +1378,7 @@ export class GameHUDSystem {
       .catch((error) => {
         this.avatarAssetsPromise = null;
         recordGameBootDiagnosticError('game_hud_avatar_assets_failed', error);
-        console.warn('[GameHUDSystem] Failed to load deferred skins.', error);
+        safeDebugWarn('[GameHUDSystem] Failed to load deferred skins.', error);
       });
 
     return this.avatarAssetsPromise;
@@ -4343,7 +4372,16 @@ export class GameHUDSystem {
     const batchSize = isMobileRuntime() ? 12 : urls.length;
     for (let index = 0; index < urls.length; index += batchSize) {
       const batch = urls.slice(index, index + batchSize);
-      await Promise.all(batch.map((src) => preloadImageAsset(src)));
+      const results = await Promise.all(batch.map((src) => preloadImageAssetDetailed(src)));
+      const failed = results.filter((result) => !result.ok);
+      if (failed.length > 0) {
+        throw new Error(
+          `GameHUD preload failed for ${failed.length} asset(s): ${failed
+            .slice(0, 6)
+            .map((result) => result.src)
+            .join(', ')}`
+        );
+      }
     }
   }
 }
