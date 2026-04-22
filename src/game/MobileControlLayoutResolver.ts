@@ -77,6 +77,7 @@ interface MobileControlDescriptor {
   iconSrc: string;
   labelKey: MobileControlLabelKey;
   dimmed: boolean;
+  unavailable?: boolean;
   active: boolean;
   depleted?: boolean;
   cooldownRatio: number | null;
@@ -92,7 +93,7 @@ function isCooldownReady(ratio: number) {
 }
 
 function resolveIndicatorTheme() {
-  return resolveDocumentTheme();
+  return resolveDocumentTheme() === 'dark' ? 'light' : 'dark';
 }
 
 export function getMobileControlAsset(kind: keyof typeof MOBILE_CONTROL_ASSETS, theme = resolveIndicatorTheme()) {
@@ -103,13 +104,14 @@ export function getMobileChargeAsset(level: number, theme = resolveIndicatorThem
   return MOBILE_CHARGE_ASSETS[Math.max(0, Math.min(MOBILE_CHARGE_ASSETS.length - 1, level - 1))][theme];
 }
 
-function createHiddenDescriptor(kind: MobileControlDescriptor['kind'], labelKey: MobileControlLabelKey, iconSrc: string): MobileControlDescriptor {
+function createUnavailableDescriptor(kind: MobileControlDescriptor['kind'], labelKey: MobileControlLabelKey, iconSrc: string): MobileControlDescriptor {
   return {
-    visible: false,
+    visible: true,
     kind,
     iconSrc,
     labelKey,
-    dimmed: false,
+    dimmed: true,
+    unavailable: true,
     active: false,
     depleted: false,
     cooldownRatio: null
@@ -134,7 +136,7 @@ export class MobileControlLayoutResolver {
             active: input.mobile.teleportActive || teleportReady,
             cooldownRatio: input.mobile.teleportCooldownRatio
           }
-        : createHiddenDescriptor('teleport', 'teleport', getMobileControlAsset('teleport', theme)),
+        : createUnavailableDescriptor('teleport', 'teleport', getMobileControlAsset('teleport', theme)),
       up: input.mobile.hasAirAction
         ? {
             visible: true,
@@ -148,7 +150,7 @@ export class MobileControlLayoutResolver {
             depleted: input.mobile.airActionDepleted,
             cooldownRatio: null
           }
-        : createHiddenDescriptor('charge', 'charge', getMobileChargeAsset(1, theme)),
+        : createUnavailableDescriptor('charge', 'charge', getMobileChargeAsset(1, theme)),
       right: input.mobile.hasGrapple
         ? {
             visible: true,
@@ -159,7 +161,7 @@ export class MobileControlLayoutResolver {
             active: input.mobile.grappleActive || grappleReady,
             cooldownRatio: input.mobile.grappleCooldownRatio
           }
-        : createHiddenDescriptor('grapple', 'grapple', getMobileControlAsset('grapple', theme)),
+        : createUnavailableDescriptor('grapple', 'grapple', getMobileControlAsset('grapple', theme)),
       down: input.mobile.hasSouffleur
         ? {
             visible: true,
@@ -170,11 +172,11 @@ export class MobileControlLayoutResolver {
             active: input.mobile.boostActive,
             cooldownRatio: null
           }
-        : createHiddenDescriptor('boost', 'boost', getMobileControlAsset('boost', theme))
+        : createUnavailableDescriptor('boost', 'boost', getMobileControlAsset('boost', theme))
     };
 
     return {
-      visible: hudVisible && Object.values(buttons).some((button) => button.visible),
+      visible: hudVisible,
       buttons
     };
   }

@@ -33,6 +33,50 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --accent-color: #75AF80;
+  --viewport-width: 100vw;
+  --viewport-height: 100dvh;
+  --game-width: 100vw;
+  --game-height: 100dvh;
+  --game-viewport-layout-width: 100vw;
+  --game-viewport-layout-height: 100dvh;
+  --game-viewport-offset-top: 0px;
+  --game-viewport-offset-left: 0px;
+  --game-ui-scale-base: 1;
+  --game-ui-scale-mode: 1;
+  --game-ui-scale-final: 1;
+  --game-ui-fluid-scale: 1;
+  --game-ui-user-scale: 1;
+  --ui-scale-small: 1;
+  --ui-scale-medium: 1.2;
+  --ui-scale-large: 1.36;
+  --ui-scale-mode: medium;
+  --ui-scale-factor: var(--game-ui-scale-mode);
+  --hud-scale: clamp(0.92, calc(var(--game-ui-scale-final) * 1), 1.44);
+  --hud-icon-scale: clamp(0.9, calc(var(--game-ui-scale-final) * 0.98), 1.36);
+  --hud-font-scale: clamp(0.94, calc(var(--game-ui-scale-final) * 1.02), 1.38);
+  --control-scale: clamp(0.92, calc(var(--game-ui-scale-final) * 1.08), 1.5);
+  --overlay-scale: clamp(0.9, calc(var(--game-ui-scale-final) * 0.96), 1.22);
+  --overlay-fixed-scale: clamp(0.92, calc(var(--game-ui-scale-base) * 1.1), 1.18);
+  --overlay-fixed-font-scale: clamp(0.94, calc(var(--overlay-fixed-scale) * 1.02), 1.24);
+  --overlay-fixed-icon-scale: clamp(0.88, calc(var(--overlay-fixed-scale) * 0.94), 1.16);
+  --achievement-scale: clamp(0.82, calc(var(--game-ui-scale-base) * 0.92), 1.04);
+  --achievement-font-scale: clamp(0.88, calc(var(--achievement-scale) * 1.08), 1.12);
+  --achievement-icon-scale: clamp(0.82, calc(var(--achievement-scale) * 1.02), 1.08);
+  --background-decor-scale: clamp(0.74, calc(var(--game-ui-scale-final) * 0.9), 1.14);
+  --game-ui-scale: var(--game-ui-scale-final);
+  --game-hud-scale: var(--hud-scale);
+  --game-menu-scale: var(--achievement-scale);
+  --game-overlay-scale: var(--overlay-scale);
+  --game-overlay-fixed-scale: var(--overlay-fixed-scale);
+  --game-icon-scale: var(--hud-icon-scale);
+  --game-font-scale: var(--hud-font-scale);
+  --game-control-scale: var(--control-scale);
+  --game-decor-scale: var(--background-decor-scale);
+  --game-mobile-control-aspect-ratio: calc(461 / 383);
+  --game-edge-offset: calc(clamp(10px, 1.4vw, 18px) * var(--game-hud-scale));
+  --game-settings-panel-gap: calc(clamp(8px, 0.9vw, 12px) * var(--game-overlay-scale));
+  --game-settings-panel-padding: calc(clamp(8px, 1vw, 12px) * var(--game-overlay-scale));
+  --game-mobile-control-edge-offset: calc(clamp(0px, 0.35vw, 4px) * var(--game-control-scale));
   --guide-dialogue-art: url('../../assets/images/shared/branding/guide/dialogue-light.svg');
   --guide-copy-strong: rgb(36 32 29 / 0.98);
   --guide-copy-muted: rgb(58 49 41 / 0.86);
@@ -49,61 +93,156 @@
   --hud-shape-3: url('../../assets/images/game/ui/backgrounds/hud-dark-3.svg');
   --hud-shape-4: url('../../assets/images/game/ui/backgrounds/hud-dark-4.svg');
   --hud-shape-5: url('../../assets/images/game/ui/backgrounds/hud-dark-5.svg');
-  --game-settings-toggle-size: clamp(52px, 5.6vw, 70px);
-  --game-settings-panel-width: clamp(188px, 18vw, 228px);
-  --game-svg-button-width: min(182px, 50vw);
-  --game-help-button-size: 112px;
-  --game-help-nav-offset: 10px;
-  --game-help-close-offset: -34px;
-  --game-help-stage-width: min(92vw, 1520px);
-  --game-help-stage-height: min(84dvh, 860px);
-  --game-help-stage-min-height: min(58dvh, 520px);
-  --game-help-stage-max-height: calc(100dvh - 74px);
-  --game-help-page-padding: 0 22px;
-  --game-help-image-max-height: calc(100dvh - 92px);
-  --game-landing-feedback-width: clamp(84px, 9.4vw, 112px);
-  --game-landing-feedback-twist-width: clamp(74px, 8.8vw, 98px);
-  --game-landing-feedback-grade-twist-width: clamp(80px, 9vw, 106px);
-  --game-mobile-control-size: 256px;
-  --game-mobile-control-side-size: 256px;
-  --game-mobile-control-jump-size: 256px;
-  --game-mobile-control-charge-size: 256px;
-  --game-mobile-control-padding: 12px;
-  --game-mobile-control-icon-width: 188px;
-  --game-mobile-control-side-icon-width: 188px;
-  --game-mobile-control-jump-icon-width: 188px;
-  --game-mobile-control-charge-icon-width: 188px;
-  --game-gameover-shell-gap: clamp(10px, 1vw, 18px);
-  --game-gameover-rule-width-size: clamp(420px, 16vw, 272px);
-  --game-gameover-panel-width: min(736px, calc(100vw - (2 * var(--game-gameover-rule-width-size)) - 60px));
-  --game-gameover-panel-min-height: clamp(400px, 50vh, 524px);
-  --game-gameover-panel-overlap-top: clamp(42px, 4.8vw, 62px);
-  --game-gameover-panel-padding-top: clamp(82px, 8vw, 102px);
-  --game-gameover-panel-padding-right: clamp(42px, 4.2vw, 58px);
-  --game-gameover-panel-padding-bottom: clamp(26px, 3vw, 38px);
-  --game-gameover-panel-padding-left: clamp(42px, 4.2vw, 58px);
+  --game-settings-toggle-size: calc(clamp(52px, 5.6vw, 70px) * var(--game-overlay-scale));
+  --game-settings-panel-width: calc(clamp(188px, 18vw, 228px) * var(--game-overlay-scale));
+  --game-svg-button-width: min(calc(182px * var(--game-overlay-scale)), calc(var(--game-width) * 0.5));
+  --game-svg-button-height: calc(48px * var(--game-overlay-scale));
+  --game-help-button-size: calc(112px * var(--game-overlay-scale));
+  --game-help-nav-offset: calc(10px * var(--game-overlay-scale));
+  --game-help-close-offset: calc(-34px * var(--game-overlay-scale));
+  --game-help-stage-width: min(calc(var(--game-width) - (var(--game-edge-offset) * 2)), 1520px);
+  --game-help-stage-height: min(calc(var(--game-height) * 0.84), calc(860px * var(--game-overlay-scale)));
+  --game-help-stage-min-height: min(calc(var(--game-height) * 0.58), calc(520px * var(--game-overlay-scale)));
+  --game-help-stage-max-height: calc(var(--game-height) - (74px * var(--game-overlay-scale)));
+  --game-help-page-padding: 0 calc(22px * var(--game-overlay-scale));
+  --game-help-image-max-height: calc(var(--game-height) - (92px * var(--game-overlay-scale)));
+  --game-landing-feedback-width: calc(clamp(84px, 9.4vw, 112px) * var(--game-hud-scale));
+  --game-landing-feedback-twist-width: calc(clamp(74px, 8.8vw, 98px) * var(--game-hud-scale));
+  --game-landing-feedback-grade-twist-width: calc(clamp(80px, 9vw, 106px) * var(--game-hud-scale));
+  --game-score-feed-offset-top: calc(106px * var(--game-hud-scale));
+  --game-score-feed-offset-left: calc(32px * var(--game-hud-scale));
+  --game-score-feed-gap: calc(6px * var(--game-hud-scale));
+  --game-score-feed-padding-left: calc(18px * var(--game-hud-scale));
+  --game-score-feed-value-size: calc(clamp(1rem, 1.46vw, 1.34rem) * var(--game-font-scale));
+  --game-score-feed-label-size: calc(clamp(0.74rem, 0.96vw, 0.9rem) * var(--game-font-scale));
+  --game-momentum-dock-width: min(calc(486px * var(--game-hud-scale)), calc(var(--game-width) - (var(--game-edge-offset) * 2)));
+  --game-momentum-meter-width: min(100%, calc(394px * var(--game-hud-scale)));
+  --game-momentum-dock-gap: calc(clamp(8px, 0.9vw, 14px) * var(--game-decor-scale));
+  --game-momentum-dock-padding-top: calc(clamp(6px, 0.8vw, 12px) * var(--game-decor-scale));
+  --game-equipment-dock-width: min(100%, calc(388px * var(--game-decor-scale)));
+  --game-equipment-dock-overlap: calc(-44px * var(--game-decor-scale));
+  --game-stash-top-offset: calc(80px * var(--game-hud-scale));
+  --game-stash-side-offset: calc(18px * var(--game-hud-scale));
+  --game-stash-gap: calc(8px * var(--game-hud-scale));
+  --game-stash-max-width: min(calc(320px * var(--game-hud-scale)), calc(var(--game-width) - (28px * var(--game-hud-scale))));
+  --game-wallet-gap: calc(8px * var(--game-hud-scale));
+  --game-wallet-min-height: calc(38px * var(--game-hud-scale));
+  --game-wallet-padding-y: calc(6px * var(--game-hud-scale));
+  --game-wallet-padding-x: calc(12px * var(--game-hud-scale));
+  --game-wallet-icon-size: calc(40px * var(--game-icon-scale));
+  --game-wallet-font-size: calc(clamp(0.82rem, 1.08vw, 0.96rem) * var(--game-font-scale));
+  --game-coin-inline-size: calc(16px * var(--game-icon-scale));
+  --game-inventory-gap: calc(8px * var(--game-hud-scale));
+  --game-inventory-item-gap: calc(10px * var(--game-hud-scale));
+  --game-inventory-item-min-height: calc(56px * var(--game-hud-scale));
+  --game-inventory-item-padding-y: calc(4px * var(--game-hud-scale));
+  --game-inventory-icon-size: calc(32px * var(--game-icon-scale));
+  --game-inventory-passive-icon-size: calc(22px * var(--game-icon-scale));
+  --game-inventory-name-size: calc(0.74rem * var(--game-font-scale));
+  --game-inventory-desc-size: calc(0.66rem * var(--game-font-scale));
+  --game-inventory-meta-size: calc(0.62rem * var(--game-font-scale));
+  --game-inventory-count-size: calc(0.58rem * var(--game-font-scale));
+  --game-inventory-count-badge-size: calc(18px * var(--game-hud-scale));
+  --game-mobile-control-size: calc(clamp(188px, 21vw, 228px) * var(--game-control-scale));
+  --game-mobile-control-side-size: calc(clamp(188px, 21vw, 228px) * var(--game-control-scale));
+  --game-mobile-control-jump-size: calc(clamp(188px, 21vw, 228px) * var(--game-control-scale));
+  --game-mobile-control-charge-size: calc(clamp(188px, 21vw, 228px) * var(--game-control-scale));
+  --game-mobile-control-padding: calc(6px * var(--game-control-scale));
+  --game-mobile-control-icon-width: calc(clamp(136px, 15.5vw, 166px) * var(--game-control-scale));
+  --game-mobile-control-side-icon-width: calc(clamp(136px, 15.5vw, 166px) * var(--game-control-scale));
+  --game-mobile-control-jump-icon-width: calc(clamp(136px, 15.5vw, 166px) * var(--game-control-scale));
+  --game-mobile-control-charge-icon-width: calc(clamp(136px, 15.5vw, 166px) * var(--game-control-scale));
+  --game-mobile-control-height: calc(var(--game-mobile-control-size) / var(--game-mobile-control-aspect-ratio));
+  --game-mobile-control-side-height: calc(var(--game-mobile-control-side-size) / var(--game-mobile-control-aspect-ratio));
+  --game-mobile-control-jump-height: calc(var(--game-mobile-control-jump-size) / var(--game-mobile-control-aspect-ratio));
+  --game-mobile-control-charge-height: calc(var(--game-mobile-control-charge-size) / var(--game-mobile-control-aspect-ratio));
+  --game-mobile-control-icon-height: calc(var(--game-mobile-control-icon-width) / var(--game-mobile-control-aspect-ratio));
+  --game-mobile-control-side-icon-height: calc(var(--game-mobile-control-side-icon-width) / var(--game-mobile-control-aspect-ratio));
+  --game-mobile-control-jump-icon-height: calc(var(--game-mobile-control-jump-icon-width) / var(--game-mobile-control-aspect-ratio));
+  --game-mobile-control-charge-icon-height: calc(var(--game-mobile-control-charge-icon-width) / var(--game-mobile-control-aspect-ratio));
+  --game-mobile-control-shell-width: max(
+    var(--game-mobile-control-size),
+    var(--game-mobile-control-side-size),
+    var(--game-mobile-control-jump-size),
+    var(--game-mobile-control-charge-size)
+  );
+  --game-mobile-control-shell-height: max(
+    var(--game-mobile-control-height),
+    var(--game-mobile-control-side-height),
+    var(--game-mobile-control-jump-height),
+    var(--game-mobile-control-charge-height)
+  );
+  --game-mobile-control-lift: 0px;
+  --game-gameover-shell-gap: calc(clamp(10px, 1vw, 18px) * var(--game-overlay-fixed-scale));
+  --game-gameover-rule-width-size: calc(clamp(272px, 16vw, 420px) * var(--game-overlay-fixed-scale));
+  --game-gameover-panel-width: min(calc(736px * var(--game-overlay-fixed-scale)), calc(var(--game-width) - (2 * var(--game-gameover-rule-width-size)) - (60px * var(--game-overlay-fixed-scale))));
+  --game-gameover-panel-min-height: min(calc(524px * var(--game-overlay-fixed-scale)), calc(var(--game-height) - (96px * var(--game-overlay-fixed-scale))));
+  --game-gameover-panel-overlap-top: calc(clamp(42px, 4.8vw, 62px) * var(--game-overlay-fixed-scale));
+  --game-gameover-panel-padding-top: calc(clamp(82px, 8vw, 102px) * var(--game-overlay-fixed-scale));
+  --game-gameover-panel-padding-right: calc(clamp(42px, 4.2vw, 58px) * var(--game-overlay-fixed-scale));
+  --game-gameover-panel-padding-bottom: calc(clamp(26px, 3vw, 38px) * var(--game-overlay-fixed-scale));
+  --game-gameover-panel-padding-left: calc(clamp(42px, 4.2vw, 58px) * var(--game-overlay-fixed-scale));
   --game-gameover-content-width: min(100%, 548px);
-  --game-gameover-header-overlay-width: min(360px, 34vw);
+  --game-gameover-header-overlay-width: min(calc(360px * var(--game-overlay-fixed-scale)), calc(var(--game-width) * 0.34));
   --game-gameover-header-overlay-shift: -36%;
-  --game-gameover-action-button-width: min(124px, 22vw);
-  --game-gameover-rule-image-max-height: min(64dvh, 620px);
-  --game-gameover-stats-gap: clamp(4px, 0.55vw, 8px);
-  --game-gameover-stat-min-height: clamp(74px, 8vw, 88px);
-  --game-gameover-gear-gap: 5px;
-  --game-gameover-item-size: 44px;
-  --game-gameover-item-icon-size: 36px;
-  --game-gameover-item-rarity-size: 14px;
-  --game-run-strip-label-size: clamp(0.52rem, 0.72vw, 0.62rem);
-  --game-run-strip-value-size: clamp(0.78rem, 1.08vw, 0.96rem);
-  --game-upgrade-name-size: clamp(0.92rem, 1.7vw, 1.06rem);
-  --game-upgrade-desc-size: clamp(0.74rem, 1.28vw, 0.84rem);
-  --game-gameover-label-size: clamp(0.58rem, 0.72vw, 0.7rem);
-  --game-gameover-value-size: clamp(0.86rem, 1.08vw, 1rem);
-  --game-help-footer-copy-size: 0.78rem;
-  --game-primaterie-logo-width: min(150px, 14vw);
-  --game-primaterie-anchor-width: min(248px, calc(100vw - 24px));
-  --game-primaterie-anchor-max-height: min(52dvh, 372px);
-  --game-primaterie-anchor-padding: clamp(16px, 2.2vw, 22px) clamp(12px, 1.8vw, 16px) clamp(14px, 2vw, 20px);
+  --game-gameover-action-button-width: min(calc(142px * var(--game-overlay-fixed-scale)), calc(var(--game-width) * 0.24));
+  --game-gameover-rule-image-max-height: min(calc(var(--game-height) * 0.64), calc(620px * var(--game-overlay-fixed-scale)));
+  --game-gameover-stats-gap: calc(clamp(4px, 0.55vw, 8px) * var(--game-overlay-fixed-scale));
+  --game-gameover-stat-min-height: calc(clamp(74px, 8vw, 88px) * var(--game-overlay-fixed-scale));
+  --game-gameover-gear-gap: calc(5px * var(--game-overlay-fixed-scale));
+  --game-gameover-item-size: calc(44px * var(--game-overlay-fixed-scale));
+  --game-gameover-item-icon-size: calc(36px * var(--game-icon-scale));
+  --game-gameover-item-rarity-size: calc(14px * var(--game-icon-scale));
+  --game-leaderboard-row-height: calc(46px * var(--game-overlay-fixed-scale));
+  --game-leaderboard-rank-width: calc(42px * var(--game-overlay-fixed-scale));
+  --game-leaderboard-avatar-size: calc(42px * var(--game-overlay-fixed-scale));
+  --game-leaderboard-copy-min-height: calc(34px * var(--game-overlay-fixed-scale));
+  --game-leaderboard-name-size: calc(0.6rem * var(--game-font-scale));
+  --game-leaderboard-score-size: calc(0.72rem * var(--game-font-scale));
+  --game-leaderboard-panel-padding-top: calc(20px * var(--game-overlay-fixed-scale));
+  --game-leaderboard-panel-padding-x: calc(12px * var(--game-overlay-fixed-scale));
+  --game-leaderboard-panel-padding-bottom: calc(12px * var(--game-overlay-fixed-scale));
+  --game-profile-reward-gap: calc(6px * var(--game-overlay-fixed-scale));
+  --game-profile-reward-chip-min-height: calc(40px * var(--game-overlay-fixed-scale));
+  --game-profile-reward-chip-padding-y: calc(6px * var(--game-overlay-fixed-scale));
+  --game-profile-reward-chip-padding-x: calc(8px * var(--game-overlay-fixed-scale));
+  --game-profile-reward-preview-size: calc(28px * var(--game-icon-scale));
+  --game-profile-reward-preview-radius: calc(10px * var(--game-overlay-fixed-scale));
+  --game-profile-reward-copy-size: calc(0.62rem * var(--game-font-scale));
+  --game-profile-achievement-pill-min-height: calc(28px * var(--game-overlay-fixed-scale));
+  --game-profile-achievement-pill-padding-y: calc(4px * var(--game-overlay-fixed-scale));
+  --game-profile-achievement-pill-padding-x: calc(8px * var(--game-overlay-fixed-scale));
+  --game-run-strip-label-size: calc(clamp(0.52rem, 0.72vw, 0.62rem) * var(--game-font-scale));
+  --game-run-strip-value-size: calc(clamp(0.78rem, 1.08vw, 0.96rem) * var(--game-font-scale));
+  --game-upgrade-name-size: calc(clamp(0.92rem, 1.7vw, 1.06rem) * var(--game-font-scale));
+  --game-upgrade-desc-size: calc(clamp(0.74rem, 1.28vw, 0.84rem) * var(--game-font-scale));
+  --game-gameover-label-size: calc(clamp(0.58rem, 0.72vw, 0.7rem) * var(--game-font-scale));
+  --game-gameover-value-size: calc(clamp(0.86rem, 1.08vw, 1rem) * var(--game-font-scale));
+  --game-help-footer-copy-size: calc(0.78rem * var(--game-font-scale));
+  --game-achievement-shell-width: min(calc(1040px * var(--game-menu-scale)), calc(var(--game-width) - (var(--game-edge-offset) * 2)));
+  --game-achievement-shell-height: min(calc(720px * var(--game-menu-scale)), calc(var(--game-height) - (36px * var(--game-overlay-scale))));
+  --game-achievement-track-width: min(calc(468px * var(--game-menu-scale)), calc(var(--game-achievement-shell-width) * 0.45));
+  --game-achievement-content-width: min(var(--game-achievement-track-width), calc(var(--game-achievement-shell-width) - (72px * var(--game-menu-scale))));
+  --game-achievement-content-padding-y: calc(24px * var(--game-menu-scale));
+  --game-achievement-content-padding-x: calc(16px * var(--game-menu-scale));
+  --game-achievement-title-width: calc(clamp(220px, 24vw, 292px) * var(--game-menu-scale));
+  --game-achievement-title-height: calc(clamp(112px, 14vh, 136px) * var(--game-menu-scale));
+  --game-achievement-title-size: calc(clamp(1.02rem, 1.26vw, 1.34rem) * var(--achievement-font-scale));
+  --game-achievement-summary-label-size: calc(clamp(0.58rem, 0.74vw, 0.72rem) * var(--achievement-font-scale));
+  --game-achievement-summary-value-size: calc(clamp(0.72rem, 0.9vw, 0.84rem) * var(--achievement-font-scale));
+  --game-achievement-control-copy-size: calc(clamp(0.56rem, 0.72vw, 0.64rem) * var(--achievement-font-scale));
+  --game-achievement-card-gap: calc(8px * var(--game-menu-scale));
+  --game-achievement-card-padding-y: calc(10px * var(--game-menu-scale));
+  --game-achievement-card-padding-x: calc(14px * var(--game-menu-scale));
+  --game-achievement-title-line-size: calc(0.74rem * var(--achievement-font-scale));
+  --game-achievement-body-size: calc(0.66rem * var(--achievement-font-scale));
+  --game-achievement-reward-preview-size: calc(32px * var(--achievement-icon-scale));
+  --game-achievement-rarity-icon-size: calc(18px * var(--achievement-icon-scale));
+  --game-achievement-mystery-icon-size: calc(16px * var(--achievement-icon-scale));
+  --game-primaterie-logo-width: min(calc(150px * var(--game-overlay-scale)), calc(var(--game-width) * 0.14));
+  --game-primaterie-anchor-width: min(calc(248px * var(--game-overlay-scale)), calc(var(--game-width) - (24px * var(--game-overlay-scale))));
+  --game-primaterie-anchor-max-height: min(calc(var(--game-height) * 0.52), calc(372px * var(--game-overlay-scale)));
+  --game-primaterie-anchor-padding: calc(clamp(16px, 2.2vw, 22px) * var(--game-overlay-scale)) calc(clamp(12px, 1.8vw, 16px) * var(--game-overlay-scale)) calc(clamp(14px, 2vw, 20px) * var(--game-overlay-scale));
 }
 
 html[data-theme='dark'] {
@@ -209,9 +348,7 @@ body {
 }
 
 #app,
-.app-shell,
-.app-shell__canvas,
-.app-shell__ui {
+.app-shell {
   position: relative;
   width: 100vw;
   height: 100vh;
@@ -220,6 +357,16 @@ body {
   min-height: 100vh;
   min-height: 100svh;
   min-height: 100dvh;
+  overflow: hidden;
+}
+
+.app-shell__canvas,
+.app-shell__ui {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
   overflow: hidden;
 }
 
@@ -236,6 +383,28 @@ body {
   inset: 0;
   pointer-events: none;
   overflow: clip;
+}
+
+.app-shell[data-game-display-mode='immersive'] {
+  position: fixed;
+  top: var(--game-viewport-offset-top);
+  left: var(--game-viewport-offset-left);
+  width: var(--game-width);
+  height: var(--game-height);
+  min-height: var(--game-height);
+  overflow: hidden;
+}
+
+.app-shell[data-game-display-mode='fullscreen'] {
+  width: 100vw;
+  height: 100dvh;
+  min-height: 100dvh;
+}
+
+body.game-immersive-active,
+body.game-native-fullscreen-active {
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 .game-transition-blur-overlay {

@@ -63,6 +63,7 @@ export class MobileControlsHud {
       button.setIcon(descriptor.iconSrc);
       button.setVisible(descriptor.visible);
       button.setDimmed(descriptor.dimmed);
+      button.setUnavailable(Boolean(descriptor.unavailable));
       button.setActive(descriptor.active);
       button.setDepleted(Boolean(descriptor.depleted));
       button.setCooldownRatio(descriptor.cooldownRatio);

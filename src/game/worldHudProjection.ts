@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getRuntimeViewportSize } from '../core/viewport';
 
 export interface ScreenProjection {
   visible: boolean;
@@ -26,8 +27,9 @@ export function projectWorldHudAnchor(
     return null;
   }
 
-  const viewportWidth = options.viewportWidth ?? window.innerWidth;
-  const viewportHeight = options.viewportHeight ?? window.innerHeight;
+  const viewport = getRuntimeViewportSize();
+  const viewportWidth = options.viewportWidth ?? viewport.width;
+  const viewportHeight = options.viewportHeight ?? viewport.height;
   const paddingX = options.paddingX ?? 0;
   const paddingY = options.paddingY ?? paddingX;
   return {

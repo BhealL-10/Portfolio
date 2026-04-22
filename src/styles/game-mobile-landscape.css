@@ -1,61 +1,80 @@
 @media (hover: none) and (pointer: coarse) and (orientation: landscape) {
   :root {
-    --game-settings-toggle-size: clamp(40px, 10vw, 48px);
-    --game-settings-panel-width: min(172px, calc(100vw - 68px));
-    --game-svg-button-width: min(104px, 24vw);
-    --game-help-button-size: clamp(80px, 18dvh, 96px);
-    --game-help-nav-offset: 4px;
-    --game-help-close-offset: -12px;
-    --game-help-stage-width: min(95vw, 1040px);
+    --game-settings-toggle-size: calc(clamp(40px, 10vw, 48px) * var(--game-ui-scale));
+    --game-settings-panel-width: min(calc(172px * var(--game-ui-scale)), calc(100vw - (68px * var(--game-ui-scale))));
+    --game-svg-button-width: min(calc(104px * var(--game-ui-scale)), 24vw);
+    --game-help-button-size: calc(clamp(80px, 18dvh, 96px) * var(--game-overlay-fixed-scale));
+    --game-help-nav-offset: calc(4px * var(--game-overlay-fixed-scale));
+    --game-help-close-offset: calc(-12px * var(--game-overlay-fixed-scale));
+    --game-help-stage-width: min(95vw, 1540px);
     --game-help-stage-height: calc(100dvh - 34px);
     --game-help-stage-min-height: 0px;
     --game-help-stage-max-height: calc(100dvh - 34px);
-    --game-help-page-padding: 0 18px;
+    --game-help-page-padding: 0 calc(18px * var(--game-overlay-fixed-scale));
     --game-help-image-max-height: calc(100dvh - 64px);
-    --game-landing-feedback-width: clamp(64px, 15vw, 82px);
-    --game-landing-feedback-twist-width: clamp(58px, 14vw, 74px);
-    --game-landing-feedback-grade-twist-width: clamp(60px, 14vw, 78px);
-    --game-mobile-control-size: clamp(280px, 48dvh, 332px);
-    --game-mobile-control-side-size: clamp(280px, 48dvh, 332px);
-    --game-mobile-control-jump-size: clamp(280px, 48dvh, 332px);
-    --game-mobile-control-charge-size: clamp(280px, 48dvh, 332px);
-    --game-mobile-control-padding: clamp(8px, 2dvh, 12px);
-    --game-mobile-control-icon-width: clamp(208px, 33dvh, 244px);
-    --game-mobile-control-side-icon-width: clamp(208px, 33dvh, 244px);
-    --game-mobile-control-jump-icon-width: clamp(208px, 33dvh, 244px);
-    --game-mobile-control-charge-icon-width: clamp(208px, 33dvh, 244px);
-    --game-gameover-shell-gap: 4px;
-    --game-gameover-rule-width-size: min(304px, 46vw);
-    --game-gameover-panel-width: min(286px, calc(100vw - 14px));
-    --game-gameover-panel-min-height: min(280px, calc(100dvh - 86px));
-    --game-gameover-panel-overlap-top: 28px;
-    --game-gameover-panel-padding-top: 54px;
-    --game-gameover-panel-padding-right: 14px;
-    --game-gameover-panel-padding-bottom: 12px;
-    --game-gameover-panel-padding-left: 14px;
+    --game-landing-feedback-width: calc(clamp(64px, 15vw, 82px) * var(--game-hud-scale));
+    --game-landing-feedback-twist-width: calc(clamp(58px, 14vw, 74px) * var(--game-hud-scale));
+    --game-landing-feedback-grade-twist-width: calc(clamp(60px, 14vw, 78px) * var(--game-hud-scale));
+    --game-mobile-control-edge-offset: calc(clamp(0px, 0.2vw, 2px) * var(--game-control-scale));
+    --game-mobile-control-size: calc(clamp(96px, 22dvh, 120px) * var(--game-control-scale));
+    --game-mobile-control-side-size: calc(clamp(94px, 21.4dvh, 118px) * var(--game-control-scale));
+    --game-mobile-control-jump-size: calc(clamp(94px, 21.4dvh, 118px) * var(--game-control-scale));
+    --game-mobile-control-charge-size: calc(clamp(98px, 22.6dvh, 124px) * var(--game-control-scale));
+    --game-mobile-control-padding: calc(clamp(6px, 1.6dvh, 9px) * var(--game-control-scale));
+    --game-mobile-control-icon-width: calc(clamp(58px, 13.2dvh, 76px) * var(--game-control-scale));
+    --game-mobile-control-side-icon-width: calc(clamp(56px, 12.8dvh, 74px) * var(--game-control-scale));
+    --game-mobile-control-jump-icon-width: calc(clamp(56px, 12.8dvh, 74px) * var(--game-control-scale));
+    --game-mobile-control-charge-icon-width: calc(clamp(60px, 13.6dvh, 78px) * var(--game-control-scale));
+    --game-gameover-shell-gap: calc(4px * var(--game-overlay-fixed-scale));
+    --game-gameover-rule-width-size: min(calc(304px * var(--game-overlay-fixed-scale)), 46vw);
+    --game-gameover-panel-width: min(calc(286px * var(--game-overlay-fixed-scale)), calc(100vw - (14px * var(--game-overlay-fixed-scale))));
+    --game-gameover-panel-min-height: min(calc(280px * var(--game-overlay-fixed-scale)), calc(100dvh - (86px * var(--game-overlay-fixed-scale))));
+    --game-gameover-panel-overlap-top: calc(28px * var(--game-overlay-fixed-scale));
+    --game-gameover-panel-padding-top: calc(54px * var(--game-overlay-fixed-scale));
+    --game-gameover-panel-padding-right: calc(14px * var(--game-overlay-fixed-scale));
+    --game-gameover-panel-padding-bottom: calc(12px * var(--game-overlay-fixed-scale));
+    --game-gameover-panel-padding-left: calc(14px * var(--game-overlay-fixed-scale));
     --game-gameover-content-width: min(100%, 224px);
-    --game-gameover-header-overlay-width: min(170px, 44vw);
+    --game-gameover-header-overlay-width: min(calc(170px * var(--game-overlay-fixed-scale)), 44vw);
     --game-gameover-header-overlay-shift: -28%;
-    --game-gameover-action-button-width: min(96px, 24vw);
-    --game-gameover-rule-image-max-height: min(30dvh, 180px);
-    --game-gameover-stats-gap: 2px;
-    --game-gameover-stat-min-height: 48px;
-    --game-gameover-gear-gap: 2px;
-    --game-gameover-item-size: 24px;
-    --game-gameover-item-icon-size: 19px;
-    --game-gameover-item-rarity-size: 8px;
-    --game-run-strip-label-size: clamp(0.38rem, 1.6vh, 0.48rem);
-    --game-run-strip-value-size: clamp(0.54rem, 2.1vh, 0.68rem);
-    --game-upgrade-name-size: clamp(0.68rem, 2.3vh, 0.8rem);
-    --game-upgrade-desc-size: clamp(0.54rem, 1.9vh, 0.64rem);
-    --game-gameover-label-size: clamp(0.38rem, 1.5vh, 0.46rem);
-    --game-gameover-value-size: clamp(0.52rem, 2vh, 0.64rem);
-    --game-help-footer-copy-size: clamp(0.54rem, 1.9vh, 0.62rem);
-    --game-primaterie-logo-width: min(100px, 12vw);
+    --game-gameover-action-button-width: min(calc(112px * var(--game-overlay-fixed-scale)), 28vw);
+    --game-gameover-rule-image-max-height: min(30dvh, calc(180px * var(--game-overlay-fixed-scale)));
+    --game-gameover-stats-gap: calc(2px * var(--game-overlay-fixed-scale));
+    --game-gameover-stat-min-height: calc(48px * var(--game-overlay-fixed-scale));
+    --game-gameover-gear-gap: calc(2px * var(--game-overlay-fixed-scale));
+    --game-gameover-item-size: calc(24px * var(--game-overlay-fixed-scale));
+    --game-gameover-item-icon-size: calc(19px * var(--overlay-fixed-icon-scale));
+    --game-gameover-item-rarity-size: calc(8px * var(--overlay-fixed-icon-scale));
+    --game-run-strip-label-size: calc(clamp(0.38rem, 1.6vh, 0.48rem) * var(--game-font-scale));
+    --game-run-strip-value-size: calc(clamp(0.54rem, 2.1vh, 0.68rem) * var(--game-font-scale));
+    --game-upgrade-name-size: calc(clamp(0.68rem, 2.3vh, 0.8rem) * var(--game-font-scale));
+    --game-upgrade-desc-size: calc(clamp(0.54rem, 1.9vh, 0.64rem) * var(--game-font-scale));
+    --game-gameover-label-size: calc(clamp(0.38rem, 1.5vh, 0.46rem) * var(--overlay-fixed-font-scale));
+    --game-gameover-value-size: calc(clamp(0.52rem, 2vh, 0.64rem) * var(--overlay-fixed-font-scale));
+    --game-help-footer-copy-size: calc(clamp(0.54rem, 1.9vh, 0.62rem) * var(--overlay-fixed-font-scale));
+    --game-primaterie-logo-width: min(calc(100px * var(--game-ui-scale)), 12vw);
     --game-primaterie-logo-padding-bottom: min(20px, 4dvh);
-    --game-primaterie-anchor-width: min(186px, calc(100vw - 18px));
+    --game-primaterie-anchor-width: min(calc(186px * var(--game-ui-scale)), calc(100vw - (18px * var(--game-ui-scale))));
     --game-primaterie-anchor-max-height: min(45dvh, 256px);
-    --game-primaterie-anchor-padding: 12px 8px 9px;
+    --game-primaterie-anchor-padding: calc(12px * var(--game-ui-scale)) calc(8px * var(--game-ui-scale)) calc(9px * var(--game-ui-scale));
+    --game-momentum-dock-width: min(calc(356px * var(--game-hud-scale)), 58vw);
+    --game-momentum-meter-width: min(100%, calc(292px * var(--game-hud-scale)));
+    --game-momentum-dock-gap: calc(6px * var(--game-decor-scale));
+    --game-momentum-dock-padding-top: calc(6px * var(--game-decor-scale));
+    --game-equipment-dock-width: min(100%, calc(248px * var(--game-decor-scale)));
+    --game-equipment-dock-overlap: calc(-38px * var(--game-decor-scale));
+    --game-stash-top-offset: calc(56px * var(--game-hud-scale));
+    --game-stash-side-offset: calc(10px * var(--game-hud-scale));
+    --game-stash-gap: calc(6px * var(--game-hud-scale));
+    --game-stash-max-width: min(calc(284px * var(--game-hud-scale)), 34vw);
+    --game-achievement-shell-width: min(calc(632px * var(--achievement-scale)), calc(100vw - (16px * var(--achievement-scale))));
+    --game-achievement-shell-height: min(calc(100dvh - 8px), calc(460px * var(--achievement-scale)));
+    --game-achievement-track-width: min(calc(430px * var(--achievement-scale)), calc(var(--game-achievement-shell-width) - (28px * var(--achievement-scale))));
+    --game-achievement-content-width: min(calc(410px * var(--achievement-scale)), calc(var(--game-achievement-shell-width) - (34px * var(--achievement-scale))));
+    --game-achievement-content-padding-y: calc(10px * var(--achievement-scale));
+    --game-achievement-content-padding-x: calc(10px * var(--achievement-scale));
+    --game-achievement-title-width: calc(clamp(164px, 28vw, 196px) * var(--achievement-scale));
+    --game-achievement-title-height: calc(clamp(46px, 9.8dvh, 56px) * var(--achievement-scale));
   }
 
   .game-hud__run-strip {
@@ -63,32 +82,32 @@
     left: calc(var(--safe-left) + 10px);
     right: auto;
     bottom: auto;
-    gap: 4px;
+    gap: calc(4px * var(--game-hud-scale));
   }
 
   .game-hud__run-strip div {
-    min-width: clamp(88px, 18vw, 102px);
-    min-height: clamp(50px, 11dvh, 60px);
-    padding: 9px 10px;
+    min-width: calc(clamp(88px, 18vw, 102px) * var(--game-hud-scale));
+    min-height: calc(clamp(50px, 11dvh, 60px) * var(--game-hud-scale));
+    padding: calc(9px * var(--game-hud-scale)) calc(10px * var(--game-hud-scale));
     background-size: 100% 100%;
   }
 
   .game-hud__score-feed {
-    gap: 4px;
-    min-width: 82px;
-    padding-bottom: 4px;
+    gap: calc(4px * var(--game-hud-scale));
+    min-width: calc(82px * var(--game-hud-scale));
+    padding-bottom: calc(4px * var(--game-hud-scale));
   }
 
   .game-hud__score-feed-entry {
-    gap: 6px;
+    gap: calc(6px * var(--game-hud-scale));
   }
 
   .game-hud__score-feed-entry strong {
-    font-size: 0.98rem;
+    font-size: calc(0.84rem * var(--game-font-scale));
   }
 
   .game-hud__score-feed-entry span {
-    font-size: 0.74rem;
+    font-size: calc(0.62rem * var(--game-font-scale));
   }
 
   .game-hud__top-right-anchor {
@@ -99,75 +118,79 @@
   .game-hud__panel {
     top: calc(var(--safe-top) + 6px);
     right: calc(var(--safe-right) + 50px);
-    padding: 8px;
+    padding: calc(8px * var(--game-ui-scale));
   }
 
   .game-hud__stash {
-    top: calc(var(--safe-top) + 56px);
-    left: calc(var(--safe-left) + 10px);
-    gap: 6px;
-    max-width: min(284px, 34vw);
+    top: calc(var(--safe-top) + var(--game-stash-top-offset));
+    left: calc(var(--safe-left) + var(--game-stash-side-offset));
+    gap: var(--game-stash-gap);
+    max-width: var(--game-stash-max-width);
   }
 
   .game-hud__wallet strong {
-    font-size: 0.72rem;
+    font-size: calc(0.72rem * var(--game-font-scale));
   }
 
   .game-hud__inventory {
-    gap: 4px;
+    gap: calc(4px * var(--game-hud-scale));
   }
 
   .game-hud__inventory-item {
-    gap: 8px;
-    min-height: 44px;
-    padding: 2px 0;
+    gap: calc(8px * var(--game-hud-scale));
+    min-height: calc(44px * var(--game-hud-scale));
+    padding: calc(2px * var(--game-hud-scale)) 0;
   }
 
   .game-hud__inventory-media,
   .game-hud__inventory-icon {
-    width: 28px;
-    height: 28px;
+    width: calc(28px * var(--game-icon-scale));
+    height: calc(28px * var(--game-icon-scale));
   }
 
   .game-hud__inventory-copy {
-    gap: 2px;
+    gap: calc(2px * var(--game-hud-scale));
   }
 
   .game-hud__inventory-name {
-    font-size: 0.68rem;
+    font-size: calc(0.68rem * var(--game-font-scale));
   }
 
   .game-hud__inventory-desc,
   .game-hud__inventory-meta {
-    font-size: 0.56rem;
+    font-size: calc(0.56rem * var(--game-font-scale));
     line-height: 1.18;
   }
 
   .game-hud__momentum-dock {
     left: calc(var(--safe-left) + 10px);
     bottom: calc(var(--safe-bottom) + 6px);
-    width: min(332px, 48vw);
-    padding-top: 6px;
+    width: var(--game-momentum-dock-width);
+    padding-top: var(--game-momentum-dock-padding-top);
   }
 
   .game-hud__equipment-dock {
-    width: min(100%, 248px);
-    margin-bottom: -38px;
+    width: var(--game-equipment-dock-width);
+    margin-bottom: var(--game-equipment-dock-overlap);
   }
 
   .game-hud__help {
-    gap: 6px;
-    padding: calc(var(--safe-top) + 6px) calc(var(--safe-right) + 8px) calc(var(--safe-bottom) + 6px) calc(var(--safe-left) + 8px);
+    gap: calc(6px * var(--game-overlay-fixed-scale));
+    padding:
+      calc(var(--safe-top) + (6px * var(--game-overlay-fixed-scale)))
+      calc(var(--safe-right) + (8px * var(--game-overlay-fixed-scale)))
+      calc(var(--safe-bottom) + (6px * var(--game-overlay-fixed-scale)))
+      calc(var(--safe-left) + (8px * var(--game-overlay-fixed-scale)));
   }
 
   .game-hud__help-footer {
-    gap: 2px;
+    gap: calc(2px * var(--game-overlay-fixed-scale));
   }
 
   .game-hud__branch-header {
     top: calc(var(--safe-top) + 6px);
     width: min(260px, calc(100vw - 20px));
-    padding: 8px 10px;
+    padding: calc(8px * var(--game-ui-scale)) calc(10px * var(--game-ui-scale));
   }
 
   .game-hud__branch-header h3 {
@@ -181,15 +204,15 @@
 
   .game-hud__branch-card {
     width: min(var(--branch-card-width, 144px), calc(100vw - 14px));
-    gap: 3px;
-    padding: 8px 9px 9px;
-    border-radius: 14px;
+    gap: calc(3px * var(--game-ui-scale));
+    padding: calc(8px * var(--game-ui-scale)) calc(9px * var(--game-ui-scale)) calc(9px * var(--game-ui-scale));
+    border-radius: calc(14px * var(--game-ui-scale));
   }
 
   .game-hud__upgrade-media,
   .game-hud__shop-offer-media {
-    width: 30px;
-    height: 30px;
+    width: calc(30px * var(--game-icon-scale));
+    height: calc(30px * var(--game-icon-scale));
   }
 
   .game-hud__upgrade-rarity,
@@ -200,9 +223,39 @@
   }
 
   .game-hud__shop-bar button {
-    min-width: 64px;
-    min-height: 64px;
-    padding: 6px 8px;
+    min-width: calc(60px * var(--game-ui-scale));
+    min-height: calc(60px * var(--game-ui-scale));
+    padding: calc(5px * var(--game-ui-scale)) calc(6px * var(--game-ui-scale));
+  }
+
+  .game-hud__shop-buy-button {
+    width: min(106px, 24vw);
+  }
+
+  .game-hud__shop-buy-button-content {
+    gap: 1px;
+    padding: 12% 10% 10%;
+  }
+
+  .game-hud__branch-card[data-mode='shop_orbit'] {
+    gap: calc(2px * var(--game-ui-scale));
+    padding: calc(7px * var(--game-ui-scale)) calc(8px * var(--game-ui-scale)) calc(8px * var(--game-ui-scale));
+    max-width: min(160px, calc(100vw - 18px));
+  }
+
+  .game-hud__branch-card[data-mode='shop_orbit'] .game-hud__upgrade-path-name {
+    font-size: calc(0.64rem * var(--game-font-scale));
+    line-height: 1.08;
+  }
+
+  .game-hud__branch-card[data-mode='shop_orbit'] .game-hud__upgrade-path-desc {
+    font-size: calc(0.5rem * var(--game-font-scale));
+    line-height: 1.12;
+  }
+
+  .game-hud__shop-offer-media {
+    width: calc(28px * var(--game-icon-scale));
+    height: calc(28px * var(--game-icon-scale));
   }
 
   .game-hud__game-over {
@@ -225,7 +278,7 @@
 
   .game-hud__game-over-panel {
     min-height: 0;
-    gap: 6px;
+    gap: calc(6px * var(--game-overlay-fixed-scale));
   }
 
   .game-hud__game-over-stats {
@@ -251,171 +304,277 @@
     width: calc(var(--game-over-rule-width) * 1.05);
     max-height: 88%;
     margin: 0;
-    padding: 3px 6px;
-    border-radius: 10px;
+    padding: calc(3px * var(--game-overlay-fixed-scale)) calc(6px * var(--game-overlay-fixed-scale));
+    border-radius: calc(10px * var(--game-overlay-fixed-scale));
   }
 
   .game-hud__game-over-rule-image {
-    padding-left: 30px;
+    padding-left: calc(30px * var(--game-overlay-fixed-scale));
     width: 138%;
     max-height: min(310px, var(--game-over-rule-image-max-height) * 1.35);
     object-fit: contain;
   }
 
   .game-hud__leaderboard {
-    width: 106%;
-    min-height: min(258px, calc(100dvh - 20px));
-    gap: 4px;
-    margin-left: -3%;
-    padding: 100px 31px 20px;
-    }
+    width: min(100%, calc(var(--game-over-rule-width) * 1.04));
+    min-height: min(calc(300px * var(--game-overlay-fixed-scale)), calc(100dvh - (20px * var(--game-overlay-fixed-scale))));
+    gap: calc(4px * var(--game-overlay-fixed-scale));
+    margin-left: 0;
+    padding:
+      calc(88px * var(--game-overlay-fixed-scale))
+      calc(18px * var(--game-overlay-fixed-scale))
+      calc(16px * var(--game-overlay-fixed-scale));
   }
 
   .game-hud__leaderboard-list {
-    min-height: calc((3 * 40px) + (2 * 3px));
-    max-height: calc((3 * 40px) + (2 * 3px));
+    min-height: calc((3 * var(--game-leaderboard-row-height)) + (2 * 4px * var(--game-overlay-fixed-scale)));
+    max-height: calc((3 * var(--game-leaderboard-row-height)) + (2 * 4px * var(--game-overlay-fixed-scale)));
     padding: 0 1px;
-    gap: 3px;
+    gap: calc(4px * var(--game-overlay-fixed-scale));
   }
 
   .game-hud__leaderboard-row {
-    grid-template-columns: 32px 32px minmax(0, 1fr) auto;
-    gap: 3px;
-    min-height: 40px;
+    grid-template-columns: var(--game-leaderboard-rank-width) var(--game-leaderboard-avatar-size) minmax(0, 1fr) auto;
+    gap: calc(4px * var(--game-overlay-fixed-scale));
+    min-height: var(--game-leaderboard-row-height);
   }
 
   .game-hud__leaderboard-rank {
-    width: 32px;
-    min-height: 28px;
-    padding: 3px 4px;
-    font-size: 0.5rem;
+    width: var(--game-leaderboard-rank-width);
+    min-height: calc(30px * var(--game-overlay-fixed-scale));
+    padding: calc(4px * var(--game-overlay-fixed-scale)) calc(5px * var(--game-overlay-fixed-scale));
+    font-size: calc(0.58rem * var(--overlay-fixed-font-scale));
   }
 
   .game-hud__leaderboard-avatar {
-    width: 32px;
-    height: 32px;
-    padding: 2px;
+    width: var(--game-leaderboard-avatar-size);
+    height: var(--game-leaderboard-avatar-size);
+    padding: calc(3px * var(--game-overlay-fixed-scale));
   }
 
   .game-hud__leaderboard-copy {
-    min-height: 28px;
+    min-height: var(--game-leaderboard-copy-min-height);
     gap: 0;
-    padding: 2px 5px;
-    border-radius: 10px;
+    padding: calc(3px * var(--game-overlay-fixed-scale)) calc(6px * var(--game-overlay-fixed-scale));
+    border-radius: calc(10px * var(--game-overlay-fixed-scale));
   }
 
   .game-hud__leaderboard-name {
-    font-size: 0.46rem;
+    font-size: var(--game-leaderboard-name-size);
   }
 
   .game-hud__leaderboard-score {
-    min-height: 28px;
-    min-width: 50px;
-    padding: 0 5px;
-    border-radius: 10px;
-    font-size: 0.56rem;
+    min-height: var(--game-leaderboard-copy-min-height);
+    min-width: calc(56px * var(--game-overlay-fixed-scale));
+    padding: 0 calc(6px * var(--game-overlay-fixed-scale));
+    border-radius: calc(10px * var(--game-overlay-fixed-scale));
+    font-size: var(--game-leaderboard-score-size);
   }
 
   .game-hud__leaderboard-preview-card {
-    grid-template-columns: 34px 32px minmax(0, 1fr) auto;
-    gap: 3px;
-    min-height: 38px;
+    grid-template-columns: var(--game-leaderboard-rank-width) var(--game-leaderboard-avatar-size) minmax(0, 1fr) auto;
+    gap: calc(4px * var(--game-overlay-fixed-scale));
+    min-height: var(--game-leaderboard-row-height);
   }
 
   .game-hud__leaderboard-preview-copy {
-    min-height: 28px;
-    padding: 0 5px;
+    min-height: var(--game-leaderboard-copy-min-height);
+    padding: 0 calc(6px * var(--game-overlay-fixed-scale));
   }
 
   .game-hud__leaderboard-preview-copy strong {
-    font-size: 0.5rem;
+    font-size: calc(0.58rem * var(--overlay-fixed-font-scale));
   }
 
   .game-hud__leaderboard-preview-copy span {
-    font-size: 0.5rem;
+    font-size: calc(0.54rem * var(--overlay-fixed-font-scale));
   }
 
   .game-hud__leaderboard-preview-score {
-    min-height: 28px;
-    min-width: 48px;
-    padding: 0 5px;
-    border-radius: 10px;
-    font-size: 0.54rem;
+    min-height: var(--game-leaderboard-copy-min-height);
+    min-width: calc(54px * var(--game-overlay-fixed-scale));
+    padding: 0 calc(6px * var(--game-overlay-fixed-scale));
+    border-radius: calc(10px * var(--game-overlay-fixed-scale));
+    font-size: calc(0.62rem * var(--overlay-fixed-font-scale));
   }
 
   .game-hud__leaderboard-detail span {
-    font-size: 0.48rem;
+    font-size: calc(0.54rem * var(--overlay-fixed-font-scale));
   }
 
   .game-hud__leaderboard-detail strong {
-    font-size: 0.52rem;
+    font-size: calc(0.58rem * var(--overlay-fixed-font-scale));
   }
 
   .game-hud__leaderboard-controls {
-    gap: 3px;
+    gap: calc(4px * var(--game-overlay-fixed-scale));
   }
 
   .game-hud__leaderboard-controls input,
   .game-hud__leaderboard-controls button {
-    padding: 4px 5px;
-    font-size: 0.56rem;
-  }
-
-  .game-hud__leaderboard-register-copy {
-    left: 18px;
-    right: 18px;
-    bottom: 12px;
-    padding: 7px 9px 9px;
-    font-size: 0.54rem;
-    border-radius: 10px;
+    padding: calc(5px * var(--game-overlay-fixed-scale)) calc(6px * var(--game-overlay-fixed-scale));
+    font-size: calc(0.6rem * var(--overlay-fixed-font-scale));
   }
 
   .game-hud__leaderboard-save-button .game-hud__svg-button-image img {
-    height: 28px;
+    height: calc(32px * var(--game-overlay-fixed-scale));
   }
 
   .game-hud__avatar-editor {
-    min-height: min(224px, calc(100dvh - 22px));
-    padding: 12px 10px 10px;
-    gap: 10px;
+    min-height: min(calc(244px * var(--game-overlay-fixed-scale)), calc(100dvh - (22px * var(--game-overlay-fixed-scale))));
+    padding:
+      calc(12px * var(--game-overlay-fixed-scale))
+      calc(10px * var(--game-overlay-fixed-scale))
+      calc(10px * var(--game-overlay-fixed-scale));
+    gap: calc(8px * var(--game-overlay-fixed-scale));
   }
 
   .game-hud__avatar-editor-stage {
-    grid-template-columns: 32px minmax(0, 1fr) 32px;
-    gap: 4px;
+    grid-template-columns: calc(32px * var(--game-overlay-fixed-scale)) minmax(0, 1fr) calc(32px * var(--game-overlay-fixed-scale));
+    gap: calc(4px * var(--game-overlay-fixed-scale));
   }
 
   .game-hud__avatar-editor-nav-column {
-    width: 32px;
-    gap: 4px;
+    width: calc(32px * var(--game-overlay-fixed-scale));
+    gap: calc(4px * var(--game-overlay-fixed-scale));
   }
 
   .game-hud__avatar-editor-preview {
-    width: min(100%, 104px);
+    width: min(100%, calc(112px * var(--game-overlay-fixed-scale)));
   }
 
   .game-hud__avatar-editor-step {
-    width: 32px;
-    min-width: 32px;
-    min-height: 32px;
+    width: calc(32px * var(--game-overlay-fixed-scale));
+    min-width: calc(32px * var(--game-overlay-fixed-scale));
+    min-height: calc(32px * var(--game-overlay-fixed-scale));
   }
 
   .game-hud__avatar-editor-layers {
-    gap: 4px;
+    gap: calc(4px * var(--game-overlay-fixed-scale));
   }
 
   .game-hud__avatar-editor-save-button .game-hud__svg-button-image img {
-    height: 30px;
+    height: calc(32px * var(--game-overlay-fixed-scale));
   }
 
   .game-hud__mobile-controls {
-    right: calc(var(--safe-right) + 8px);
-    bottom: calc(var(--safe-bottom) + 6px);
-    gap: 4px;
+    right: calc(var(--safe-right) + 2px);
+    bottom: calc(var(--safe-bottom) + 2px);
+    gap: calc(4px * var(--game-control-scale));
+  }
+
+  .game-hud__achievements {
+    align-items: stretch;
+    padding:
+      calc(var(--safe-top) + (4px * var(--game-overlay-scale)))
+      calc(var(--safe-right) + (6px * var(--game-overlay-scale)))
+      calc(var(--safe-bottom) + (4px * var(--game-overlay-scale)))
+      calc(var(--safe-left) + (6px * var(--game-overlay-scale)));
+  }
+
+  .game-hud__achievements-shell {
+    width: min(100%, var(--game-achievement-shell-width));
+    max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - (8px * var(--game-overlay-scale)));
+  }
+
+  .game-hud__achievements-panel {
+    max-height: inherit;
+    min-height: 0;
+  }
+
+  .game-hud__achievements-content {
+    width: min(100%, var(--game-achievement-content-width));
+    gap: calc(6px * var(--game-menu-scale));
+    padding: calc(10px * var(--game-menu-scale)) calc(8px * var(--game-menu-scale)) calc(10px * var(--game-menu-scale));
+  }
+
+  .game-hud__achievements-title-block {
+    gap: calc(1px * var(--game-menu-scale));
+  }
+
+  .game-hud__achievements-title-block h2 {
+    min-width: calc(154px * var(--game-menu-scale));
+    min-height: calc(105px * var(--game-menu-scale));
+    padding: 0 calc(12px * var(--game-menu-scale));
+  }
+
+  .game-hud__achievements-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: calc(4px * var(--game-menu-scale));
+  }
+
+  .game-hud__achievement-summary-stat {
+    gap: calc(1px * var(--game-menu-scale));
+  }
+
+  .game-hud__achievement-summary-label {
+    font-size: calc(0.4rem * var(--achievement-font-scale));
+    line-height: 1.02;
+    letter-spacing: 0.04em;
+  }
+
+  .game-hud__achievement-summary-pill {
+    min-height: calc(30px * var(--game-menu-scale));
+    padding: calc(5px * var(--game-menu-scale)) calc(6px * var(--game-menu-scale)) calc(4px * var(--game-menu-scale));
+  }
+
+  .game-hud__achievement-summary-pill strong {
+    font-size: calc(0.6rem * var(--achievement-font-scale));
+  }
+
+  .game-hud__achievements-controls {
+    grid-template-columns: minmax(112px, 0.42fr) minmax(0, 1fr);
+    gap: calc(4px * var(--game-menu-scale));
+    align-items: center;
+  }
+
+  .game-hud__achievement-sort-shell {
+    width: 100%;
+  }
+
+  .game-hud__achievement-sort-toggle {
+    min-height: calc(28px * var(--game-menu-scale));
+    padding: 0 calc(10px * var(--game-menu-scale));
+  }
+
+  .game-hud__achievement-sort-toggle span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .game-hud__achievement-filter-row {
+    justify-content: flex-end;
+    gap: calc(3px * var(--game-menu-scale));
+    padding-inline: 0;
+  }
+
+  .game-hud__achievement-filter {
+    min-height: calc(28px * var(--game-menu-scale));
+    gap: calc(2px * var(--game-menu-scale));
+    padding: 0 calc(7px * var(--game-menu-scale));
+  }
+
+  .game-hud__achievement-filter-icon {
+    width: calc(12px * var(--achievement-icon-scale));
+    height: calc(12px * var(--achievement-icon-scale));
+  }
+
+  .game-hud__achievement-filter .game-hud__achievement-filter-icon + span {
+    display: none;
+  }
+
+  .game-hud__achievements-scroll {
+    gap: calc(6px * var(--game-menu-scale));
+    padding: calc(2px * var(--game-menu-scale)) calc(1px * var(--game-menu-scale)) calc(10px * var(--game-menu-scale));
+  }
+
+  .game-hud__achievement-card,
+  .game-hud__profile-achievements-card {
+    padding: calc(8px * var(--game-menu-scale)) calc(9px * var(--game-menu-scale));
   }
 
   .primaterie-portal__logo-wrap {
-    transform: translate3d(var(--primaterie-anchor-x, 50vw), calc(var(--primaterie-anchor-y, 25vh) - 62px), 0) translateX(-50%);
+            transform: translate3d(var(--primaterie-anchor-x, 50vw), calc(var(--primaterie-anchor-y, 50vh) - 295px), 0) translateX(-50%);
   }
 
   .primaterie-portal__chrome {
@@ -457,3 +616,4 @@
     -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
   }
+}

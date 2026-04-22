@@ -49,6 +49,8 @@ const PARALLAX_LAYER_ASSET_REGISTRY = (() => {
 })();
 
 const PARALLAX_SOFT_FOCUS_RASTER_SCALE = 0.93;
+const PARALLAX_MOBILE_MAX_RASTER_DIMENSION = 1792;
+const PARALLAX_DESKTOP_MAX_RASTER_DIMENSION = 4096;
 
 export async function loadParallaxLayerVariants(
   category: LayerCategory,
@@ -59,8 +61,13 @@ export async function loadParallaxLayerVariants(
   const assetTheme = resolveParallaxAssetTheme(gameTheme);
   const urls = PARALLAX_LAYER_ASSET_REGISTRY[category][assetTheme];
   const targetHeightPx = Math.max(32, Math.round(displayedHeightPx));
-  const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+  const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+  const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, coarsePointer ? 1.2 : 2.25));
   const anisotropy = Math.max(1, renderer.capabilities.getMaxAnisotropy?.() ?? 1);
+  const maxTextureSize = Math.max(1024, renderer.capabilities.maxTextureSize || PARALLAX_DESKTOP_MAX_RASTER_DIMENSION);
+  const maxRasterDimension = coarsePointer
+    ? Math.min(maxTextureSize, PARALLAX_MOBILE_MAX_RASTER_DIMENSION)
+    : Math.min(maxTextureSize, PARALLAX_DESKTOP_MAX_RASTER_DIMENSION);
 
   return Promise.all(
     urls.map(async (url, index): Promise<ParallaxLayerVariantAsset> => {
@@ -72,17 +79,24 @@ export async function loadParallaxLayerVariants(
       const width = resolvedImage.naturalWidth || resolvedImage.width || 1;
       const height = resolvedImage.naturalHeight || resolvedImage.height || 1;
       const aspectRatio = width / Math.max(1, height);
-      const softenedHeightPx = Math.max(32, Math.round(targetHeightPx * PARALLAX_SOFT_FOCUS_RASTER_SCALE));
-      const softenedWidthPx = Math.max(32, Math.round(softenedHeightPx * aspectRatio));
+      let softenedHeightPx = Math.max(32, Math.round(targetHeightPx * PARALLAX_SOFT_FOCUS_RASTER_SCALE));
+      let softenedWidthPx = Math.max(32, Math.round(softenedHeightPx * aspectRatio));
+      const rasterWidthPx = softenedWidthPx * dpr;
+      const rasterHeightPx = softenedHeightPx * dpr;
+      const overflowRatio = Math.max(rasterWidthPx, rasterHeightPx) / Math.max(1, maxRasterDimension);
+      if (overflowRatio > 1) {
+        softenedWidthPx = Math.max(32, Math.round(softenedWidthPx / overflowRatio));
+        softenedHeightPx = Math.max(32, Math.round(softenedHeightPx / overflowRatio));
+      }
       const texture = await getRasterizedSvgTextureAsset(url, {
         widthPx: softenedWidthPx,
         heightPx: softenedHeightPx,
         devicePixelRatio: dpr,
         colorSpace: THREE.SRGBColorSpace,
-        minFilter: THREE.LinearMipmapLinearFilter,
+        minFilter: coarsePointer ? THREE.LinearFilter : THREE.LinearMipmapLinearFilter,
         magFilter: THREE.LinearFilter,
-        generateMipmaps: true,
-        anisotropy
+        generateMipmaps: !coarsePointer,
+        anisotropy: coarsePointer ? 1 : Math.min(4, anisotropy)
       });
       return {
         category,
@@ -96,12 +110,11 @@ export async function loadParallaxLayerVariants(
   );
 }
 
-export async function preloadParallaxLayerAssets() {
+export async function preloadParallaxLayerAssets(gameTheme: ThemeMode) {
+  const assetTheme = resolveParallaxAssetTheme(gameTheme);
   const urls = new Set<string>();
   PARALLAX_LAYER_ORDER.forEach((category) => {
-    (['light', 'dark'] as const).forEach((theme) => {
-      PARALLAX_LAYER_ASSET_REGISTRY[category][theme].forEach((url) => urls.add(url));
-    });
+    PARALLAX_LAYER_ASSET_REGISTRY[category][assetTheme].forEach((url) => urls.add(url));
   });
   await Promise.all(Array.from(urls, (url) => preloadImageAsset(url, 'sync')));
 }

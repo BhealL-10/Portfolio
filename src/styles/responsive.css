@@ -16,42 +16,56 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   pointer-events: none !important;
 }
 
+html[data-runtime-device='mobile'] {
+  --game-mobile-control-edge-offset: 0px;
+  --game-mobile-control-size: calc(clamp(100px, 30vw, 140px) * var(--game-control-scale));
+  --game-mobile-control-side-size: calc(clamp(100px, 30vw, 140px) * var(--game-control-scale));
+  --game-mobile-control-jump-size: calc(clamp(100px, 30vw, 140px) * var(--game-control-scale));
+  --game-mobile-control-charge-size: calc(clamp(104px, 31vw, 144px) * var(--game-control-scale));
+  --game-mobile-control-padding: calc(2px * var(--game-control-scale));
+  --game-mobile-control-icon-width: calc(clamp(74px, 22vw, 104px) * var(--game-control-scale));
+  --game-mobile-control-side-icon-width: calc(clamp(74px, 22vw, 104px) * var(--game-control-scale));
+  --game-mobile-control-jump-icon-width: calc(clamp(74px, 22vw, 104px) * var(--game-control-scale));
+  --game-mobile-control-charge-icon-width: calc(clamp(78px, 23vw, 108px) * var(--game-control-scale));
+  --game-mobile-control-lift: 0px;
+}
+
 @media (min-width: 1024px) {
   html[data-runtime-device='desktop'] {
-    --game-settings-toggle-size: clamp(42px, 2.5vw, 52px);
-    --game-settings-panel-width: clamp(176px, 12vw, 204px);
-    --game-help-button-size: 96px;
-    --game-help-nav-offset: 12px;
-    --game-help-close-offset: -30px;
-    --game-help-stage-width: min(88vw, 1520px);
-    --game-help-stage-height: min(80dvh, 780px);
-    --game-help-stage-min-height: min(52dvh, 480px);
-    --game-help-stage-max-height: calc(100dvh - 68px);
-    --game-help-page-padding: 0 18px;
-    --game-help-image-max-height: calc(100dvh - 86px);
-    --game-gameover-shell-gap: clamp(10px, 0.9vw, 16px);
-    --game-gameover-rule-width-size: clamp(420px, 14.4vw, 296px);
-    --game-gameover-panel-width: min(780px, calc(100vw - (2 * var(--game-gameover-rule-width-size)) - 64px));
-    --game-gameover-panel-min-height: clamp(430px, 52vh, 560px);
-    --game-gameover-panel-overlap-top: clamp(30px, 3.2vw, 44px);
-    --game-gameover-panel-padding-top: clamp(72px, 6vw, 88px);
-    --game-gameover-panel-padding-right: clamp(28px, 2.5vw, 38px);
-    --game-gameover-panel-padding-bottom: clamp(22px, 2.2vw, 28px);
-    --game-gameover-panel-padding-left: clamp(28px, 2.5vw, 38px);
+    --game-settings-toggle-size: calc(clamp(42px, 2.5vw, 52px) * var(--game-ui-scale));
+    --game-settings-panel-width: calc(clamp(176px, 12vw, 204px) * var(--game-ui-scale));
+    --game-help-button-size: calc(96px * var(--game-ui-scale));
+    --game-help-nav-offset: calc(12px * var(--game-ui-scale));
+    --game-help-close-offset: calc(-30px * var(--game-ui-scale));
+    --game-help-stage-width: min(calc(var(--game-width) - (var(--game-edge-offset) * 2)), 1520px);
+    --game-help-stage-height: min(calc(var(--game-height) * 0.8), calc(780px * var(--game-ui-scale)));
+    --game-help-stage-min-height: min(calc(var(--game-height) * 0.52), calc(480px * var(--game-ui-scale)));
+    --game-help-stage-max-height: calc(var(--game-height) - (68px * var(--game-ui-scale)));
+    --game-help-page-padding: 0 calc(18px * var(--game-ui-scale));
+    --game-help-image-max-height: calc(var(--game-height) - (86px * var(--game-ui-scale)));
+    --game-gameover-shell-gap: calc(clamp(10px, 0.9vw, 16px) * var(--game-overlay-fixed-scale));
+    --game-gameover-rule-width-size: calc(clamp(296px, 14.4vw, 420px) * var(--game-overlay-fixed-scale));
+    --game-gameover-panel-width: min(calc(780px * var(--game-overlay-fixed-scale)), calc(var(--game-width) - (2 * var(--game-gameover-rule-width-size)) - (64px * var(--game-overlay-fixed-scale))));
+    --game-gameover-panel-min-height: min(calc(560px * var(--game-overlay-fixed-scale)), calc(var(--game-height) - (92px * var(--game-overlay-fixed-scale))));
+    --game-gameover-panel-overlap-top: calc(clamp(30px, 3.2vw, 44px) * var(--game-overlay-fixed-scale));
+    --game-gameover-panel-padding-top: calc(clamp(72px, 6vw, 88px) * var(--game-overlay-fixed-scale));
+    --game-gameover-panel-padding-right: calc(clamp(28px, 2.5vw, 38px) * var(--game-overlay-fixed-scale));
+    --game-gameover-panel-padding-bottom: calc(clamp(22px, 2.2vw, 28px) * var(--game-overlay-fixed-scale));
+    --game-gameover-panel-padding-left: calc(clamp(28px, 2.5vw, 38px) * var(--game-overlay-fixed-scale));
     --game-gameover-content-width: min(100%, 548px);
-    --game-gameover-header-overlay-width: min(344px, 28vw);
-    --game-gameover-stat-min-height: clamp(68px, 5.4vw, 84px);
-    --game-gameover-action-button-width: min(164px, 25vw);
-    --game-gameover-rule-image-max-height: min(70dvh, 700px);
-    --game-gameover-item-size: 42px;
-    --game-gameover-item-icon-size: 34px;
-    --game-gameover-item-rarity-size: 13px;
-    --game-gameover-label-size: clamp(0.62rem, 0.72vw, 0.78rem);
-    --game-gameover-value-size: clamp(0.94rem, 1.08vw, 1.14rem);
-    --game-primaterie-logo-width: min(124px, 8vw);
-    --game-primaterie-anchor-width: min(182px, 14vw);
-    --game-primaterie-anchor-max-height: min(31dvh, 242px);
-    --game-primaterie-anchor-padding: 10px 8px 8px;
+    --game-gameover-header-overlay-width: min(calc(344px * var(--game-overlay-fixed-scale)), calc(var(--game-width) * 0.28));
+    --game-gameover-stat-min-height: calc(clamp(68px, 5.4vw, 84px) * var(--game-overlay-fixed-scale));
+    --game-gameover-action-button-width: min(calc(164px * var(--game-overlay-fixed-scale)), calc(var(--game-width) * 0.25));
+    --game-gameover-rule-image-max-height: min(calc(var(--game-height) * 0.7), calc(700px * var(--game-overlay-fixed-scale)));
+    --game-gameover-item-size: calc(42px * var(--game-overlay-fixed-scale));
+    --game-gameover-item-icon-size: calc(34px * var(--overlay-fixed-icon-scale));
+    --game-gameover-item-rarity-size: calc(13px * var(--overlay-fixed-icon-scale));
+    --game-gameover-label-size: calc(clamp(0.62rem, 0.72vw, 0.78rem) * var(--overlay-fixed-font-scale));
+    --game-gameover-value-size: calc(clamp(0.94rem, 1.08vw, 1.14rem) * var(--overlay-fixed-font-scale));
+    --game-primaterie-logo-width: min(calc(124px * var(--game-ui-scale)), calc(var(--game-width) * 0.08));
+    --game-primaterie-anchor-width: min(calc(182px * var(--game-ui-scale)), calc(var(--game-width) * 0.14));
+    --game-primaterie-anchor-max-height: min(calc(var(--game-height) * 0.31), calc(242px * var(--game-ui-scale)));
+    --game-primaterie-anchor-padding: calc(10px * var(--game-ui-scale)) calc(8px * var(--game-ui-scale)) calc(8px * var(--game-ui-scale));
   }
 
   html[data-runtime-device='desktop'] .navigation-hud__topbar {
@@ -157,14 +171,14 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   }
 
   html[data-runtime-device='desktop'] .game-hud__momentum-dock {
-    width: min(498px, calc(100vw - 32px));
+    width: var(--game-momentum-dock-width);
     left: calc(var(--safe-left) + 14px);
     bottom: calc(var(--safe-bottom) + 14px);
   }
 
   html[data-runtime-device='desktop'] .game-hud__equipment-dock {
-    width: min(100%, 404px);
-    margin-bottom: -38px;
+    width: var(--game-equipment-dock-width);
+    margin-bottom: var(--game-equipment-dock-overlap);
   }
 
   html[data-runtime-device='desktop'] .game-hud__leaderboard {
@@ -262,6 +276,20 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   html[data-runtime-device='desktop'] .game-hud__avatar-editor-save-button .game-hud__svg-button-image img {
     height: 115px;
   }
+
+  html[data-runtime-device='desktop'] {
+    --game-mobile-control-edge-offset: calc(clamp(2px, 0.2vw, 6px) * var(--game-control-scale));
+    --game-mobile-control-size: calc(clamp(120px, 10vw, 160px) * var(--game-control-scale));
+    --game-mobile-control-side-size: calc(clamp(120px, 10vw, 160px) * var(--game-control-scale));
+    --game-mobile-control-jump-size: calc(clamp(120px, 10vw, 160px) * var(--game-control-scale));
+    --game-mobile-control-charge-size: calc(clamp(124px, 10.5vw, 164px) * var(--game-control-scale));
+    --game-mobile-control-padding: calc(4px * var(--game-control-scale));
+    --game-mobile-control-icon-width: calc(clamp(88px, 7.5vw, 118px) * var(--game-control-scale));
+    --game-mobile-control-side-icon-width: calc(clamp(88px, 7.5vw, 118px) * var(--game-control-scale));
+    --game-mobile-control-jump-icon-width: calc(clamp(88px, 7.5vw, 118px) * var(--game-control-scale));
+    --game-mobile-control-charge-icon-width: calc(clamp(92px, 7.8vw, 122px) * var(--game-control-scale));
+    --game-mobile-control-lift: 0px;
+  }
 }
 
 @media (max-width: 900px) {
@@ -299,10 +327,16 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   }
 
   :root {
-    --game-settings-toggle-size: clamp(48px, 13vw, 58px);
-    --game-settings-panel-width: min(198px, calc(100vw - 86px));
-    --game-landing-feedback-width: clamp(76px, 20vw, 96px);
-    --game-landing-feedback-twist-width: clamp(68px, 18vw, 88px);
+    --game-settings-toggle-size: calc(clamp(48px, 13vw, 58px) * var(--game-overlay-scale));
+    --game-settings-panel-width: min(calc(198px * var(--game-overlay-scale)), calc(var(--game-width) - (86px * var(--game-overlay-scale))));
+    --game-landing-feedback-width: calc(clamp(76px, 20vw, 96px) * var(--game-hud-scale));
+    --game-landing-feedback-twist-width: calc(clamp(68px, 18vw, 88px) * var(--game-hud-scale));
+    --game-momentum-dock-width: min(calc(336px * var(--game-hud-scale)), calc(var(--game-width) - (28px * var(--game-hud-scale))));
+    --game-momentum-meter-width: min(100%, calc(272px * var(--game-hud-scale)));
+    --game-momentum-dock-gap: calc(8px * var(--game-decor-scale));
+    --game-momentum-dock-padding-top: calc(6px * var(--game-decor-scale));
+    --game-equipment-dock-width: min(100%, calc(176px * var(--game-decor-scale)));
+    --game-equipment-dock-overlap: calc(-18px * var(--game-decor-scale));
   }
 
   .game-hud__panel {
@@ -311,14 +345,14 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   }
 
   .game-hud__momentum-dock {
-    width: min(360px, calc(100vw - 36px));
+    width: var(--game-momentum-dock-width);
     left: calc(var(--safe-left) + 12px);
     bottom: calc(var(--safe-bottom) + 12px);
   }
 
   .game-hud__equipment-dock {
-    width: min(100%, 160px);
-    margin-bottom: -15px;
+    width: var(--game-equipment-dock-width);
+    margin-bottom: var(--game-equipment-dock-overlap);
   }
 
   .game-hud__branch-card {
@@ -396,77 +430,102 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   }
 
   :root {
-    --game-settings-toggle-size: clamp(46px, 14vw, 56px);
-    --game-settings-panel-width: min(186px, calc(100vw - 80px));
-    --game-help-button-size: 88px;
-    --game-help-stage-width: min(96vw, 760px);
-    --game-help-stage-height: min(66dvh, 480px);
-    --game-help-stage-min-height: min(42dvh, 280px);
-    --game-help-stage-max-height: calc(100dvh - 76px);
-    --game-help-page-padding: 0 12px;
-    --game-help-image-max-height: calc(100dvh - 98px);
-    --game-help-nav-offset: 2px;
-    --game-help-close-offset: -22px;
-    --game-gameover-shell-gap: 8px;
-    --game-gameover-rule-width-size: min(188px, 52vw);
-    --game-gameover-panel-width: min(320px, calc(100vw - 24px));
-    --game-gameover-panel-min-height: min(398px, calc(100dvh - 120px));
-    --game-gameover-panel-overlap-top: 36px;
-    --game-gameover-panel-padding-top: 64px;
-    --game-gameover-panel-padding-right: 18px;
-    --game-gameover-panel-padding-bottom: 18px;
-    --game-gameover-panel-padding-left: 18px;
+    --game-settings-toggle-size: calc(clamp(46px, 14vw, 56px) * var(--game-ui-scale));
+    --game-settings-panel-width: min(calc(186px * var(--game-ui-scale)), calc(var(--game-width) - (80px * var(--game-ui-scale))));
+    --game-help-button-size: calc(88px * var(--game-ui-scale));
+    --game-help-stage-width: min(calc(var(--game-width) - (var(--game-edge-offset) * 2)), calc(760px * var(--game-ui-scale)));
+    --game-help-stage-height: min(calc(var(--game-height) * 0.66), calc(480px * var(--game-ui-scale)));
+    --game-help-stage-min-height: min(calc(var(--game-height) * 0.42), calc(280px * var(--game-ui-scale)));
+    --game-help-stage-max-height: calc(var(--game-height) - (76px * var(--game-ui-scale)));
+    --game-help-page-padding: 0 calc(12px * var(--game-ui-scale));
+    --game-help-image-max-height: calc(var(--game-height) - (98px * var(--game-ui-scale)));
+    --game-help-nav-offset: calc(2px * var(--game-ui-scale));
+    --game-help-close-offset: calc(-22px * var(--game-ui-scale));
+    --game-gameover-shell-gap: calc(8px * var(--game-overlay-fixed-scale));
+    --game-gameover-rule-width-size: min(calc(188px * var(--game-overlay-fixed-scale)), calc(var(--game-width) * 0.52));
+    --game-gameover-panel-width: min(calc(320px * var(--game-overlay-fixed-scale)), calc(var(--game-width) - (24px * var(--game-overlay-fixed-scale))));
+    --game-gameover-panel-min-height: min(calc(398px * var(--game-overlay-fixed-scale)), calc(var(--game-height) - (120px * var(--game-overlay-fixed-scale))));
+    --game-gameover-panel-overlap-top: calc(36px * var(--game-overlay-fixed-scale));
+    --game-gameover-panel-padding-top: calc(64px * var(--game-overlay-fixed-scale));
+    --game-gameover-panel-padding-right: calc(18px * var(--game-overlay-fixed-scale));
+    --game-gameover-panel-padding-bottom: calc(18px * var(--game-overlay-fixed-scale));
+    --game-gameover-panel-padding-left: calc(18px * var(--game-overlay-fixed-scale));
     --game-gameover-content-width: min(100%, 244px);
-    --game-gameover-header-overlay-width: min(196px, 56vw);
+    --game-gameover-header-overlay-width: min(calc(196px * var(--game-overlay-fixed-scale)), calc(var(--game-width) * 0.56));
     --game-gameover-header-overlay-shift: -30%;
-    --game-gameover-action-button-width: min(110px, 38vw);
-    --game-gameover-rule-image-max-height: min(28dvh, 220px);
-    --game-gameover-stats-gap: 3px;
-    --game-gameover-stat-min-height: 54px;
-    --game-gameover-gear-gap: 3px;
-    --game-gameover-item-size: 30px;
-    --game-gameover-item-icon-size: 24px;
-    --game-gameover-item-rarity-size: 10px;
-    --game-run-strip-label-size: 0.56rem;
-    --game-run-strip-value-size: 0.88rem;
-    --game-upgrade-name-size: 0.74rem;
-    --game-upgrade-desc-size: 0.6rem;
-    --game-gameover-label-size: 0.42rem;
-    --game-gameover-value-size: 0.6rem;
-    --game-mobile-control-size: 360px;
-    --game-mobile-control-side-size: 360px;
-    --game-mobile-control-jump-size: 360px;
-    --game-mobile-control-charge-size: 360px;
-    --game-mobile-control-padding: 12px;
-    --game-mobile-control-icon-width: 274px;
-    --game-mobile-control-side-icon-width: 274px;
-    --game-mobile-control-jump-icon-width: 274px;
-    --game-mobile-control-charge-icon-width: 274px;
-    --game-primaterie-logo-width: min(124px, 34vw);
-    --game-primaterie-anchor-width: min(176px, calc(100vw - 18px));
-    --game-primaterie-anchor-padding: 12px 7px 8px;
+    --game-gameover-action-button-width: min(calc(132px * var(--game-overlay-fixed-scale)), calc(var(--game-width) * 0.42));
+    --game-gameover-rule-image-max-height: min(calc(var(--game-height) * 0.28), calc(220px * var(--game-overlay-fixed-scale)));
+    --game-gameover-stats-gap: calc(3px * var(--game-overlay-fixed-scale));
+    --game-gameover-stat-min-height: calc(54px * var(--game-overlay-fixed-scale));
+    --game-gameover-gear-gap: calc(3px * var(--game-overlay-fixed-scale));
+    --game-gameover-item-size: calc(30px * var(--game-overlay-fixed-scale));
+    --game-gameover-item-icon-size: calc(24px * var(--overlay-fixed-icon-scale));
+    --game-gameover-item-rarity-size: calc(10px * var(--overlay-fixed-icon-scale));
+    --game-run-strip-label-size: calc(0.56rem * var(--game-ui-scale));
+    --game-run-strip-value-size: calc(0.88rem * var(--game-ui-scale));
+    --game-upgrade-name-size: calc(0.74rem * var(--game-ui-scale));
+    --game-upgrade-desc-size: calc(0.6rem * var(--game-ui-scale));
+    --game-gameover-label-size: calc(0.42rem * var(--overlay-fixed-font-scale));
+    --game-gameover-value-size: calc(0.6rem * var(--overlay-fixed-font-scale));
+    --game-momentum-dock-width: min(calc(320px * var(--game-hud-scale)), calc(var(--game-width) - (24px * var(--game-hud-scale))));
+    --game-momentum-meter-width: min(100%, calc(256px * var(--game-hud-scale)));
+    --game-momentum-dock-gap: calc(7px * var(--game-decor-scale));
+    --game-momentum-dock-padding-top: calc(5px * var(--game-decor-scale));
+    --game-equipment-dock-width: min(100%, calc(252px * var(--game-decor-scale)));
+    --game-equipment-dock-overlap: calc(-34px * var(--game-decor-scale));
+    --game-stash-top-offset: calc(84px * var(--game-hud-scale));
+    --game-stash-side-offset: calc(12px * var(--game-hud-scale));
+    --game-stash-max-width: min(calc(272px * var(--game-hud-scale)), calc(var(--game-width) - (24px * var(--game-hud-scale))));
+    --game-wallet-icon-size: calc(32px * var(--game-icon-scale));
+    --game-wallet-font-size: calc(clamp(0.78rem, 1.9vw, 0.9rem) * var(--game-font-scale));
+    --game-achievement-shell-width: min(calc(640px * var(--achievement-scale)), calc(var(--game-width) - (20px * var(--achievement-scale))));
+    --game-achievement-shell-height: min(calc(520px * var(--achievement-scale)), calc(var(--game-height) - (22px * var(--achievement-scale))));
+    --game-achievement-track-width: min(calc(320px * var(--achievement-scale)), calc(var(--game-achievement-shell-width) * 0.58));
+    --game-achievement-content-width: min(var(--game-achievement-track-width), calc(var(--game-achievement-shell-width) - (18px * var(--achievement-scale))));
+    --game-achievement-content-padding-y: calc(14px * var(--achievement-scale));
+    --game-achievement-content-padding-x: calc(10px * var(--achievement-scale));
+    --game-achievement-title-width: calc(clamp(176px, 42vw, 216px) * var(--achievement-scale));
+    --game-achievement-title-height: calc(clamp(60px, 12vw, 76px) * var(--achievement-scale));
+    --game-achievement-reward-preview-size: calc(30px * var(--achievement-icon-scale));
+    --game-achievement-rarity-icon-size: calc(16px * var(--achievement-icon-scale));
+    --game-achievement-mystery-icon-size: calc(15px * var(--achievement-icon-scale));
+    --game-leaderboard-row-height: calc(42px * var(--game-overlay-fixed-scale));
+    --game-leaderboard-rank-width: calc(40px * var(--game-overlay-fixed-scale));
+    --game-leaderboard-avatar-size: calc(40px * var(--game-overlay-fixed-scale));
+    --game-leaderboard-copy-min-height: calc(32px * var(--game-overlay-fixed-scale));
+    --game-profile-reward-gap: calc(5px * var(--game-overlay-fixed-scale));
+    --game-profile-reward-chip-min-height: calc(36px * var(--game-overlay-fixed-scale));
+    --game-profile-reward-chip-padding-y: calc(5px * var(--game-overlay-fixed-scale));
+    --game-profile-reward-chip-padding-x: calc(7px * var(--game-overlay-fixed-scale));
+    --game-profile-reward-preview-size: calc(24px * var(--overlay-fixed-icon-scale));
+    --game-profile-reward-preview-radius: calc(9px * var(--game-overlay-fixed-scale));
+    --game-profile-reward-copy-size: calc(0.56rem * var(--overlay-fixed-font-scale));
+    --game-profile-achievement-pill-min-height: calc(26px * var(--game-overlay-fixed-scale));
+    --game-profile-achievement-pill-padding-y: calc(3px * var(--game-overlay-fixed-scale));
+    --game-profile-achievement-pill-padding-x: calc(6px * var(--game-overlay-fixed-scale));
+    --game-primaterie-logo-width: min(calc(124px * var(--game-ui-scale)), calc(var(--game-width) * 0.34));
+    --game-primaterie-anchor-width: min(calc(176px * var(--game-ui-scale)), calc(var(--game-width) - (18px * var(--game-ui-scale))));
+    --game-primaterie-anchor-padding: calc(12px * var(--game-ui-scale)) calc(7px * var(--game-ui-scale)) calc(8px * var(--game-ui-scale));
   }
 
   .game-hud__stash {
-    top: calc(var(--safe-top) + 92px);
-    max-width: calc(100vw - 36px);
-    left: calc(var(--safe-left) + 12px);
+    top: calc(var(--safe-top) + var(--game-stash-top-offset));
+    max-width: var(--game-stash-max-width);
+    left: calc(var(--safe-left) + var(--game-stash-side-offset));
   }
 
   .game-hud__equipment-dock {
-    width: min(100%, 328px);
-    margin-bottom: -56px;
+    width: var(--game-equipment-dock-width);
+    margin-bottom: var(--game-equipment-dock-overlap);
   }
 
   .game-hud__panel {
-    right: calc(var(--safe-right) + 56px);
-    top: calc(var(--safe-top) + 12px);
-    padding: 10px;
+    padding: calc(10px * var(--game-ui-scale));
   }
 
   .game-hud__settings-volume {
-    min-height: 34px;
-    padding: 7px 8px;
+    min-height: calc(34px * var(--game-ui-scale));
+    padding: calc(7px * var(--game-ui-scale)) calc(8px * var(--game-ui-scale));
   }
 
   .game-hud__settings-language-icon,
@@ -543,60 +602,60 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   }
 
   .game-hud__branch-header h3 {
-    font-size: 0.8rem;
+    font-size: calc(0.8rem * var(--game-ui-scale));
   }
 
   .game-hud__branch-header p {
-    font-size: 0.62rem;
+    font-size: calc(0.62rem * var(--game-ui-scale));
     line-height: 1.26;
   }
 
   .game-hud__settings-chip {
-    min-height: 34px;
-    gap: 6px;
+    min-height: calc(34px * var(--game-ui-scale));
+    gap: calc(6px * var(--game-ui-scale));
   }
 
   .game-hud__settings-language-icon,
   .game-hud__settings-theme-icon {
-    width: 28px;
+    width: calc(28px * var(--game-ui-scale));
     height: auto;
   }
 
   .game-hud__settings-sound-off-icon,
   .game-hud__settings-sound-on-icon {
-    width: 26px;
-    height: 26px;
+    width: calc(26px * var(--game-ui-scale));
+    height: calc(26px * var(--game-ui-scale));
   }
 
   .game-hud__stats strong {
-    font-size: 0.88rem;
+    font-size: calc(0.82rem * var(--game-font-scale));
   }
 
   .game-hud__stats span,
   .game-hud__charge-meta,
   .game-hud__meta,
   .game-hud__status {
-    font-size: 0.68rem;
+    font-size: calc(0.66rem * var(--game-font-scale));
   }
 
   .game-hud__stash {
-    gap: 8px;
+    gap: var(--game-stash-gap);
   }
 
   .game-hud__inventory {
-    gap: 6px;
+    gap: calc(6px * var(--game-hud-scale));
   }
 
   .game-hud__inventory-item {
-    padding: 10px 12px;
-    border-radius: 18px;
+    padding: calc(8px * var(--game-hud-scale)) calc(10px * var(--game-hud-scale));
+    border-radius: calc(18px * var(--game-overlay-scale));
   }
 
   .game-hud__game-over-panel {
     min-height: 0;
-    border-radius: 18px;
+    border-radius: calc(18px * var(--game-overlay-scale));
     background-size: 100% 100%;
-    gap: 8px;
+    gap: calc(8px * var(--game-overlay-scale));
   }
 
   .game-hud__game-over {
@@ -863,7 +922,7 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
   }
 
   .game-hud__achievements-scroll {
-    padding: 4px 2px 14px;
+    padding: calc(4px * var(--game-menu-scale)) calc(2px * var(--game-menu-scale)) calc(14px * var(--game-menu-scale));
   }
 
   .game-hud__achievement-sort-shell {
@@ -912,13 +971,5 @@ html[data-runtime-device='desktop'] .game-rotate-overlay {
 
   .guide-bubble__help-summary-body {
     font-size: clamp(0.68rem, 1.8vw, 0.82rem);
-  }
-}
-
-@media (hover: none) and (pointer: coarse) {
-  .game-hud__mobile-controls {
-    right: calc(var(--safe-right) + 10px);
-    bottom: calc(var(--safe-bottom) + 10px);
-    gap: 8px;
   }
 }

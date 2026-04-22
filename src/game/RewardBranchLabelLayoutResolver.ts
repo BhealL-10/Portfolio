@@ -1,4 +1,6 @@
 import { isMobileRuntime } from '../core/device';
+import { getRuntimeViewportSize } from '../core/viewport';
+import { readAppliedGameUiScale } from './gameUiScale';
 
 export interface RewardBranchLabelLayoutInput {
   screenX: number;
@@ -16,38 +18,40 @@ export interface RewardBranchLabelLayout {
 
 export class RewardBranchLabelLayoutResolver {
   resolveMany(inputs: RewardBranchLabelLayoutInput[]) {
+    const viewport = getRuntimeViewportSize();
+    const uiScale = readAppliedGameUiScale();
     const layouts = inputs.map((input) => this.resolveSingle(input));
     if (inputs.length <= 1) {
       return layouts;
     }
 
     const compact = layouts[0]?.compact ?? false;
-    const gap = compact ? 8 : 12;
+    const gap = Math.round((compact ? 6 : 12) * uiScale);
     const allShopOrbit = inputs.every((input) => input.mode === 'shop_orbit');
-    const estimatedHeight = allShopOrbit ? (compact ? 146 : 154) : compact ? 108 : 122;
-    const topPadding = compact ? 10 : 16;
-    const bottomPadding = compact ? 14 : 22;
-    const viewportBottom = window.innerHeight - bottomPadding - estimatedHeight * 0.5;
+    const estimatedHeight = Math.round((allShopOrbit ? (compact ? 136 : 154) : compact ? 108 : 122) * uiScale);
+    const topPadding = Math.round((compact ? 10 : 16) * uiScale);
+    const bottomPadding = Math.round((compact ? 14 : 22) * uiScale);
+    const viewportBottom = viewport.height - bottomPadding - estimatedHeight * 0.5;
 
     if (allShopOrbit) {
-      const sidePadding = compact ? 10 : 20;
-      const shopGap = compact ? 12 : 18;
+      const sidePadding = Math.round((compact ? 10 : 20) * uiScale);
+      const shopGap = Math.round((compact ? 12 : 18) * uiScale);
       const sharedTop = Math.round(topPadding + estimatedHeight * 0.5);
 
       if (compact) {
-        const width = Math.round(Math.max(148, Math.min(220, window.innerWidth - sidePadding * 2)));
+        const width = Math.round(Math.max(140 * uiScale, Math.min(192 * uiScale, viewport.width - sidePadding * 2)));
         layouts.forEach((layout, index) => {
           layout.width = width;
-          layout.left = Math.round(window.innerWidth * 0.5);
+          layout.left = Math.round(viewport.width * 0.5);
           layout.top = Math.round(sharedTop + index * (estimatedHeight + shopGap));
         });
         return layouts;
       }
 
-      const availableWidth = Math.max(180, window.innerWidth - sidePadding * 2);
-      const width = Math.round(Math.max(152, Math.min(184, (availableWidth - shopGap * (inputs.length - 1)) / inputs.length)));
+      const availableWidth = Math.max(180 * uiScale, viewport.width - sidePadding * 2);
+      const width = Math.round(Math.max(152 * uiScale, Math.min(184 * uiScale, (availableWidth - shopGap * (inputs.length - 1)) / inputs.length)));
       const totalWidth = width * inputs.length + shopGap * (inputs.length - 1);
-      const startCenter = Math.round((window.innerWidth - totalWidth) * 0.5 + width * 0.5);
+      const startCenter = Math.round((viewport.width - totalWidth) * 0.5 + width * 0.5);
       layouts.forEach((layout, index) => {
         layout.width = width;
         layout.left = startCenter + index * (width + shopGap);
@@ -93,29 +97,34 @@ export class RewardBranchLabelLayoutResolver {
   }
 
   private resolveSingle(input: RewardBranchLabelLayoutInput): RewardBranchLabelLayout {
+    const viewport = getRuntimeViewportSize();
+    const uiScale = readAppliedGameUiScale();
     const compact = isMobileRuntime();
-    const sidePadding = compact ? 10 : 20;
-    const topPadding = compact ? 10 : 18;
-    const bottomPadding = compact ? 14 : 22;
+    const sidePadding = Math.round((compact ? 10 : 20) * uiScale);
+    const topPadding = Math.round((compact ? 10 : 18) * uiScale);
+    const bottomPadding = Math.round((compact ? 14 : 22) * uiScale);
     const width = Math.round(
-      Math.max(132, Math.min(input.mode === 'shop_orbit' ? (compact ? 172 : 184) : compact ? 156 : 196, window.innerWidth - sidePadding * 2))
+      Math.max(
+        132 * uiScale,
+        Math.min((input.mode === 'shop_orbit' ? (compact ? 162 : 184) : compact ? 156 : 196) * uiScale, viewport.width - sidePadding * 2)
+      )
     );
 
     if (input.mode !== 'shop_orbit') {
-      const anchorGap = compact ? 26 : 34;
-      const slotVerticalOffset = input.slot === 0 ? (compact ? -10 : -12) : input.slot === 2 ? (compact ? 10 : 12) : 0;
+      const anchorGap = (compact ? 26 : 34) * uiScale;
+      const slotVerticalOffset = input.slot === 0 ? (compact ? -10 : -12) * uiScale : input.slot === 2 ? (compact ? 10 : 12) * uiScale : 0;
       // Pour les branches/récompenses, aligner le panneau à droite (description à droite de la shard)
       const targetX = input.screenX + anchorGap;
       const left = Math.round(
         Math.max(
           sidePadding,
-          Math.min(window.innerWidth - sidePadding - width, targetX)
+          Math.min(viewport.width - sidePadding - width, targetX)
         )
       );
       const top = Math.round(
         Math.max(
-          topPadding + 48,
-          Math.min(window.innerHeight - bottomPadding - 48, input.screenY + slotVerticalOffset)
+          topPadding + 48 * uiScale,
+          Math.min(viewport.height - bottomPadding - 48 * uiScale, input.screenY + slotVerticalOffset)
         )
       );
       return {
@@ -126,17 +135,17 @@ export class RewardBranchLabelLayoutResolver {
       };
     }
 
-    const verticalOffset = compact ? 86 : 108;
+    const verticalOffset = (compact ? 78 : 108) * uiScale;
     const left = Math.round(
       Math.max(
         sidePadding + width * 0.5,
-        Math.min(window.innerWidth - sidePadding - width * 0.5, input.screenX)
+        Math.min(viewport.width - sidePadding - width * 0.5, input.screenX)
       )
     );
     const top = Math.round(
       Math.max(
-        topPadding + 34,
-        Math.min(window.innerHeight - bottomPadding - 52, input.screenY - verticalOffset)
+        topPadding + 34 * uiScale,
+        Math.min(viewport.height - bottomPadding - 52 * uiScale, input.screenY - verticalOffset)
       )
     );
 

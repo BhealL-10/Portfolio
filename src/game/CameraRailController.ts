@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { damp } from '../core/math';
+import { getRuntimeViewportSize } from '../core/viewport';
 import { getDifficultyProfile } from './difficultyScaler';
 import type { GameSessionState, ResolvedGamePathNode } from './gameSessionTypes';
 import { getPathVerticalExtent } from './pathLayout';
@@ -334,7 +335,8 @@ export class CameraRailController {
   }
 
   private getViewportAspect() {
-    return Math.max(0.5, window.innerWidth / Math.max(1, window.innerHeight));
+    const viewport = getRuntimeViewportSize();
+    return Math.max(0.5, viewport.width / Math.max(1, viewport.height));
   }
 
   private updateVisibleBounds() {

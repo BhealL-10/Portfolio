@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { damp } from '../core/math';
+import { getRuntimeViewportSize } from '../core/viewport';
 import { getDifficultyProfile } from './difficultyScaler';
 import { getDirectionVector } from './pathGenerator';
 import type { ResolvedPathNode } from './pathTypes';
@@ -104,7 +105,8 @@ export class CameraPathController {
   }
 
   isOutsideViewport(position: THREE.Vector3, padding = 0.12) {
-    const aspect = Math.max(0.5, window.innerWidth / Math.max(1, window.innerHeight));
+    const viewport = getRuntimeViewportSize();
+    const aspect = Math.max(0.5, viewport.width / Math.max(1, viewport.height));
     const halfHeight = Math.tan(THREE.MathUtils.degToRad(this.fov * 0.5)) * this.position.z;
     const halfWidth = halfHeight * aspect;
     const minX = this.lookAt.x - halfWidth * (1 - padding);

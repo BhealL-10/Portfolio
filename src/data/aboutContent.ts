@@ -11,16 +11,16 @@ export const aboutSectionContent: AboutSectionContent = {
     en: 'Direct email'
   },
   directHint: {
-    fr: 'Contacte-moi directement par email à cette adresse.',
-    en: 'Contact me directly by email at this address.'
+    fr: '',
+    en: ''
   },
   formTitle: {
-    fr: 'Envoyer un message',
-    en: 'Send a message'
+    fr: '',
+    en: ''
   },
   formIntro: {
-    fr: 'Dis-moi qui tu es, ce qui t’intéresse, et je te prépare un mail propre à envoyer.',
-    en: 'Tell me who you are, what you need, and I will prepare a clean email draft for you.'
+    fr: '',
+    en: ''
   },
   fields: {
     name: {
@@ -68,16 +68,16 @@ export const contactLinks: ContactLink[] = [
   {
     id: 'email',
     href: 'mailto:contact.bheall@gmail.com',
-    label: { fr: 'Email', en: 'Email' }
+    label: { fr: '', en: '' }
   },
   {
     id: 'github',
     href: 'https://github.com/orgs/ApeProd',
-    label: { fr: 'GitHub', en: 'GitHub' }
+    label: { fr: '', en: '' }
   },
   {
     id: 'x',
     href: 'https://x.com/BhealLfr',
-    label: { fr: 'X', en: 'X' }
+    label: { fr: '', en: '' }
   }
 ];

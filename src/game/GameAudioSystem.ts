@@ -119,7 +119,10 @@ const SFX = {
     new URL('../../assets/audio/sfx/player/jump/jump-04.wav', import.meta.url).href,
     new URL('../../assets/audio/sfx/player/jump/jump-05.wav', import.meta.url).href,
     new URL('../../assets/audio/sfx/player/jump/jump-06.wav', import.meta.url).href,
-    new URL('../../assets/audio/sfx/player/jump/jump-07.wav', import.meta.url).href
+    new URL('../../assets/audio/sfx/player/jump/jump-07.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/player/jump/jump-08.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/player/jump/jump-09.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/player/jump/jump-10.wav', import.meta.url).href
   ],
   land: [
     new URL('../../assets/audio/sfx/player/boat/land-01.wav', import.meta.url).href,
@@ -167,13 +170,34 @@ const SFX = {
     new URL('../../assets/audio/sfx/modules/magnet/coin-02.wav', import.meta.url).href
   ],
   shopLand: [new URL('../../assets/audio/sfx/ui/shop-land.wav', import.meta.url).href],
+  shopPurchase: [
+    new URL('../../assets/audio/sfx/ui/playerbuy1.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/ui/playerbuy2.wav', import.meta.url).href
+  ],
+  enemyTopDie: [
+    new URL('../../assets/audio/sfx/enemies/ennemietophit1.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/enemies/ennemietophit2.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/enemies/ennemietophit3.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/enemies/ennemietophit4.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/enemies/ennemietophit5.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/enemies/ennemietophit6.wav', import.meta.url).href
+  ],
+  enemyBotDie: [
+    new URL('../../assets/audio/sfx/enemies/ennemiebothit1.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/enemies/ennemiebothit2.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/enemies/ennemiebothit3.wav', import.meta.url).href
+  ],
+  enemyBotGrapple: [new URL('../../assets/audio/sfx/enemies/ennemiebotsprint.wav', import.meta.url).href],
   enemyDie: [
     new URL('../../assets/audio/sfx/enemies/die-01.wav', import.meta.url).href,
     new URL('../../assets/audio/sfx/enemies/die-02.wav', import.meta.url).href,
     new URL('../../assets/audio/sfx/enemies/die-03.wav', import.meta.url).href
   ],
   enemyHitPlayer: [new URL('../../assets/audio/sfx/enemies/hit-player.wav', import.meta.url).href],
-  gameOver: [new URL('../../assets/audio/sfx/ui/game-over.wav', import.meta.url).href],
+  gameOver: [
+    new URL('../../assets/audio/sfx/ui/game-over.wav', import.meta.url).href,
+    new URL('../../assets/audio/sfx/ui/Gameover2.wav', import.meta.url).href
+  ],
   gradeFail: [new URL('../../assets/audio/sfx/ui/grade/fail.wav', import.meta.url).href],
   gradeGreat: [new URL('../../assets/audio/sfx/ui/grade/great.wav', import.meta.url).href],
   gradePerfect: [new URL('../../assets/audio/sfx/ui/grade/perfect.wav', import.meta.url).href],
@@ -211,6 +235,7 @@ export class GameAudioSystem {
   private musicPlaybackRate = 1;
   private musicTrackAnalysisElapsed = 0;
   private nextOrderedLoopIndex = 0;
+  private nextGameOverVariant = 0;
   private musicVolume = this.readStoredChannelVolume('musicVolume');
   private sfxVolume = this.readStoredChannelVolume('sfxVolume');
   private muted = this.readStoredMuted();
@@ -455,11 +480,11 @@ export class GameAudioSystem {
         break;
       case 'grapple_hit':
         this.playOneShot(
-          SFX.grappleImpact[0],
+          event.target === 'enemy_bot' ? SFX.enemyBotGrapple[0] : SFX.grappleImpact[0],
           'combat',
-          AUDIO_EVENT_CONFIG.grappleHit,
-          'grapple-hit',
-          AUDIO_DEBOUNCE_MS.grappleHit
+          event.target === 'enemy_bot' ? AUDIO_EVENT_CONFIG.grappleEnemyBot : AUDIO_EVENT_CONFIG.grappleHit,
+          event.target === 'enemy_bot' ? 'grapple-hit-enemy-bot' : 'grapple-hit',
+          event.target === 'enemy_bot' ? AUDIO_DEBOUNCE_MS.grappleEnemyBot : AUDIO_DEBOUNCE_MS.grappleHit
         );
         break;
       case 'grapple_recall':
@@ -489,6 +514,33 @@ export class GameAudioSystem {
           AUDIO_DEBOUNCE_MS.shopLand
         );
         break;
+      case 'shop_purchase':
+        this.playOneShot(
+          this.pickRandom(SFX.shopPurchase),
+          'feedback',
+          AUDIO_EVENT_CONFIG.shopPurchase,
+          'shop-purchase',
+          AUDIO_DEBOUNCE_MS.shopPurchase
+        );
+        break;
+      case 'enemy_top_die':
+        this.playOneShot(
+          this.pickRandom(SFX.enemyTopDie),
+          'combat',
+          AUDIO_EVENT_CONFIG.enemyTopDie,
+          'enemy-top-die',
+          AUDIO_DEBOUNCE_MS.enemyTopDie
+        );
+        break;
+      case 'enemy_bot_die':
+        this.playOneShot(
+          this.pickRandom(SFX.enemyBotDie),
+          'combat',
+          AUDIO_EVENT_CONFIG.enemyBotDie,
+          'enemy-bot-die',
+          AUDIO_DEBOUNCE_MS.enemyBotDie
+        );
+        break;
       case 'enemy_die':
         this.playOneShot(
           this.pickRandom(SFX.enemyDie),
@@ -510,7 +562,7 @@ export class GameAudioSystem {
       case 'game_over':
         this.stopAllLoops(false);
         this.playOneShot(
-          SFX.gameOver[0],
+          this.pickCycledVariant(SFX.gameOver, this.nextGameOverVariant++),
           'feedback',
           AUDIO_EVENT_CONFIG.gameOver,
           'game-over',
@@ -572,12 +624,18 @@ export class GameAudioSystem {
     const urls = [
       SFX.playerJump[0],
       SFX.playerJump[1],
+      SFX.playerJump[SFX.playerJump.length - 1],
       SFX.land[0],
       SFX.gradeGreat[0],
       SFX.gradePerfect[0],
       SFX.gradeSuper[0],
       SFX.gradeFail[0],
       SFX.gameOver[0],
+      SFX.gameOver[SFX.gameOver.length - 1],
+      SFX.shopPurchase[0],
+      SFX.enemyTopDie[0],
+      SFX.enemyBotDie[0],
+      SFX.enemyBotGrapple[0],
       SFX.blowerOn[0],
       SFX.blowerOff[0],
       SFX.planeGlide[0],
@@ -1154,6 +1212,13 @@ export class GameAudioSystem {
       return '';
     }
     return options[Math.floor(Math.random() * options.length)] ?? options[0] ?? '';
+  }
+
+  private pickCycledVariant(options: readonly string[], index: number) {
+    if (options.length === 0) {
+      return '';
+    }
+    return options[((index % options.length) + options.length) % options.length] ?? options[0] ?? '';
   }
 
   private persistChannelVolume(channel: 'musicVolume' | 'sfxVolume', value: number) {

@@ -44,6 +44,10 @@ export class MobileControlButton {
     this.element.classList.toggle('is-dimmed', dimmed);
   }
 
+  setUnavailable(unavailable: boolean) {
+    this.element.classList.toggle('is-unavailable', unavailable);
+  }
+
   setDepleted(depleted: boolean) {
     this.element.classList.toggle('is-depleted', depleted);
   }

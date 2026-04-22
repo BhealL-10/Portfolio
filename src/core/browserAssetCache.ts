@@ -29,6 +29,7 @@ const textureLoader = new THREE.TextureLoader();
 const textureCache = new Map<string, THREE.Texture>();
 const rasterizedTextureCache = new Map<string, Promise<THREE.Texture>>();
 const imageCache = new Map<string, SharedImageEntry>();
+const MAX_RASTERIZED_CANVAS_DIMENSION = 4096;
 
 function buildTextureCacheKey(src: string, options: SharedTextureOptions) {
   return JSON.stringify([
@@ -155,11 +156,25 @@ export function preloadImageAsset(src: string, decoding: HTMLImageElement['decod
       resolve();
     };
 
-    const image = getSharedImageAsset(src, { decoding, onLoad: finish });
+    const finishAfterDecode = (image: HTMLImageElement) => {
+      if (typeof image.decode !== 'function') {
+        finish();
+        return;
+      }
+      image
+        .decode()
+        .catch(() => {
+          // Some mobile browsers reject decode() for already-loadable images.
+        })
+        .finally(() => finish());
+    };
+
+    const image = getSharedImageAsset(src, { decoding });
     if (image.complete && image.naturalWidth > 0) {
-      finish();
+      finishAfterDecode(image);
       return;
     }
+    image.addEventListener('load', () => finishAfterDecode(image), { once: true });
     image.addEventListener('error', finish, { once: true });
   });
 }
@@ -232,8 +247,14 @@ export function getRasterizedSvgTextureAsset(src: string, options: RasterizedSvg
       }
       settled = true;
       const dpr = Math.max(1, options.devicePixelRatio ?? window.devicePixelRatio ?? 1);
-      const rasterWidth = Math.max(1, Math.round(options.widthPx * dpr));
-      const rasterHeight = Math.max(1, Math.round(options.heightPx * dpr));
+      let rasterWidth = Math.max(1, Math.round(options.widthPx * dpr));
+      let rasterHeight = Math.max(1, Math.round(options.heightPx * dpr));
+      const rasterDimension = Math.max(rasterWidth, rasterHeight);
+      if (rasterDimension > MAX_RASTERIZED_CANVAS_DIMENSION) {
+        const scale = MAX_RASTERIZED_CANVAS_DIMENSION / rasterDimension;
+        rasterWidth = Math.max(1, Math.round(rasterWidth * scale));
+        rasterHeight = Math.max(1, Math.round(rasterHeight * scale));
+      }
       const canvas = document.createElement('canvas');
       canvas.width = rasterWidth;
       canvas.height = rasterHeight;

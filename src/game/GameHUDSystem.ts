@@ -1,6 +1,8 @@
 import type { RogueliteItemKind, RogueliteItemOffer, RogueliteRarity } from './roguelite';
 import { getItemById, rarityLabels, rogueliteItems } from './roguelite';
 import { drawImageIfReady, preloadImageAsset } from '../core/browserAssetCache';
+import { isMobileRuntime } from '../core/device';
+import { recordGameBootDiagnostic, recordGameBootDiagnosticError } from '../core/gameBootDiagnostics';
 import { I18nService } from '../ui/I18nService';
 import type { AcquisitionFeedback, GameOverCause, GamePlayerMotionState, LandingGrade } from './gameSessionTypes';
 import {
@@ -17,6 +19,7 @@ import { MobileControlsHud } from './MobileControlsHud';
 import { MOBILE_CHARGE_ASSETS, MOBILE_CONTROL_ASSETS } from './MobileControlLayoutResolver';
 import { RewardBranchLabelLayoutResolver } from './RewardBranchLabelLayoutResolver';
 import { AvatarMomentumHudWidget, AVATAR_MOMENTUM_HUD_ASSET_URLS } from './AvatarMomentumHudWidget';
+import { GameDisplayController, type GameDisplayMode } from './GameDisplayController';
 import {
   ACHIEVEMENT_ICON_ASSETS,
   ACHIEVEMENT_RARITY_ICON_ASSETS,
@@ -34,6 +37,8 @@ import { observeThemeChanges, resolveDocumentTheme } from './ThemeAssetResolver'
 import { TopRightUiCluster } from './TopRightUiCluster';
 import { buildGameOverSummaryMarkup } from './buildGameOverSummaryMarkup';
 import type { GameHudAvatarLayerSets } from './GameHudDeferredAssets';
+import { type GameUiScaleMode, readAppliedGameUiScale } from './gameUiScale';
+import { getRuntimeViewportSize } from '../core/viewport';
 
 const MOMENTUM_BAR_ASSETS = {
   bg: new URL('../../assets/images/game/ui/meters/momentum-background.png', import.meta.url).href,
@@ -44,6 +49,30 @@ const COIN_ICON_URL = new URL('../../assets/images/game/sprites/pickups/coin-she
 const GAME_OVER_HEADER_ASSETS = {
   dark: new URL('../../assets/images/game/ui/headers/game-over-title-dark.svg', import.meta.url).href,
   light: new URL('../../assets/images/game/ui/headers/game-over-title-light.svg', import.meta.url).href
+} as const;
+const THEMED_PANEL_SURFACE_ASSETS = {
+  light: [
+    new URL('../../assets/images/game/ui/backgrounds/hud-dark-1.svg', import.meta.url).href,
+    new URL('../../assets/images/game/ui/backgrounds/hud-dark-2.svg', import.meta.url).href,
+    new URL('../../assets/images/game/ui/backgrounds/hud-dark-3.svg', import.meta.url).href,
+    new URL('../../assets/images/game/ui/backgrounds/hud-dark-4.svg', import.meta.url).href,
+    new URL('../../assets/images/game/ui/backgrounds/hud-dark-5.svg', import.meta.url).href,
+    new URL('../../assets/images/game/ui/backgrounds/hud-dark-skull.svg', import.meta.url).href,
+    new URL('../../assets/images/game/ui/backgrounds/bg-achievement-toast-dark.svg', import.meta.url).href,
+    new URL('../../assets/images/game/ui/backgrounds/game-over-background-dark.svg', import.meta.url).href,
+    new URL('../../assets/images/game/ui/backgrounds/classement-bg-dark.svg', import.meta.url).href
+  ],
+  dark: [
+    new URL('../../assets/images/game/ui/backgrounds/hud-light-1.svg', import.meta.url).href,
+    new URL('../../assets/images/game/ui/backgrounds/hud-light-2.svg', import.meta.url).href,
+    new URL('../../assets/images/game/ui/backgrounds/hud-light-3.svg', import.meta.url).href,
+    new URL('../../assets/images/game/ui/backgrounds/hud-light-4.svg', import.meta.url).href,
+    new URL('../../assets/images/game/ui/backgrounds/hud-light-5.svg', import.meta.url).href,
+    new URL('../../assets/images/game/ui/backgrounds/hud-light-skull.svg', import.meta.url).href,
+    new URL('../../assets/images/game/ui/backgrounds/bg-achievement-toast-light.svg', import.meta.url).href,
+    new URL('../../assets/images/game/ui/backgrounds/game-over-background-light.svg', import.meta.url).href,
+    new URL('../../assets/images/game/ui/backgrounds/classement-bg-light.svg', import.meta.url).href
+  ]
 } as const;
 const EQUIPMENT_UI_ASSETS = {
   bgBoat: new URL('../../assets/images/game/ui/equipment/dock.svg', import.meta.url).href,
@@ -76,20 +105,15 @@ const EQUIPMENT_PANEL_VIEWBOX = { width: 613, height: 403 } as const;
 const CHARGE_COLOR_SLOTS = new Set(['propulseur', 'reacteur_front', 'reacteur_back', 'wings']);
 const ALWAYS_FULL_SLOTS = new Set(['plane', 'magnet']);
 const COOLDOWN_RING_SLOTS = new Set(['shield', 'wrapper', 'big_canon', 'front_canon', 'grappin']);
+const UI_BUTTON_PRELOAD_TYPES = ['restart', 'buy', 'hub'] as const;
+
+function resolveContrastTheme(theme: 'dark' | 'light') {
+  return theme === 'dark' ? 'light' : 'dark';
+}
 
 type GameHUDState = 'transition' | 'running' | 'upgrade_choice' | 'game_over';
 type AchievementFilterValue = 'all' | AchievementRarity;
 type AchievementSortMode = 'acquired' | 'rarity' | 'unlocked' | 'locked';
-
-type BrowserFullscreenDocument = Document & {
-  webkitFullscreenElement?: Element | null;
-  webkitExitFullscreen?: () => Promise<void> | void;
-  webkitFullscreenEnabled?: boolean;
-};
-
-type BrowserFullscreenElement = HTMLElement & {
-  webkitRequestFullscreen?: () => Promise<void> | void;
-};
 
 interface GameHUDCallbacks {
   onRestart: () => void;
@@ -386,6 +410,9 @@ export class GameHUDSystem {
   private settingsHelpButton: HTMLButtonElement;
   private readonly settingsVolumeControls = {} as Record<AudioChannel, SettingsVolumeControl>;
   private settingsFullscreenButton: HTMLButtonElement;
+  private settingsUiScaleLabel: HTMLSpanElement;
+  private settingsUiScaleGroup: HTMLDivElement;
+  private readonly settingsUiScaleButtons = {} as Record<GameUiScaleMode, HTMLButtonElement>;
   private branchLayer: HTMLDivElement;
   private stashBar: HTMLDivElement;
   private inventoryBar: HTMLDivElement;
@@ -459,6 +486,8 @@ export class GameHUDSystem {
   private readonly shapeTemplatePending = new Set<string>();
   private readonly stopObservingTheme: () => void;
   private stopObservingLocale: () => void = () => {};
+  private readonly displayController: GameDisplayController;
+  private stopObservingDisplayController: () => void = () => {};
   private readonly rewardBranchLayout = new RewardBranchLabelLayoutResolver();
   private audioMuted = false;
   private audioMusicVolume = 0.86;
@@ -481,8 +510,10 @@ export class GameHUDSystem {
   private leaderboardEntriesCache: LeaderboardEntry[] = [];
   private leaderboardRequestSerial = 0;
   private leaderboardSyncState: 'idle' | 'loading' | 'saving' | 'error' = 'idle';
-  private uiAssetsPreloaded = false;
-  private uiAssetsPreloadPromise: Promise<void> | null = null;
+  private readonly uiAssetStatesReady = new Set<string>();
+  private readonly uiAssetStatePromises = new Map<string, Promise<void>>();
+  private readonly gameOverRuleAssetCache = new Map<string, string>();
+  private readonly gameOverRuleAssetPromises = new Map<string, Promise<string>>();
   private runStripMountTimeout: number | null = null;
   private leaderboardLoaded = false;
   private leaderboardLoadPromise: Promise<void> | null = null;
@@ -519,11 +550,9 @@ export class GameHUDSystem {
       this.renderLeaderboard();
     }
   };
-  private readonly handleFullscreenChange = () => {
-    this.renderSettingsButtons();
-  };
 
   constructor(host: HTMLElement, private readonly i18n: I18nService, private readonly callbacks: GameHUDCallbacks) {
+    this.displayController = new GameDisplayController(host);
     this.element = document.createElement('div');
     this.element.className = 'game-hud';
     this.element.hidden = true;
@@ -559,7 +588,7 @@ export class GameHUDSystem {
           <button type="button" data-settings-help class="game-hud__settings-help-button"></button>
           <button type="button" data-settings-language></button>
           <button type="button" data-settings-theme></button>
-          <button type="button" data-settings-fullscreen class="mobile-only"></button>
+          <button type="button" data-settings-fullscreen></button>
           <button type="button" data-settings-mute></button>
           <button type="button" class="game-hud__settings-volume" data-settings-volume="music">
             <span class="game-hud__settings-volume-copy" data-settings-volume-label="music"></span>
@@ -575,6 +604,14 @@ export class GameHUDSystem {
             </span>
             <strong class="game-hud__settings-volume-value" data-settings-volume-value="sfx">86%</strong>
           </button>
+          <div class="game-hud__settings-ui-scale" data-settings-ui-scale>
+            <span class="game-hud__settings-ui-scale-label" data-settings-ui-scale-label></span>
+            <div class="game-hud__settings-ui-scale-options" role="radiogroup" data-settings-ui-scale-group>
+              <button type="button" data-settings-ui-scale-option="small"></button>
+              <button type="button" data-settings-ui-scale-option="medium"></button>
+              <button type="button" data-settings-ui-scale-option="large"></button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="game-hud__momentum-dock">
@@ -739,6 +776,11 @@ export class GameHUDSystem {
     this.settingsVolumeControls.music = this.createSettingsVolumeControl('music');
     this.settingsVolumeControls.sfx = this.createSettingsVolumeControl('sfx');
     this.settingsFullscreenButton = this.element.querySelector<HTMLButtonElement>('[data-settings-fullscreen]')!;
+    this.settingsUiScaleLabel = this.element.querySelector<HTMLSpanElement>('[data-settings-ui-scale-label]')!;
+    this.settingsUiScaleGroup = this.element.querySelector<HTMLDivElement>('[data-settings-ui-scale-group]')!;
+    this.settingsUiScaleButtons.small = this.element.querySelector<HTMLButtonElement>('[data-settings-ui-scale-option="small"]')!;
+    this.settingsUiScaleButtons.medium = this.element.querySelector<HTMLButtonElement>('[data-settings-ui-scale-option="medium"]')!;
+    this.settingsUiScaleButtons.large = this.element.querySelector<HTMLButtonElement>('[data-settings-ui-scale-option="large"]')!;
     this.branchLayer = this.element.querySelector<HTMLDivElement>('.game-hud__branch-layer')!;
     this.stashBar = this.element.querySelector<HTMLDivElement>('.game-hud__stash')!;
     this.inventoryBar = this.element.querySelector<HTMLDivElement>('.game-hud__inventory')!;
@@ -885,19 +927,35 @@ export class GameHUDSystem {
       this.closeAchievements();
       this.openHelp(this.i18n.current);
     });
-    this.settingsThemeButton.addEventListener('click', callbacks.onThemeToggle);
-    this.settingsLanguageButton.addEventListener('click', callbacks.onLanguageToggle);
+    this.settingsThemeButton.addEventListener('click', () => {
+      const nextTheme = resolveContrastTheme(resolveDocumentTheme());
+      void this.ensureUiAssetsPreloaded(this.i18n.current, nextTheme).finally(() => {
+        callbacks.onThemeToggle();
+      });
+    });
+    this.settingsLanguageButton.addEventListener('click', () => {
+      const nextLocale = this.i18n.current === 'fr' ? 'en' : 'fr';
+      void this.ensureUiAssetsPreloaded(nextLocale, resolveDocumentTheme()).finally(() => {
+        callbacks.onLanguageToggle();
+      });
+    });
     this.settingsMuteButton.addEventListener('click', callbacks.onAudioMuteToggle);
     this.settingsFullscreenButton.addEventListener('touchend', (event) => {
       event.preventDefault();
       this.lastFullscreenTouchAt = Date.now();
-      void this.toggleFullscreen();
+      void this.displayController.toggleGameFullscreen();
     }, { passive: false });
     this.settingsFullscreenButton.addEventListener('click', () => {
       if (Date.now() - this.lastFullscreenTouchAt < 500) {
         return;
       }
-      void this.toggleFullscreen();
+      void this.displayController.toggleGameFullscreen();
+    });
+    (Object.entries(this.settingsUiScaleButtons) as Array<[GameUiScaleMode, HTMLButtonElement]>).forEach(([mode, button]) => {
+      button.addEventListener('click', () => {
+        this.displayController.setUiScaleMode(mode);
+        this.renderSettingsButtons();
+      });
     });
     const updateVolumeFromPointer = (channel: AudioChannel, clientX: number) => {
       const control = this.settingsVolumeControls[channel];
@@ -940,8 +998,6 @@ export class GameHUDSystem {
     };
     bindVolumePointerEvents('music');
     bindVolumePointerEvents('sfx');
-    document.addEventListener('fullscreenchange', this.handleFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', this.handleFullscreenChange);
     this.helpPrevButton.addEventListener('click', () => this.setHelpPage(this.helpPageIndex - 1));
     this.helpNextButton.addEventListener('click', () => this.setHelpPage(this.helpPageIndex + 1));
     this.helpCloseButton.addEventListener('click', () => this.requestCloseHelp());
@@ -1030,7 +1086,8 @@ export class GameHUDSystem {
     this.helpStage.addEventListener('pointercancel', () => {
       this.helpPointerStartX = null;
     });
-    this.stopObservingTheme = observeThemeChanges(() => {
+    this.stopObservingTheme = observeThemeChanges((theme) => {
+      void this.ensureUiAssetsPreloaded(this.i18n.current, theme);
       this.renderAchievementsButton();
       this.renderSettingsButtons();
       this.renderAudioControls();
@@ -1057,7 +1114,11 @@ export class GameHUDSystem {
     });
     host.appendChild(this.element);
 
-    this.stopObservingLocale = this.i18n.onChange(() => this.renderStatic());
+    this.stopObservingLocale = this.i18n.onChange(() => {
+      void this.ensureUiAssetsPreloaded(this.i18n.current, resolveDocumentTheme());
+      this.renderStatic();
+    });
+    this.stopObservingDisplayController = this.displayController.onChange(() => this.renderSettingsButtons());
     window.addEventListener(PLAYER_AVATAR_UPDATED_EVENT, this.handleAvatarSelectionBroadcast as EventListener);
     window.addEventListener('storage', this.handleWindowStorage);
     this.closeHelp();
@@ -1076,6 +1137,7 @@ export class GameHUDSystem {
     this.element.style.pointerEvents = visible ? '' : 'none';
     document.body.classList.toggle('game-runtime-ui-active', visible);
     if (!visible) {
+      void this.displayController.exitGameFullscreen();
       this.hideGameOverStatHover();
       this.hideLeaderboardHover();
       this.closeHelp();
@@ -1099,7 +1161,7 @@ export class GameHUDSystem {
       this.toastStack.inert = true;
       this.achievementsOverlay.inert = true;
     } else {
-      this.ensureUiAssetsPreloaded();
+      void this.ensureUiAssetsPreloaded();
       this.branchLayer.inert = false;
       this.shopBar.inert = false;
       this.gameOverOverlay.inert = false;
@@ -1112,6 +1174,7 @@ export class GameHUDSystem {
     // Clean up timers
     this.stopObservingTheme();
     this.stopObservingLocale();
+    this.stopObservingDisplayController();
     if (this.runStripMountTimeout !== null) {
       window.clearTimeout(this.runStripMountTimeout);
       this.runStripMountTimeout = null;
@@ -1126,8 +1189,7 @@ export class GameHUDSystem {
     // Clean up window/document level listeners that persist across restarts
     window.removeEventListener(PLAYER_AVATAR_UPDATED_EVENT, this.handleAvatarSelectionBroadcast as EventListener);
     window.removeEventListener('storage', this.handleWindowStorage);
-    document.removeEventListener('fullscreenchange', this.handleFullscreenChange);
-    document.removeEventListener('webkitfullscreenchange', this.handleFullscreenChange);
+    this.displayController.dispose();
     
     // Clean up element-level listeners that were tracked
     for (const { target, type, handler, options } of this.listeners) {
@@ -1145,16 +1207,43 @@ export class GameHUDSystem {
   }
 
   preloadAssets() {
-    return Promise.all([this.ensureUiAssetsPreloaded(), this.ensureAvatarAssetsLoaded()]).then(() => undefined);
+    recordGameBootDiagnostic('game_hud_preload_requested');
+    return Promise.all([this.ensureUiAssetsPreloaded(), this.ensureAvatarAssetsLoaded()])
+      .then(() => {
+        recordGameBootDiagnostic('game_hud_preload_completed');
+        return undefined;
+      })
+      .catch((error) => {
+        recordGameBootDiagnosticError('game_hud_preload_failed', error);
+        throw error;
+      });
   }
 
-  private ensureUiAssetsPreloaded() {
-    if (this.uiAssetsPreloaded && this.uiAssetsPreloadPromise) {
-      return this.uiAssetsPreloadPromise;
+  private getUiAssetStateKey(locale: 'fr' | 'en' = this.i18n.current, theme = resolveDocumentTheme()) {
+    return `${locale}:${theme}`;
+  }
+
+  private ensureUiAssetsPreloaded(locale: 'fr' | 'en' = this.i18n.current, theme = resolveDocumentTheme()) {
+    const stateKey = this.getUiAssetStateKey(locale, theme);
+    if (this.uiAssetStatesReady.has(stateKey)) {
+      return Promise.resolve();
     }
-    this.uiAssetsPreloaded = true;
-    this.uiAssetsPreloadPromise = this.preloadUiAssets();
-    return this.uiAssetsPreloadPromise;
+
+    const pending = this.uiAssetStatePromises.get(stateKey);
+    if (pending) {
+      return pending;
+    }
+
+    const request = this.preloadUiAssets(locale, theme)
+      .then(() => {
+        this.uiAssetStatesReady.add(stateKey);
+      })
+      .finally(() => {
+        this.uiAssetStatePromises.delete(stateKey);
+      });
+
+    this.uiAssetStatePromises.set(stateKey, request);
+    return request;
   }
 
   private ensureDeferredAssetsModule() {
@@ -1182,6 +1271,7 @@ export class GameHUDSystem {
       .then(({ loadHelpPagesFor }) => loadHelpPagesFor(locale, theme as HelpTheme))
       .then((pages) => {
         this.helpPagesCache.set(cacheKey, pages);
+        this.helpPagesPromises.delete(cacheKey);
         return pages;
       })
       .catch((error) => {
@@ -1194,6 +1284,40 @@ export class GameHUDSystem {
     return request;
   }
 
+  private ensureGameOverRuleAsset(locale: 'fr' | 'en' = this.i18n.current, theme = resolveDocumentTheme()) {
+    const cacheKey = this.getHelpCacheKey(locale, theme);
+    const cached = this.gameOverRuleAssetCache.get(cacheKey);
+    if (cached) {
+      return Promise.resolve(cached);
+    }
+
+    const pending = this.gameOverRuleAssetPromises.get(cacheKey);
+    if (pending) {
+      return pending;
+    }
+
+    const request = this.ensureHelpPagesLoaded(locale, theme)
+      .then(async (pages) => {
+        const selectedPage = pages[0] ?? '';
+        if (!selectedPage) {
+          return '';
+        }
+        await preloadImageAsset(selectedPage, 'sync');
+        this.gameOverRuleAssetCache.set(cacheKey, selectedPage);
+        return selectedPage;
+      })
+      .catch((error) => {
+        console.warn('[GameHUDSystem] Failed to preload a game over rule asset.', error);
+        return '';
+      })
+      .finally(() => {
+        this.gameOverRuleAssetPromises.delete(cacheKey);
+      });
+
+    this.gameOverRuleAssetPromises.set(cacheKey, request);
+    return request;
+  }
+
   private ensureAvatarAssetsLoaded() {
     if (this.avatarAssetsLoaded) {
       return Promise.resolve();
@@ -1203,6 +1327,10 @@ export class GameHUDSystem {
     }
 
     this.avatarAssetsPromise = this.ensureDeferredAssetsModule()
+      .then((module) => {
+        recordGameBootDiagnostic('game_hud_avatar_assets_started');
+        return module;
+      })
       .then(({ loadAvatarLayerSets }) => loadAvatarLayerSets())
       .then((sets) => {
         this.avatarLayerSets = sets;
@@ -1216,9 +1344,11 @@ export class GameHUDSystem {
         if (this.avatarEditorOpen) {
           this.renderAvatarEditor();
         }
+        recordGameBootDiagnostic('game_hud_avatar_assets_completed');
       })
       .catch((error) => {
         this.avatarAssetsPromise = null;
+        recordGameBootDiagnosticError('game_hud_avatar_assets_failed', error);
         console.warn('[GameHUDSystem] Failed to load deferred skins.', error);
       });
 
@@ -1855,14 +1985,16 @@ export class GameHUDSystem {
         (card) => card.dataset.slot === String(hint.slot) && card.dataset.mode === 'shop_orbit' && !card.hidden
       );
       const relatedCardRect = relatedCard?.getBoundingClientRect();
-      const buttonHalfHeight = layout.compact ? 26 : 30;
-      const buttonGap = layout.compact ? 12 : 16;
+      const viewport = getRuntimeViewportSize();
+      const uiScale = readAppliedGameUiScale();
+      const buttonHalfHeight = (layout.compact ? 24 : 30) * uiScale;
+      const buttonGap = (layout.compact ? 10 : 16) * uiScale;
       const buttonCenterY = Math.round(
         Math.max(
-          42,
+          42 * uiScale,
           Math.min(
-            window.innerHeight - 42,
-            relatedCardRect ? relatedCardRect.bottom + buttonGap + buttonHalfHeight : layout.top + (layout.compact ? 102 : 116)
+            viewport.height - 42 * uiScale,
+            relatedCardRect ? relatedCardRect.bottom + buttonGap + buttonHalfHeight : layout.top + (layout.compact ? 92 : 116) * uiScale
           )
         )
       );
@@ -1922,17 +2054,19 @@ export class GameHUDSystem {
     const hasChanged = this.currentGameOverSignature !== markup.signature;
     if (hasChanged) {
       if (!this.currentGameOverRuleSrc || isNewRun) {
-        const helpPages = this.getHelpPages(this.i18n.current);
-        this.currentGameOverRuleSrc = helpPages.length > 0 ? helpPages[Math.floor(Math.random() * helpPages.length)]! : '';
+        const locale = this.i18n.current;
+        const theme = resolveDocumentTheme();
+        const cacheKey = this.getHelpCacheKey(locale, theme);
+        const preloadedRule = this.gameOverRuleAssetCache.get(cacheKey) ?? '';
+        this.currentGameOverRuleSrc = preloadedRule;
         if (!this.currentGameOverRuleSrc) {
-          void this.ensureHelpPagesLoaded(this.i18n.current).then((loadedPages) => {
-            if (!this.currentRunSummary || loadedPages.length === 0 || this.currentGameOverRuleSrc) {
+          this.gameOverRuleImage.removeAttribute('src');
+          void this.ensureGameOverRuleAsset(locale, theme).then((readyRule) => {
+            if (!this.currentRunSummary || this.currentGameOverRuleSrc || !readyRule) {
               return;
             }
-            this.currentGameOverRuleSrc = loadedPages[Math.floor(Math.random() * loadedPages.length)] ?? '';
-            if (this.currentGameOverRuleSrc) {
-              this.renderGameOverSummaryFromCurrentRun();
-            }
+            this.currentGameOverRuleSrc = readyRule;
+            this.renderGameOverSummaryFromCurrentRun();
           });
         }
       }
@@ -1943,6 +2077,8 @@ export class GameHUDSystem {
       this.gameOverEquipment.innerHTML = markup.equipmentMarkup;
       if (this.currentGameOverRuleSrc) {
         this.gameOverRuleImage.src = this.currentGameOverRuleSrc;
+      } else {
+        this.gameOverRuleImage.removeAttribute('src');
       }
     }
     if (isNewRun) {
@@ -2054,44 +2190,40 @@ export class GameHUDSystem {
     return rarityLabels[rarity][this.i18n.current];
   }
 
-  private isFullscreenActive() {
-    const fullscreenDocument = document as BrowserFullscreenDocument;
-    return Boolean(document.fullscreenElement || fullscreenDocument.webkitFullscreenElement);
-  }
-
-  private isFullscreenEnabled() {
-    const fullscreenDocument = document as BrowserFullscreenDocument;
-    const fullscreenElement = document.documentElement as BrowserFullscreenElement;
-    return Boolean(
-      document.fullscreenEnabled ||
-      fullscreenDocument.webkitFullscreenEnabled ||
-      fullscreenElement.requestFullscreen ||
-      fullscreenElement.webkitRequestFullscreen
-    );
-  }
-
-  private async toggleFullscreen() {
-    const fullscreenDocument = document as BrowserFullscreenDocument;
-    const fullscreenElement = document.documentElement as BrowserFullscreenElement;
-    try {
-      if (this.isFullscreenActive()) {
-        if (document.exitFullscreen) {
-          await document.exitFullscreen();
-        } else if (fullscreenDocument.webkitExitFullscreen) {
-          await fullscreenDocument.webkitExitFullscreen();
-        }
-      } else if (fullscreenElement.requestFullscreen) {
-        await fullscreenElement.requestFullscreen({ navigationUI: 'hide' });
-      } else if (fullscreenElement.webkitRequestFullscreen) {
-        await fullscreenElement.webkitRequestFullscreen();
-      } else {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
-    } catch {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } finally {
-      this.renderSettingsButtons();
+  private getDisplayModeLabel(displayMode: GameDisplayMode, nativeFullscreenSupported: boolean) {
+    if (displayMode === 'fullscreen') {
+      return this.i18n.current === 'fr' ? 'Quitter plein écran' : 'Exit fullscreen';
     }
+    if (displayMode === 'immersive') {
+      return this.i18n.current === 'fr' ? 'Quitter mode immersif' : 'Exit immersive mode';
+    }
+    if (!nativeFullscreenSupported) {
+      return this.i18n.current === 'fr' ? 'Mode immersif' : 'Immersive mode';
+    }
+    return this.i18n.current === 'fr' ? 'Plein écran' : 'Fullscreen';
+  }
+
+  private renderUiScaleButtons() {
+    const labels: Record<GameUiScaleMode, string> = {
+      small: this.i18n.t('gameUiSizeSmall'),
+      medium: this.i18n.t('gameUiSizeMedium'),
+      large: this.i18n.t('gameUiSizeLarge')
+    };
+    const activeMode = this.displayController.getUiScaleMode();
+    const groupLabel = this.i18n.t('gameUiSize');
+
+    this.settingsUiScaleLabel.textContent = groupLabel;
+    this.settingsUiScaleGroup.setAttribute('aria-label', groupLabel);
+
+    (Object.entries(this.settingsUiScaleButtons) as Array<[GameUiScaleMode, HTMLButtonElement]>).forEach(([mode, button]) => {
+      const active = mode === activeMode;
+      button.className = `game-hud__settings-ui-scale-option${active ? ' is-active' : ''}`;
+      button.textContent = labels[mode];
+      button.setAttribute('role', 'radio');
+      button.setAttribute('aria-checked', active ? 'true' : 'false');
+      button.setAttribute('aria-label', `${groupLabel}: ${labels[mode]}`);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
   }
 
   private renderSettingsButtons() {
@@ -2113,21 +2245,17 @@ export class GameHUDSystem {
     this.settingsThemeButton.setAttribute('aria-label', themeLabel);
     this.settingsThemeButton.innerHTML = `<img class="game-hud__settings-theme-icon" src="${THEME_TOGGLE_ASSETS[theme]}" alt="" />`;
 
-    const fullscreenSupported = this.isFullscreenEnabled();
-    if (!fullscreenSupported) {
-      this.settingsFullscreenButton.hidden = true;
-    } else {
-      const fullscreenActive = this.isFullscreenActive();
-      const fullscreenLabel = fullscreenActive
-        ? (this.i18n.current === 'fr' ? 'Quitter plein écran' : 'Exit fullscreen')
-        : (this.i18n.current === 'fr' ? 'Plein écran' : 'Fullscreen');
-      const fullscreenSrc = fullscreenActive ? FULLSCREEN_BUTTON_ASSETS.on[theme] : FULLSCREEN_BUTTON_ASSETS.off[theme];
-      this.settingsFullscreenButton.hidden = false;
-      this.settingsFullscreenButton.className = 'game-hud__settings-chip game-hud__settings-chip--fullscreen';
-      this.settingsFullscreenButton.setAttribute('aria-label', fullscreenLabel);
-      this.settingsFullscreenButton.setAttribute('aria-pressed', fullscreenActive ? 'true' : 'false');
-      this.settingsFullscreenButton.innerHTML = `<img class="game-hud__settings-fullscreen-icon" src="${fullscreenSrc}" alt="" />`;
-    }
+    const displayMode = this.displayController.getDisplayMode();
+    const fullscreenActive = displayMode !== 'windowed';
+    const fullscreenLabel = this.getDisplayModeLabel(displayMode, this.displayController.isFullscreenSupported());
+    const fullscreenSrc = fullscreenActive ? FULLSCREEN_BUTTON_ASSETS.on[theme] : FULLSCREEN_BUTTON_ASSETS.off[theme];
+    this.settingsFullscreenButton.hidden = false;
+    this.settingsFullscreenButton.className = 'game-hud__settings-chip game-hud__settings-chip--fullscreen';
+    this.settingsFullscreenButton.dataset.displayMode = displayMode;
+    this.settingsFullscreenButton.setAttribute('aria-label', fullscreenLabel);
+    this.settingsFullscreenButton.setAttribute('aria-pressed', fullscreenActive ? 'true' : 'false');
+    this.settingsFullscreenButton.innerHTML = `<img class="game-hud__settings-fullscreen-icon" src="${fullscreenSrc}" alt="" />`;
+    this.renderUiScaleButtons();
   }
 
   private renderAudioControls() {
@@ -2286,6 +2414,8 @@ export class GameHUDSystem {
                 type="button"
                 class="game-hud__achievement-filter${this.achievementFilter === option.value ? ' is-active' : ''}"
                 data-achievement-filter="${option.value}"
+                aria-label="${option.label}"
+                title="${option.label}"
               >
                 ${option.icon ? `<img src="${option.icon}" alt="" class="game-hud__achievement-filter-icon" />` : ''}
                 <span>${option.label}</span>
@@ -3750,12 +3880,15 @@ export class GameHUDSystem {
   }
 
   private positionHoverCard(card: HTMLDivElement, event: MouseEvent) {
-    const offsetX = 18;
-    const offsetY = 14;
-    const maxLeft = window.innerWidth - card.offsetWidth - 12;
-    const maxTop = window.innerHeight - card.offsetHeight - 12;
-    card.style.left = `${Math.max(12, Math.min(maxLeft, event.clientX + offsetX))}px`;
-    card.style.top = `${Math.max(12, Math.min(maxTop, event.clientY + offsetY))}px`;
+    const viewport = getRuntimeViewportSize();
+    const uiScale = readAppliedGameUiScale();
+    const offsetX = 18 * uiScale;
+    const offsetY = 14 * uiScale;
+    const edgePadding = 12 * uiScale;
+    const maxLeft = viewport.width - card.offsetWidth - edgePadding;
+    const maxTop = viewport.height - card.offsetHeight - edgePadding;
+    card.style.left = `${Math.max(edgePadding, Math.min(maxLeft, event.clientX + offsetX))}px`;
+    card.style.top = `${Math.max(edgePadding, Math.min(maxTop, event.clientY + offsetY))}px`;
   }
 
   private openAvatarEditor() {
@@ -4144,76 +4277,73 @@ export class GameHUDSystem {
     return filtered.length > 0 ? filtered : [0];
   }
 
-  private preloadUiAssets() {
+  private buildUiPreloadAssets(locale: 'fr' | 'en', theme: 'dark' | 'light') {
+    const hoverTheme = resolveContrastTheme(theme);
     const itemAssets = rogueliteItems.flatMap((item) => [item.hudIconSrc, item.rarityIconSrc]);
     const buttonAssets = [
-      getUIButtonAsset('restart', 'fr', 'dark'),
-      getUIButtonAsset('restart', 'fr', 'light'),
-      getUIButtonAsset('restart', 'en', 'dark'),
-      getUIButtonAsset('restart', 'en', 'light'),
-      getUIButtonAsset('back', 'fr', 'dark'),
-      getUIButtonAsset('back', 'fr', 'light'),
-      getUIButtonAsset('back', 'en', 'dark'),
-      getUIButtonAsset('back', 'en', 'light'),
-      getUIButtonAsset('highscore', 'fr', 'dark'),
-      getUIButtonAsset('highscore', 'fr', 'light'),
-      getUIButtonAsset('highscore', 'en', 'dark'),
-      getUIButtonAsset('highscore', 'en', 'light'),
-      getUIButtonAsset('buy', 'fr', 'dark'),
-      getUIButtonAsset('buy', 'fr', 'light'),
-      getUIButtonAsset('buy', 'en', 'dark'),
-      getUIButtonAsset('buy', 'en', 'light'),
-      getUIButtonAsset('hub', 'fr', 'dark'),
-      getUIButtonAsset('hub', 'fr', 'light'),
-      getUIButtonAsset('hub', 'en', 'dark'),
-      getUIButtonAsset('hub', 'en', 'light'),
-      LANGUAGE_BUTTON_ASSETS.fr,
-      LANGUAGE_BUTTON_ASSETS.en,
-      FULLSCREEN_BUTTON_ASSETS.on.dark,
-      FULLSCREEN_BUTTON_ASSETS.on.light,
-      FULLSCREEN_BUTTON_ASSETS.off.dark,
-      FULLSCREEN_BUTTON_ASSETS.off.light,
-      SAVE_BUTTON_ASSETS.dark,
-      SAVE_BUTTON_ASSETS.light,
-      THEME_TOGGLE_ASSETS.dark,
-      THEME_TOGGLE_ASSETS.light,
-      ACHIEVEMENT_ICON_ASSETS.dark,
-      ACHIEVEMENT_ICON_ASSETS.light,
-      HELP_ICON_ASSETS.dark,
-      HELP_ICON_ASSETS.light,
-      SECONDARY_NAV_ASSETS.left.dark,
-      SECONDARY_NAV_ASSETS.left.light,
-      SECONDARY_NAV_ASSETS.right.dark,
-      SECONDARY_NAV_ASSETS.right.light,
-      SECONDARY_NAV_ASSETS.close.dark,
-      SECONDARY_NAV_ASSETS.close.light,
-      SOUND_BUTTON_ASSETS.on.dark,
-      SOUND_BUTTON_ASSETS.on.light,
-      SOUND_BUTTON_ASSETS.off.dark,
-      SOUND_BUTTON_ASSETS.off.light,
-      SOUND_BUTTON_ASSETS.sprite
+      ...UI_BUTTON_PRELOAD_TYPES.flatMap((type) => [getUIButtonAsset(type, locale, theme), getUIButtonAsset(type, locale, hoverTheme)]),
+      LANGUAGE_BUTTON_ASSETS[locale],
+      FULLSCREEN_BUTTON_ASSETS.on[theme],
+      FULLSCREEN_BUTTON_ASSETS.off[theme],
+      SAVE_BUTTON_ASSETS[theme],
+      SAVE_BUTTON_ASSETS[hoverTheme],
+      THEME_TOGGLE_ASSETS[theme],
+      ACHIEVEMENT_ICON_ASSETS[theme],
+      HELP_ICON_ASSETS[theme],
+      SECONDARY_NAV_ASSETS.left[theme],
+      SECONDARY_NAV_ASSETS.left[hoverTheme],
+      SECONDARY_NAV_ASSETS.right[theme],
+      SECONDARY_NAV_ASSETS.right[hoverTheme],
+      SECONDARY_NAV_ASSETS.close[theme],
+      SECONDARY_NAV_ASSETS.close[hoverTheme],
+      SOUND_BUTTON_ASSETS.on[theme],
+      SOUND_BUTTON_ASSETS.off[theme],
+      SOUND_BUTTON_ASSETS.sprite,
+      SETTINGS_BUTTON_ASSETS[theme]
     ];
-    const headerAssets = Object.values(GAME_OVER_HEADER_ASSETS);
-    const achievementRarityAssets = Object.values(ACHIEVEMENT_RARITY_ICON_ASSETS);
-    const preloadedAssets = [
-      ...Object.values(GRADE_SPRITE_ASSET_URLS).flatMap((assetSet) => Object.values(assetSet)),
+    return [
+      ...Object.values(GRADE_SPRITE_ASSET_URLS[theme]),
       ...AVATAR_MOMENTUM_HUD_ASSET_URLS,
       ...Object.values(MOMENTUM_BAR_ASSETS),
+      ...THEMED_PANEL_SURFACE_ASSETS[theme],
       COIN_ICON_URL,
       EQUIPMENT_UI_ASSETS.bgBoat,
       ...itemAssets,
-      ...headerAssets,
-      ...achievementRarityAssets,
+      GAME_OVER_HEADER_ASSETS[theme],
+      ...Object.values(ACHIEVEMENT_RARITY_ICON_ASSETS),
       ...Object.values(EQUIPMENT_UI_ASSETS.charges),
-      ...Object.values(MOBILE_CONTROL_ASSETS).flatMap((assetSet) => Object.values(assetSet)),
-      ...MOBILE_CHARGE_ASSETS.flatMap((assetSet) => Object.values(assetSet)),
-      ...buttonAssets,
-      ...Object.values(SETTINGS_BUTTON_ASSETS)
+      ...Object.values(MOBILE_CONTROL_ASSETS).flatMap((assetSet) => [assetSet[theme], assetSet[hoverTheme]]),
+      ...MOBILE_CHARGE_ASSETS.flatMap((assetSet) => [assetSet[theme], assetSet[hoverTheme]]),
+      ...buttonAssets
     ];
-    const imagePreload = Promise.all(preloadedAssets.map((src) => preloadImageAsset(src)));
+  }
+
+  private preloadUiAssets(locale: 'fr' | 'en' = this.i18n.current, theme = resolveDocumentTheme()) {
+    const preloadedAssets = Array.from(new Set(this.buildUiPreloadAssets(locale, theme)));
+    const stateKey = this.getUiAssetStateKey(locale, theme);
+    recordGameBootDiagnostic('game_hud_ui_assets_started', {
+      stateKey,
+      assetCount: preloadedAssets.length,
+      mobile: isMobileRuntime()
+    });
+    const imagePreload = this.preloadImageAssets(preloadedAssets);
     Object.values(EQUIPMENT_UI_ASSETS.charges).forEach((src) => this.preloadShapeTemplate(src));
     this.preloadShapeTemplate(EQUIPMENT_UI_ASSETS.bgBoat);
 
-    return imagePreload.then(() => undefined);
+    return Promise.all([imagePreload, this.ensureGameOverRuleAsset(locale, theme)]).then(() => {
+      recordGameBootDiagnostic('game_hud_ui_assets_completed', {
+        stateKey,
+        assetCount: preloadedAssets.length
+      });
+      return undefined;
+    });
+  }
+
+  private async preloadImageAssets(urls: string[]) {
+    const batchSize = isMobileRuntime() ? 12 : urls.length;
+    for (let index = 0; index < urls.length; index += batchSize) {
+      const batch = urls.slice(index, index + batchSize);
+      await Promise.all(batch.map((src) => preloadImageAsset(src)));
+    }
   }
 }

@@ -1,3 +1,5 @@
+import { getRuntimeViewportSize } from './viewport';
+
 export interface RuntimeDeviceState {
   isMobile: boolean;
   isDesktop: boolean;
@@ -15,10 +17,7 @@ const MOBILE_USER_AGENT_RE =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|Tablet/i;
 
 function getViewportSize() {
-  return {
-    width: window.innerWidth,
-    height: window.innerHeight
-  };
+  return getRuntimeViewportSize();
 }
 
 function isLikelyMobileUserAgent() {

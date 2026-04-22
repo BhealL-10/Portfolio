@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { drawImageIfReady, getSharedImageAsset, getSharedTextureAsset, preloadImageAsset } from '../core/browserAssetCache';
 import { isMobileRuntime } from '../core/device';
+import { recordGameBootDiagnostic, recordGameBootDiagnosticError } from '../core/gameBootDiagnostics';
 import { clamp, damp } from '../core/math';
 import { getThemeNonShardHex, getThemeShardContrastHex, getThemeShardHex } from '../core/themePalette';
 import type { ThemeMode } from '../types/content';
@@ -431,7 +432,7 @@ export class GameSessionController {
   private readonly shardHudCanvas = document.createElement('canvas');
   private readonly shardHudTexture: THREE.CanvasTexture;
   private readonly shardHudSprite: THREE.Sprite;
-  private readonly shardHudImages: Record<ShardHudImageKey, Record<'dark' | 'light', HTMLImageElement>>;
+  private readonly shardHudImageUrls: Record<ShardHudImageKey, Record<'dark' | 'light', string>>;
   private readonly rewardHeaderBillboard: WorldHudBillboard;
   private readonly rewardCardBillboards: [WorldHudBillboard, WorldHudBillboard, WorldHudBillboard];
   private readonly magnetRangeIndicator: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
@@ -675,18 +676,18 @@ export class GameSessionController {
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
     this.theme = theme;
-    this.shardHudImages = {
+    this.shardHudImageUrls = {
       anchorLoad: {
-        dark: this.createUiHudImage(SHARD_HUD_ANCHOR_LOAD_ASSETS.dark),
-        light: this.createUiHudImage(SHARD_HUD_ANCHOR_LOAD_ASSETS.light)
+        dark: SHARD_HUD_ANCHOR_LOAD_ASSETS.dark,
+        light: SHARD_HUD_ANCHOR_LOAD_ASSETS.light
       },
       anchorFull: {
-        dark: this.createUiHudImage(SHARD_HUD_ANCHOR_FULL_ASSETS.dark),
-        light: this.createUiHudImage(SHARD_HUD_ANCHOR_FULL_ASSETS.light)
+        dark: SHARD_HUD_ANCHOR_FULL_ASSETS.dark,
+        light: SHARD_HUD_ANCHOR_FULL_ASSETS.light
       },
       boost: {
-        dark: this.createUiHudImage(SHARD_HUD_BOOST_ASSETS.dark),
-        light: this.createUiHudImage(SHARD_HUD_BOOST_ASSETS.light)
+        dark: SHARD_HUD_BOOST_ASSETS.dark,
+        light: SHARD_HUD_BOOST_ASSETS.light
       }
     };
     this.shardHudCanvas.width = 256;
@@ -877,26 +878,51 @@ export class GameSessionController {
       STICK_MONKEY_GLIDE_URL,
       BIG_CANON_PROJECTILE_URL,
       FRONT_CANON_PROJECTILE_URL,
-      ...Object.values(SHARD_HUD_ANCHOR_LOAD_ASSETS),
-      ...Object.values(SHARD_HUD_ANCHOR_FULL_ASSETS),
-      ...Object.values(SHARD_HUD_BOOST_ASSETS),
-      ...Object.values(SHARD_DIRECTION_ICON_ASSETS),
-      ...Object.values(SHOP_ICON_ASSETS),
-      ...Object.values(HELP_ICON_ASSETS),
+      ...this.getThemeVisualAssets(this.theme),
       ...rogueliteItems.flatMap((item) => [item.hudIconSrc, item.rarityIconSrc]),
       ...moduleSpriteAssets
     ]);
+    const assetUrls = Array.from(assets);
+    recordGameBootDiagnostic('game_session_preload_started', {
+      assetCount: assetUrls.length,
+      mobile: isMobileRuntime()
+    });
 
-    this.visualAssetsPreloadPromise = Promise.all(Array.from(assets, (src) => preloadImageAsset(src)))
+    this.visualAssetsPreloadPromise = this.preloadImageAssets(assetUrls)
       .then(() => {
         this.visualAssetsPreloaded = true;
+        recordGameBootDiagnostic('game_session_preload_completed', {
+          assetCount: assetUrls.length
+        });
       })
       .catch((error) => {
         this.visualAssetsPreloadPromise = null;
+        recordGameBootDiagnosticError('game_session_preload_failed', error, {
+          assetCount: assetUrls.length
+        });
         console.warn('[GameSessionController] Failed to preload visual assets.', error);
       });
 
     return this.visualAssetsPreloadPromise;
+  }
+
+  private async preloadImageAssets(urls: string[]) {
+    const batchSize = isMobileRuntime() ? 10 : urls.length;
+    for (let index = 0; index < urls.length; index += batchSize) {
+      const batch = urls.slice(index, index + batchSize);
+      await Promise.all(batch.map((src) => preloadImageAsset(src)));
+    }
+  }
+
+  private getThemeVisualAssets(theme: ThemeMode) {
+    return [
+      SHARD_HUD_ANCHOR_LOAD_ASSETS[theme],
+      SHARD_HUD_ANCHOR_FULL_ASSETS[theme],
+      SHARD_HUD_BOOST_ASSETS[theme],
+      SHARD_DIRECTION_ICON_ASSETS[theme],
+      SHOP_ICON_ASSETS[theme],
+      HELP_ICON_ASSETS[theme]
+    ];
   }
 
   get currentState() {
@@ -1080,6 +1106,7 @@ export class GameSessionController {
 
   setTheme(theme: ThemeMode) {
     this.theme = theme;
+    void this.preloadImageAssets(this.getThemeVisualAssets(theme));
     this.playerTrail.material.color.set(getThemeNonShardHex(theme));
     this.coins.setTheme(theme);
     this.enemies.setTheme(theme);
@@ -2197,6 +2224,7 @@ export class GameSessionController {
       if (!purchased) return false;
       if (!this.stats.spendCoins(purchased.price)) return false;
       this.applyOffer(purchased.offer, 'Shop item', true);
+      this.emitAudioEvent({ type: 'shop_purchase' });
       const node = this.getResolvedNode(this.attachedIndex);
       const shopOffers = this.shop.getActiveOffers().filter((offer) => !offer.purchased).slice(0, 3);
       this.activeChoices = shopOffers.map((shopOffer) => ({
@@ -2778,7 +2806,7 @@ export class GameSessionController {
     this.scheduleNextAmbientEnemySpawn();
   }
 
-  private awardAmbientEnemyKill(enemy: AmbientEnemyRuntime, source: 'impact' | 'shield' = 'impact') {
+  private awardAmbientEnemyKill(enemy: AmbientEnemyRuntime, source: 'impact' | 'shield' | 'grapple' = 'impact') {
     if (enemy.killCredited) {
       return;
     }
@@ -2787,10 +2815,10 @@ export class GameSessionController {
       this.awardCoins(this.applyCoinBonus(enemy.rewardCoins));
       enemy.rewardCoins = 0;
     }
-    this.recordEnemyKill({ amount: 1, source });
+    this.recordEnemyKill({ amount: 1, source: source === 'grapple' ? 'impact' : source });
     this.achievements.recordAmbientEnemyKill(enemy.kind);
     this.emitScore();
-    this.emitAudioEvent({ type: 'enemy_die' });
+    this.emitAudioEvent({ type: enemy.kind === 'enemyTop' ? 'enemy_top_die' : 'enemy_bot_die' });
   }
 
   private applyAmbientEnemyBounce(enemy: AmbientEnemyRuntime, previousPosition: THREE.Vector3, bounceStrength = 1) {
@@ -2822,7 +2850,7 @@ export class GameSessionController {
     if (enemy.state !== 'alive') {
       return;
     }
-    this.awardAmbientEnemyKill(enemy, 'impact');
+    this.awardAmbientEnemyKill(enemy, 'grapple');
     enemy.state = 'dying';
     enemy.stateStartedAt = this.currentTime;
     enemy.velocity.x *= 0.24;
@@ -4392,12 +4420,12 @@ export class GameSessionController {
       if (this.currentTime >= this.grapStateUntil && this.grapState === 'launch') {
         if (grapAmbientEnemy?.kind === 'enemyBot' && this.isAmbientEnemyBotVisible(grapAmbientEnemy)) {
           this.beginSprintFish(grapAmbientEnemy);
-          this.emitAudioEvent({ type: 'grapple_hit' });
+          this.emitAudioEvent({ type: 'grapple_hit', target: 'enemy_bot' });
           return;
         }
         this.grapState = 'hooked';
         this.grapRopeLength = Math.max(0.96, distance);
-        this.emitAudioEvent({ type: 'grapple_hit' });
+        this.emitAudioEvent({ type: 'grapple_hit', target: 'anchor' });
       }
       if (this.grapState === 'launch') {
         const launchRetractRate = holdingGrapple ? 6.8 + this.momentum.gauge * 2.4 : 0;
@@ -6287,7 +6315,7 @@ export class GameSessionController {
   }
 
   private getShardHudImage(key: ShardHudImageKey) {
-    return this.shardHudImages[key][this.theme];
+    return this.createUiHudImage(this.shardHudImageUrls[key][this.theme]);
   }
 
   private drawShardHudImage(

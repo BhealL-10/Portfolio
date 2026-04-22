@@ -22,10 +22,13 @@ export type GameAudioEvent =
   | { type: 'twist' }
   | { type: 'module_activate'; slot: RogueliteModuleSlot }
   | { type: 'grapple_cast' }
-  | { type: 'grapple_hit' }
+  | { type: 'grapple_hit'; target?: 'anchor' | 'enemy_bot' }
   | { type: 'grapple_recall' }
   | { type: 'coin'; magnet: boolean }
   | { type: 'shop_land' }
+  | { type: 'shop_purchase' }
+  | { type: 'enemy_top_die' }
+  | { type: 'enemy_bot_die' }
   | { type: 'enemy_die' }
   | { type: 'enemy_hit_player' }
   | { type: 'game_over' }

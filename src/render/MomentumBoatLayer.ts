@@ -526,22 +526,39 @@ export class MomentumBoatLayer {
     context: MomentumBoatLayerUpdateContext,
     bounds: BoatScreenBounds
   ) {
+    const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    const decorScale = this.resolveViewportDecorScale(context.viewportWidthPx, context.viewportHeightPx);
+    const effectiveWidthPx = boat.widthPx * decorScale;
+    const effectiveHeightPx = boat.baseHeightPx * decorScale;
     const travelOffsetPx = context.travelOffsets[boat.depthBandIndex]!;
     const screenX = boat.baseXPx + travelOffsetPx;
     const surfaceDriftPx =
-      Math.sin(this.elapsedSeconds * (0.38 + boat.depthSeed * 0.18) + boat.surfacePhase) * (2.8 + context.overallEnergy * 2.2);
+      Math.sin(this.elapsedSeconds * (0.38 + boat.depthSeed * 0.18) + boat.surfacePhase) *
+      (2.2 + context.overallEnergy * 1.8) *
+      THREE.MathUtils.lerp(0.72, 1, decorScale);
     const secondaryBobPx =
-      Math.sin(this.elapsedSeconds * (0.16 + boat.scaleSeed * 0.06) + boat.surfacePhase * 0.7) * (1.1 + context.midIntensity * 0.8);
-    const audioLiftPx = -(context.bassIntensity * 51.6 + context.overallEnergy * 31.1 + context.melodyIntensity * 20.7);
+      Math.sin(this.elapsedSeconds * (0.16 + boat.scaleSeed * 0.06) + boat.surfacePhase * 0.7) *
+      (0.9 + context.midIntensity * 0.56) *
+      THREE.MathUtils.lerp(0.72, 1, decorScale);
+    const audioLiftPx =
+      -(context.bassIntensity * 51.6 + context.overallEnergy * 31.1 + context.melodyIntensity * 20.7) *
+      (coarsePointer ? 0.42 : 0.68) *
+      THREE.MathUtils.lerp(0.8, 1, decorScale);
     const layerBottomY = context.bottomScreenYs[boat.depthBandIndex]!;
     const layerLiftPx = BOAT_LAYER_VERTICAL_LIFT_PX[boat.depthBandIndex] ?? BOAT_LAYER_VERTICAL_LIFT_PX[1];
-    const bottomScreenY = layerBottomY - layerLiftPx + surfaceDriftPx + secondaryBobPx + audioLiftPx - boat.baseHeightPx * 0.5;
-    const centerScreenY = bottomScreenY - boat.baseHeightPx * 1.2;
+    const bottomScreenY =
+      layerBottomY -
+      layerLiftPx * THREE.MathUtils.lerp(0.58, 0.92, decorScale) +
+      surfaceDriftPx +
+      secondaryBobPx +
+      audioLiftPx -
+      effectiveHeightPx * (coarsePointer ? 0.28 : 0.34);
+    const centerScreenY = bottomScreenY - effectiveHeightPx * (coarsePointer ? 0.7 : 0.82);
     const depthBand = BOAT_DEPTH_BANDS[boat.depthBandIndex] ?? BOAT_DEPTH_BANDS[2]!;
     const unitsPerPixel = this.getUnitsPerPixelAtDepth(Math.abs(depthBand.localZ), context.viewportHeightPx);
     const localX = screenX * unitsPerPixel;
     const localY = (context.viewportHeightPx * 0.5 - centerScreenY) * unitsPerPixel;
-    const edgeFade = resolveEdgeFade(screenX, boat.widthPx, bounds.leftEdgePx, bounds.rightEdgePx);
+    const edgeFade = resolveEdgeFade(screenX, effectiveWidthPx, bounds.leftEdgePx, bounds.rightEdgePx);
     const revealProgress = boat.revealed
       ? Math.min(1, Math.max(0, (this.elapsedSeconds - boat.revealAtSeconds) / BOAT_REVEAL_DURATION_SECONDS))
       : 0;
@@ -550,8 +567,8 @@ export class MomentumBoatLayer {
     boat.root.visible = boat.opacity > 0.01;
 
     const depthScale = THREE.MathUtils.lerp(0.78, 1.04, boat.depthSeed) * depthBand.scaleMultiplier;
-    const worldWidth = boat.widthPx * unitsPerPixel * depthScale;
-    const worldHeight = boat.baseHeightPx * unitsPerPixel * depthScale;
+    const worldWidth = effectiveWidthPx * unitsPerPixel * depthScale;
+    const worldHeight = effectiveHeightPx * unitsPerPixel * depthScale;
     const directionSign = context.mirrorMode ? -1 : 1;
     boat.root.position.set(localX, localY, depthBand.localZ);
     boat.root.scale.set(worldWidth * directionSign, worldHeight, 1);
@@ -622,5 +639,17 @@ export class MomentumBoatLayer {
       2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(this.camera.fov) * 0.5) / Math.max(0.0001, this.camera.zoom));
     const visibleHeightWorld = 2 * Math.tan(verticalFov * 0.5) * Math.max(0.1, depth);
     return visibleHeightWorld / Math.max(1, viewportHeightPx);
+  }
+
+  private resolveViewportDecorScale(viewportWidthPx: number, viewportHeightPx: number) {
+    const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    const shortSide = Math.min(viewportWidthPx, viewportHeightPx);
+    const longSide = Math.max(viewportWidthPx, viewportHeightPx);
+    const shortBlend = THREE.MathUtils.clamp((shortSide - 360) / 520, 0, 1);
+    const longBlend = THREE.MathUtils.clamp((longSide - 720) / 960, 0, 1);
+    const blend = shortBlend * 0.72 + longBlend * 0.28;
+    return coarsePointer
+      ? THREE.MathUtils.lerp(0.68, 0.88, blend)
+      : THREE.MathUtils.lerp(0.9, 1.02, blend);
   }
 }

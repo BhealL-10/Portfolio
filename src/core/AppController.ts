@@ -32,6 +32,12 @@ import {
   isprimaterieMode
 } from './appModePredicates';
 import { applyRuntimeDeviceAttributes, getRuntimeDeviceState, isMobilePortraitRuntime, isMobileRuntime } from './device';
+import {
+  installGameBootDiagnostics,
+  recordGameBootDiagnostic,
+  recordGameBootDiagnosticError,
+  recordGameBootWarning
+} from './gameBootDiagnostics';
 import { damp, wrapIndex } from './math';
 import { RenderLoop } from './RenderLoop';
 import { TransitionSystem } from './TransitionSystem';
@@ -137,6 +143,8 @@ export class AppController {
   };
 
   constructor(host: HTMLElement, options: { entryRoute: AppEntryRoute }) {
+    installGameBootDiagnostics();
+    recordGameBootDiagnostic('app_controller_constructor_started', { entryRoute: options.entryRoute });
     this.entryRoute = options.entryRoute;
     this.root = document.createElement('div');
     this.root.className = 'app-shell';
@@ -151,6 +159,7 @@ export class AppController {
     host.appendChild(this.root);
 
     this.renderer = new WorldRenderer(this.canvasHost);
+    recordGameBootDiagnostic('world_renderer_ready');
     this.renderer.setTheme(this.theme.current);
     this.musicBackdrop = new MusicReactiveBackdrop(this.renderer.scene, this.theme.current);
     this.parallaxLayers = new ParallaxLayerSystem(
@@ -159,7 +168,7 @@ export class AppController {
       this.renderer.renderer,
       this.theme.current
     );
-    void this.parallaxLayers.init();
+    recordGameBootDiagnostic('parallax_layer_system_ready', { eagerInitRemoved: true });
     this.slotSystem = new SecretSlotSystem(
       this.portfolioHubProjects
         .map((project) => project.id)
@@ -203,6 +212,7 @@ export class AppController {
     this.gameTransitionBlurOverlay.className = 'game-transition-blur-overlay';
     this.uiHost.appendChild(this.gameTransitionBlurOverlay);
     this.restoreGameGuideEventFlags();
+    recordGameBootDiagnostic('app_controller_ui_ready');
 
     this.interaction = new ShardInteractionSystem(
       this.renderer.renderer.domElement,
@@ -330,55 +340,91 @@ export class AppController {
       return this.gameRuntimeLoader;
     }
 
+    recordGameBootDiagnostic('game_runtime_load_requested');
     this.gameRuntimeLoader = import('../game/AppGameRuntime')
       .then((module) => {
+        recordGameBootDiagnostic('game_runtime_module_loaded');
         if (this.gameRuntime) {
           return this.gameRuntime;
         }
 
-        const game = new module.GameSessionController(this.renderer.scene, this.theme.current);
+        recordGameBootDiagnostic('game_runtime_construct_game_started');
+        let game: GameSessionController;
+        try {
+          game = new module.GameSessionController(this.renderer.scene, this.theme.current);
+        } catch (error) {
+          recordGameBootDiagnosticError('game_runtime_construct_game_failed', error);
+          throw error;
+        }
+        recordGameBootDiagnostic('game_runtime_construct_game_completed');
         game.setLocale(this.i18n.current);
         game.setThemeRequestHandler((theme) => this.theme.set(theme));
 
-        const audio = new module.GameAudioSystem();
-        const gameHud = new module.GameHUDSystem(this.uiHost, this.i18n, {
-          onRestart: () => this.restartGame(),
-          onExit: () => this.exitGame(),
-          onMainMenu: () => this.returnToMiniGameMainMenu(),
-          onLeaderboardResetToken: (token) => {
-            if (game.syncAchievementResetToken(token) && (this.mode.is('game') || this.mode.is('game_over'))) {
-              this.refreshUI();
+        recordGameBootDiagnostic('game_runtime_construct_audio_started');
+        let audio: GameAudioSystem;
+        try {
+          audio = new module.GameAudioSystem();
+        } catch (error) {
+          recordGameBootDiagnosticError('game_runtime_construct_audio_failed', error);
+          throw error;
+        }
+        recordGameBootDiagnostic('game_runtime_construct_audio_completed');
+
+        recordGameBootDiagnostic('game_runtime_construct_hud_started');
+        let gameHud: GameHUDSystem;
+        try {
+          gameHud = new module.GameHUDSystem(this.uiHost, this.i18n, {
+            onRestart: () => this.restartGame(),
+            onExit: () => this.exitGame(),
+            onMainMenu: () => this.returnToMiniGameMainMenu(),
+            onLeaderboardResetToken: (token) => {
+              if (game.syncAchievementResetToken(token) && (this.mode.is('game') || this.mode.is('game_over'))) {
+                this.refreshUI();
+              }
+            },
+            onLeaderboardPosition: (position) => game.recordLeaderboardPosition(position),
+            onThemeToggle: () => this.theme.toggle(),
+            onLanguageToggle: () => this.i18n.toggle(),
+            onAudioMuteToggle: () => audio.toggleMute(),
+            onAudioMusicVolumeChange: (value) => audio.setMusicVolume(value),
+            onAudioSfxVolumeChange: (value) => audio.setSfxVolume(value),
+            onGameOverStatReveal: (record) => {
+              audio.handleEvent({ type: 'land', kind: 'reward' });
+              if (record) {
+                audio.handleEvent({ type: 'coin', magnet: false });
+              }
+            },
+            onCloseShop: () => {
+              if (game.closeShopChoice()) {
+                this.refreshUI();
+              }
+            },
+            onSelectUpgrade: (index) => {
+              if (game.selectUpgradeFallback(index)) {
+                this.refreshUI();
+              }
             }
-          },
-          onLeaderboardPosition: (position) => game.recordLeaderboardPosition(position),
-          onThemeToggle: () => this.theme.toggle(),
-          onLanguageToggle: () => this.i18n.toggle(),
-          onAudioMuteToggle: () => audio.toggleMute(),
-          onAudioMusicVolumeChange: (value) => audio.setMusicVolume(value),
-          onAudioSfxVolumeChange: (value) => audio.setSfxVolume(value),
-          onGameOverStatReveal: (record) => {
-            audio.handleEvent({ type: 'land', kind: 'reward' });
-            if (record) {
-              audio.handleEvent({ type: 'coin', magnet: false });
-            }
-          },
-          onCloseShop: () => {
-            if (game.closeShopChoice()) {
-              this.refreshUI();
-            }
-          },
-          onSelectUpgrade: (index) => {
-            if (game.selectUpgradeFallback(index)) {
-              this.refreshUI();
-            }
-          }
-        });
-        const primateriePortal = new module.primateriePortal(this.uiHost, {
-          onPortfolio: () => this.returnToPortfolioFromprimateriePortal(),
-          onSinglePlayer: () => this.activateprimaterieMode('adventure'),
-          onThemeToggle: () => this.theme.toggle(),
-          onLanguageToggle: () => this.i18n.toggle()
-        });
+          });
+        } catch (error) {
+          recordGameBootDiagnosticError('game_runtime_construct_hud_failed', error);
+          throw error;
+        }
+        recordGameBootDiagnostic('game_runtime_construct_hud_completed');
+
+        recordGameBootDiagnostic('game_runtime_construct_portal_started');
+        let primateriePortal: primateriePortal;
+        try {
+          primateriePortal = new module.primateriePortal(this.uiHost, {
+            onPortfolio: () => this.returnToPortfolioFromprimateriePortal(),
+            onSinglePlayer: () => this.activateprimaterieMode('adventure'),
+            onThemeToggle: () => this.theme.toggle(),
+            onLanguageToggle: () => this.i18n.toggle()
+          });
+        } catch (error) {
+          recordGameBootDiagnosticError('game_runtime_construct_portal_failed', error);
+          throw error;
+        }
+        recordGameBootDiagnostic('game_runtime_construct_portal_completed');
         primateriePortal.setLocale(this.i18n.current);
 
         // Store unsubscribe functions so they can be cleaned up when leaving the game runtime
@@ -412,7 +458,12 @@ export class AppController {
         }
 
         this.refreshUI();
+        recordGameBootDiagnostic('game_runtime_ready');
         return runtime;
+      })
+      .catch((error) => {
+        recordGameBootDiagnosticError('game_runtime_load_failed', error);
+        throw error;
       })
       .finally(() => {
         this.gameRuntimeLoader = null;
@@ -439,6 +490,7 @@ export class AppController {
         }
       })
       .catch((error) => {
+        recordGameBootDiagnosticError('entry_route_game_runtime_failed', error);
         console.error('Failed to load game runtime for /primaterie.', error);
       });
   }
@@ -460,11 +512,17 @@ export class AppController {
     }
 
     this.primateriePortal.setLoading(true);
-    this.primaterieHubPreloadPromise = Promise.all([this.game.preloadAssets(), this.gameHud.preloadAssets()])
-      .then(() => {
-        this.primaterieHubPreloaded = true;
-      })
+    this.primaterieHubPreloadPromise = (async () => {
+      recordGameBootDiagnostic('primaterie_hub_preload_started');
+      await this.game.preloadAssets();
+      recordGameBootDiagnostic('primaterie_hub_preload_game_assets_completed');
+      await this.gameHud.preloadAssets();
+      recordGameBootDiagnostic('primaterie_hub_preload_hud_assets_completed');
+      this.primaterieHubPreloaded = true;
+      recordGameBootDiagnostic('primaterie_hub_preload_completed');
+    })()
       .catch((error) => {
+        recordGameBootDiagnosticError('primaterie_hub_preload_failed', error);
         console.warn('[AppController] Failed to preload primaterie hub assets.', error);
       })
       .finally(() => {
@@ -1322,6 +1380,9 @@ export class AppController {
           this.startGameTransition(request.forceDirectEntry, request.skipPreAlign);
         })
         .catch((error) => {
+          recordGameBootWarning('game_transition_runtime_load_failed', {
+            message: error instanceof Error ? error.message : String(error)
+          });
           console.error('Failed to load game runtime before starting the mini-game.', error);
         });
       return;
@@ -1333,6 +1394,12 @@ export class AppController {
 
     this.audio.prime();
     this.gameTransitionReturningToHub = false;
+    recordGameBootDiagnostic('game_transition_requested', {
+      forceDirectEntry,
+      skipPreAlign,
+      fromMode: this.mode.current
+    });
+    void this.parallaxLayers.init();
 
     if (isFocusMode(this.mode.current)) {
       this.exitFocus(() => this.startGameTransition(forceDirectEntry, skipPreAlign));

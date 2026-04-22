@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { recordGameBootDiagnostic, recordGameBootDiagnosticError } from '../core/gameBootDiagnostics';
 import { damp } from '../core/math';
 import type { MusicReactiveState } from '../game/GameAudioSystem';
 import type { LandingGrade } from '../game/gameSessionTypes';
@@ -123,32 +124,47 @@ export class ParallaxLayerSystem {
       return this.initPromise;
     }
 
-    this.initPromise = Promise.all([preloadParallaxLayerAssets(), preloadMomentumBoatAssets()])
-      .then(async () => {
-        this.captureViewportSize();
-        await Promise.all(
-          PARALLAX_SCENIC_LAYER_ORDER.map(async (category) => {
-            const strip = this.strips.get(category);
-            const config = PARALLAX_LAYER_CONFIG[category];
-            if (!strip) {
-              return;
-            }
-            const displayedHeightPx = this.resolveDisplayedHeightPx(config);
-            await strip.init(displayedHeightPx);
-          })
-        );
-        await this.topHorizonStrip.init(this.resolveDisplayedHeightPx(PARALLAX_LAYER_CONFIG.horizon));
-        this.initialized = true;
-        this.refreshAssets();
-      })
-      .catch((error) => {
-        console.warn('[ParallaxLayerSystem] Failed to preload parallax layers.', error);
+    this.initPromise = (async () => {
+      recordGameBootDiagnostic('parallax_init_started');
+      await preloadParallaxLayerAssets(this.currentTheme);
+      recordGameBootDiagnostic('parallax_svg_preload_completed');
+      await preloadMomentumBoatAssets();
+      recordGameBootDiagnostic('parallax_momentum_boat_assets_completed');
+      this.captureViewportSize();
+      for (const category of PARALLAX_SCENIC_LAYER_ORDER) {
+        const strip = this.strips.get(category);
+        const config = PARALLAX_LAYER_CONFIG[category];
+        if (!strip) {
+          continue;
+        }
+        const displayedHeightPx = this.resolveDisplayedHeightPx(config);
+        await strip.init(displayedHeightPx);
+        recordGameBootDiagnostic('parallax_strip_initialized', {
+          category,
+          displayedHeightPx
+        });
+      }
+      await this.topHorizonStrip.init(this.resolveDisplayedHeightPx(PARALLAX_LAYER_CONFIG.horizon));
+      recordGameBootDiagnostic('parallax_horizon_initialized');
+      this.initialized = true;
+      this.refreshAssets();
+      recordGameBootDiagnostic('parallax_init_completed', {
+        viewportWidthPx: this.viewportWidthPx,
+        viewportHeightPx: this.viewportHeightPx
       });
+    })().catch((error) => {
+      this.initPromise = null;
+      recordGameBootDiagnosticError('parallax_init_failed', error);
+      console.warn('[ParallaxLayerSystem] Failed to preload parallax layers.', error);
+    });
 
     return this.initPromise;
   }
 
   setVisible(visible: boolean) {
+    if (visible && !this.initialized && !this.initPromise) {
+      void this.init();
+    }
     if (this.visible === visible) {
       return;
     }
