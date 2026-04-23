@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isMobileRuntime } from '../core/device';
 import { recordGameBootDiagnostic, recordGameBootDiagnosticError } from '../core/gameBootDiagnostics';
 import { damp } from '../core/math';
 import type { MusicReactiveState } from '../game/GameAudioSystem';
@@ -125,11 +126,17 @@ export class ParallaxLayerSystem {
     }
 
     this.initPromise = (async () => {
-      recordGameBootDiagnostic('parallax_init_started');
+      const mobile = isMobileRuntime();
+      recordGameBootDiagnostic('parallax_init_started', {
+        mobile,
+        phase: mobile ? 'critical' : 'full'
+      });
       await preloadParallaxLayerAssets(this.currentTheme);
       recordGameBootDiagnostic('parallax_svg_preload_completed');
-      await preloadMomentumBoatAssets();
-      recordGameBootDiagnostic('parallax_momentum_boat_assets_completed');
+      await preloadMomentumBoatAssets({ phase: mobile ? 'critical' : 'full' });
+      recordGameBootDiagnostic('parallax_momentum_boat_assets_completed', {
+        phase: mobile ? 'critical' : 'full'
+      });
       this.captureViewportSize();
       for (const category of PARALLAX_SCENIC_LAYER_ORDER) {
         const strip = this.strips.get(category);

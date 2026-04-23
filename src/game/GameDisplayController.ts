@@ -34,6 +34,8 @@ export class GameDisplayController {
   private uiScaleMode: GameUiScaleMode;
   private immersiveActive = false;
   private pendingSyncFrame: number | null = null;
+  private pendingFullscreenAction: 'enter' | 'exit' | null = null;
+  private lastAppliedSyncSignature = '';
   private lastDiagnosticSignature = '';
 
   constructor(private readonly host: HTMLElement) {
@@ -97,17 +99,21 @@ export class GameDisplayController {
   }
 
   async enterGameFullscreen() {
+    if (this.pendingFullscreenAction === 'enter' || this.getDisplayMode() !== 'windowed') {
+      return;
+    }
+    this.pendingFullscreenAction = 'enter';
     recordGameBootDiagnostic('display_fullscreen_enter_requested', {
       supported: this.isFullscreenSupported()
     });
-    if (!this.isFullscreenSupported()) {
-      recordGameBootWarning('display_fullscreen_native_unavailable');
-      this.enableImmersiveMode();
-      return;
-    }
-
-    const fullscreenTarget = this.fullscreenTarget as BrowserFullscreenElement;
     try {
+      if (!this.isFullscreenSupported()) {
+        recordGameBootWarning('display_fullscreen_native_unavailable');
+        this.enableImmersiveMode();
+        return;
+      }
+
+      const fullscreenTarget = this.fullscreenTarget as BrowserFullscreenElement;
       if (fullscreenTarget.requestFullscreen) {
         await fullscreenTarget.requestFullscreen({ navigationUI: 'hide' });
       } else if (fullscreenTarget.webkitRequestFullscreen) {
@@ -121,28 +127,36 @@ export class GameDisplayController {
       recordGameBootWarning('display_fullscreen_request_failed_fallback');
       this.enableImmersiveMode();
     } finally {
+      this.pendingFullscreenAction = null;
       this.sync();
     }
   }
 
   async exitGameFullscreen() {
+    const currentMode = this.getDisplayMode();
+    if (this.pendingFullscreenAction === 'exit' || currentMode === 'windowed') {
+      return;
+    }
+    this.pendingFullscreenAction = 'exit';
     recordGameBootDiagnostic('display_fullscreen_exit_requested', {
-      currentMode: this.getDisplayMode()
+      currentMode
     });
     const fullscreenDocument = document as BrowserFullscreenDocument;
-    this.immersiveActive = false;
-    if (this.isCurrentlyFullscreen()) {
-      try {
+    try {
+      this.immersiveActive = false;
+      if (this.isCurrentlyFullscreen()) {
         if (document.exitFullscreen) {
           await document.exitFullscreen();
         } else if (fullscreenDocument.webkitExitFullscreen) {
           await fullscreenDocument.webkitExitFullscreen();
         }
-      } catch {
-        // If exit fails we still fall back to a synced windowed state.
       }
+    } catch {
+      // If exit fails we still fall back to a synced windowed state.
+    } finally {
+      this.pendingFullscreenAction = null;
+      this.sync();
     }
-    this.sync();
   }
 
   async toggleGameFullscreen() {
@@ -154,7 +168,9 @@ export class GameDisplayController {
   }
 
   dispose() {
-    void this.exitGameFullscreen();
+    if (this.getDisplayMode() !== 'windowed') {
+      void this.exitGameFullscreen();
+    }
     this.stopObservingViewport();
     if (this.pendingSyncFrame !== null) {
       window.cancelAnimationFrame(this.pendingSyncFrame);
@@ -212,6 +228,22 @@ export class GameDisplayController {
     const uiScale = resolveGameUiScale(this.uiScaleMode, metrics);
     const displayMode = this.getDisplayMode();
 
+    const diagnosticSignature = JSON.stringify([
+      displayMode,
+      this.uiScaleMode,
+      metrics.width,
+      metrics.height,
+      metrics.layoutWidth,
+      metrics.layoutHeight,
+      metrics.offsetTop,
+      metrics.offsetLeft,
+      Number(uiScale.toFixed(3))
+    ]);
+    if (diagnosticSignature === this.lastAppliedSyncSignature) {
+      return;
+    }
+    this.lastAppliedSyncSignature = diagnosticSignature;
+
     const targets = [document.documentElement, this.shell, this.host];
     targets.forEach((target) => {
       target.style.setProperty('--viewport-width', `${metrics.width}px`);
@@ -239,15 +271,6 @@ export class GameDisplayController {
     document.body.classList.toggle('game-immersive-active', displayMode === 'immersive');
     document.body.classList.toggle('game-native-fullscreen-active', displayMode === 'fullscreen');
 
-    const diagnosticSignature = JSON.stringify([
-      displayMode,
-      this.uiScaleMode,
-      metrics.width,
-      metrics.height,
-      metrics.layoutWidth,
-      metrics.layoutHeight,
-      Number(uiScale.toFixed(3))
-    ]);
     if (diagnosticSignature !== this.lastDiagnosticSignature) {
       this.lastDiagnosticSignature = diagnosticSignature;
       recordGameBootDiagnostic('display_sync', {

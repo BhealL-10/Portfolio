@@ -37,6 +37,8 @@ export class WorldRenderer {
   private readonly underLight = new THREE.PointLight(0xffffff, 12, 60, 2);
   private readonly resizeObserver: ResizeObserver | null;
   private readonly coarsePointer: boolean;
+  private pendingResizeFrame: number | null = null;
+  private lastResizeSignature = '';
   private cameraPositionResponse = 8;
   private lookResponse = 8;
 
@@ -68,10 +70,10 @@ export class WorldRenderer {
     this.resize();
     this.setTheme('dark');
 
-    window.addEventListener('resize', this.resize);
+    window.addEventListener('resize', this.scheduleResize, { passive: true });
     this.resizeObserver = typeof ResizeObserver === 'undefined'
       ? null
-      : new ResizeObserver(() => this.resize());
+      : new ResizeObserver(() => this.scheduleResize());
     this.resizeObserver?.observe(this.host);
   }
 
@@ -135,6 +137,11 @@ export class WorldRenderer {
     const width = Math.max(1, this.host.clientWidth || viewport.width);
     const height = Math.max(1, this.host.clientHeight || viewport.height);
     const pixelRatio = this.resolvePixelRatio(width, height);
+    const resizeSignature = `${width}:${height}:${pixelRatio.toFixed(3)}`;
+    if (resizeSignature === this.lastResizeSignature) {
+      return;
+    }
+    this.lastResizeSignature = resizeSignature;
 
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
@@ -148,9 +155,23 @@ export class WorldRenderer {
     });
   };
 
+  private readonly scheduleResize = () => {
+    if (this.pendingResizeFrame !== null) {
+      return;
+    }
+    this.pendingResizeFrame = window.requestAnimationFrame(() => {
+      this.pendingResizeFrame = null;
+      this.resize();
+    });
+  };
+
   dispose() {
-    window.removeEventListener('resize', this.resize);
+    window.removeEventListener('resize', this.scheduleResize);
     this.resizeObserver?.disconnect();
+    if (this.pendingResizeFrame !== null) {
+      window.cancelAnimationFrame(this.pendingResizeFrame);
+      this.pendingResizeFrame = null;
+    }
     this.renderer.domElement.removeEventListener('webglcontextlost', this.handleContextLost as EventListener, false);
     this.renderer.domElement.removeEventListener('webglcontextrestored', this.handleContextRestored as EventListener, false);
     this.renderer.dispose();

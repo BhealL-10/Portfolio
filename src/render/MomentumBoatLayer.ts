@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { getSharedTextureAsset, preloadImageAsset } from '../core/browserAssetCache';
+import { isMobileRuntime } from '../core/device';
 import { damp } from '../core/math';
 import { preloadAvatarLayerSets, type GameHudAvatarLayerSets } from '../game/GameHudDeferredAssets';
 import { SpriteSheetPlane } from '../game/SpriteSheetPlane';
@@ -230,9 +231,12 @@ function resolveEdgeFade(screenX: number, widthPx: number, leftEdgePx: number, r
   return Math.min(leftFade, rightFade, 1);
 }
 
-export async function preloadMomentumBoatAssets() {
-  const layerSets = await preloadAvatarLayerSets();
-  avatarLayerSetsCache = layerSets;
+export async function preloadMomentumBoatAssets(options: { phase?: 'critical' | 'full' } = {}) {
+  const phase = options.phase ?? (isMobileRuntime() ? 'critical' : 'full');
+  if (phase === 'full') {
+    const layerSets = await preloadAvatarLayerSets();
+    avatarLayerSetsCache = layerSets;
+  }
   await Promise.all([
     preloadImageAsset(FRONT_SPRITE_URLS.fail, 'sync'),
     preloadImageAsset(FRONT_SPRITE_URLS.success, 'sync'),

@@ -123,6 +123,8 @@ export class AppController {
   private pendingGameTransitionRequest: { forceDirectEntry: boolean; skipPreAlign: boolean } | null = null;
   private primaterieHubPreloaded = false;
   private primaterieHubPreloadPromise: Promise<void> | null = null;
+  private primaterieHubFullWarmupScheduled = false;
+  private primaterieHubFullWarmupPromise: Promise<void> | null = null;
   private hasObservedUserGesture = false;
   private hoveredShardId: string | null = null;
   private hoveredGuideUiElement: HTMLElement | null = null;
@@ -606,20 +608,39 @@ export class AppController {
 
     this.primateriePortal.setLoading(true);
     this.primaterieHubPreloadPromise = (async () => {
+      const mobile = isMobileRuntime();
       recordGameBootDiagnostic('assets_start', {
         scope: 'primaterie_hub',
-        mobile: isMobileRuntime()
+        mobile
       });
-      recordGameBootDiagnostic('primaterie_hub_preload_started');
-      await this.game.preloadAssets();
-      recordGameBootDiagnostic('primaterie_hub_preload_game_assets_completed');
-      await this.gameHud.preloadAssets();
-      recordGameBootDiagnostic('primaterie_hub_preload_hud_assets_completed');
+      recordGameBootDiagnostic('primaterie_hub_preload_started', {
+        phase: mobile ? 'critical' : 'full'
+      });
+      await this.game.preloadAssets({ phase: mobile ? 'critical' : 'full' });
+      recordGameBootDiagnostic('primaterie_hub_preload_game_assets_completed', {
+        phase: mobile ? 'critical' : 'full'
+      });
+      if (mobile) {
+        recordGameBootDiagnostic('primaterie_hub_preload_hud_assets_deferred');
+      } else {
+        await this.gameHud.preloadAssets({ phase: 'full' });
+        recordGameBootDiagnostic('primaterie_hub_preload_hud_assets_completed', {
+          phase: 'full'
+        });
+      }
       this.primaterieHubPreloaded = true;
       recordGameBootDiagnostic('assets_ok', {
-        scope: 'primaterie_hub'
+        scope: 'primaterie_hub',
+        phase: mobile ? 'critical' : 'full'
       });
       recordGameBootDiagnostic('primaterie_hub_preload_completed');
+      recordGameBootDiagnostic('primaterie_hub_stable_interactive', {
+        mobile,
+        deferredWarmup: mobile
+      });
+      if (mobile) {
+        this.scheduleprimaterieHubDeferredWarmup();
+      }
     })()
       .catch((error) => {
         recordGameBootDiagnosticError('assets_fail', error, {
@@ -648,6 +669,57 @@ export class AppController {
       });
 
     return this.primaterieHubPreloadPromise;
+  }
+
+  private scheduleprimaterieHubDeferredWarmup() {
+    if (!this.gameRuntime || this.primaterieHubFullWarmupScheduled || this.primaterieHubFullWarmupPromise) {
+      return;
+    }
+    this.primaterieHubFullWarmupScheduled = true;
+    recordGameBootDiagnostic('primaterie_hub_deferred_warmup_scheduled', {
+      mobile: isMobileRuntime()
+    });
+
+    const runWarmup = () => {
+      if (!this.gameRuntime) {
+        return;
+      }
+      if (!this.mode.is('primaterie_portal') || this.primateriePendingAction) {
+        recordGameBootDiagnostic('primaterie_hub_deferred_warmup_skipped', {
+          mode: this.mode.current,
+          pendingAction: Boolean(this.primateriePendingAction)
+        });
+        return;
+      }
+      this.primaterieHubFullWarmupPromise = (async () => {
+        recordGameBootDiagnostic('primaterie_hub_deferred_warmup_started', {
+          mobile: isMobileRuntime()
+        });
+        await this.game.preloadAssets({ phase: 'full' });
+        recordGameBootDiagnostic('primaterie_hub_deferred_game_assets_completed');
+        await this.gameHud.preloadAssets({ phase: 'full', scheduleDeferred: false });
+        recordGameBootDiagnostic('primaterie_hub_deferred_hud_assets_completed');
+      })()
+        .then(() => {
+          recordGameBootDiagnostic('primaterie_hub_deferred_warmup_completed');
+        })
+        .catch((error) => {
+          recordGameBootDiagnosticError('primaterie_hub_deferred_warmup_failed', error);
+          console.warn('[AppController] Deferred primaterie hub warmup failed.', error);
+        })
+        .finally(() => {
+          this.primaterieHubFullWarmupPromise = null;
+        });
+    };
+
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+    };
+    if (typeof idleWindow.requestIdleCallback === 'function') {
+      idleWindow.requestIdleCallback(runWarmup, { timeout: 9000 });
+      return;
+    }
+    window.setTimeout(runWarmup, 3500);
   }
 
   private enterprimateriePortalMode() {

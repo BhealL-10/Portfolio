@@ -61,6 +61,10 @@ type AmbientEnemyKind = Extract<EnemyMarkerKind, 'enemyTop' | 'enemyBot'>;
 type AmbientEnemyState = 'alive' | 'dying' | 'sprint_fish';
 type AmbientEnemyBotPhase = 'hidden_below_screen' | 'jumping_up' | 'visible_airborne' | 'falling_down';
 
+interface GameSessionPreloadOptions {
+  phase?: 'critical' | 'full';
+}
+
 interface WorldHudBillboard {
   canvas: HTMLCanvasElement;
   texture: THREE.CanvasTexture;
@@ -464,6 +468,8 @@ export class GameSessionController {
   private readonly transitionPlayerStartRotation = new THREE.Euler();
   private readonly transitionPlayerStartScale = new THREE.Vector3(1, 1, 1);
   private transitionProgress = 0;
+  private criticalVisualAssetsPreloaded = false;
+  private criticalVisualAssetsPreloadPromise: Promise<void> | null = null;
   private visualAssetsPreloaded = false;
   private visualAssetsPreloadPromise: Promise<void> | null = null;
   private readonly scoreListeners = new Set<() => void>();
@@ -860,7 +866,18 @@ export class GameSessionController {
     this.shop = new ShopSystem(scene, theme);
   }
 
-  preloadAssets() {
+  preloadAssets(options: GameSessionPreloadOptions = {}) {
+    const mobile = isMobileRuntime();
+    const phase = options.phase ?? (mobile ? 'critical' : 'full');
+    if (phase === 'critical' && this.visualAssetsPreloaded) {
+      return Promise.resolve();
+    }
+    if (phase === 'critical' && this.criticalVisualAssetsPreloadPromise) {
+      return this.criticalVisualAssetsPreloadPromise;
+    }
+    if (phase === 'critical' && this.criticalVisualAssetsPreloaded) {
+      return Promise.resolve();
+    }
     if (this.visualAssetsPreloadPromise) {
       return this.visualAssetsPreloadPromise;
     }
@@ -868,10 +885,59 @@ export class GameSessionController {
       return Promise.resolve();
     }
 
-    const moduleSpriteAssets = rogueliteItems
-      .map((item) => item.boatVisual?.spriteSheetUrl ?? null)
-      .filter((src): src is string => Boolean(src));
-    const assets = new Set<string>([
+    const assetUrls = phase === 'critical' ? this.buildCriticalPreloadAssets() : this.buildFullPreloadAssets();
+    recordGameBootDiagnostic('game_session_preload_started', {
+      assetCount: assetUrls.length,
+      mobile,
+      phase
+    });
+
+    const request = this.preloadImageAssets(assetUrls, phase)
+      .then(() => {
+        if (phase === 'critical') {
+          this.criticalVisualAssetsPreloaded = true;
+        } else {
+          this.criticalVisualAssetsPreloaded = true;
+          this.visualAssetsPreloaded = true;
+        }
+        recordGameBootDiagnostic('game_session_preload_completed', {
+          assetCount: assetUrls.length,
+          phase
+        });
+      })
+      .catch((error) => {
+        if (phase === 'critical') {
+          this.criticalVisualAssetsPreloadPromise = null;
+        } else {
+          this.visualAssetsPreloadPromise = null;
+        }
+        recordGameBootDiagnosticError('game_session_preload_failed', error, {
+          assetCount: assetUrls.length,
+          phase
+        });
+        captureGameException(error, {
+          event: 'game_session_preload_failed',
+          category: 'game_session_preload',
+          data: {
+            assetCount: assetUrls.length,
+            mobile,
+            phase
+          }
+        });
+        console.warn('[GameSessionController] Failed to preload visual assets.', error);
+      });
+
+    if (phase === 'critical') {
+      this.criticalVisualAssetsPreloadPromise = request;
+      return request;
+    }
+
+    this.visualAssetsPreloadPromise = request;
+    return request;
+  }
+
+  private buildCriticalPreloadAssets() {
+    return Array.from(new Set([
       ITEM_PLACEHOLDER_ICON,
       PLAYER_MAIN_SPRITE_URL,
       PLAYER_BOOST_SPRITE_URL,
@@ -879,47 +945,29 @@ export class GameSessionController {
       STICK_MONKEY_GLIDE_URL,
       BIG_CANON_PROJECTILE_URL,
       FRONT_CANON_PROJECTILE_URL,
-      ...this.getThemeVisualAssets(this.theme),
-      ...rogueliteItems.flatMap((item) => [item.hudIconSrc, item.rarityIconSrc]),
-      ...moduleSpriteAssets
-    ]);
-    const assetUrls = Array.from(assets);
-    recordGameBootDiagnostic('game_session_preload_started', {
-      assetCount: assetUrls.length,
-      mobile: isMobileRuntime()
-    });
-
-    this.visualAssetsPreloadPromise = this.preloadImageAssets(assetUrls)
-      .then(() => {
-        this.visualAssetsPreloaded = true;
-        recordGameBootDiagnostic('game_session_preload_completed', {
-          assetCount: assetUrls.length
-        });
-      })
-      .catch((error) => {
-        this.visualAssetsPreloadPromise = null;
-        recordGameBootDiagnosticError('game_session_preload_failed', error, {
-          assetCount: assetUrls.length
-        });
-        captureGameException(error, {
-          event: 'game_session_preload_failed',
-          category: 'game_session_preload',
-          data: {
-            assetCount: assetUrls.length,
-            mobile: isMobileRuntime()
-          }
-        });
-        console.warn('[GameSessionController] Failed to preload visual assets.', error);
-      });
-
-    return this.visualAssetsPreloadPromise;
+      ...this.getThemeVisualAssets(this.theme)
+    ]));
   }
 
-  private async preloadImageAssets(urls: string[]) {
-    const batchSize = isMobileRuntime() ? 10 : urls.length;
+  private buildFullPreloadAssets() {
+    const moduleSpriteAssets = rogueliteItems
+      .map((item) => item.boatVisual?.spriteSheetUrl ?? null)
+      .filter((src): src is string => Boolean(src));
+    return Array.from(new Set([
+      ...this.buildCriticalPreloadAssets(),
+      ...rogueliteItems.flatMap((item) => [item.hudIconSrc, item.rarityIconSrc]),
+      ...moduleSpriteAssets
+    ]));
+  }
+
+  private async preloadImageAssets(urls: string[], phase: 'critical' | 'full' = 'full') {
+    const batchSize = isMobileRuntime() ? (phase === 'critical' ? 4 : 6) : urls.length;
     for (let index = 0; index < urls.length; index += batchSize) {
       const batch = urls.slice(index, index + batchSize);
       await Promise.all(batch.map((src) => preloadImageAsset(src)));
+      if (isMobileRuntime() && index + batchSize < urls.length) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, phase === 'critical' ? 16 : 32));
+      }
     }
   }
 
@@ -1115,7 +1163,7 @@ export class GameSessionController {
 
   setTheme(theme: ThemeMode) {
     this.theme = theme;
-    void this.preloadImageAssets(this.getThemeVisualAssets(theme));
+    void this.preloadImageAssets(this.getThemeVisualAssets(theme), isMobileRuntime() ? 'critical' : 'full');
     this.playerTrail.material.color.set(getThemeNonShardHex(theme));
     this.coins.setTheme(theme);
     this.enemies.setTheme(theme);

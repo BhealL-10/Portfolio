@@ -59,26 +59,64 @@ export function getRuntimeViewportSize() {
   };
 }
 
+function hasMeaningfulViewportChange(previous: RuntimeViewportMetrics | null, next: RuntimeViewportMetrics, force = false) {
+  if (force || !previous) {
+    return true;
+  }
+
+  return (
+    Math.abs(previous.width - next.width) >= 2 ||
+    Math.abs(previous.height - next.height) >= 2 ||
+    Math.abs(previous.layoutWidth - next.layoutWidth) >= 2 ||
+    Math.abs(previous.layoutHeight - next.layoutHeight) >= 2 ||
+    Math.abs(previous.offsetTop - next.offsetTop) >= 8 ||
+    Math.abs(previous.offsetLeft - next.offsetLeft) >= 8 ||
+    Math.abs(previous.scale - next.scale) >= 0.01
+  );
+}
+
 export function observeRuntimeViewport(listener: () => void) {
   if (typeof window === 'undefined') {
     return () => {};
   }
 
-  const handleResize = () => listener();
-  const handlePageShow = () => listener();
+  let lastMetrics: RuntimeViewportMetrics | null = getRuntimeViewportMetrics();
+  let pendingFrame: number | null = null;
+  let forceNext = false;
+
+  const scheduleViewportSync = (force = false) => {
+    forceNext = forceNext || force;
+    if (pendingFrame !== null) {
+      return;
+    }
+    pendingFrame = window.requestAnimationFrame(() => {
+      pendingFrame = null;
+      const nextMetrics = getRuntimeViewportMetrics();
+      if (!hasMeaningfulViewportChange(lastMetrics, nextMetrics, forceNext)) {
+        forceNext = false;
+        return;
+      }
+      forceNext = false;
+      lastMetrics = nextMetrics;
+      listener();
+    });
+  };
+
+  const handleResize = () => scheduleViewportSync();
+  const handlePageShow = () => scheduleViewportSync(true);
   const handleVisibilityChange = () => {
     if (typeof document === 'undefined' || document.visibilityState === 'visible') {
-      listener();
+      scheduleViewportSync(true);
     }
   };
 
-  window.addEventListener('resize', handleResize);
-  window.addEventListener('orientationchange', handleResize);
-  window.addEventListener('pageshow', handlePageShow);
+  window.addEventListener('resize', handleResize, { passive: true });
+  window.addEventListener('orientationchange', handleResize, { passive: true });
+  window.addEventListener('pageshow', handlePageShow, { passive: true });
 
   const visualViewport = getVisualViewport();
-  visualViewport?.addEventListener('resize', handleResize);
-  visualViewport?.addEventListener('scroll', handleResize);
+  visualViewport?.addEventListener('resize', handleResize, { passive: true });
+  visualViewport?.addEventListener('scroll', handleResize, { passive: true });
 
   if (typeof document !== 'undefined') {
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -90,6 +128,10 @@ export function observeRuntimeViewport(listener: () => void) {
     window.removeEventListener('pageshow', handlePageShow);
     visualViewport?.removeEventListener('resize', handleResize);
     visualViewport?.removeEventListener('scroll', handleResize);
+    if (pendingFrame !== null) {
+      window.cancelAnimationFrame(pendingFrame);
+      pendingFrame = null;
+    }
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     }

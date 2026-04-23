@@ -1,5 +1,12 @@
 import * as Sentry from '@sentry/browser';
+import type { Breadcrumb, BrowserOptions, Event } from '@sentry/browser';
 import { getRuntimeDeviceState } from './device';
+import {
+  isDataUriString,
+  sanitizeLogRecord,
+  sanitizeLogString,
+  summarizeDataUri
+} from './logSanitizer';
 
 declare const __APP_VERSION__: string;
 
@@ -15,6 +22,9 @@ const FRONTEND_SENTRY_TEST_VALUES = new Set(['frontend', 'front', 'both']);
 let frontendSentryInitialized = false;
 let frontendSentryAvailable = false;
 let frontendSentryRuntimeFailureLogged = false;
+let runtimeDeviceContextFrame: number | null = null;
+let lastRuntimeDeviceContextSignature = '';
+let lastRuntimeDeviceContextSyncedAt = 0;
 
 function isFrontendSentryDebugLoggingEnabled() {
   if (typeof window === 'undefined') {
@@ -31,6 +41,21 @@ function isFrontendSentryDebugLoggingEnabled() {
     );
   } catch {
     return false;
+  }
+}
+
+function isLikelyMobileTelemetryRuntime() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  try {
+    return getRuntimeDeviceState().isMobile;
+  } catch {
+    return (
+      window.matchMedia?.('(pointer: coarse)').matches ||
+      (window.navigator.maxTouchPoints ?? 0) > 1 ||
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|Tablet/i.test(window.navigator.userAgent)
+    );
   }
 }
 
@@ -59,59 +84,21 @@ function runSentrySafely<T>(phase: string, operation: () => T) {
   }
 }
 
-function sanitizeValue(value: unknown, depth = 0): SentryValue {
-  if (
-    value === null ||
-    value === undefined ||
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  ) {
-    return value ?? null;
-  }
-
-  if (depth >= 4) {
-    return String(value);
-  }
-
-  if (value instanceof Error) {
-    return {
-      name: value.name,
-      message: value.message,
-      stack: value.stack
-        ? value.stack
-            .split('\n')
-            .slice(0, 8)
-            .join('\n')
-        : null
-    };
-  }
-
-  if (value instanceof URL) {
-    return value.toString();
-  }
-
-  if (Array.isArray(value)) {
-    return value.slice(0, 20).map((entry) => sanitizeValue(entry, depth + 1));
-  }
-
-  if (typeof value === 'object') {
-    const source = value as Record<string, unknown>;
-    return Object.fromEntries(
-      Object.entries(source)
-        .slice(0, 20)
-        .map(([key, nestedValue]) => [key, sanitizeValue(nestedValue, depth + 1)])
-    );
-  }
-
-  return String(value);
+function getSentrySanitizeOptions() {
+  const mobile = isLikelyMobileTelemetryRuntime();
+  return {
+    maxDepth: 4,
+    maxStringLength: mobile ? 220 : 360,
+    maxArrayLength: mobile ? 8 : 14,
+    maxObjectEntries: mobile ? 10 : 16
+  };
 }
 
 function sanitizeRecord(data?: Record<string, unknown>) {
   if (!data) {
     return undefined;
   }
-  return sanitizeValue(data) as Record<string, SentryValue>;
+  return sanitizeLogRecord(data, getSentrySanitizeOptions()) as Record<string, SentryValue>;
 }
 
 function getFrontendEnvironment() {
@@ -164,11 +151,34 @@ function syncRuntimeDeviceContext() {
     return;
   }
   const deviceContext = getRuntimeDeviceContext();
+  const signature = JSON.stringify(deviceContext);
+  const now = Date.now();
+  if (signature === lastRuntimeDeviceContextSignature) {
+    return;
+  }
+  if (deviceContext.isMobile && lastRuntimeDeviceContextSyncedAt > 0 && now - lastRuntimeDeviceContextSyncedAt < 750) {
+    return;
+  }
+  lastRuntimeDeviceContextSignature = signature;
+  lastRuntimeDeviceContextSyncedAt = now;
   runSentrySafely('device context sync', () => {
     Sentry.setTag('runtime.platform', 'frontend');
     Sentry.setTag('runtime.device', deviceContext.isMobile ? 'mobile' : 'desktop');
     Sentry.setTag('runtime.orientation', deviceContext.isLandscape ? 'landscape' : 'portrait');
     Sentry.setContext('runtime_device', deviceContext);
+  });
+}
+
+function scheduleRuntimeDeviceContextSync() {
+  if (!frontendSentryAvailable || typeof window === 'undefined') {
+    return;
+  }
+  if (runtimeDeviceContextFrame !== null) {
+    return;
+  }
+  runtimeDeviceContextFrame = window.requestAnimationFrame(() => {
+    runtimeDeviceContextFrame = null;
+    syncRuntimeDeviceContext();
   });
 }
 
@@ -193,6 +203,87 @@ function maybeTriggerFrontendSentryTest() {
   window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
 }
 
+function getBreadcrumbUrl(breadcrumb: Breadcrumb) {
+  const data = breadcrumb.data as Record<string, unknown> | undefined;
+  const candidate = data?.url ?? data?.href ?? data?.input;
+  return typeof candidate === 'string' ? candidate : null;
+}
+
+function isFailedRequestBreadcrumb(breadcrumb: Breadcrumb) {
+  const data = breadcrumb.data as Record<string, unknown> | undefined;
+  const status = Number(data?.status_code ?? data?.status ?? 0);
+  return Number.isFinite(status) && status >= 400;
+}
+
+function sanitizeBreadcrumbMessage(message: string | undefined) {
+  if (!message) {
+    return message;
+  }
+  const sanitized = sanitizeLogString(message, { maxStringLength: 180 });
+  return typeof sanitized === 'string' ? sanitized : '[data-uri]';
+}
+
+function sanitizeSentryBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb | null {
+  const category = breadcrumb.category ?? '';
+  const requestCategory = category === 'fetch' || category === 'xhr';
+  const url = requestCategory ? getBreadcrumbUrl(breadcrumb) : null;
+
+  if (url && isDataUriString(url)) {
+    return isFailedRequestBreadcrumb(breadcrumb)
+      ? {
+          ...breadcrumb,
+          message: 'data-uri request failed',
+          data: {
+            url: summarizeDataUri(url)
+          }
+        }
+      : null;
+  }
+
+  if (requestCategory && isLikelyMobileTelemetryRuntime() && !isFailedRequestBreadcrumb(breadcrumb)) {
+    return null;
+  }
+
+  return {
+    ...breadcrumb,
+    message: sanitizeBreadcrumbMessage(breadcrumb.message),
+    data: sanitizeRecord((breadcrumb.data as Record<string, unknown> | undefined) ?? undefined)
+  };
+}
+
+function sanitizeSentryEvent(event: Event): Event {
+  const sanitizedBreadcrumbs = event.breadcrumbs
+    ?.map((breadcrumb) => sanitizeSentryBreadcrumb(breadcrumb))
+    .filter((breadcrumb): breadcrumb is Breadcrumb => Boolean(breadcrumb))
+    .slice(isLikelyMobileTelemetryRuntime() ? -24 : -50);
+
+  return {
+    ...event,
+    message: sanitizeBreadcrumbMessage(event.message),
+    breadcrumbs: sanitizedBreadcrumbs,
+    extra: event.extra ? (sanitizeRecord(event.extra as Record<string, unknown>) as Event['extra']) : event.extra,
+    contexts: event.contexts ? (sanitizeRecord(event.contexts as Record<string, unknown>) as Event['contexts']) : event.contexts
+  };
+}
+
+function sanitizeExceptionForSentry(error: unknown): Error {
+  const exception = error instanceof Error ? error : new Error(String(error));
+  const sanitizedMessage = sanitizeLogString(exception.message, { maxStringLength: 220 });
+  if (typeof sanitizedMessage !== 'string' || sanitizedMessage === exception.message) {
+    return exception;
+  }
+
+  const sanitized = new Error(sanitizedMessage);
+  sanitized.name = exception.name;
+  if (typeof exception.stack === 'string') {
+    const sanitizedStack = sanitizeLogString(exception.stack, { maxStringLength: 1200 });
+    sanitized.stack = typeof sanitizedStack === 'string' ? sanitizedStack : undefined;
+  } else {
+    sanitized.stack = exception.stack;
+  }
+  return sanitized;
+}
+
 export function initFrontendSentry() {
   if (frontendSentryInitialized || typeof window === 'undefined') {
     return;
@@ -201,22 +292,37 @@ export function initFrontendSentry() {
   frontendSentryInitialized = true;
 
   try {
-    Sentry.init({
-      dsn: FRONTEND_SENTRY_DSN,
-      integrations: [
-        Sentry.browserTracingIntegration(),
+    const mobileTelemetryProfile = isLikelyMobileTelemetryRuntime();
+    const integrations: NonNullable<BrowserOptions['integrations']> = [
+      Sentry.browserTracingIntegration({
+        traceFetch: !mobileTelemetryProfile,
+        traceXHR: !mobileTelemetryProfile,
+        enableLongTask: !mobileTelemetryProfile,
+        enableLongAnimationFrame: false,
+        shouldCreateSpanForRequest: (url) => !isDataUriString(url)
+      })
+    ];
+    if (!mobileTelemetryProfile) {
+      integrations.push(
         Sentry.replayIntegration({
           maskAllText: false,
           blockAllMedia: false
         })
-      ],
-      tracesSampleRate: 1.0,
-      replaysSessionSampleRate: 0.1,
-      replaysOnErrorSampleRate: 1.0,
+      );
+    }
+
+    Sentry.init({
+      dsn: FRONTEND_SENTRY_DSN,
+      integrations,
+      tracesSampleRate: mobileTelemetryProfile ? 0.15 : 1.0,
+      replaysSessionSampleRate: mobileTelemetryProfile ? 0 : 0.1,
+      replaysOnErrorSampleRate: mobileTelemetryProfile ? 0 : 1.0,
       tracePropagationTargets: getTracePropagationTargets(),
       sendDefaultPii: true,
       environment: getFrontendEnvironment(),
-      release: getFrontendRelease()
+      release: getFrontendRelease(),
+      beforeBreadcrumb: (breadcrumb) => sanitizeSentryBreadcrumb(breadcrumb),
+      beforeSend: (event) => sanitizeSentryEvent(event) as typeof event
     });
     frontendSentryAvailable = true;
   } catch (error) {
@@ -226,10 +332,10 @@ export function initFrontendSentry() {
   }
 
   syncRuntimeDeviceContext();
-  window.addEventListener('resize', syncRuntimeDeviceContext, { passive: true });
-  window.visualViewport?.addEventListener('resize', syncRuntimeDeviceContext, { passive: true });
-  window.visualViewport?.addEventListener('scroll', syncRuntimeDeviceContext, { passive: true });
-  document.addEventListener('visibilitychange', syncRuntimeDeviceContext);
+  window.addEventListener('resize', scheduleRuntimeDeviceContextSync, { passive: true });
+  window.visualViewport?.addEventListener('resize', scheduleRuntimeDeviceContextSync, { passive: true });
+  window.visualViewport?.addEventListener('scroll', scheduleRuntimeDeviceContextSync, { passive: true });
+  document.addEventListener('visibilitychange', scheduleRuntimeDeviceContextSync);
 
   maybeTriggerFrontendSentryTest();
 }
@@ -275,7 +381,7 @@ export function captureGameException(
     return;
   }
 
-  const exception = error instanceof Error ? error : new Error(String(error));
+  const exception = sanitizeExceptionForSentry(error);
   const category = options.category ?? 'game';
   const data = sanitizeRecord(options.data);
 

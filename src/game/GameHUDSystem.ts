@@ -4,6 +4,7 @@ import { drawImageIfReady, preloadImageAsset } from '../core/browserAssetCache';
 import { isMobileRuntime } from '../core/device';
 import { recordGameBootDiagnostic, recordGameBootDiagnosticError } from '../core/gameBootDiagnostics';
 import { addGameBreadcrumb, captureGameException } from '../core/sentry';
+import { decodeDataUriText, isDataUriString } from '../core/logSanitizer';
 import { I18nService } from '../ui/I18nService';
 import type { AcquisitionFeedback, GameOverCause, GamePlayerMotionState, LandingGrade } from './gameSessionTypes';
 import {
@@ -130,6 +131,11 @@ interface GameHUDCallbacks {
   onAudioMusicVolumeChange: (value: number) => void;
   onAudioSfxVolumeChange: (value: number) => void;
   onGameOverStatReveal: (record: boolean) => void;
+}
+
+interface GameHudPreloadOptions {
+  phase?: 'critical' | 'full';
+  scheduleDeferred?: boolean;
 }
 
 type AudioChannel = 'music' | 'sfx';
@@ -484,7 +490,9 @@ export class GameHUDSystem {
   private avatarAssetsPromise: Promise<void> | null = null;
   private gameOverRevealTimeouts: number[] = [];
   private readonly shapeTemplateCache = new Map<string, EquipmentShapeTemplate | null>();
-  private readonly shapeTemplatePending = new Set<string>();
+  private readonly shapeTemplatePending = new Map<string, Promise<void>>();
+  private shapeTemplateWarmupPromise: Promise<void> = Promise.resolve();
+  private visible = false;
   private readonly stopObservingTheme: () => void;
   private stopObservingLocale: () => void = () => {};
   private readonly displayController: GameDisplayController;
@@ -1128,12 +1136,16 @@ export class GameHUDSystem {
     this.closeHelp();
     this.leaderboardEntriesCache = this.readLocalLeaderboardCache();
     this.renderStatic();
-    if (this.shouldHydratePlayerAvatarFromLeaderboard()) {
+    if (!isMobileRuntime() && this.shouldHydratePlayerAvatarFromLeaderboard()) {
       void this.ensureLeaderboardLoaded({ forceRefresh: true });
     }
   }
 
   setVisible(visible: boolean) {
+    if (this.visible === visible) {
+      return;
+    }
+    this.visible = visible;
     this.element.hidden = !visible;
     this.element.classList.toggle('is-visible', visible);
     this.element.setAttribute('aria-hidden', visible ? 'false' : 'true');
@@ -1165,7 +1177,11 @@ export class GameHUDSystem {
       this.toastStack.inert = true;
       this.achievementsOverlay.inert = true;
     } else {
-      void this.ensureUiAssetsPreloaded();
+      if (isMobileRuntime()) {
+        void this.ensureCriticalUiAssetsPreloaded().then(() => this.scheduleDeferredWarmup());
+      } else {
+        void this.ensureUiAssetsPreloaded();
+      }
       this.branchLayer.inert = false;
       this.shopBar.inert = false;
       this.gameOverOverlay.inert = false;
@@ -1210,18 +1226,22 @@ export class GameHUDSystem {
     this.scoreFeedTimeouts.clear();
   }
 
-  preloadAssets() {
+  preloadAssets(options: GameHudPreloadOptions = {}) {
     const mobile = isMobileRuntime();
     const locale = this.i18n.current;
     const theme = resolveDocumentTheme();
+    const requestedPhase = options.phase ?? (mobile ? 'critical' : 'full');
+    const scheduleDeferred = options.scheduleDeferred ?? (mobile && requestedPhase === 'critical');
     recordGameBootDiagnostic('game_hud_preload_requested', {
       mobile,
-      mode: mobile ? 'critical_first' : 'full'
+      mode: requestedPhase === 'critical' ? 'critical_first' : 'full'
     });
 
-    const preloadRequest = mobile
+    const preloadRequest = requestedPhase === 'critical'
       ? this.ensureCriticalUiAssetsPreloaded(locale, theme).then(() => {
-          this.scheduleDeferredWarmup(locale, theme);
+          if (scheduleDeferred) {
+            this.scheduleDeferredWarmup(locale, theme);
+          }
         })
       : Promise.all([this.ensureUiAssetsPreloaded(locale, theme), this.ensureAvatarAssetsLoaded()]).then(() => undefined);
 
@@ -1229,7 +1249,7 @@ export class GameHUDSystem {
       .then(() => {
         recordGameBootDiagnostic('game_hud_preload_completed', {
           mobile,
-          mode: mobile ? 'critical_first' : 'full'
+          mode: requestedPhase === 'critical' ? 'critical_first' : 'full'
         });
         return undefined;
       })
@@ -1308,7 +1328,10 @@ export class GameHUDSystem {
           stateKey,
           mobile: isMobileRuntime()
         });
-        Promise.all([this.ensureUiAssetsPreloaded(locale, theme), this.ensureAvatarAssetsLoaded()])
+        const warmups = isMobileRuntime()
+          ? [this.ensureUiAssetsPreloaded(locale, theme)]
+          : [this.ensureUiAssetsPreloaded(locale, theme), this.ensureAvatarAssetsLoaded()];
+        Promise.all(warmups)
           .then(() => {
             recordGameBootDiagnostic('game_hud_deferred_warmup_completed', { stateKey });
           })
@@ -1332,9 +1355,9 @@ export class GameHUDSystem {
         requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
       };
       if (typeof idleWindow.requestIdleCallback === 'function') {
-        idleWindow.requestIdleCallback(run, { timeout: 2500 });
+        idleWindow.requestIdleCallback(run, { timeout: isMobileRuntime() ? 7000 : 2500 });
       } else {
-        window.setTimeout(run, 450);
+        window.setTimeout(run, isMobileRuntime() ? 3000 : 450);
       }
     }).finally(() => {
       this.deferredWarmupPromises.delete(stateKey);
@@ -3000,12 +3023,15 @@ export class GameHUDSystem {
   }
 
   private preloadShapeTemplate(src: string) {
-    if (this.shapeTemplateCache.has(src) || this.shapeTemplatePending.has(src)) {
-      return;
+    if (this.shapeTemplateCache.has(src)) {
+      return Promise.resolve();
     }
-    this.shapeTemplatePending.add(src);
-    void fetch(src)
-      .then((response) => response.text())
+    const pending = this.shapeTemplatePending.get(src);
+    if (pending) {
+      return pending;
+    }
+
+    const request = this.loadShapeTemplateSvgText(src)
       .then((svgText) => this.parseShapeTemplate(svgText))
       .then((template) => {
         this.shapeTemplateCache.set(src, template);
@@ -3016,6 +3042,34 @@ export class GameHUDSystem {
       .finally(() => {
         this.shapeTemplatePending.delete(src);
       });
+
+    this.shapeTemplatePending.set(src, request);
+    return request;
+  }
+
+  private preloadShapeTemplates(sources: string[]) {
+    const uniqueSources = Array.from(new Set(sources));
+    if (!isMobileRuntime()) {
+      uniqueSources.forEach((src) => {
+        void this.preloadShapeTemplate(src);
+      });
+      return;
+    }
+
+    this.shapeTemplateWarmupPromise = this.shapeTemplateWarmupPromise.then(async () => {
+      for (const src of uniqueSources) {
+        await this.preloadShapeTemplate(src);
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 48));
+      }
+    });
+  }
+
+  private loadShapeTemplateSvgText(src: string) {
+    if (isDataUriString(src)) {
+      const decoded = decodeDataUriText(src);
+      return decoded === null ? Promise.reject(new Error('Unable to decode SVG data URI.')) : Promise.resolve(decoded);
+    }
+    return fetch(src).then((response) => response.text());
   }
 
   private async parseShapeTemplate(svgText: string): Promise<EquipmentShapeTemplate | null> {
@@ -4457,17 +4511,11 @@ export class GameHUDSystem {
   }
 
   private buildCriticalUiPreloadAssets(locale: 'fr' | 'en', theme: 'dark' | 'light') {
-    const hoverTheme = resolveContrastTheme(theme);
     return [
-      ...Object.values(GRADE_SPRITE_ASSET_URLS[theme]),
-      ...AVATAR_MOMENTUM_HUD_ASSET_URLS,
       ...Object.values(MOMENTUM_BAR_ASSETS),
-      ...THEMED_PANEL_SURFACE_ASSETS[theme],
       COIN_ICON_URL,
-      EQUIPMENT_UI_ASSETS.bgBoat,
-      ...Object.values(EQUIPMENT_UI_ASSETS.charges),
-      ...Object.values(MOBILE_CONTROL_ASSETS).flatMap((assetSet) => [assetSet[theme], assetSet[hoverTheme]]),
-      ...MOBILE_CHARGE_ASSETS.flatMap((assetSet) => [assetSet[theme], assetSet[hoverTheme]]),
+      ...Object.values(MOBILE_CONTROL_ASSETS).map((assetSet) => assetSet[theme]),
+      ...MOBILE_CHARGE_ASSETS.map((assetSet) => assetSet[theme]),
       LANGUAGE_BUTTON_ASSETS[locale],
       FULLSCREEN_BUTTON_ASSETS.on[theme],
       FULLSCREEN_BUTTON_ASSETS.off[theme],
@@ -4499,8 +4547,9 @@ export class GameHUDSystem {
       mobile: isMobileRuntime()
     });
     const imagePreload = this.preloadImageAssets(preloadedAssets);
-    Object.values(EQUIPMENT_UI_ASSETS.charges).forEach((src) => this.preloadShapeTemplate(src));
-    this.preloadShapeTemplate(EQUIPMENT_UI_ASSETS.bgBoat);
+    if (phase === 'full') {
+      this.preloadShapeTemplates([EQUIPMENT_UI_ASSETS.bgBoat, ...Object.values(EQUIPMENT_UI_ASSETS.charges)]);
+    }
 
     const gameOverRulePreload = phase === 'full' ? this.ensureGameOverRuleAsset(locale, theme) : Promise.resolve('');
     return Promise.all([imagePreload, gameOverRulePreload]).then(() => {
@@ -4514,12 +4563,12 @@ export class GameHUDSystem {
   }
 
   private async preloadImageAssets(urls: string[]) {
-    const batchSize = isMobileRuntime() ? 6 : urls.length;
+    const batchSize = isMobileRuntime() ? 4 : urls.length;
     for (let index = 0; index < urls.length; index += batchSize) {
       const batch = urls.slice(index, index + batchSize);
       await Promise.all(batch.map((src) => preloadImageAsset(src)));
       if (isMobileRuntime() && index + batchSize < urls.length) {
-        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 16));
       }
     }
   }

@@ -1,14 +1,13 @@
 import { addGameBreadcrumb, captureGameException } from './sentry';
+import {
+  sanitizeLogString,
+  sanitizeLogValue,
+  type SanitizedLogValue
+} from './logSanitizer';
 
 type GameBootDiagnosticLevel = 'info' | 'warn' | 'error';
 
-type GameBootDiagnosticValue =
-  | string
-  | number
-  | boolean
-  | null
-  | GameBootDiagnosticValue[]
-  | { [key: string]: GameBootDiagnosticValue };
+type GameBootDiagnosticValue = SanitizedLogValue;
 
 interface GameBootDiagnosticEntry {
   at: number;
@@ -22,9 +21,13 @@ const GAME_BOOT_DIAGNOSTIC_STORAGE_KEY = 'portfolio-game-boot-diagnostics-v1';
 const GAME_BOOT_DIAGNOSTIC_DEBUG_FLAG_KEY = 'portfolio-game-debug';
 const GAME_BOOT_DIAGNOSTIC_DEBUG_BOOT_FLAG_KEY = 'debugBoot';
 const GAME_BOOT_DIAGNOSTIC_DEBUG_QUERY_KEY = 'debugBoot';
-const GAME_BOOT_DIAGNOSTIC_MAX_ENTRIES = 180;
+const GAME_BOOT_DIAGNOSTIC_MAX_ENTRIES = 160;
+const GAME_BOOT_DIAGNOSTIC_MOBILE_MAX_ENTRIES = 72;
+const GAME_BOOT_DIAGNOSTIC_STORAGE_BUDGET_BYTES = 420_000;
+const GAME_BOOT_DIAGNOSTIC_MOBILE_STORAGE_BUDGET_BYTES = 120_000;
 const GAME_BOOT_DIAGNOSTIC_DEDUPE_WINDOW_MS = 180;
 const GAME_BOOT_DIAGNOSTIC_OVERLAY_MAX_ENTRIES = 48;
+const GAME_BOOT_DIAGNOSTIC_MOBILE_OVERLAY_MAX_ENTRIES = 28;
 const SENTRY_TRANSPORT_PATTERN =
   /(?:o\d+\.ingest\.[\w.-]*sentry\.io|ingest\.[\w.-]*sentry\.io|sentry\.io\/api|@sentry\/browser|@sentry\/core)/i;
 const NETWORK_BLOCKED_PATTERN =
@@ -83,6 +86,42 @@ function isExplicitDebugModeEnabled() {
   return import.meta.env.VITE_DEBUG_BOOT === '1' || getQueryDebugFlag() || getDebugFlag();
 }
 
+function isLikelyMobileDiagnosticsRuntime() {
+  if (!hasBrowserRuntime()) {
+    return false;
+  }
+  return (
+    window.matchMedia?.('(pointer: coarse)').matches ||
+    (window.navigator.maxTouchPoints ?? 0) > 1 ||
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|Tablet/i.test(window.navigator.userAgent)
+  );
+}
+
+function getDiagnosticMaxEntries() {
+  return isLikelyMobileDiagnosticsRuntime() ? GAME_BOOT_DIAGNOSTIC_MOBILE_MAX_ENTRIES : GAME_BOOT_DIAGNOSTIC_MAX_ENTRIES;
+}
+
+function getDiagnosticStorageBudgetBytes() {
+  return isLikelyMobileDiagnosticsRuntime()
+    ? GAME_BOOT_DIAGNOSTIC_MOBILE_STORAGE_BUDGET_BYTES
+    : GAME_BOOT_DIAGNOSTIC_STORAGE_BUDGET_BYTES;
+}
+
+function getDiagnosticOverlayMaxEntries() {
+  return isLikelyMobileDiagnosticsRuntime()
+    ? GAME_BOOT_DIAGNOSTIC_MOBILE_OVERLAY_MAX_ENTRIES
+    : GAME_BOOT_DIAGNOSTIC_OVERLAY_MAX_ENTRIES;
+}
+
+function getDiagnosticSanitizeOptions() {
+  return {
+    maxDepth: 4,
+    maxStringLength: isLikelyMobileDiagnosticsRuntime() ? 220 : 360,
+    maxArrayLength: isLikelyMobileDiagnosticsRuntime() ? 8 : 12,
+    maxObjectEntries: isLikelyMobileDiagnosticsRuntime() ? 10 : 14
+  };
+}
+
 export function isGameBootDiagnosticsEnabled() {
   if (!hasBrowserRuntime()) {
     return false;
@@ -97,70 +136,11 @@ function isGameBootOverlayEnabled() {
   return hasBrowserRuntime() && isExplicitDebugModeEnabled();
 }
 
-function sanitizeDiagnosticValue(value: unknown, depth = 0, seen = new WeakSet<object>()): GameBootDiagnosticValue {
-  if (
-    value === null ||
-    value === undefined ||
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  ) {
-    return value ?? null;
-  }
-
-  if (depth >= 3) {
-    return String(value);
-  }
-
-  if (typeof value === 'object') {
-    if (seen.has(value)) {
-      return '[Circular]';
-    }
-    seen.add(value);
-  }
-
-  if (value instanceof Error) {
-    return {
-      name: value.name,
-      message: value.message,
-      stack: value.stack
-        ? value.stack
-            .split('\n')
-            .slice(0, 5)
-            .join('\n')
-        : null,
-      cause: value.cause ? sanitizeDiagnosticValue(value.cause, depth + 1, seen) : null
-    };
-  }
-
-  if (value instanceof HTMLElement) {
-    return {
-      tag: value.tagName.toLowerCase(),
-      id: value.id || null,
-      className: value.className || null
-    };
-  }
-
-  if (Array.isArray(value)) {
-    return value.slice(0, 12).map((item) => sanitizeDiagnosticValue(item, depth + 1, seen));
-  }
-
-  if (typeof value === 'object') {
-    const source = value as Record<string, unknown>;
-    const entries = Object.entries(source).slice(0, 14);
-    return Object.fromEntries(
-      entries.map(([key, nestedValue]) => [key, sanitizeDiagnosticValue(nestedValue, depth + 1, seen)])
-    );
-  }
-
-  return String(value);
-}
-
 function sanitizeDiagnosticData(data?: Record<string, unknown>) {
   if (!data) {
     return undefined;
   }
-  return sanitizeDiagnosticValue(data);
+  return sanitizeLogValue(data, getDiagnosticSanitizeOptions());
 }
 
 function collectDiagnosticStrings(value: unknown, strings: string[], depth = 0, seen = new WeakSet<object>()) {
@@ -168,19 +148,24 @@ function collectDiagnosticStrings(value: unknown, strings: string[], depth = 0, 
     return;
   }
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    strings.push(String(value));
+    const sanitized = sanitizeLogString(String(value), { maxStringLength: 640 });
+    strings.push(typeof sanitized === 'string' ? sanitized : JSON.stringify(sanitized));
     return;
   }
   if (value instanceof Error) {
-    strings.push(value.name, value.message);
+    strings.push(value.name);
+    const sanitizedMessage = sanitizeLogString(value.message, { maxStringLength: 640 });
+    strings.push(typeof sanitizedMessage === 'string' ? sanitizedMessage : JSON.stringify(sanitizedMessage));
     if (value.stack) {
-      strings.push(value.stack);
+      const sanitizedStack = sanitizeLogString(value.stack, { maxStringLength: 1200 });
+      strings.push(typeof sanitizedStack === 'string' ? sanitizedStack : JSON.stringify(sanitizedStack));
     }
     collectDiagnosticStrings(value.cause, strings, depth + 1, seen);
     return;
   }
   if (typeof value !== 'object') {
-    strings.push(String(value));
+    const sanitized = sanitizeLogString(String(value), { maxStringLength: 640 });
+    strings.push(typeof sanitized === 'string' ? sanitized : JSON.stringify(sanitized));
     return;
   }
   if (seen.has(value)) {
@@ -191,7 +176,8 @@ function collectDiagnosticStrings(value: unknown, strings: string[], depth = 0, 
     strings.push(value.tagName, value.id, value.className);
     const source = value.getAttribute('src') ?? value.getAttribute('href');
     if (source) {
-      strings.push(source);
+      const sanitized = sanitizeLogString(source, { maxStringLength: 640 });
+      strings.push(typeof sanitized === 'string' ? sanitized : JSON.stringify(sanitized));
     }
     return;
   }
@@ -231,7 +217,7 @@ function normalizeDiagnosticError(error: unknown) {
       return {
         exception: nestedError,
         details: {
-          nonErrorPayload: sanitizeDiagnosticValue(error)
+          nonErrorPayload: sanitizeLogValue(error, getDiagnosticSanitizeOptions())
         }
       };
     }
@@ -252,7 +238,7 @@ function normalizeDiagnosticError(error: unknown) {
     return {
       exception,
       details: {
-        nonErrorPayload: sanitizeDiagnosticValue(error)
+        nonErrorPayload: sanitizeLogValue(error, getDiagnosticSanitizeOptions())
       }
     };
   }
@@ -260,7 +246,7 @@ function normalizeDiagnosticError(error: unknown) {
   return {
     exception: new Error(String(error)),
     details: {
-      nonErrorPayload: sanitizeDiagnosticValue(error)
+      nonErrorPayload: sanitizeLogValue(error, getDiagnosticSanitizeOptions())
     }
   };
 }
@@ -280,9 +266,13 @@ function readDiagnosticsCache() {
     if (!raw) {
       return diagnosticsCache;
     }
+    if (raw.length > getDiagnosticStorageBudgetBytes()) {
+      window.localStorage.removeItem(GAME_BOOT_DIAGNOSTIC_STORAGE_KEY);
+      return diagnosticsCache;
+    }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      diagnosticsCache = parsed.slice(-GAME_BOOT_DIAGNOSTIC_MAX_ENTRIES);
+      diagnosticsCache = parsed.slice(-getDiagnosticMaxEntries());
     }
   } catch {
     diagnosticsCache = [];
@@ -299,7 +289,13 @@ function persistDiagnosticsCache() {
   const entries = readDiagnosticsCache();
   window.__portfolioGameBootDiagnostics = entries;
   try {
-    window.localStorage.setItem(GAME_BOOT_DIAGNOSTIC_STORAGE_KEY, JSON.stringify(entries));
+    let payload = JSON.stringify(entries);
+    const budget = getDiagnosticStorageBudgetBytes();
+    while (payload.length > budget && entries.length > 1) {
+      entries.splice(0, Math.ceil(entries.length * 0.25));
+      payload = JSON.stringify(entries);
+    }
+    window.localStorage.setItem(GAME_BOOT_DIAGNOSTIC_STORAGE_KEY, payload);
   } catch {
     // Best-effort persistence only.
   }
@@ -309,7 +305,8 @@ function formatOverlayEntry(entry: GameBootDiagnosticEntry) {
   const timestamp = entry.iso.slice(11, 23);
   const payload = entry.data === undefined ? '' : ` ${JSON.stringify(entry.data)}`;
   const line = `[${timestamp}] ${entry.level.toUpperCase()} ${entry.event}${payload}`;
-  return line.length > 1400 ? `${line.slice(0, 1400)}...` : line;
+  const maxLineLength = isLikelyMobileDiagnosticsRuntime() ? 720 : 1400;
+  return line.length > maxLineLength ? `${line.slice(0, maxLineLength)}...` : line;
 }
 
 function ensureOverlay() {
@@ -343,7 +340,7 @@ function renderOverlay() {
     return;
   }
   overlayContentElement.textContent = readDiagnosticsCache()
-    .slice(-GAME_BOOT_DIAGNOSTIC_OVERLAY_MAX_ENTRIES)
+    .slice(-getDiagnosticOverlayMaxEntries())
     .map(formatOverlayEntry)
     .join('\n');
   overlayContentElement.scrollTop = overlayContentElement.scrollHeight;
@@ -409,8 +406,9 @@ function appendDiagnostic(level: GameBootDiagnosticLevel, event: string, data?: 
     event,
     data: sanitized
   });
-  if (entries.length > GAME_BOOT_DIAGNOSTIC_MAX_ENTRIES) {
-    entries.splice(0, entries.length - GAME_BOOT_DIAGNOSTIC_MAX_ENTRIES);
+  const maxEntries = getDiagnosticMaxEntries();
+  if (entries.length > maxEntries) {
+    entries.splice(0, entries.length - maxEntries);
   }
   persistDiagnosticsCache();
   queueOverlayRender();

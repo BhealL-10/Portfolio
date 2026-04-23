@@ -22,6 +22,24 @@ const AVATAR_LAYER_MODULES = import.meta.glob('../../assets/Avatar_asset/*/*.png
 const helpPageCache = new Map<string, Promise<string[]>>();
 let avatarLayerSetsPromise: Promise<GameHudAvatarLayerSets> | null = null;
 
+function isMobileAssetWarmupRuntime() {
+  return (
+    typeof window !== 'undefined' &&
+    (window.matchMedia?.('(pointer: coarse)').matches || (window.navigator.maxTouchPoints ?? 0) > 1)
+  );
+}
+
+async function preloadDeferredImages(assets: string[]) {
+  const batchSize = isMobileAssetWarmupRuntime() ? 4 : assets.length;
+  for (let index = 0; index < assets.length; index += batchSize) {
+    const batch = assets.slice(index, index + batchSize);
+    await Promise.all(batch.map((src) => preloadImageAsset(src)));
+    if (isMobileAssetWarmupRuntime() && index + batchSize < assets.length) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 32));
+    }
+  }
+}
+
 function extractRuleOrder(value: string) {
   return Number((value.match(/rules(\d+)|rules-(\d+)/i)?.slice(1).find(Boolean)) ?? 0);
 }
@@ -124,13 +142,13 @@ export function loadAvatarLayerSets() {
 
 export async function preloadHelpPagesFor(locale: HelpLocale, theme: HelpTheme) {
   const pages = await loadHelpPagesFor(locale, theme);
-  await Promise.all(pages.map((src) => preloadImageAsset(src)));
+  await preloadDeferredImages(pages);
   return pages;
 }
 
 export async function preloadAvatarLayerSets() {
   const sets = await loadAvatarLayerSets();
   const assets = Object.values(sets).flatMap((layer) => layer).filter(Boolean);
-  await Promise.all(assets.map((src) => preloadImageAsset(src)));
+  await preloadDeferredImages(assets);
   return sets;
 }

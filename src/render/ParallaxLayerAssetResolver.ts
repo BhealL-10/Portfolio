@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { getRasterizedSvgTextureAsset, getSharedImageAsset, preloadImageAsset } from '../core/browserAssetCache';
+import { isMobileRuntime } from '../core/device';
 import type { ThemeMode } from '../types/content';
 import { PARALLAX_LAYER_ORDER, resolveParallaxAssetTheme, type LayerAssetTheme, type LayerCategory } from './ParallaxLayerConfig';
 
@@ -116,5 +117,13 @@ export async function preloadParallaxLayerAssets(gameTheme: ThemeMode) {
   PARALLAX_LAYER_ORDER.forEach((category) => {
     PARALLAX_LAYER_ASSET_REGISTRY[category][assetTheme].forEach((url) => urls.add(url));
   });
-  await Promise.all(Array.from(urls, (url) => preloadImageAsset(url, 'sync')));
+  const preloadedUrls = Array.from(urls);
+  const batchSize = isMobileRuntime() ? 3 : preloadedUrls.length;
+  for (let index = 0; index < preloadedUrls.length; index += batchSize) {
+    const batch = preloadedUrls.slice(index, index + batchSize);
+    await Promise.all(batch.map((url) => preloadImageAsset(url, 'sync')));
+    if (isMobileRuntime() && index + batchSize < preloadedUrls.length) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 24));
+    }
+  }
 }

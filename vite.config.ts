@@ -139,6 +139,7 @@ export default defineConfig(({ mode, command }) => {
       outDir: buildConfig.outDir,
       sourcemap: buildConfig.sourcemap,
       target: 'es2020',
+      assetsInlineLimit: 0,
       chunkSizeWarningLimit: buildConfig.chunkSizeWarningLimit
     },
     test: {
