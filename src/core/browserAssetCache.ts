@@ -25,14 +25,6 @@ interface SharedImageEntry {
   listeners: Set<() => void>;
 }
 
-export interface PreloadedImageAssetResult {
-  src: string;
-  ok: boolean;
-  naturalWidth: number;
-  naturalHeight: number;
-  stage: 'load' | 'decode';
-}
-
 const textureLoader = new THREE.TextureLoader();
 const textureCache = new Map<string, THREE.Texture>();
 const rasterizedTextureCache = new Map<string, Promise<THREE.Texture>>();
@@ -153,48 +145,28 @@ export function getSharedImageAsset(
   return entry.image;
 }
 
-export function preloadImageAssetDetailed(src: string, decoding: HTMLImageElement['decoding'] = 'async') {
-  return new Promise<PreloadedImageAssetResult>((resolve) => {
+export function preloadImageAsset(src: string, decoding: HTMLImageElement['decoding'] = 'async') {
+  return new Promise<void>((resolve) => {
     let settled = false;
-    const finish = (result: PreloadedImageAssetResult) => {
+    const finish = () => {
       if (settled) {
         return;
       }
       settled = true;
-      resolve(result);
+      resolve();
     };
 
     const finishAfterDecode = (image: HTMLImageElement) => {
       if (typeof image.decode !== 'function') {
-        finish({
-          src,
-          ok: image.naturalWidth > 0 && image.naturalHeight > 0,
-          naturalWidth: image.naturalWidth,
-          naturalHeight: image.naturalHeight,
-          stage: 'load'
-        });
+        finish();
         return;
       }
       image
         .decode()
-        .then(() => {
-          finish({
-            src,
-            ok: image.naturalWidth > 0 && image.naturalHeight > 0,
-            naturalWidth: image.naturalWidth,
-            naturalHeight: image.naturalHeight,
-            stage: 'decode'
-          });
-        })
         .catch(() => {
-          finish({
-            src,
-            ok: image.naturalWidth > 0 && image.naturalHeight > 0,
-            naturalWidth: image.naturalWidth,
-            naturalHeight: image.naturalHeight,
-            stage: 'decode'
-          });
-        });
+          // Some mobile browsers reject decode() for already-loadable images.
+        })
+        .finally(() => finish());
     };
 
     const image = getSharedImageAsset(src, { decoding });
@@ -203,31 +175,7 @@ export function preloadImageAssetDetailed(src: string, decoding: HTMLImageElemen
       return;
     }
     image.addEventListener('load', () => finishAfterDecode(image), { once: true });
-    image.addEventListener(
-      'error',
-      () =>
-        finish({
-          src,
-          ok: false,
-          naturalWidth: image.naturalWidth,
-          naturalHeight: image.naturalHeight,
-          stage: 'load'
-        }),
-      { once: true }
-    );
-  });
-}
-
-export function preloadImageAsset(src: string, decoding: HTMLImageElement['decoding'] = 'async') {
-  return preloadImageAssetDetailed(src, decoding).then(() => undefined);
-}
-
-export function preloadImageAssetOrThrow(src: string, decoding: HTMLImageElement['decoding'] = 'async') {
-  return preloadImageAssetDetailed(src, decoding).then((result) => {
-    if (!result.ok) {
-      throw new Error(`Failed to preload image asset: ${src}`);
-    }
-    return undefined;
+    image.addEventListener('error', finish, { once: true });
   });
 }
 

@@ -1,20 +1,9 @@
 import * as THREE from 'three';
-import {
-  drawImageIfReady,
-  getSharedImageAsset,
-  getSharedTextureAsset,
-  preloadImageAssetDetailed
-} from '../core/browserAssetCache';
+import { drawImageIfReady, getSharedImageAsset, getSharedTextureAsset, preloadImageAsset } from '../core/browserAssetCache';
 import { isMobileRuntime } from '../core/device';
-import {
-  recordGameBootDiagnostic,
-  recordGameBootDiagnosticError,
-  recordGameBootStepFail,
-  recordGameBootStepOk,
-  recordGameBootStepStart,
-  safeDebugWarn
-} from '../core/gameBootDiagnostics';
+import { recordGameBootDiagnostic, recordGameBootDiagnosticError } from '../core/gameBootDiagnostics';
 import { clamp, damp } from '../core/math';
+import { addGameBreadcrumb, captureGameException, setSentryContext } from '../core/sentry';
 import { getThemeNonShardHex, getThemeShardContrastHex, getThemeShardHex } from '../core/themePalette';
 import type { ThemeMode } from '../types/content';
 import { CameraRailController } from './CameraRailController';
@@ -464,7 +453,7 @@ export class GameSessionController {
   private readonly viewportShardStream = new ViewportShardStream();
   private readonly camera = new CameraRailController();
   private readonly stats = new RunStatsSystem();
-  private readonly achievements: AchievementSystem;
+  private readonly achievements = new AchievementSystem();
   private readonly coins: CoinSystem;
   private readonly enemies: EnemySystem;
   private readonly shop: ShopSystem;
@@ -688,14 +677,6 @@ export class GameSessionController {
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
     this.theme = theme;
-    recordGameBootStepStart('achievements_init');
-    try {
-      this.achievements = new AchievementSystem();
-      recordGameBootStepOk('achievements_init');
-    } catch (error) {
-      recordGameBootStepFail('achievements_init', error);
-      throw error;
-    }
     this.shardHudImageUrls = {
       anchorLoad: {
         dark: SHARD_HUD_ANCHOR_LOAD_ASSETS.dark,
@@ -876,20 +857,7 @@ export class GameSessionController {
     scene.add(this.root);
     this.coins = new CoinSystem(scene, theme);
     this.enemies = new EnemySystem(scene, theme);
-    recordGameBootStepStart('shop_init', {
-      theme
-    });
-    try {
-      this.shop = new ShopSystem(scene, theme);
-      recordGameBootStepOk('shop_init', {
-        theme
-      });
-    } catch (error) {
-      recordGameBootStepFail('shop_init', error, {
-        theme
-      });
-      throw error;
-    }
+    this.shop = new ShopSystem(scene, theme);
   }
 
   preloadAssets() {
@@ -933,7 +901,15 @@ export class GameSessionController {
         recordGameBootDiagnosticError('game_session_preload_failed', error, {
           assetCount: assetUrls.length
         });
-        safeDebugWarn('[GameSessionController] Failed to preload visual assets.', error);
+        captureGameException(error, {
+          event: 'game_session_preload_failed',
+          category: 'game_session_preload',
+          data: {
+            assetCount: assetUrls.length,
+            mobile: isMobileRuntime()
+          }
+        });
+        console.warn('[GameSessionController] Failed to preload visual assets.', error);
       });
 
     return this.visualAssetsPreloadPromise;
@@ -943,16 +919,7 @@ export class GameSessionController {
     const batchSize = isMobileRuntime() ? 10 : urls.length;
     for (let index = 0; index < urls.length; index += batchSize) {
       const batch = urls.slice(index, index + batchSize);
-      const results = await Promise.all(batch.map((src) => preloadImageAssetDetailed(src)));
-      const failed = results.filter((result) => !result.ok);
-      if (failed.length > 0) {
-        throw new Error(
-          `GameSession preload failed for ${failed.length} asset(s): ${failed
-            .slice(0, 6)
-            .map((result) => result.src)
-            .join(', ')}`
-        );
-      }
+      await Promise.all(batch.map((src) => preloadImageAsset(src)));
     }
   }
 
@@ -1307,6 +1274,18 @@ export class GameSessionController {
     this.player.visible = preservePortalPreviewBoat;
     this.playerTrail.visible = false;
     this.transitionProgress = 0;
+    addGameBreadcrumb(
+      'Game session transition prepared',
+      {
+        preservePortalPreviewBoat
+      },
+      'info',
+      'game.lifecycle'
+    );
+    setSentryContext('game_session', {
+      state: 'transition_in',
+      preservePortalPreviewBoat
+    });
   }
 
   beginRun() {
@@ -1328,6 +1307,21 @@ export class GameSessionController {
     this.maintainStreamingAhead(0);
     this.emitAudioEvent({ type: 'run_start' });
     this.emitScore();
+    addGameBreadcrumb(
+      'Run started',
+      {
+        reusePreparedPath,
+        mobile: isMobileRuntime()
+      },
+      'info',
+      'game.lifecycle'
+    );
+    setSentryContext('game_session', {
+      state: this.state,
+      awaitingFirstJump: this.awaitingFirstJump,
+      reusePreparedPath,
+      mobile: isMobileRuntime()
+    });
   }
 
   restart() {
@@ -1381,6 +1375,10 @@ export class GameSessionController {
     this.playerTrail.visible = false;
     this.shop.reset();
     this.pendingMagnetCoins.clear();
+    addGameBreadcrumb('Run exit prepared', undefined, 'info', 'game.lifecycle');
+    setSentryContext('game_session', {
+      state: this.state
+    });
     this.resetPendingEnemyShot(this.frontCanonShot);
     this.resetPendingEnemyShot(this.bigCanonShot);
     this.coins.reset();

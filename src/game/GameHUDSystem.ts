@@ -1,16 +1,9 @@
 import type { RogueliteItemKind, RogueliteItemOffer, RogueliteRarity } from './roguelite';
 import { getItemById, rarityLabels, rogueliteItems } from './roguelite';
-import { drawImageIfReady, preloadImageAsset, preloadImageAssetDetailed } from '../core/browserAssetCache';
+import { drawImageIfReady, preloadImageAsset } from '../core/browserAssetCache';
 import { isMobileRuntime } from '../core/device';
-import {
-  recordGameBootDiagnostic,
-  recordGameBootDiagnosticError,
-  recordGameBootStepFail,
-  recordGameBootStepOk,
-  recordGameBootStepStart,
-  runGameBootStep,
-  safeDebugWarn
-} from '../core/gameBootDiagnostics';
+import { recordGameBootDiagnostic, recordGameBootDiagnosticError } from '../core/gameBootDiagnostics';
+import { addGameBreadcrumb, captureGameException } from '../core/sentry';
 import { I18nService } from '../ui/I18nService';
 import type { AcquisitionFeedback, GameOverCause, GamePlayerMotionState, LandingGrade } from './gameSessionTypes';
 import {
@@ -888,28 +881,15 @@ export class GameHUDSystem {
     this.achievementsButton.addEventListener('click', () => {
       this.toggleAchievements();
     });
-    recordGameBootStepStart('mobile_controls_init', {
-      locale: this.i18n.current
-    });
-    try {
-      this.mobileControls = new MobileControlsHud(
-        this.element.querySelector<HTMLDivElement>('.game-hud__mobile-controls-anchor')!,
-        {
-          teleport: this.i18n.current === 'fr' ? 'Téléporteur' : 'Teleporter',
-          boost: this.i18n.current === 'fr' ? 'Boost' : 'Boost',
-          grapple: this.i18n.current === 'fr' ? 'Grappin' : 'Grapple',
-          charge: this.i18n.current === 'fr' ? 'Charge' : 'Charge'
-        }
-      );
-      recordGameBootStepOk('mobile_controls_init', {
-        locale: this.i18n.current
-      });
-    } catch (error) {
-      recordGameBootStepFail('mobile_controls_init', error, {
-        locale: this.i18n.current
-      });
-      throw error;
-    }
+    this.mobileControls = new MobileControlsHud(
+      this.element.querySelector<HTMLDivElement>('.game-hud__mobile-controls-anchor')!,
+      {
+        teleport: this.i18n.current === 'fr' ? 'Téléporteur' : 'Teleporter',
+        boost: this.i18n.current === 'fr' ? 'Boost' : 'Boost',
+        grapple: this.i18n.current === 'fr' ? 'Grappin' : 'Grapple',
+        charge: this.i18n.current === 'fr' ? 'Charge' : 'Charge'
+      }
+    );
 
     this.exitButton.addEventListener('click', callbacks.onExit);
     this.restartButton.addEventListener('click', callbacks.onRestart);
@@ -1236,6 +1216,13 @@ export class GameHUDSystem {
       })
       .catch((error) => {
         recordGameBootDiagnosticError('game_hud_preload_failed', error);
+        captureGameException(error, {
+          event: 'game_hud_preload_failed',
+          category: 'game_hud_preload',
+          data: {
+            locale: this.i18n.current
+          }
+        });
         throw error;
       });
   }
@@ -1255,15 +1242,7 @@ export class GameHUDSystem {
       return pending;
     }
 
-    const request = runGameBootStep(
-      'theme_language_asset_resolution',
-      () => this.preloadUiAssets(locale, theme),
-      {
-        locale,
-        theme,
-        stateKey
-      }
-    )
+    const request = this.preloadUiAssets(locale, theme)
       .then(() => {
         this.uiAssetStatesReady.add(stateKey);
       })
@@ -1305,7 +1284,7 @@ export class GameHUDSystem {
       })
       .catch((error) => {
         this.helpPagesPromises.delete(cacheKey);
-        safeDebugWarn('[GameHUDSystem] Failed to load deferred help assets.', error);
+        console.warn('[GameHUDSystem] Failed to load deferred help assets.', error);
         return [];
       });
 
@@ -1336,7 +1315,7 @@ export class GameHUDSystem {
         return selectedPage;
       })
       .catch((error) => {
-        safeDebugWarn('[GameHUDSystem] Failed to preload a game over rule asset.', error);
+        console.warn('[GameHUDSystem] Failed to preload a game over rule asset.', error);
         return '';
       })
       .finally(() => {
@@ -1378,7 +1357,14 @@ export class GameHUDSystem {
       .catch((error) => {
         this.avatarAssetsPromise = null;
         recordGameBootDiagnosticError('game_hud_avatar_assets_failed', error);
-        safeDebugWarn('[GameHUDSystem] Failed to load deferred skins.', error);
+        captureGameException(error, {
+          event: 'game_hud_avatar_assets_failed',
+          category: 'game_hud_avatar_assets',
+          data: {
+            locale: this.i18n.current
+          }
+        });
+        console.warn('[GameHUDSystem] Failed to load deferred skins.', error);
       });
 
     return this.avatarAssetsPromise;
@@ -3398,6 +3384,15 @@ export class GameHUDSystem {
     }
     this.leaderboardSyncState = 'saving';
     this.leaderboardSaveButton.disabled = true;
+    addGameBreadcrumb(
+      'Leaderboard save requested',
+      {
+        automatic,
+        score: entry.score
+      },
+      'info',
+      'game.leaderboard'
+    );
     try {
       const response = await fetch(LEADERBOARD_API_PATH, {
         method: 'POST',
@@ -3423,6 +3418,14 @@ export class GameHUDSystem {
       }
     } catch (error) {
       console.warn('[GameHUDSystem] Failed to save leaderboard entry remotely, falling back to local cache.', error);
+      captureGameException(error, {
+        event: 'leaderboard_save_failed',
+        category: 'leaderboard',
+        data: {
+          automatic,
+          score: entry.score
+        }
+      });
       if (existingIndex >= 0) {
         entries.splice(existingIndex, 1, { ...entry, recordedAt: Date.now() });
       } else {
@@ -3501,6 +3504,7 @@ export class GameHUDSystem {
   private async refreshLeaderboard(options?: { rerender?: boolean }) {
     const requestSerial = ++this.leaderboardRequestSerial;
     this.leaderboardSyncState = 'loading';
+    addGameBreadcrumb('Leaderboard refresh requested', undefined, 'info', 'game.leaderboard');
     try {
       const response = await fetch(LEADERBOARD_API_PATH, {
         headers: {
@@ -3528,6 +3532,14 @@ export class GameHUDSystem {
       }
     } catch (error) {
       console.warn('[GameHUDSystem] Failed to refresh leaderboard from shared API, using local cache.', error);
+      addGameBreadcrumb(
+        'Leaderboard refresh failed',
+        {
+          requestSerial
+        },
+        'warning',
+        'game.leaderboard'
+      );
       if (requestSerial !== this.leaderboardRequestSerial) {
         return;
       }
@@ -3992,6 +4004,14 @@ export class GameHUDSystem {
           })
           .catch((error) => {
             console.warn('[GameHUDSystem] Failed to sync avatar selection to shared leaderboard API.', error);
+            addGameBreadcrumb(
+              'Leaderboard avatar sync failed',
+              {
+                name: currentEntry.name
+              },
+              'warning',
+              'game.leaderboard'
+            );
           });
       }
     }
@@ -4372,16 +4392,7 @@ export class GameHUDSystem {
     const batchSize = isMobileRuntime() ? 12 : urls.length;
     for (let index = 0; index < urls.length; index += batchSize) {
       const batch = urls.slice(index, index + batchSize);
-      const results = await Promise.all(batch.map((src) => preloadImageAssetDetailed(src)));
-      const failed = results.filter((result) => !result.ok);
-      if (failed.length > 0) {
-        throw new Error(
-          `GameHUD preload failed for ${failed.length} asset(s): ${failed
-            .slice(0, 6)
-            .map((result) => result.src)
-            .join(', ')}`
-        );
-      }
+      await Promise.all(batch.map((src) => preloadImageAsset(src)));
     }
   }
 }

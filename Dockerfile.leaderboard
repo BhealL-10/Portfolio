@@ -2,11 +2,24 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+ARG SENTRY_ENVIRONMENT=production
+ARG SENTRY_RELEASE=ape-prod-portfolio@1.0.0
+
+RUN npm install -g pnpm@latest
+
+COPY package.json /app/package.json
+COPY pnpm-lock.yaml* /app/
+RUN pnpm install --prod --frozen-lockfile 2>/dev/null || pnpm install --prod
+
+COPY server/sentry.instrumentation.mjs /app/server/sentry.instrumentation.mjs
 COPY server/leaderboard-server.mjs /app/server/leaderboard-server.mjs
 
+ENV NODE_ENV=production
+ENV SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT}
+ENV SENTRY_RELEASE=${SENTRY_RELEASE}
 ENV PORT=8080
 ENV LEADERBOARD_DATA_DIR=/data
 
 EXPOSE 8080
 
-CMD ["node", "/app/server/leaderboard-server.mjs"]
+CMD ["node", "--import", "/app/server/sentry.instrumentation.mjs", "/app/server/leaderboard-server.mjs"]

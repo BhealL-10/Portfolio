@@ -2,12 +2,68 @@ import { createServer } from 'node:http';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import * as Sentry from '@sentry/node';
 
 const PORT = Number(process.env.PORT || 8080);
 const DATA_DIR = process.env.LEADERBOARD_DATA_DIR || '/data';
 const DATA_FILE = join(DATA_DIR, 'leaderboard.json');
 const ACHIEVEMENT_RESET_FILE = join(DATA_DIR, 'achievement-reset.json');
 const MAX_ENTRIES = 100;
+const ENABLE_SENTRY_TEST_ENDPOINTS = process.env.SENTRY_ENABLE_TEST_ENDPOINTS === '1';
+
+let fatalShutdownStarted = false;
+
+function getRequestContext(req) {
+  return {
+    method: req.method || 'UNKNOWN',
+    url: req.url || '',
+    headers: {
+      host: req.headers.host,
+      origin: req.headers.origin,
+      referer: req.headers.referer,
+      'user-agent': req.headers['user-agent'],
+      'x-forwarded-for': req.headers['x-forwarded-for'],
+      'x-forwarded-proto': req.headers['x-forwarded-proto']
+    }
+  };
+}
+
+function captureServerException(error, req, data) {
+  const exception = error instanceof Error ? error : new Error(String(error));
+  Sentry.withScope((scope) => {
+    scope.setLevel('error');
+    scope.setTag('runtime.platform', 'backend');
+    scope.setTag('service', 'leaderboard');
+    if (req) {
+      scope.setContext('request', getRequestContext(req));
+    }
+    if (data) {
+      scope.setContext('leaderboard', data);
+    }
+    Sentry.captureException(exception);
+  });
+}
+
+function installProcessErrorHandlers() {
+  process.on('unhandledRejection', (reason) => {
+    captureServerException(reason, null, {
+      origin: 'process.unhandledRejection'
+    });
+  });
+
+  process.on('uncaughtException', (error) => {
+    if (fatalShutdownStarted) {
+      return;
+    }
+    fatalShutdownStarted = true;
+    captureServerException(error, null, {
+      origin: 'process.uncaughtException'
+    });
+    void Sentry.close(2000).finally(() => {
+      process.exit(1);
+    });
+  });
+}
 
 function sendJson(res, status, payload) {
   res.writeHead(status, {
@@ -24,6 +80,8 @@ function sendText(res, status, text) {
   });
   res.end(text);
 }
+
+installProcessErrorHandlers();
 
 function normalizeName(value) {
   return typeof value === 'string' ? value.trim().slice(0, 18) : '';
@@ -188,6 +246,14 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (ENABLE_SENTRY_TEST_ENDPOINTS && req.method === 'GET' && url.pathname === '/__sentry-test') {
+      captureServerException(new Error('Manual backend Sentry smoke test'), req, {
+        test: true
+      });
+      sendJson(res, 202, { ok: true });
+      return;
+    }
+
     if (url.pathname !== '/leaderboard') {
       sendText(res, 404, 'Not found');
       return;
@@ -214,6 +280,9 @@ const server = createServer(async (req, res) => {
 
     sendText(res, 405, 'Method not allowed');
   } catch (error) {
+    captureServerException(error, req, {
+      dataFile: DATA_FILE
+    });
     sendJson(res, 500, {
       error: error instanceof Error ? error.message : 'Internal server error'
     });

@@ -1,15 +1,20 @@
-import { cpSync, existsSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { defineConfig, loadEnv } from 'vite';
 
 const DEFAULT_LEGACY_ASSET_DIRS = ['images', 'fonts'] as const;
+const PACKAGE_VERSION = JSON.parse(
+  readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf8')
+) as { version?: string };
+
+type BuildSourcemapMode = boolean | 'hidden';
 
 interface AppBuildConfig {
   projectRoot: string;
   base: string;
   outDir: string;
-  sourcemap: boolean;
+  sourcemap: BuildSourcemapMode;
   chunkSizeWarningLimit: number;
   legacyAssetDirs: string[];
 }
@@ -18,13 +23,14 @@ function resolveAppBuildConfig(
   env: Record<string, string | undefined>,
   defaults: {
     base: string;
+    sourcemap: BuildSourcemapMode;
   }
 ): AppBuildConfig {
   return {
     projectRoot: resolve(fileURLToPath(new URL('./', import.meta.url))),
     base: normalizeBase(env.VITE_APP_BASE, defaults.base),
     outDir: env.VITE_BUILD_OUT_DIR?.trim() || 'dist',
-    sourcemap: parseBoolean(env.VITE_BUILD_SOURCEMAP, false),
+    sourcemap: parseSourcemap(env.VITE_BUILD_SOURCEMAP, defaults.sourcemap),
     chunkSizeWarningLimit: parseInteger(env.VITE_BUILD_CHUNK_WARNING_LIMIT, 500),
     legacyAssetDirs: parseDirectoryList(env.VITE_BUILD_LEGACY_ASSET_DIRS)
   };
@@ -57,7 +63,7 @@ function normalizeBase(input: string | undefined, fallback: string) {
   return withLeadingSlash.endsWith('/') ? withLeadingSlash : `${withLeadingSlash}/`;
 }
 
-function parseBoolean(input: string | undefined, fallback: boolean) {
+function parseSourcemap(input: string | undefined, fallback: BuildSourcemapMode) {
   if (!input) {
     return fallback;
   }
@@ -66,6 +72,9 @@ function parseBoolean(input: string | undefined, fallback: boolean) {
   }
   if (input === 'false') {
     return false;
+  }
+  if (input === 'hidden') {
+    return 'hidden';
   }
   return fallback;
 }
@@ -109,13 +118,22 @@ function copyLegacyAssets(projectRoot: string, outDir: string, assetDirs: string
 
 export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  const sentryArtifactUploadEnabled = Boolean(
+    env.SENTRY_AUTH_TOKEN?.trim() &&
+      env.SENTRY_ORG?.trim() &&
+      env.SENTRY_FRONTEND_PROJECT?.trim()
+  );
   const buildConfig = resolveAppBuildConfig(env, {
-    base: command === 'serve' ? '/' : './'
+    base: command === 'serve' ? '/' : './',
+    sourcemap: command === 'build' ? (sentryArtifactUploadEnabled ? 'hidden' : true) : false
   });
 
   return {
     base: buildConfig.base,
     publicDir: false,
+    define: {
+      __APP_VERSION__: JSON.stringify(PACKAGE_VERSION.version || '1.0.0')
+    },
     plugins: [copyLegacyAssets(buildConfig.projectRoot, buildConfig.outDir, buildConfig.legacyAssetDirs)],
     build: {
       outDir: buildConfig.outDir,

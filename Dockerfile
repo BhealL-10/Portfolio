@@ -17,8 +17,15 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+ARG SENTRY_AUTH_TOKEN
+ARG SENTRY_ENVIRONMENT=production
+ARG SENTRY_FRONTEND_PROJECT
+ARG SENTRY_ORG
+ARG SENTRY_RELEASE
+
 # Install pnpm globally
 RUN npm install -g pnpm@latest
+RUN apk add --no-cache curl
 
 # Copy package configuration files (guaranteed to exist)
 COPY package.json ./
@@ -36,7 +43,15 @@ RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 COPY . .
 
 # Build the Vite bundle
+ENV SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
+ENV SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT}
+ENV SENTRY_FRONTEND_PROJECT=${SENTRY_FRONTEND_PROJECT}
+ENV SENTRY_ORG=${SENTRY_ORG}
+ENV SENTRY_RELEASE=${SENTRY_RELEASE}
+ENV VITE_SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT}
+ENV VITE_SENTRY_RELEASE=${SENTRY_RELEASE}
 RUN pnpm run build
+RUN sh ./scripts/upload-sentry-sourcemaps.sh dist
 
 # Stage 2: Serve compiled bundle with Nginx (lightweight)
 # =============================================================================

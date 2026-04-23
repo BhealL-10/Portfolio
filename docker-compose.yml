@@ -13,6 +13,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}
+        SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+        SENTRY_FRONTEND_PROJECT: ${SENTRY_FRONTEND_PROJECT:-}
+        SENTRY_ORG: ${SENTRY_ORG:-}
+        SENTRY_RELEASE: ${SENTRY_RELEASE:-ape-prod-portfolio@1.0.0}
     image: portfolio-3d:${TAG:-latest}
     container_name: portfolio-3d
     restart: unless-stopped
@@ -49,11 +55,19 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.leaderboard
+      args:
+        SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+        SENTRY_RELEASE: ${SENTRY_RELEASE:-ape-prod-portfolio@1.0.0}
     image: portfolio-leaderboard:${TAG:-latest}
     container_name: portfolio-leaderboard
     restart: unless-stopped
     expose:
       - "8080"
+    environment:
+      NODE_ENV: production
+      SENTRY_ENABLE_TEST_ENDPOINTS: ${SENTRY_ENABLE_TEST_ENDPOINTS:-0}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-ape-prod-portfolio@1.0.0}
     networks:
       - backend
     volumes:

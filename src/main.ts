@@ -1,7 +1,10 @@
 import { resolveAppEntryRoute } from './core/AppEntryRoute';
 import { AppController } from './core/AppController';
+import { initFrontendSentry } from './core/sentry';
 import './styles/reset.css';
 import './styles/index.css';
+
+initFrontendSentry();
 
 const app = document.getElementById('app');
 

@@ -36,16 +36,11 @@ import {
   installGameBootDiagnostics,
   recordGameBootDiagnostic,
   recordGameBootDiagnosticError,
-  recordGameBootStepFail,
-  recordGameBootStepOk,
-  recordGameBootStepStart,
-  recordGameBootWarning,
-  runGameBootStep,
-  safeDebugError,
-  safeDebugWarn
+  recordGameBootWarning
 } from './gameBootDiagnostics';
 import { damp, wrapIndex } from './math';
 import { RenderLoop } from './RenderLoop';
+import { addGameBreadcrumb, captureGameException, setSentryContext } from './sentry';
 import { TransitionSystem } from './TransitionSystem';
 
 const ACCENT_COLOR_CYCLE = ['#75AF80', '#FF4545', '#49BCFF', '#8AEBEF'] as const;
@@ -141,8 +136,6 @@ export class AppController {
   private primateriePendingAction: {
     execute: () => void;
   } | null = null;
-  private awaitingFirstGameRender = false;
-  private firstGameRenderStarted = false;
 
   private syncRuntimeDeviceState = () => {
     applyRuntimeDeviceAttributes(document.documentElement);
@@ -152,12 +145,10 @@ export class AppController {
 
   constructor(host: HTMLElement, options: { entryRoute: AppEntryRoute }) {
     installGameBootDiagnostics();
-    recordGameBootStepStart('init_config', {
-      entryRoute: options.entryRoute,
-      locale: this.i18n.current,
-      theme: this.theme.current
-    });
     recordGameBootDiagnostic('app_controller_constructor_started', { entryRoute: options.entryRoute });
+    setSentryContext('app_boot', {
+      entryRoute: options.entryRoute
+    });
     this.entryRoute = options.entryRoute;
     this.root = document.createElement('div');
     this.root.className = 'app-shell';
@@ -171,16 +162,7 @@ export class AppController {
     this.root.append(this.canvasHost, this.uiHost);
     host.appendChild(this.root);
 
-    recordGameBootStepStart('renderer_creation', {
-      hostConnected: host.isConnected
-    });
-    try {
-      this.renderer = new WorldRenderer(this.canvasHost);
-      recordGameBootStepOk('renderer_creation');
-    } catch (error) {
-      recordGameBootStepFail('renderer_creation', error);
-      throw error;
-    }
+    this.renderer = new WorldRenderer(this.canvasHost);
     recordGameBootDiagnostic('world_renderer_ready');
     this.renderer.setTheme(this.theme.current);
     this.musicBackdrop = new MusicReactiveBackdrop(this.renderer.scene, this.theme.current);
@@ -324,11 +306,6 @@ export class AppController {
     this.refreshUI();
     this.updateGuide();
     this.loop.start();
-    recordGameBootStepOk('init_config', {
-      entryRoute: options.entryRoute,
-      locale: this.i18n.current,
-      theme: this.theme.current
-    });
   }
 
   private get game() {
@@ -368,48 +345,53 @@ export class AppController {
     }
 
     recordGameBootDiagnostic('game_runtime_load_requested');
-    this.gameRuntimeLoader = runGameBootStep(
-      'runtime_module_import',
-      () => import('../game/AppGameRuntime'),
-      {
-        source: '../game/AppGameRuntime'
-      }
-    )
+    this.gameRuntimeLoader = import('../game/AppGameRuntime')
       .then((module) => {
         recordGameBootDiagnostic('game_runtime_module_loaded');
         if (this.gameRuntime) {
           return this.gameRuntime;
         }
 
+        recordGameBootDiagnostic('game_runtime_construct_game_started');
         let game: GameSessionController;
         try {
-          recordGameBootStepStart('scene_creation');
           game = new module.GameSessionController(this.renderer.scene, this.theme.current);
         } catch (error) {
-          recordGameBootStepFail('scene_creation', error);
           recordGameBootDiagnosticError('game_runtime_construct_game_failed', error);
+          captureGameException(error, {
+            event: 'game_runtime_construct_game_failed',
+            category: 'app_runtime',
+            data: {
+              entryRoute: this.entryRoute,
+              theme: this.theme.current
+            }
+          });
           throw error;
         }
-        recordGameBootStepOk('scene_creation');
         recordGameBootDiagnostic('game_runtime_construct_game_completed');
         game.setLocale(this.i18n.current);
         game.setThemeRequestHandler((theme) => this.theme.set(theme));
 
+        recordGameBootDiagnostic('game_runtime_construct_audio_started');
         let audio: GameAudioSystem;
         try {
-          recordGameBootStepStart('audio_init');
           audio = new module.GameAudioSystem();
-          recordGameBootStepOk('audio_init');
         } catch (error) {
-          recordGameBootStepFail('audio_init', error);
           recordGameBootDiagnosticError('game_runtime_construct_audio_failed', error);
+          captureGameException(error, {
+            event: 'game_runtime_construct_audio_failed',
+            category: 'app_runtime',
+            data: {
+              entryRoute: this.entryRoute
+            }
+          });
           throw error;
         }
         recordGameBootDiagnostic('game_runtime_construct_audio_completed');
 
+        recordGameBootDiagnostic('game_runtime_construct_hud_started');
         let gameHud: GameHUDSystem;
         try {
-          recordGameBootStepStart('hud_init');
           gameHud = new module.GameHUDSystem(this.uiHost, this.i18n, {
             onRestart: () => this.restartGame(),
             onExit: () => this.exitGame(),
@@ -442,10 +424,16 @@ export class AppController {
               }
             }
           });
-          recordGameBootStepOk('hud_init');
         } catch (error) {
-          recordGameBootStepFail('hud_init', error);
           recordGameBootDiagnosticError('game_runtime_construct_hud_failed', error);
+          captureGameException(error, {
+            event: 'game_runtime_construct_hud_failed',
+            category: 'app_runtime',
+            data: {
+              entryRoute: this.entryRoute,
+              locale: this.i18n.current
+            }
+          });
           throw error;
         }
         recordGameBootDiagnostic('game_runtime_construct_hud_completed');
@@ -461,6 +449,14 @@ export class AppController {
           });
         } catch (error) {
           recordGameBootDiagnosticError('game_runtime_construct_portal_failed', error);
+          captureGameException(error, {
+            event: 'game_runtime_construct_portal_failed',
+            category: 'app_runtime',
+            data: {
+              entryRoute: this.entryRoute,
+              locale: this.i18n.current
+            }
+          });
           throw error;
         }
         recordGameBootDiagnostic('game_runtime_construct_portal_completed');
@@ -502,6 +498,13 @@ export class AppController {
       })
       .catch((error) => {
         recordGameBootDiagnosticError('game_runtime_load_failed', error);
+        captureGameException(error, {
+          event: 'game_runtime_load_failed',
+          category: 'app_runtime',
+          data: {
+            entryRoute: this.entryRoute
+          }
+        });
         throw error;
       })
       .finally(() => {
@@ -530,7 +533,14 @@ export class AppController {
       })
       .catch((error) => {
         recordGameBootDiagnosticError('entry_route_game_runtime_failed', error);
-        safeDebugError('Failed to load game runtime for /primaterie.', error);
+        captureGameException(error, {
+          event: 'entry_route_game_runtime_failed',
+          category: 'entry_route',
+          data: {
+            entryRoute: this.entryRoute
+          }
+        });
+        console.error('Failed to load game runtime for /primaterie.', error);
       });
   }
 
@@ -552,19 +562,24 @@ export class AppController {
 
     this.primateriePortal.setLoading(true);
     this.primaterieHubPreloadPromise = (async () => {
-      await runGameBootStep('preload_assets', async () => {
-        recordGameBootDiagnostic('primaterie_hub_preload_started');
-        await this.game.preloadAssets();
-        recordGameBootDiagnostic('primaterie_hub_preload_game_assets_completed');
-        await this.gameHud.preloadAssets();
-        recordGameBootDiagnostic('primaterie_hub_preload_hud_assets_completed');
-        this.primaterieHubPreloaded = true;
-        recordGameBootDiagnostic('primaterie_hub_preload_completed');
-      });
+      recordGameBootDiagnostic('primaterie_hub_preload_started');
+      await this.game.preloadAssets();
+      recordGameBootDiagnostic('primaterie_hub_preload_game_assets_completed');
+      await this.gameHud.preloadAssets();
+      recordGameBootDiagnostic('primaterie_hub_preload_hud_assets_completed');
+      this.primaterieHubPreloaded = true;
+      recordGameBootDiagnostic('primaterie_hub_preload_completed');
     })()
       .catch((error) => {
         recordGameBootDiagnosticError('primaterie_hub_preload_failed', error);
-        safeDebugWarn('[AppController] Failed to preload primaterie hub assets.', error);
+        captureGameException(error, {
+          event: 'primaterie_hub_preload_failed',
+          category: 'primaterie_preload',
+          data: {
+            entryRoute: this.entryRoute
+          }
+        });
+        console.warn('[AppController] Failed to preload primaterie hub assets.', error);
       })
       .finally(() => {
         this.primaterieHubPreloadPromise = null;
@@ -1424,7 +1439,16 @@ export class AppController {
           recordGameBootWarning('game_transition_runtime_load_failed', {
             message: error instanceof Error ? error.message : String(error)
           });
-          safeDebugError('Failed to load game runtime before starting the mini-game.', error);
+          captureGameException(error, {
+            event: 'game_transition_runtime_load_failed',
+            category: 'game_transition',
+            data: {
+              forceDirectEntry,
+              skipPreAlign,
+              fromMode: this.mode.current
+            }
+          });
+          console.error('Failed to load game runtime before starting the mini-game.', error);
         });
       return;
     }
@@ -1440,12 +1464,17 @@ export class AppController {
       skipPreAlign,
       fromMode: this.mode.current
     });
-    this.awaitingFirstGameRender = true;
-    this.firstGameRenderStarted = false;
-    void runGameBootStep('parallax_init', () => this.parallaxLayers.init()).catch((error) => {
-      recordGameBootDiagnosticError('game_transition_parallax_init_failed', error);
-      safeDebugWarn('[AppController] Failed to initialize parallax layers during game boot.', error);
-    });
+    addGameBreadcrumb(
+      'Game transition requested',
+      {
+        forceDirectEntry,
+        skipPreAlign,
+        fromMode: this.mode.current
+      },
+      'info',
+      'game.lifecycle'
+    );
+    void this.parallaxLayers.init();
 
     if (isFocusMode(this.mode.current)) {
       this.exitFocus(() => this.startGameTransition(forceDirectEntry, skipPreAlign));
@@ -1503,14 +1532,7 @@ export class AppController {
     this.parallaxLayers.rearmAdventureIntro();
     this.parallaxLayers.beginAdventureIntro();
     this.parallaxLayers.setTransitionState(true, 0);
-    recordGameBootStepStart('scene_transition_start');
-    try {
-      this.game.startTransition();
-      recordGameBootStepOk('scene_transition_start');
-    } catch (error) {
-      recordGameBootStepFail('scene_transition_start', error);
-      throw error;
-    }
+    this.game.startTransition();
     const projectCount = this.getGameFieldCount();
     const initialPositions = this.game.getInitialPlatformPositions(projectCount);
     const initialVisuals = this.game.getInitialPlatformVisuals(projectCount);
@@ -1561,26 +1583,25 @@ export class AppController {
         this.world.setShardLockTransition(!this.gameTransitionFromprimaterie, value);
       },
       onComplete: () => {
+        const enteredFromPrimaterie = this.gameTransitionFromprimaterie;
         this.gameTransitionTweenId = null;
         this.gameTransitionProgress = 1;
         this.gameTransitionFromprimaterie = false;
         this.gameTransitionReturningToHub = false;
         this.gameTransitionAnchor = null;
         this.world.setShardLockTransition(false, 0);
-        try {
-          this.mode.setMode('game');
-          this.game.beginRun();
-          this.parallaxLayers.resetForRun(this.game.getParallaxCoverageAnchorX());
-          const gameFieldCount = this.getGameFieldCount();
-          const layout = this.game.getVisiblePlatformLayout(gameFieldCount);
-          this.world.setExternalLayoutSnapshot(layout.positions, layout.scales, layout.visuals);
-          this.refreshUI();
-        } catch (error) {
-          recordGameBootDiagnosticError('game_transition_complete_failed', error, {
-            mode: this.mode.current
-          });
-          throw error;
-        }
+        this.mode.setMode('game');
+        this.game.beginRun();
+        setSentryContext('game_transition', {
+          forceDirectEntry,
+          entryRoute: this.entryRoute,
+          source: enteredFromPrimaterie ? 'primaterie' : 'portfolio'
+        });
+        this.parallaxLayers.resetForRun(this.game.getParallaxCoverageAnchorX());
+        const gameFieldCount = this.getGameFieldCount();
+        const layout = this.game.getVisiblePlatformLayout(gameFieldCount);
+        this.world.setExternalLayoutSnapshot(layout.positions, layout.scales, layout.visuals);
+        this.refreshUI();
       }
     });
   }
@@ -1592,6 +1613,7 @@ export class AppController {
       this.mode.setMode('game');
     }
     this.audio.prime();
+    addGameBreadcrumb('Game restart requested', undefined, 'info', 'game.lifecycle');
     this.game.restart();
     this.parallaxLayers.resetForRun(this.game.getParallaxCoverageAnchorX());
     const gameFieldCount = this.getGameFieldCount();
@@ -1916,44 +1938,12 @@ export class AppController {
     }
     const rawRenderer = this.renderer.renderer;
     const previousAutoClear = rawRenderer.autoClear;
-    if (
-      this.awaitingFirstGameRender &&
-      !this.firstGameRenderStarted &&
-      gameRuntime &&
-      (this.mode.is('game_transition') || this.mode.is('game') || this.mode.is('game_over')) &&
-      !this.gameTransitionReturningToHub
-    ) {
-      recordGameBootStepStart('first_render', {
-        mode: this.mode.current,
-        gameState: this.game.currentState
-      });
-      this.firstGameRenderStarted = true;
-    }
-    try {
-      rawRenderer.autoClear = false;
-      rawRenderer.clear();
-      this.voronoiReveal.render(rawRenderer);
-      rawRenderer.clearDepth();
-      this.renderer.render();
-    } catch (error) {
-      if (this.awaitingFirstGameRender) {
-        recordGameBootStepFail('first_render', error, {
-          mode: this.mode.current,
-          gameState: gameRuntime ? this.game.currentState : null
-        });
-        this.awaitingFirstGameRender = false;
-      }
-      throw error;
-    } finally {
-      rawRenderer.autoClear = previousAutoClear;
-    }
-    if (this.awaitingFirstGameRender && this.firstGameRenderStarted) {
-      recordGameBootStepOk('first_render', {
-        mode: this.mode.current,
-        gameState: gameRuntime ? this.game.currentState : null
-      });
-      this.awaitingFirstGameRender = false;
-    }
+    rawRenderer.autoClear = false;
+    rawRenderer.clear();
+    this.voronoiReveal.render(rawRenderer);
+    rawRenderer.clearDepth();
+    this.renderer.render();
+    rawRenderer.autoClear = previousAutoClear;
     this.intro.update(deltaTime);
     this.updateRotateOverlay();
 

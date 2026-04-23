@@ -24,7 +24,18 @@
 
 set -e
 
+APP_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
+export SENTRY_ENVIRONMENT="${SENTRY_ENVIRONMENT:-production}"
+export SENTRY_RELEASE="${SENTRY_RELEASE:-${TAG:-ape-prod-portfolio@${APP_VERSION}}}"
+
 echo "🚀 Redéploiement du Portfolio 3D (Multi-Stage Build + pnpm)"
+echo ""
+echo "📦 Release Sentry: ${SENTRY_RELEASE}"
+if [ -n "${SENTRY_AUTH_TOKEN:-}" ] && [ -n "${SENTRY_ORG:-}" ] && [ -n "${SENTRY_FRONTEND_PROJECT:-}" ]; then
+    echo "🗺️  Upload sourcemaps Sentry: activé"
+else
+    echo "🗺️  Upload sourcemaps Sentry: désactivé (SENTRY_AUTH_TOKEN / SENTRY_ORG / SENTRY_FRONTEND_PROJECT manquants)"
+fi
 echo ""
 
 # Arrêter le conteneur existant

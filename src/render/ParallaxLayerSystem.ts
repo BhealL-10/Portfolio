@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { recordGameBootDiagnostic, recordGameBootDiagnosticError, safeDebugWarn } from '../core/gameBootDiagnostics';
+import { recordGameBootDiagnostic, recordGameBootDiagnosticError } from '../core/gameBootDiagnostics';
 import { damp } from '../core/math';
 import type { MusicReactiveState } from '../game/GameAudioSystem';
 import type { LandingGrade } from '../game/gameSessionTypes';
@@ -155,7 +155,7 @@ export class ParallaxLayerSystem {
     })().catch((error) => {
       this.initPromise = null;
       recordGameBootDiagnosticError('parallax_init_failed', error);
-      safeDebugWarn('[ParallaxLayerSystem] Failed to preload parallax layers.', error);
+      console.warn('[ParallaxLayerSystem] Failed to preload parallax layers.', error);
     });
 
     return this.initPromise;

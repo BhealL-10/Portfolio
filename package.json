@@ -5,6 +5,7 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "vite",
+    "leaderboard": "node --import ./server/sentry.instrumentation.mjs ./server/leaderboard-server.mjs",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
     "preview": "vite preview",
@@ -12,6 +13,8 @@
     "validate": "pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
+    "@sentry/browser": "^10.49.0",
+    "@sentry/node": "^10.49.0",
     "three": "^0.160.1"
   },
   "devDependencies": {
