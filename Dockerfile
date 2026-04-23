@@ -43,15 +43,15 @@ RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 COPY . .
 
 # Build the Vite bundle
-ENV SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
-ENV SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT}
-ENV SENTRY_FRONTEND_PROJECT=${SENTRY_FRONTEND_PROJECT}
-ENV SENTRY_ORG=${SENTRY_ORG}
-ENV SENTRY_RELEASE=${SENTRY_RELEASE}
-ENV VITE_SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT}
-ENV VITE_SENTRY_RELEASE=${SENTRY_RELEASE}
-RUN pnpm run build
-RUN sh ./scripts/upload-sentry-sourcemaps.sh dist
+RUN VITE_SENTRY_ENVIRONMENT="${SENTRY_ENVIRONMENT}" \
+    VITE_SENTRY_RELEASE="${SENTRY_RELEASE}" \
+    pnpm run build && \
+    SENTRY_AUTH_TOKEN="${SENTRY_AUTH_TOKEN}" \
+    SENTRY_ENVIRONMENT="${SENTRY_ENVIRONMENT}" \
+    SENTRY_FRONTEND_PROJECT="${SENTRY_FRONTEND_PROJECT}" \
+    SENTRY_ORG="${SENTRY_ORG}" \
+    SENTRY_RELEASE="${SENTRY_RELEASE}" \
+    sh ./scripts/upload-sentry-sourcemaps.sh dist
 
 # Stage 2: Serve compiled bundle with Nginx (lightweight)
 # =============================================================================
