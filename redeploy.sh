@@ -24,11 +24,16 @@
 
 set -e
 
+ORIGINAL_CWD="$(pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+REAL_SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s/%s\n' "$SCRIPT_DIR" "$(basename "${BASH_SOURCE[0]}")")"
+PRODUCTION_SENTRY_DEPLOY_ENV_FILE="/home/debian/Portfolio/.env.sentry.deploy"
+SENTRY_DEPLOY_ENV_FILE="${SENTRY_DEPLOY_ENV_FILE:-$PRODUCTION_SENTRY_DEPLOY_ENV_FILE}"
 
-SENTRY_DEPLOY_ENV_FILE="${SENTRY_DEPLOY_ENV_FILE:-${SCRIPT_DIR}/.env.sentry.deploy}"
-LOCAL_ENV_FILE="${SCRIPT_DIR}/.env"
+echo "🧭 Script redeploy réel: ${REAL_SCRIPT_PATH}"
+echo "🧭 CWD initial: ${ORIGINAL_CWD}"
+cd "$SCRIPT_DIR"
+echo "🧭 CWD projet: $(pwd)"
 
 load_env_file() {
   local env_file="$1"
@@ -44,20 +49,32 @@ load_env_file() {
   echo "🔐 Environnement ${label}: chargé (${env_file})"
 }
 
-log_secret_state() {
+has_env_value() {
   local name="$1"
   local value="${!name:-}"
-  if [ -n "$value" ]; then
+  [ -n "$value" ]
+}
+
+log_secret_state() {
+  local name="$1"
+  if has_env_value "$name"; then
     echo "   - ${name}: set"
   else
     echo "   - ${name}: missing"
   fi
 }
 
-if [ "$SENTRY_DEPLOY_ENV_FILE" != "$LOCAL_ENV_FILE" ]; then
-  load_env_file "$LOCAL_ENV_FILE" ".env fallback"
-fi
 load_env_file "$SENTRY_DEPLOY_ENV_FILE" ".env.sentry.deploy"
+if [ "$SENTRY_DEPLOY_ENV_FILE" = "$PRODUCTION_SENTRY_DEPLOY_ENV_FILE" ] && [ ! -f "$SENTRY_DEPLOY_ENV_FILE" ] && [ -f "${SCRIPT_DIR}/.env.sentry.deploy" ]; then
+  load_env_file "${SCRIPT_DIR}/.env.sentry.deploy" ".env.sentry.deploy local fallback"
+fi
+
+sentry_frontend_sourcemaps_enabled() {
+  has_env_value "SENTRY_AUTH_TOKEN" &&
+    has_env_value "SENTRY_ORG" &&
+    has_env_value "SENTRY_FRONTEND_PROJECT" &&
+    has_env_value "SENTRY_RELEASE"
+}
 
 APP_VERSION="$(
   sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -n 1
@@ -74,10 +91,10 @@ log_secret_state "SENTRY_ORG"
 log_secret_state "SENTRY_FRONTEND_PROJECT"
 log_secret_state "SENTRY_BACKEND_PROJECT"
 log_secret_state "SENTRY_AUTH_TOKEN"
-if [ -n "${SENTRY_AUTH_TOKEN:-}" ] && [ -n "${SENTRY_ORG:-}" ] && [ -n "${SENTRY_FRONTEND_PROJECT:-}" ]; then
+if sentry_frontend_sourcemaps_enabled; then
     echo "🗺️  Upload sourcemaps Sentry: activé"
 else
-    echo "🗺️  Upload sourcemaps Sentry: désactivé (SENTRY_AUTH_TOKEN / SENTRY_ORG / SENTRY_FRONTEND_PROJECT manquants)"
+    echo "🗺️  Upload sourcemaps Sentry: désactivé (SENTRY_AUTH_TOKEN / SENTRY_ORG / SENTRY_FRONTEND_PROJECT / SENTRY_RELEASE manquants)"
 fi
 echo ""
 
