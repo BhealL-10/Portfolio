@@ -29,6 +29,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REAL_SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s/%s\n' "$SCRIPT_DIR" "$(basename "${BASH_SOURCE[0]}")")"
 PRODUCTION_SENTRY_DEPLOY_ENV_FILE="/home/debian/Portfolio/.env.sentry.deploy"
 SENTRY_DEPLOY_ENV_FILE="${SENTRY_DEPLOY_ENV_FILE:-$PRODUCTION_SENTRY_DEPLOY_ENV_FILE}"
+LOCAL_SENTRY_DEPLOY_ENV_FILE="${SCRIPT_DIR}/.env.sentry.deploy"
+LOCAL_ENV_FILE="${SCRIPT_DIR}/.env"
 
 echo "🧭 Script redeploy réel: ${REAL_SCRIPT_PATH}"
 echo "🧭 CWD initial: ${ORIGINAL_CWD}"
@@ -64,17 +66,26 @@ log_secret_state() {
   fi
 }
 
-load_env_file "$SENTRY_DEPLOY_ENV_FILE" ".env.sentry.deploy"
-if [ "$SENTRY_DEPLOY_ENV_FILE" = "$PRODUCTION_SENTRY_DEPLOY_ENV_FILE" ] && [ ! -f "$SENTRY_DEPLOY_ENV_FILE" ] && [ -f "${SCRIPT_DIR}/.env.sentry.deploy" ]; then
-  load_env_file "${SCRIPT_DIR}/.env.sentry.deploy" ".env.sentry.deploy local fallback"
-fi
-
 sentry_frontend_sourcemaps_enabled() {
   has_env_value "SENTRY_AUTH_TOKEN" &&
     has_env_value "SENTRY_ORG" &&
     has_env_value "SENTRY_FRONTEND_PROJECT" &&
     has_env_value "SENTRY_RELEASE"
 }
+
+load_sentry_deploy_environment() {
+  load_env_file "$SENTRY_DEPLOY_ENV_FILE" ".env.sentry.deploy"
+
+  if [ "$SENTRY_DEPLOY_ENV_FILE" != "$LOCAL_SENTRY_DEPLOY_ENV_FILE" ] && [ ! -f "$SENTRY_DEPLOY_ENV_FILE" ]; then
+    load_env_file "$LOCAL_SENTRY_DEPLOY_ENV_FILE" ".env.sentry.deploy local fallback"
+  fi
+
+  if [ ! -f "$SENTRY_DEPLOY_ENV_FILE" ] && [ ! -f "$LOCAL_SENTRY_DEPLOY_ENV_FILE" ]; then
+    load_env_file "$LOCAL_ENV_FILE" ".env fallback"
+  fi
+}
+
+load_sentry_deploy_environment
 
 APP_VERSION="$(
   sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -n 1
@@ -150,7 +161,7 @@ fi
 # Vérifier que l'index.html référence les assets hashés (preuve du build Vite)
 echo ""
 echo "✅ Vérification que l'index.html référence des assets compilés avec Vite:"
-docker exec portfolio-3d grep -o '/assets/index-[A-Za-z0-9]*\.js' /usr/share/nginx/html/index.html && echo "✅ Assets hashés détectés (Vite build réussi)" || echo "❌ Assets hashés non trouvés!"
+docker exec portfolio-3d grep -Eo '(\./|/)?assets/index-[A-Za-z0-9_-]+\.js' /usr/share/nginx/html/index.html && echo "✅ Assets hashés détectés (Vite build réussi)" || echo "❌ Assets hashés non trouvés!"
 
 # Tester l'accès à index.html
 echo ""
