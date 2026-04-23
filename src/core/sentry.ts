@@ -16,12 +16,35 @@ let frontendSentryInitialized = false;
 let frontendSentryAvailable = false;
 let frontendSentryRuntimeFailureLogged = false;
 
+function isFrontendSentryDebugLoggingEnabled() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  try {
+    const url = new URL(window.location.href);
+    const queryDebug = url.searchParams.get('debugBoot');
+    return (
+      queryDebug === '1' ||
+      queryDebug === 'true' ||
+      window.localStorage.getItem('debugBoot') === '1' ||
+      window.localStorage.getItem('portfolio-game-debug') === '1'
+    );
+  } catch {
+    return false;
+  }
+}
+
 function reportSentryRuntimeFailure(phase: string, error: unknown) {
   if (frontendSentryRuntimeFailureLogged) {
     return;
   }
   frontendSentryRuntimeFailureLogged = true;
-  console.warn(`[Sentry] Frontend telemetry disabled during ${phase}; the game will continue without blocking.`, error);
+  const message = `[Sentry] Frontend telemetry unavailable during ${phase}; gameplay continues without blocking.`;
+  if (isFrontendSentryDebugLoggingEnabled()) {
+    console.warn(message, error);
+    return;
+  }
+  console.info(message);
 }
 
 function runSentrySafely<T>(phase: string, operation: () => T) {

@@ -456,6 +456,10 @@ export function installGameBootDiagnostics() {
 
   readDiagnosticsCache();
   ensureOverlay();
+  recordGameBootDiagnostic('boot_start', {
+    debugOverlay: isGameBootOverlayEnabled(),
+    ...buildViewportSnapshot()
+  });
   recordGameBootDiagnostic('session_started', {
     userAgent: window.navigator.userAgent,
     maxTouchPoints: window.navigator.maxTouchPoints ?? 0,

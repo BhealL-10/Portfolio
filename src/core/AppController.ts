@@ -162,12 +162,24 @@ export class AppController {
     this.root.append(this.canvasHost, this.uiHost);
     host.appendChild(this.root);
 
+    recordGameBootDiagnostic('renderer_start', {
+      mobile: isMobileRuntime()
+    });
     recordGameBootDiagnostic('world_renderer_construct_started', {
+      mobile: isMobileRuntime()
+    });
+    recordGameBootDiagnostic('world_start', {
       mobile: isMobileRuntime()
     });
     try {
       this.renderer = new WorldRenderer(this.canvasHost);
     } catch (error) {
+      recordGameBootDiagnosticError('renderer_fail', error, {
+        mobile: isMobileRuntime()
+      });
+      recordGameBootDiagnosticError('world_fail', error, {
+        mobile: isMobileRuntime()
+      });
       recordGameBootDiagnosticError('world_renderer_construct_failed', error, {
         mobile: isMobileRuntime()
       });
@@ -181,6 +193,8 @@ export class AppController {
       });
       throw error;
     }
+    recordGameBootDiagnostic('renderer_ok');
+    recordGameBootDiagnostic('world_ok');
     recordGameBootDiagnostic('world_renderer_ready');
     this.renderer.setTheme(this.theme.current);
     this.musicBackdrop = new MusicReactiveBackdrop(this.renderer.scene, this.theme.current);
@@ -362,6 +376,9 @@ export class AppController {
       return this.gameRuntimeLoader;
     }
 
+    recordGameBootDiagnostic('session_start', {
+      entryRoute: this.entryRoute
+    });
     recordGameBootDiagnostic('game_runtime_load_requested');
     this.gameRuntimeLoader = import('../game/AppGameRuntime')
       .then((module) => {
@@ -390,11 +407,13 @@ export class AppController {
         game.setLocale(this.i18n.current);
         game.setThemeRequestHandler((theme) => this.theme.set(theme));
 
+        recordGameBootDiagnostic('audio_start');
         recordGameBootDiagnostic('game_runtime_construct_audio_started');
         let audio: GameAudioSystem;
         try {
           audio = new module.GameAudioSystem();
         } catch (error) {
+          recordGameBootDiagnosticError('audio_fail', error);
           recordGameBootDiagnosticError('game_runtime_construct_audio_failed', error);
           captureGameException(error, {
             event: 'game_runtime_construct_audio_failed',
@@ -405,6 +424,7 @@ export class AppController {
           });
           throw error;
         }
+        recordGameBootDiagnostic('audio_ok');
         recordGameBootDiagnostic('game_runtime_construct_audio_completed');
 
         recordGameBootDiagnostic('game_runtime_construct_hud_started');
@@ -511,10 +531,16 @@ export class AppController {
         }
 
         this.refreshUI();
+        recordGameBootDiagnostic('session_ok', {
+          entryRoute: this.entryRoute
+        });
         recordGameBootDiagnostic('game_runtime_ready');
         return runtime;
       })
       .catch((error) => {
+        recordGameBootDiagnosticError('session_fail', error, {
+          entryRoute: this.entryRoute
+        });
         recordGameBootDiagnosticError('game_runtime_load_failed', error);
         captureGameException(error, {
           event: 'game_runtime_load_failed',
@@ -580,15 +606,25 @@ export class AppController {
 
     this.primateriePortal.setLoading(true);
     this.primaterieHubPreloadPromise = (async () => {
+      recordGameBootDiagnostic('assets_start', {
+        scope: 'primaterie_hub',
+        mobile: isMobileRuntime()
+      });
       recordGameBootDiagnostic('primaterie_hub_preload_started');
       await this.game.preloadAssets();
       recordGameBootDiagnostic('primaterie_hub_preload_game_assets_completed');
       await this.gameHud.preloadAssets();
       recordGameBootDiagnostic('primaterie_hub_preload_hud_assets_completed');
       this.primaterieHubPreloaded = true;
+      recordGameBootDiagnostic('assets_ok', {
+        scope: 'primaterie_hub'
+      });
       recordGameBootDiagnostic('primaterie_hub_preload_completed');
     })()
       .catch((error) => {
+        recordGameBootDiagnosticError('assets_fail', error, {
+          scope: 'primaterie_hub'
+        });
         recordGameBootDiagnosticError('primaterie_hub_preload_failed', error);
         captureGameException(error, {
           event: 'primaterie_hub_preload_failed',
@@ -1454,6 +1490,11 @@ export class AppController {
           this.startGameTransition(request.forceDirectEntry, request.skipPreAlign);
         })
         .catch((error) => {
+          recordGameBootDiagnosticError('game_fail', error, {
+            phase: 'runtime_load',
+            forceDirectEntry,
+            skipPreAlign
+          });
           recordGameBootWarning('game_transition_runtime_load_failed', {
             message: error instanceof Error ? error.message : String(error)
           });
@@ -1477,6 +1518,11 @@ export class AppController {
 
     this.audio.prime();
     this.gameTransitionReturningToHub = false;
+    recordGameBootDiagnostic('game_start', {
+      forceDirectEntry,
+      skipPreAlign,
+      fromMode: this.mode.current
+    });
     recordGameBootDiagnostic('game_transition_requested', {
       forceDirectEntry,
       skipPreAlign,
@@ -1610,6 +1656,10 @@ export class AppController {
         this.world.setShardLockTransition(false, 0);
         this.mode.setMode('game');
         this.game.beginRun();
+        recordGameBootDiagnostic('game_ok', {
+          forceDirectEntry,
+          source: enteredFromPrimaterie ? 'primaterie' : 'portfolio'
+        });
         setSentryContext('game_transition', {
           forceDirectEntry,
           entryRoute: this.entryRoute,

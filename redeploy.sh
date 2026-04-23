@@ -24,11 +24,40 @@
 
 set -e
 
-if [ -f ".env" ]; then
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+SENTRY_DEPLOY_ENV_FILE="${SENTRY_DEPLOY_ENV_FILE:-${SCRIPT_DIR}/.env.sentry.deploy}"
+LOCAL_ENV_FILE="${SCRIPT_DIR}/.env"
+
+load_env_file() {
+  local env_file="$1"
+  local label="$2"
+  if [ ! -f "$env_file" ]; then
+    echo "🔐 Environnement ${label}: absent (${env_file})"
+    return
+  fi
   set -a
-  . ./.env
+  # shellcheck disable=SC1090
+  . "$env_file"
   set +a
+  echo "🔐 Environnement ${label}: chargé (${env_file})"
+}
+
+log_secret_state() {
+  local name="$1"
+  local value="${!name:-}"
+  if [ -n "$value" ]; then
+    echo "   - ${name}: set"
+  else
+    echo "   - ${name}: missing"
+  fi
+}
+
+if [ "$SENTRY_DEPLOY_ENV_FILE" != "$LOCAL_ENV_FILE" ]; then
+  load_env_file "$LOCAL_ENV_FILE" ".env fallback"
 fi
+load_env_file "$SENTRY_DEPLOY_ENV_FILE" ".env.sentry.deploy"
 
 APP_VERSION="$(
   sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -n 1
@@ -40,6 +69,11 @@ export SENTRY_RELEASE="${SENTRY_RELEASE:-${TAG:-ape-prod-portfolio@${APP_VERSION
 echo "🚀 Redéploiement du Portfolio 3D (Multi-Stage Build + pnpm)"
 echo ""
 echo "📦 Release Sentry: ${SENTRY_RELEASE}"
+echo "🔎 Variables Sentry deploy:"
+log_secret_state "SENTRY_ORG"
+log_secret_state "SENTRY_FRONTEND_PROJECT"
+log_secret_state "SENTRY_BACKEND_PROJECT"
+log_secret_state "SENTRY_AUTH_TOKEN"
 if [ -n "${SENTRY_AUTH_TOKEN:-}" ] && [ -n "${SENTRY_ORG:-}" ] && [ -n "${SENTRY_FRONTEND_PROJECT:-}" ]; then
     echo "🗺️  Upload sourcemaps Sentry: activé"
 else
