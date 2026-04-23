@@ -162,7 +162,25 @@ export class AppController {
     this.root.append(this.canvasHost, this.uiHost);
     host.appendChild(this.root);
 
-    this.renderer = new WorldRenderer(this.canvasHost);
+    recordGameBootDiagnostic('world_renderer_construct_started', {
+      mobile: isMobileRuntime()
+    });
+    try {
+      this.renderer = new WorldRenderer(this.canvasHost);
+    } catch (error) {
+      recordGameBootDiagnosticError('world_renderer_construct_failed', error, {
+        mobile: isMobileRuntime()
+      });
+      captureGameException(error, {
+        event: 'world_renderer_construct_failed',
+        category: 'app_boot',
+        data: {
+          entryRoute: options.entryRoute,
+          mobile: isMobileRuntime()
+        }
+      });
+      throw error;
+    }
     recordGameBootDiagnostic('world_renderer_ready');
     this.renderer.setTheme(this.theme.current);
     this.musicBackdrop = new MusicReactiveBackdrop(this.renderer.scene, this.theme.current);

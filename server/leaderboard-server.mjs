@@ -49,6 +49,7 @@ function installProcessErrorHandlers() {
     captureServerException(reason, null, {
       origin: 'process.unhandledRejection'
     });
+    void Sentry.flush(2000).catch(() => {});
   });
 
   process.on('uncaughtException', (error) => {

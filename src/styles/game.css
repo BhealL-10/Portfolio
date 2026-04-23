@@ -4712,3 +4712,42 @@ html[data-theme='dark'] .game-hud__leaderboard-preview-rank {
 .primaterie-portal.is-loading .primaterie-portal__loading {
   display: flex;
 }
+
+.game-boot-debug-overlay {
+  position: fixed;
+  right: max(8px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  z-index: 100000;
+  display: grid;
+  width: min(560px, calc(100vw - 16px));
+  max-height: min(42vh, 340px);
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 14px;
+  background: rgb(9 12 17 / 0.88);
+  box-shadow: 0 18px 60px rgb(0 0 0 / 0.34);
+  color: #f5f0df;
+  font: 11px/1.42 "SFMono-Regular", "Cascadia Code", Consolas, monospace;
+  pointer-events: auto;
+  touch-action: pan-y;
+  backdrop-filter: blur(14px);
+}
+
+.game-boot-debug-overlay__header {
+  padding: 7px 10px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.12);
+  color: #f4c563;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.game-boot-debug-overlay__content {
+  min-height: 0;
+  max-height: 300px;
+  margin: 0;
+  padding: 8px 10px 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

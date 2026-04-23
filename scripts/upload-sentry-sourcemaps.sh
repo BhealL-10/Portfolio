@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -eu
+set -u
 
 DIST_DIR="${1:-dist}"
 ASSET_DIR="${DIST_DIR%/}/assets"
@@ -20,16 +20,36 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 0
 fi
 
-curl -sL https://sentry.io/get-cli/ | sh
+SENTRY_INSTALLER="/tmp/get-sentry-cli.sh"
+if ! curl -sL https://sentry.io/get-cli/ -o "$SENTRY_INSTALLER"; then
+  echo "[sentry] Sourcemap upload skipped: failed to download sentry-cli installer."
+  exit 0
+fi
+
+if ! sh "$SENTRY_INSTALLER"; then
+  echo "[sentry] Sourcemap upload skipped: failed to install sentry-cli."
+  exit 0
+fi
 
 export PATH="$HOME/.local/bin:$PATH"
 
-sentry-cli releases new "$SENTRY_RELEASE" --project "$SENTRY_FRONTEND_PROJECT"
-sentry-cli releases files "$SENTRY_RELEASE" upload-sourcemaps "$ASSET_DIR" \
+if ! sentry-cli releases new "$SENTRY_RELEASE" --org "$SENTRY_ORG" --project "$SENTRY_FRONTEND_PROJECT"; then
+  echo "[sentry] Release '$SENTRY_RELEASE' already exists or could not be created; continuing with sourcemap upload."
+fi
+
+if ! sentry-cli releases files "$SENTRY_RELEASE" upload-sourcemaps "$ASSET_DIR" \
+  --org "$SENTRY_ORG" \
   --project "$SENTRY_FRONTEND_PROJECT" \
   --url-prefix "~/assets" \
   --rewrite \
-  --validate
-sentry-cli releases finalize "$SENTRY_RELEASE" --project "$SENTRY_FRONTEND_PROJECT"
+  --validate; then
+  echo "[sentry] Sourcemap upload failed for release '$SENTRY_RELEASE'; continuing deployment."
+  exit 0
+fi
+
+if ! sentry-cli releases finalize "$SENTRY_RELEASE" --org "$SENTRY_ORG" --project "$SENTRY_FRONTEND_PROJECT"; then
+  echo "[sentry] Release finalize failed for '$SENTRY_RELEASE'; sourcemaps were uploaded, continuing deployment."
+  exit 0
+fi
 
 echo "[sentry] Uploaded frontend sourcemaps for release '$SENTRY_RELEASE'."

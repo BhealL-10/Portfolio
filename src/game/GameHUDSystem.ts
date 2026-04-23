@@ -513,6 +513,9 @@ export class GameHUDSystem {
   private leaderboardSyncState: 'idle' | 'loading' | 'saving' | 'error' = 'idle';
   private readonly uiAssetStatesReady = new Set<string>();
   private readonly uiAssetStatePromises = new Map<string, Promise<void>>();
+  private readonly criticalUiAssetStatesReady = new Set<string>();
+  private readonly criticalUiAssetStatePromises = new Map<string, Promise<void>>();
+  private readonly deferredWarmupPromises = new Map<string, Promise<void>>();
   private readonly gameOverRuleAssetCache = new Map<string, string>();
   private readonly gameOverRuleAssetPromises = new Map<string, Promise<string>>();
   private runStripMountTimeout: number | null = null;
@@ -1208,10 +1211,26 @@ export class GameHUDSystem {
   }
 
   preloadAssets() {
-    recordGameBootDiagnostic('game_hud_preload_requested');
-    return Promise.all([this.ensureUiAssetsPreloaded(), this.ensureAvatarAssetsLoaded()])
+    const mobile = isMobileRuntime();
+    const locale = this.i18n.current;
+    const theme = resolveDocumentTheme();
+    recordGameBootDiagnostic('game_hud_preload_requested', {
+      mobile,
+      mode: mobile ? 'critical_first' : 'full'
+    });
+
+    const preloadRequest = mobile
+      ? this.ensureCriticalUiAssetsPreloaded(locale, theme).then(() => {
+          this.scheduleDeferredWarmup(locale, theme);
+        })
+      : Promise.all([this.ensureUiAssetsPreloaded(locale, theme), this.ensureAvatarAssetsLoaded()]).then(() => undefined);
+
+    return preloadRequest
       .then(() => {
-        recordGameBootDiagnostic('game_hud_preload_completed');
+        recordGameBootDiagnostic('game_hud_preload_completed', {
+          mobile,
+          mode: mobile ? 'critical_first' : 'full'
+        });
         return undefined;
       })
       .catch((error) => {
@@ -1252,6 +1271,76 @@ export class GameHUDSystem {
 
     this.uiAssetStatePromises.set(stateKey, request);
     return request;
+  }
+
+  private ensureCriticalUiAssetsPreloaded(locale: 'fr' | 'en' = this.i18n.current, theme = resolveDocumentTheme()) {
+    const stateKey = this.getUiAssetStateKey(locale, theme);
+    if (this.criticalUiAssetStatesReady.has(stateKey)) {
+      return Promise.resolve();
+    }
+
+    const pending = this.criticalUiAssetStatePromises.get(stateKey);
+    if (pending) {
+      return pending;
+    }
+
+    const request = this.preloadUiAssetList(this.buildCriticalUiPreloadAssets(locale, theme), locale, theme, 'critical')
+      .then(() => {
+        this.criticalUiAssetStatesReady.add(stateKey);
+      })
+      .finally(() => {
+        this.criticalUiAssetStatePromises.delete(stateKey);
+      });
+
+    this.criticalUiAssetStatePromises.set(stateKey, request);
+    return request;
+  }
+
+  private scheduleDeferredWarmup(locale: 'fr' | 'en' = this.i18n.current, theme = resolveDocumentTheme()) {
+    const stateKey = this.getUiAssetStateKey(locale, theme);
+    if (this.deferredWarmupPromises.has(stateKey)) {
+      return;
+    }
+
+    const request = new Promise<void>((resolve) => {
+      const run = () => {
+        recordGameBootDiagnostic('game_hud_deferred_warmup_started', {
+          stateKey,
+          mobile: isMobileRuntime()
+        });
+        Promise.all([this.ensureUiAssetsPreloaded(locale, theme), this.ensureAvatarAssetsLoaded()])
+          .then(() => {
+            recordGameBootDiagnostic('game_hud_deferred_warmup_completed', { stateKey });
+          })
+          .catch((error) => {
+            recordGameBootDiagnosticError('game_hud_deferred_warmup_failed', error, { stateKey });
+            captureGameException(error, {
+              event: 'game_hud_deferred_warmup_failed',
+              category: 'game_hud_preload',
+              data: {
+                locale,
+                stateKey,
+                mobile: isMobileRuntime()
+              }
+            });
+            console.warn('[GameHUDSystem] Deferred HUD warmup failed.', error);
+          })
+          .finally(resolve);
+      };
+
+      const idleWindow = window as Window & {
+        requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+      };
+      if (typeof idleWindow.requestIdleCallback === 'function') {
+        idleWindow.requestIdleCallback(run, { timeout: 2500 });
+      } else {
+        window.setTimeout(run, 450);
+      }
+    }).finally(() => {
+      this.deferredWarmupPromises.delete(stateKey);
+    });
+
+    this.deferredWarmupPromises.set(stateKey, request);
   }
 
   private ensureDeferredAssetsModule() {
@@ -4367,32 +4456,71 @@ export class GameHUDSystem {
     ];
   }
 
+  private buildCriticalUiPreloadAssets(locale: 'fr' | 'en', theme: 'dark' | 'light') {
+    const hoverTheme = resolveContrastTheme(theme);
+    return [
+      ...Object.values(GRADE_SPRITE_ASSET_URLS[theme]),
+      ...AVATAR_MOMENTUM_HUD_ASSET_URLS,
+      ...Object.values(MOMENTUM_BAR_ASSETS),
+      ...THEMED_PANEL_SURFACE_ASSETS[theme],
+      COIN_ICON_URL,
+      EQUIPMENT_UI_ASSETS.bgBoat,
+      ...Object.values(EQUIPMENT_UI_ASSETS.charges),
+      ...Object.values(MOBILE_CONTROL_ASSETS).flatMap((assetSet) => [assetSet[theme], assetSet[hoverTheme]]),
+      ...MOBILE_CHARGE_ASSETS.flatMap((assetSet) => [assetSet[theme], assetSet[hoverTheme]]),
+      LANGUAGE_BUTTON_ASSETS[locale],
+      FULLSCREEN_BUTTON_ASSETS.on[theme],
+      FULLSCREEN_BUTTON_ASSETS.off[theme],
+      THEME_TOGGLE_ASSETS[theme],
+      HELP_ICON_ASSETS[theme],
+      SOUND_BUTTON_ASSETS.on[theme],
+      SOUND_BUTTON_ASSETS.off[theme],
+      SOUND_BUTTON_ASSETS.sprite,
+      SETTINGS_BUTTON_ASSETS[theme]
+    ];
+  }
+
   private preloadUiAssets(locale: 'fr' | 'en' = this.i18n.current, theme = resolveDocumentTheme()) {
-    const preloadedAssets = Array.from(new Set(this.buildUiPreloadAssets(locale, theme)));
+    return this.preloadUiAssetList(this.buildUiPreloadAssets(locale, theme), locale, theme, 'full');
+  }
+
+  private preloadUiAssetList(
+    assetUrls: string[],
+    locale: 'fr' | 'en' = this.i18n.current,
+    theme = resolveDocumentTheme(),
+    phase: 'critical' | 'full' = 'full'
+  ) {
+    const preloadedAssets = Array.from(new Set(assetUrls));
     const stateKey = this.getUiAssetStateKey(locale, theme);
     recordGameBootDiagnostic('game_hud_ui_assets_started', {
       stateKey,
       assetCount: preloadedAssets.length,
+      phase,
       mobile: isMobileRuntime()
     });
     const imagePreload = this.preloadImageAssets(preloadedAssets);
     Object.values(EQUIPMENT_UI_ASSETS.charges).forEach((src) => this.preloadShapeTemplate(src));
     this.preloadShapeTemplate(EQUIPMENT_UI_ASSETS.bgBoat);
 
-    return Promise.all([imagePreload, this.ensureGameOverRuleAsset(locale, theme)]).then(() => {
+    const gameOverRulePreload = phase === 'full' ? this.ensureGameOverRuleAsset(locale, theme) : Promise.resolve('');
+    return Promise.all([imagePreload, gameOverRulePreload]).then(() => {
       recordGameBootDiagnostic('game_hud_ui_assets_completed', {
         stateKey,
-        assetCount: preloadedAssets.length
+        assetCount: preloadedAssets.length,
+        phase
       });
       return undefined;
     });
   }
 
   private async preloadImageAssets(urls: string[]) {
-    const batchSize = isMobileRuntime() ? 12 : urls.length;
+    const batchSize = isMobileRuntime() ? 6 : urls.length;
     for (let index = 0; index < urls.length; index += batchSize) {
       const batch = urls.slice(index, index + batchSize);
       await Promise.all(batch.map((src) => preloadImageAsset(src)));
+      if (isMobileRuntime() && index + batchSize < urls.length) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+      }
     }
   }
 }

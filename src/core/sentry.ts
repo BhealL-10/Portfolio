@@ -13,6 +13,28 @@ const FRONTEND_SENTRY_TEST_QUERY_KEY = 'sentry_test';
 const FRONTEND_SENTRY_TEST_VALUES = new Set(['frontend', 'front', 'both']);
 
 let frontendSentryInitialized = false;
+let frontendSentryAvailable = false;
+let frontendSentryRuntimeFailureLogged = false;
+
+function reportSentryRuntimeFailure(phase: string, error: unknown) {
+  if (frontendSentryRuntimeFailureLogged) {
+    return;
+  }
+  frontendSentryRuntimeFailureLogged = true;
+  console.warn(`[Sentry] Frontend telemetry disabled during ${phase}; the game will continue without blocking.`, error);
+}
+
+function runSentrySafely<T>(phase: string, operation: () => T) {
+  if (!frontendSentryAvailable) {
+    return undefined;
+  }
+  try {
+    return operation();
+  } catch (error) {
+    reportSentryRuntimeFailure(phase, error);
+    return undefined;
+  }
+}
 
 function sanitizeValue(value: unknown, depth = 0): SentryValue {
   if (
@@ -115,14 +137,16 @@ function getRuntimeDeviceContext() {
 }
 
 function syncRuntimeDeviceContext() {
-  if (!frontendSentryInitialized || typeof window === 'undefined') {
+  if (!frontendSentryAvailable || typeof window === 'undefined') {
     return;
   }
   const deviceContext = getRuntimeDeviceContext();
-  Sentry.setTag('runtime.platform', 'frontend');
-  Sentry.setTag('runtime.device', deviceContext.isMobile ? 'mobile' : 'desktop');
-  Sentry.setTag('runtime.orientation', deviceContext.isLandscape ? 'landscape' : 'portrait');
-  Sentry.setContext('runtime_device', deviceContext);
+  runSentrySafely('device context sync', () => {
+    Sentry.setTag('runtime.platform', 'frontend');
+    Sentry.setTag('runtime.device', deviceContext.isMobile ? 'mobile' : 'desktop');
+    Sentry.setTag('runtime.orientation', deviceContext.isLandscape ? 'landscape' : 'portrait');
+    Sentry.setContext('runtime_device', deviceContext);
+  });
 }
 
 function maybeTriggerFrontendSentryTest() {
@@ -132,7 +156,7 @@ function maybeTriggerFrontendSentryTest() {
     return;
   }
 
-  Sentry.withScope((scope) => {
+  runSentrySafely('manual smoke test', () => Sentry.withScope((scope) => {
     scope.setLevel('info');
     scope.setTag('sentry.test', 'frontend');
     scope.setContext('sentry_test', {
@@ -140,7 +164,7 @@ function maybeTriggerFrontendSentryTest() {
       href: window.location.href
     });
     Sentry.captureException(new Error('Manual frontend Sentry smoke test'));
-  });
+  }));
 
   url.searchParams.delete(FRONTEND_SENTRY_TEST_QUERY_KEY);
   window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
@@ -153,23 +177,30 @@ export function initFrontendSentry() {
 
   frontendSentryInitialized = true;
 
-  Sentry.init({
-    dsn: FRONTEND_SENTRY_DSN,
-    integrations: [
-      Sentry.browserTracingIntegration(),
-      Sentry.replayIntegration({
-        maskAllText: false,
-        blockAllMedia: false
-      })
-    ],
-    tracesSampleRate: 1.0,
-    replaysSessionSampleRate: 0.1,
-    replaysOnErrorSampleRate: 1.0,
-    tracePropagationTargets: getTracePropagationTargets(),
-    sendDefaultPii: true,
-    environment: getFrontendEnvironment(),
-    release: getFrontendRelease()
-  });
+  try {
+    Sentry.init({
+      dsn: FRONTEND_SENTRY_DSN,
+      integrations: [
+        Sentry.browserTracingIntegration(),
+        Sentry.replayIntegration({
+          maskAllText: false,
+          blockAllMedia: false
+        })
+      ],
+      tracesSampleRate: 1.0,
+      replaysSessionSampleRate: 0.1,
+      replaysOnErrorSampleRate: 1.0,
+      tracePropagationTargets: getTracePropagationTargets(),
+      sendDefaultPii: true,
+      environment: getFrontendEnvironment(),
+      release: getFrontendRelease()
+    });
+    frontendSentryAvailable = true;
+  } catch (error) {
+    frontendSentryAvailable = false;
+    reportSentryRuntimeFailure('initialization', error);
+    return;
+  }
 
   syncRuntimeDeviceContext();
   window.addEventListener('resize', syncRuntimeDeviceContext, { passive: true });
@@ -186,27 +217,27 @@ export function addGameBreadcrumb(
   level: BreadcrumbLevel = 'info',
   category = 'game'
 ) {
-  if (!frontendSentryInitialized) {
+  if (!frontendSentryAvailable) {
     return;
   }
 
-  Sentry.addBreadcrumb({
+  runSentrySafely('breadcrumb capture', () => Sentry.addBreadcrumb({
     category,
     level,
     message,
     data: sanitizeRecord(data)
-  });
+  }));
 }
 
 export function setSentryContext(name: string, data: Record<string, unknown>) {
-  if (!frontendSentryInitialized) {
+  if (!frontendSentryAvailable) {
     return;
   }
   const context = sanitizeRecord(data);
   if (!context) {
     return;
   }
-  Sentry.setContext(name, context);
+  runSentrySafely('context capture', () => Sentry.setContext(name, context));
 }
 
 export function captureGameException(
@@ -217,7 +248,7 @@ export function captureGameException(
     data?: Record<string, unknown>;
   }
 ) {
-  if (!frontendSentryInitialized) {
+  if (!frontendSentryAvailable) {
     return;
   }
 
@@ -225,7 +256,7 @@ export function captureGameException(
   const category = options.category ?? 'game';
   const data = sanitizeRecord(options.data);
 
-  Sentry.withScope((scope) => {
+  runSentrySafely('exception capture', () => Sentry.withScope((scope) => {
     scope.setLevel('error');
     scope.setTag('runtime.platform', 'frontend');
     scope.setTag('game.event', options.event);
@@ -234,5 +265,5 @@ export function captureGameException(
       scope.setContext(category, data);
     }
     Sentry.captureException(exception);
-  });
+  }));
 }

@@ -51,7 +51,8 @@ RUN VITE_SENTRY_ENVIRONMENT="${SENTRY_ENVIRONMENT}" \
     SENTRY_FRONTEND_PROJECT="${SENTRY_FRONTEND_PROJECT}" \
     SENTRY_ORG="${SENTRY_ORG}" \
     SENTRY_RELEASE="${SENTRY_RELEASE}" \
-    sh ./scripts/upload-sentry-sourcemaps.sh dist
+    sh ./scripts/upload-sentry-sourcemaps.sh dist && \
+    find dist -name '*.map' -type f -delete
 
 # Stage 2: Serve compiled bundle with Nginx (lightweight)
 # =============================================================================
