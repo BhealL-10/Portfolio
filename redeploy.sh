@@ -24,7 +24,10 @@
 
 set -e
 
-APP_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
+APP_VERSION="$(
+  sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -n 1
+)"
+APP_VERSION="${APP_VERSION:-1.0.0}"
 export SENTRY_ENVIRONMENT="${SENTRY_ENVIRONMENT:-production}"
 export SENTRY_RELEASE="${SENTRY_RELEASE:-${TAG:-ape-prod-portfolio@${APP_VERSION}}}"
 
