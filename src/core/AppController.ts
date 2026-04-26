@@ -157,6 +157,8 @@ export class AppController {
   private primaterieHubShellReadyLogged = false;
   private primaterieHubPreloaded = false;
   private primaterieHubPreloadPromise: Promise<void> | null = null;
+  private adventureLaunchPreparationPromise: Promise<void> | null = null;
+  private adventureLaunchPrepared = false;
   private gameAssetWarmupScheduled = false;
   private gameAssetWarmupPromise: Promise<void> | null = null;
   private hasObservedUserGesture = false;
@@ -541,7 +543,7 @@ export class AppController {
     });
     recordGameBootDiagnostic('game_runtime_load_requested');
     this.gameRuntimeLoader = this.loadGameRuntimeModule('construct')
-      .then((module) => {
+      .then(async (module) => {
         if (this.gameRuntime) {
           return this.gameRuntime;
         }
@@ -565,6 +567,7 @@ export class AppController {
         recordGameBootDiagnostic('game_runtime_construct_game_completed');
         game.setLocale(this.i18n.current);
         game.setThemeRequestHandler((theme) => this.theme.set(theme));
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 
         recordGameBootDiagnostic('audio_start');
         recordGameBootDiagnostic('game_runtime_construct_audio_started');
@@ -585,6 +588,7 @@ export class AppController {
         }
         recordGameBootDiagnostic('audio_ok');
         recordGameBootDiagnostic('game_runtime_construct_audio_completed');
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 
         recordGameBootDiagnostic('game_runtime_construct_hud_started');
         let gameHud: GameHUDSystem;
@@ -726,7 +730,85 @@ export class AppController {
     this.primateriePortalRuntime?.setVisible(visible);
   }
 
-  private preloadprimaterieHubAssets() {
+  public prepareAdventureLaunch() {
+    if (this.adventureLaunchPrepared) {
+      return Promise.resolve();
+    }
+    if (this.adventureLaunchPreparationPromise) {
+      return this.adventureLaunchPreparationPromise;
+    }
+    this.hasObservedUserGesture = true;
+    this.adventureLaunchPreparationPromise = this.ensurePrimateriePortalLoaded().then(async () => {
+      const mobile = isMobileRuntime();
+      this.primateriePortal.setBusy(true);
+      this.primateriePortal.setLoading(true);
+      this.primateriePortal.setLoadingMessage(
+        this.i18n.current === 'fr' ? 'Préparation de l’aventure…' : 'Preparing adventure…'
+      );
+      recordGameBootDiagnostic('adventure_loading_requested', {
+        entryRoute: this.entryRoute,
+        mobile,
+        profile: this.performanceProfile.id,
+        runtimeReady: Boolean(this.gameRuntime),
+        assetsReady: this.primaterieHubPreloaded
+      });
+
+      recordGameBootDiagnostic('adventure_runtime_loading', {
+        mobile,
+        profile: this.performanceProfile.id
+      });
+      await this.ensureGameRuntimeLoaded();
+      this.game.beginPortalPreview();
+      this.game.clearPortalPreviewTransitionIntent();
+      this.syncprimateriePortalLayout();
+      recordGameBootDiagnostic('adventure_runtime_ready', {
+        mobile,
+        gameState: this.game.currentState
+      });
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+      await this.prepareAdventureCriticalAssets();
+      this.adventureLaunchPrepared = true;
+      recordGameBootDiagnostic('adventure_ready', {
+        mobile,
+        profile: this.performanceProfile.id,
+        gameState: this.game.currentState
+      });
+    })
+      .catch((error) => {
+        this.adventureLaunchPrepared = false;
+        recordGameBootDiagnosticError('adventure_prepare_failed', error, {
+          entryRoute: this.entryRoute,
+          profile: this.performanceProfile.id
+        });
+        this.primateriePortal.setBusy(false);
+        this.primateriePortal.setLoading(false);
+        this.primateriePortal.setLoadingMessage(this.i18n.current === 'fr' ? 'Chargement impossible' : 'Loading failed');
+        throw error;
+      })
+      .finally(() => {
+        this.adventureLaunchPreparationPromise = null;
+      });
+
+    return this.adventureLaunchPreparationPromise;
+  }
+
+  public resumePreparedAdventureLaunch() {
+    if (!this.primateriePortalRuntime || !this.mode.is('primaterie_portal') || !this.adventureLaunchPrepared) {
+      return false;
+    }
+    if (this.primateriePendingAction || this.mode.is('game_transition')) {
+      return false;
+    }
+    this.primateriePortal.setBusy(true);
+    this.primateriePortal.setLoading(true);
+    this.primateriePortal.setLoadingMessage(this.i18n.current === 'fr' ? 'Décollage…' : 'Launching…');
+    this.primateriePendingAction = {
+      execute: () => this.startGameTransition(true)
+    };
+    return true;
+  }
+
+  private prepareAdventureCriticalAssets() {
     if (!this.gameRuntime) {
       return Promise.resolve();
     }
@@ -734,67 +816,68 @@ export class AppController {
       return this.primaterieHubPreloadPromise;
     }
     if (this.primaterieHubPreloaded) {
-      this.primateriePortal.setLoading(false);
       return Promise.resolve();
     }
 
-    this.primateriePortal.setLoading(true);
     this.primaterieHubPreloadPromise = (async () => {
       const mobile = isMobileRuntime();
-      recordGameBootDiagnostic('assets_start', {
-        scope: 'primaterie_hub',
-        mobile
+      recordGameBootDiagnostic('adventure_assets_preloading', {
+        mobile,
+        profile: this.performanceProfile.id,
+        gameplayPhase: 'critical',
+        hudPhase: 'critical'
       });
-      recordGameBootDiagnostic('primaterie_hub_preload_started', {
-        phase: mobile ? 'critical' : 'full'
+      await this.game.preloadAssets({ phase: 'critical' });
+      await new Promise<void>((resolve) => window.setTimeout(resolve, mobile ? 24 : 8));
+      await this.gameHud.preloadAssets({
+        phase: 'critical',
+        scheduleDeferred: true,
+        includeAvatarAssets: false,
+        includeDecorativeAssets: false
       });
-      await this.game.preloadAssets({ phase: mobile ? 'critical' : 'full' });
-      recordGameBootDiagnostic('primaterie_hub_preload_game_assets_completed', {
-        phase: mobile ? 'critical' : 'full'
-      });
-      if (mobile) {
-        recordGameBootDiagnostic('primaterie_hub_preload_hud_assets_deferred');
-      } else {
-        await this.gameHud.preloadAssets({ phase: 'full' });
-        recordGameBootDiagnostic('primaterie_hub_preload_hud_assets_completed', {
-          phase: 'full'
+      if (this.hasObservedUserGesture) {
+        this.audio.registerUserGesture();
+        recordGameBootDiagnostic('adventure_audio_prepare_started', {
+          mobile,
+          level: mobile ? 'minimal' : 'core'
+        });
+        await this.audio.prepareForLaunch(mobile ? 'minimal' : 'core').catch((error) => {
+          recordGameBootDiagnosticError('adventure_audio_prepare_failed', error, {
+            mobile,
+            level: mobile ? 'minimal' : 'core'
+          });
+          recordGameBootWarning('adventure_audio_prepare_non_critical_failed', {
+            mobile,
+            message: error instanceof Error ? error.message : String(error)
+          });
+        });
+        recordGameBootDiagnostic('adventure_audio_prepare_completed', {
+          mobile,
+          level: mobile ? 'minimal' : 'core'
         });
       }
       this.primaterieHubPreloaded = true;
-      recordGameBootDiagnostic('assets_ok', {
-        scope: 'primaterie_hub',
-        phase: mobile ? 'critical' : 'full'
-      });
-      recordGameBootDiagnostic('primaterie_hub_preload_completed');
-      recordGameBootDiagnostic('primaterie_hub_assets_prepared', {
+      recordGameBootDiagnostic('adventure_assets_ready', {
         mobile,
-        fullWarmupStrategy: mobile ? 'on_game_start' : 'immediate'
+        deferredWarmup: 'post_game_start'
       });
     })()
       .catch((error) => {
-        recordGameBootDiagnosticError('assets_fail', error, {
-          scope: 'primaterie_hub'
+        recordGameBootDiagnosticError('adventure_assets_preload_failed', error, {
+          entryRoute: this.entryRoute
         });
-        recordGameBootDiagnosticError('primaterie_hub_preload_failed', error);
         captureGameException(error, {
-          event: 'primaterie_hub_preload_failed',
+          event: 'adventure_assets_preload_failed',
           category: 'primaterie_preload',
           data: {
             entryRoute: this.entryRoute
           }
         });
-        console.warn('[AppController] Failed to preload primaterie hub assets.', error);
+        console.warn('[AppController] Failed to preload adventure critical assets.', error);
+        throw error;
       })
       .finally(() => {
         this.primaterieHubPreloadPromise = null;
-        if (!this.gameRuntime) {
-          return;
-        }
-        this.primateriePortal.setLoading(false);
-        this.primateriePortal.setBusy(Boolean(this.primateriePendingAction));
-        if (this.mode.is('primaterie_portal')) {
-          this.refreshUI();
-        }
       });
 
     return this.primaterieHubPreloadPromise;
@@ -841,12 +924,13 @@ export class AppController {
   }
 
   private scheduleGameAssetWarmup() {
-    if (!this.gameRuntime || !isMobileRuntime() || this.gameAssetWarmupScheduled || this.gameAssetWarmupPromise) {
+    if (!this.gameRuntime || this.gameAssetWarmupScheduled || this.gameAssetWarmupPromise) {
       return;
     }
     this.gameAssetWarmupScheduled = true;
     recordGameBootDiagnostic('game_asset_warmup_scheduled', {
-      mobile: true,
+      mobile: this.performanceProfile.isMobile,
+      profile: this.performanceProfile.id,
       mode: this.mode.current
     });
 
@@ -864,9 +948,18 @@ export class AppController {
       }
       this.gameAssetWarmupPromise = (async () => {
         recordGameBootDiagnostic('game_asset_warmup_started', {
-          mobile: true
+          mobile: this.performanceProfile.isMobile,
+          profile: this.performanceProfile.id
         });
-        await this.game.preloadAssets({ phase: 'full' });
+        await Promise.allSettled([
+          this.game.preloadAssets({ phase: 'full' }),
+          this.gameHud.preloadAssets({
+            phase: 'full',
+            includeAvatarAssets: !this.performanceProfile.isMobile,
+            includeDecorativeAssets: !this.performanceProfile.isMobile
+          }),
+          this.audio.prepareForLaunch('core')
+        ]);
         recordGameBootDiagnostic('game_asset_warmup_completed');
       })()
         .catch((error) => {
@@ -908,6 +1001,7 @@ export class AppController {
     this.syncprimateriePortalLayout();
     this.primateriePortal.setBusy(false);
     this.primateriePortal.setLoading(false);
+    this.primateriePortal.setLoadingMessage(null);
     this.setprimateriePortalVisible(true);
     if (!this.primaterieHubShellReadyLogged) {
       this.primaterieHubShellReadyLogged = true;
@@ -931,31 +1025,27 @@ export class AppController {
     if (!this.primateriePortalRuntime) {
       return;
     }
-    if (!this.mode.is('primaterie_portal') || this.primateriePendingAction) {
+    if (!this.mode.is('primaterie_portal') || this.primateriePendingAction || this.adventureLaunchPreparationPromise) {
       return;
     }
     if (modeId !== 'adventure') {
       return;
     }
-    this.primateriePendingAction = {
-      execute: () => this.startGameTransition(true)
-    };
     this.primateriePortal.setBusy(true);
     this.primateriePortal.setLoading(true);
-    void this.ensureGameRuntimeLoaded()
+    this.primateriePortal.setLoadingMessage(null);
+    void this.prepareAdventureLaunch()
       .then(() => {
-        if (!this.mode.is('primaterie_portal') || !this.primateriePendingAction) {
+        if (!this.mode.is('primaterie_portal')) {
           return;
         }
-        this.game.beginPortalPreview();
-        this.game.clearPortalPreviewTransitionIntent();
-        this.syncprimateriePortalLayout();
-        return this.preloadprimaterieHubAssets();
+        this.resumePreparedAdventureLaunch();
       })
       .catch((error) => {
         this.primateriePendingAction = null;
         this.primateriePortal.setBusy(false);
         this.primateriePortal.setLoading(false);
+        this.primateriePortal.setLoadingMessage(this.i18n.current === 'fr' ? 'Chargement impossible' : 'Loading failed');
         recordGameBootDiagnosticError('primaterie_adventure_prepare_failed', error, {
           entryRoute: this.entryRoute
         });
@@ -988,6 +1078,7 @@ export class AppController {
     this.primateriePendingAction = null;
     this.primateriePortal.setBusy(false);
     this.primateriePortal.setLoading(false);
+    this.primateriePortal.setLoadingMessage(null);
     this.setprimateriePortalVisible(false);
     this.mode.setMode('primaterie_transition');
     this.primaterieReturnProgress = 0;
@@ -1883,6 +1974,12 @@ export class AppController {
     this.parallaxLayers.rearmAdventureIntro();
     this.parallaxLayers.beginAdventureIntro();
     this.parallaxLayers.setTransitionState(true, 0);
+    if (this.gameTransitionFromprimaterie) {
+      recordGameBootDiagnostic('adventure_game_start', {
+        entryRoute: this.entryRoute,
+        profile: this.performanceProfile.id
+      });
+    }
     this.game.startTransition();
     const projectCount = this.getGameFieldCount();
     const initialPositions = this.game.getInitialPlatformPositions(projectCount);
@@ -2247,6 +2344,13 @@ export class AppController {
       if (gameRuntime && this.primateriePendingAction) {
         const pendingAction = this.primateriePendingAction;
         if (this.game.preparePortalPreviewTransition('forward')) {
+          recordGameBootDiagnostic('adventure_transition_resume', {
+            entryRoute: this.entryRoute,
+            prepared: this.adventureLaunchPrepared,
+            gameState: this.game.currentState
+          });
+          this.primateriePortal.setLoading(false);
+          this.primateriePortal.setLoadingMessage(null);
           this.primateriePendingAction = null;
           pendingAction.execute();
           portalTransitionStarted = true;

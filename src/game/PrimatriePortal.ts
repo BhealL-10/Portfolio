@@ -38,6 +38,7 @@ export class primateriePortal {
   private busy = false;
   private loading = false;
   private locale: Language = 'fr';
+  private loadingMessageOverride: string | null = null;
 
   constructor(
     host: HTMLElement,
@@ -167,6 +168,15 @@ export class primateriePortal {
     this.renderStatic();
   }
 
+  refresh() {
+    this.renderStatic();
+  }
+
+  setLoadingMessage(message: string | null) {
+    this.loadingMessageOverride = message;
+    this.renderStatic();
+  }
+
   setAnchor(screenX: number, screenY: number, scale = 1) {
     this.anchor.style.setProperty('--primaterie-anchor-x', `${screenX.toFixed(2)}px`);
     this.anchor.style.setProperty('--primaterie-anchor-y', `${screenY.toFixed(2)}px`);
@@ -185,7 +195,7 @@ export class primateriePortal {
     this.portfolioButton.textContent = 'Portfolio';
     this.threeVsThreeButton.textContent = '3v3';
     this.tenVsTenButton.textContent = '10v10';
-    this.loadingLabel.textContent = this.locale === 'fr' ? 'Chargement' : 'Loading';
+    this.loadingLabel.textContent = this.loadingMessageOverride ?? (this.locale === 'fr' ? 'Chargement' : 'Loading');
     this.themeButton.setAttribute('aria-label', this.locale === 'fr' ? 'Changer le theme' : 'Change theme');
     this.languageButton.setAttribute('aria-label', this.locale === 'fr' ? 'Changer la langue' : 'Change language');
     this.discordButton.setAttribute('aria-label', this.locale === 'fr' ? 'Rejoindre le Discord' : 'Join the Discord');

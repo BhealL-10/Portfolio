@@ -55,7 +55,7 @@ function resolveProfile() {
     return {
       id: 'mobileLow',
       isMobile: true,
-      targetGameplayFps: 30,
+      targetGameplayFps: 36,
       targetShellFps: 24,
       hudUpdateIntervalMs: 80,
       uiRefreshIntervalMs: 96,
@@ -75,7 +75,7 @@ function resolveProfile() {
     return {
       id: 'mobile',
       isMobile: true,
-      targetGameplayFps: 45,
+      targetGameplayFps: 50,
       targetShellFps: 30,
       hudUpdateIntervalMs: 50,
       uiRefreshIntervalMs: 66,

@@ -168,6 +168,14 @@ export default defineConfig(({ mode, command }) => {
       sourcemap: buildConfig.sourcemap,
       target: 'es2020',
       assetsInlineLimit: 0,
+      modulePreload: {
+        resolveDependencies: (_filename, dependencies, context) => {
+          if (context.hostType !== 'html') {
+            return dependencies;
+          }
+          return dependencies.filter((dependency) => !/^assets\/game-runtime-.*\.js$/i.test(dependency));
+        }
+      },
       chunkSizeWarningLimit: buildConfig.chunkSizeWarningLimit,
       rollupOptions: {
         output: {

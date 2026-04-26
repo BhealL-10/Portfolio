@@ -226,7 +226,10 @@ export class GameAudioSystem {
   private musicPlayToken = 0;
   private pendingRunStart = false;
   private enabled = false;
+  private minimalAssetsPreloaded = false;
+  private minimalAssetsPreloadPromise: Promise<void> | null = null;
   private preloaded = false;
+  private coreAssetsPreloadPromise: Promise<void> | null = null;
   private lastState: GameAudioRuntimeState | null = null;
   private reactiveBass = 0;
   private reactiveMid = 0;
@@ -268,10 +271,6 @@ export class GameAudioSystem {
     void context.resume().catch(() => {
       // Not fatal, audio may remain suspended until a later gesture.
     });
-    if (!this.preloaded) {
-      this.preloaded = true;
-      void this.preloadCoreAssets();
-    }
   }
 
   prime() {
@@ -284,11 +283,13 @@ export class GameAudioSystem {
         // Not fatal. Deadlock if no user gesture yet.
       });
     }
+  }
 
-    if (!this.preloaded) {
-      this.preloaded = true;
-      void this.preloadCoreAssets();
+  prepareForLaunch(level: 'minimal' | 'core' = 'core') {
+    if (!this.hasInteractiveAudioAuthorization) {
+      return Promise.resolve();
     }
+    return level === 'core' ? this.preloadCoreAssetsIfNeeded() : this.preloadMinimalAssetsIfNeeded();
   }
 
   setEnabled(enabled: boolean) {
@@ -641,6 +642,7 @@ export class GameAudioSystem {
       SFX.planeGlide[0],
       SFX.playerOnShard[0]
     ];
+    await this.preloadMinimalAssetsIfNeeded();
     await Promise.all([this.preloadTrackAssets('intro'), this.preloadTrackAssets('loop1')]);
     for (const url of urls) {
       try {
@@ -649,6 +651,57 @@ export class GameAudioSystem {
         console.warn(`[GameAudioSystem] Failed to preload audio asset: ${url}`, error);
       }
     }
+  }
+
+  private preloadMinimalAssetsIfNeeded() {
+    if (this.minimalAssetsPreloaded) {
+      return Promise.resolve();
+    }
+    if (this.minimalAssetsPreloadPromise) {
+      return this.minimalAssetsPreloadPromise;
+    }
+
+    const urls = [
+      SFX.playerJump[0],
+      SFX.land[0],
+      SFX.gradeGreat[0],
+      SFX.gradeFail[0],
+      SFX.gameOver[0]
+    ];
+    this.minimalAssetsPreloadPromise = (async () => {
+      for (const url of urls) {
+        try {
+          await this.loadBuffer(url);
+        } catch (error) {
+          console.warn(`[GameAudioSystem] Failed to preload minimal audio asset: ${url}`, error);
+        }
+      }
+      this.minimalAssetsPreloaded = true;
+    })()
+      .finally(() => {
+        this.minimalAssetsPreloadPromise = null;
+      });
+
+    return this.minimalAssetsPreloadPromise;
+  }
+
+  private preloadCoreAssetsIfNeeded() {
+    if (this.preloaded) {
+      return Promise.resolve();
+    }
+    if (this.coreAssetsPreloadPromise) {
+      return this.coreAssetsPreloadPromise;
+    }
+
+    this.coreAssetsPreloadPromise = this.preloadCoreAssets()
+      .then(() => {
+        this.preloaded = true;
+      })
+      .finally(() => {
+        this.coreAssetsPreloadPromise = null;
+      });
+
+    return this.coreAssetsPreloadPromise;
   }
 
   private applyMasterGain() {
