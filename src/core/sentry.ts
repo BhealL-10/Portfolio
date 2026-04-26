@@ -7,6 +7,7 @@ import {
   sanitizeLogString,
   summarizeDataUri
 } from './logSanitizer';
+import { observeRuntimeViewport } from './viewport';
 
 declare const __APP_VERSION__: string;
 
@@ -332,10 +333,7 @@ export function initFrontendSentry() {
   }
 
   syncRuntimeDeviceContext();
-  window.addEventListener('resize', scheduleRuntimeDeviceContextSync, { passive: true });
-  window.visualViewport?.addEventListener('resize', scheduleRuntimeDeviceContextSync, { passive: true });
-  window.visualViewport?.addEventListener('scroll', scheduleRuntimeDeviceContextSync, { passive: true });
-  document.addEventListener('visibilitychange', scheduleRuntimeDeviceContextSync);
+  observeRuntimeViewport(scheduleRuntimeDeviceContextSync);
 
   maybeTriggerFrontendSentryTest();
 }

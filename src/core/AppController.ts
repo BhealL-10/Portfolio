@@ -42,6 +42,7 @@ import { damp, wrapIndex } from './math';
 import { RenderLoop } from './RenderLoop';
 import { addGameBreadcrumb, captureGameException, setSentryContext } from './sentry';
 import { TransitionSystem } from './TransitionSystem';
+import { observeRuntimeViewport } from './viewport';
 
 const ACCENT_COLOR_CYCLE = ['#75AF80', '#FF4545', '#49BCFF', '#8AEBEF'] as const;
 const ACCENT_COLOR_HOLD_SECONDS = 10;
@@ -123,8 +124,8 @@ export class AppController {
   private pendingGameTransitionRequest: { forceDirectEntry: boolean; skipPreAlign: boolean } | null = null;
   private primaterieHubPreloaded = false;
   private primaterieHubPreloadPromise: Promise<void> | null = null;
-  private primaterieHubFullWarmupScheduled = false;
-  private primaterieHubFullWarmupPromise: Promise<void> | null = null;
+  private gameAssetWarmupScheduled = false;
+  private gameAssetWarmupPromise: Promise<void> | null = null;
   private hasObservedUserGesture = false;
   private hoveredShardId: string | null = null;
   private hoveredGuideUiElement: HTMLElement | null = null;
@@ -163,6 +164,7 @@ export class AppController {
 
     this.root.append(this.canvasHost, this.uiHost);
     host.appendChild(this.root);
+    this.syncRuntimeDeviceState();
 
     recordGameBootDiagnostic('renderer_start', {
       mobile: isMobileRuntime()
@@ -636,11 +638,8 @@ export class AppController {
       recordGameBootDiagnostic('primaterie_hub_preload_completed');
       recordGameBootDiagnostic('primaterie_hub_stable_interactive', {
         mobile,
-        deferredWarmup: mobile
+        fullWarmupStrategy: mobile ? 'on_game_start' : 'immediate'
       });
-      if (mobile) {
-        this.scheduleprimaterieHubDeferredWarmup();
-      }
     })()
       .catch((error) => {
         recordGameBootDiagnosticError('assets_fail', error, {
@@ -671,44 +670,42 @@ export class AppController {
     return this.primaterieHubPreloadPromise;
   }
 
-  private scheduleprimaterieHubDeferredWarmup() {
-    if (!this.gameRuntime || this.primaterieHubFullWarmupScheduled || this.primaterieHubFullWarmupPromise) {
+  private scheduleGameAssetWarmup() {
+    if (!this.gameRuntime || !isMobileRuntime() || this.gameAssetWarmupScheduled || this.gameAssetWarmupPromise) {
       return;
     }
-    this.primaterieHubFullWarmupScheduled = true;
-    recordGameBootDiagnostic('primaterie_hub_deferred_warmup_scheduled', {
-      mobile: isMobileRuntime()
+    this.gameAssetWarmupScheduled = true;
+    recordGameBootDiagnostic('game_asset_warmup_scheduled', {
+      mobile: true,
+      mode: this.mode.current
     });
 
     const runWarmup = () => {
       if (!this.gameRuntime) {
+        this.gameAssetWarmupScheduled = false;
         return;
       }
-      if (!this.mode.is('primaterie_portal') || this.primateriePendingAction) {
-        recordGameBootDiagnostic('primaterie_hub_deferred_warmup_skipped', {
-          mode: this.mode.current,
-          pendingAction: Boolean(this.primateriePendingAction)
+      if (!(this.mode.is('game') || this.mode.is('game_over'))) {
+        this.gameAssetWarmupScheduled = false;
+        recordGameBootDiagnostic('game_asset_warmup_skipped', {
+          mode: this.mode.current
         });
         return;
       }
-      this.primaterieHubFullWarmupPromise = (async () => {
-        recordGameBootDiagnostic('primaterie_hub_deferred_warmup_started', {
-          mobile: isMobileRuntime()
+      this.gameAssetWarmupPromise = (async () => {
+        recordGameBootDiagnostic('game_asset_warmup_started', {
+          mobile: true
         });
         await this.game.preloadAssets({ phase: 'full' });
-        recordGameBootDiagnostic('primaterie_hub_deferred_game_assets_completed');
-        await this.gameHud.preloadAssets({ phase: 'full', scheduleDeferred: false });
-        recordGameBootDiagnostic('primaterie_hub_deferred_hud_assets_completed');
+        recordGameBootDiagnostic('game_asset_warmup_completed');
       })()
-        .then(() => {
-          recordGameBootDiagnostic('primaterie_hub_deferred_warmup_completed');
-        })
         .catch((error) => {
-          recordGameBootDiagnosticError('primaterie_hub_deferred_warmup_failed', error);
-          console.warn('[AppController] Deferred primaterie hub warmup failed.', error);
+          this.gameAssetWarmupScheduled = false;
+          recordGameBootDiagnosticError('game_asset_warmup_failed', error);
+          console.warn('[AppController] Deferred game asset warmup failed.', error);
         })
         .finally(() => {
-          this.primaterieHubFullWarmupPromise = null;
+          this.gameAssetWarmupPromise = null;
         });
     };
 
@@ -716,10 +713,10 @@ export class AppController {
       requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
     };
     if (typeof idleWindow.requestIdleCallback === 'function') {
-      idleWindow.requestIdleCallback(runWarmup, { timeout: 9000 });
+      idleWindow.requestIdleCallback(runWarmup, { timeout: 2500 });
       return;
     }
-    window.setTimeout(runWarmup, 3500);
+    window.setTimeout(runWarmup, 1200);
   }
 
   private enterprimateriePortalMode() {
@@ -940,15 +937,14 @@ export class AppController {
       });
     });
 
-    window.addEventListener('wheel', this.onWheel, { passive: false });
-    window.addEventListener('keydown', this.onKeyDown);
-    window.addEventListener('keyup', this.onKeyUp);
     const handleViewportStateChange = () => {
       this.syncRuntimeDeviceState();
       this.refreshRotateOverlayCopy();
     };
-    window.addEventListener('resize', handleViewportStateChange);
-    window.addEventListener('orientationchange', handleViewportStateChange);
+    observeRuntimeViewport(handleViewportStateChange);
+    window.addEventListener('wheel', this.onWheel, { passive: false });
+    window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('keyup', this.onKeyUp);
 
     const canvas = this.renderer.renderer.domElement;
     canvas.addEventListener('pointerdown', this.onGamePointerDown);
@@ -1741,6 +1737,7 @@ export class AppController {
         const gameFieldCount = this.getGameFieldCount();
         const layout = this.game.getVisiblePlatformLayout(gameFieldCount);
         this.world.setExternalLayoutSnapshot(layout.positions, layout.scales, layout.visuals);
+        this.scheduleGameAssetWarmup();
         this.refreshUI();
       }
     });
@@ -2092,7 +2089,6 @@ export class AppController {
   }
 
   private refreshUI() {
-    this.syncRuntimeDeviceState();
     const focusedProject = this.world.getFocusedProject();
     const focusIndex = focusedProject
       ? Math.max(0, this.portfolioHubProjects.findIndex((project) => project.id === focusedProject.id))
@@ -2117,9 +2113,6 @@ export class AppController {
     this.hud.element.classList.toggle('is-hidden', primaterieMode || isGameMode);
     this.uiHost.dataset.appMode = primaterieMode ? 'primaterie' : isGameMode ? 'game' : 'portfolio';
     this.gameRuntime?.gameHud.setVisible(showGameHud);
-    if (showGameHud) {
-      this.gameHud.update(this.getGameHudPayload());
-    }
     this.world.setActiveIndex(this.activeIndex);
     this.refreshRotateOverlayCopy();
     this.updateRotateOverlay();

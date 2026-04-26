@@ -60,6 +60,26 @@ function summarizeDataUriForInlineText(value: string) {
   return `[data-uri:${summary.mime};length=${summary.length};hash=${summary.hash}]`;
 }
 
+function findInlineDataUriEnd(value: string, start: number, lowerValue: string) {
+  const commaIndex = value.indexOf(',', start + DATA_URI_PREFIX.length);
+  if (commaIndex >= 0) {
+    const metadata = lowerValue.slice(start + DATA_URI_PREFIX.length, commaIndex);
+    const payloadStart = commaIndex + 1;
+    if (metadata.includes('image/svg+xml') && lowerValue.slice(payloadStart, payloadStart + 4) === '<svg') {
+      const closingTagIndex = lowerValue.indexOf('</svg>', payloadStart);
+      if (closingTagIndex >= 0) {
+        return closingTagIndex + '</svg>'.length;
+      }
+    }
+  }
+
+  let end = start + DATA_URI_PREFIX.length;
+  while (end < value.length && !DATA_URI_BOUNDARY_CHARS.has(value[end]!)) {
+    end += 1;
+  }
+  return end;
+}
+
 function replaceInlineDataUris(value: string) {
   let cursor = 0;
   let output = '';
@@ -72,10 +92,7 @@ function replaceInlineDataUris(value: string) {
       break;
     }
 
-    let end = start + DATA_URI_PREFIX.length;
-    while (end < value.length && !DATA_URI_BOUNDARY_CHARS.has(value[end]!)) {
-      end += 1;
-    }
+    const end = findInlineDataUriEnd(value, start, lowerValue);
 
     output += value.slice(cursor, start);
     output += summarizeDataUriForInlineText(value.slice(start, end));

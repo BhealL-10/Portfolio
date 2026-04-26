@@ -6,6 +6,7 @@ import {
 } from './logSanitizer';
 
 type GameBootDiagnosticLevel = 'info' | 'warn' | 'error';
+type GameBootDiagnosticsMode = 'off' | 'light' | 'debug';
 
 type GameBootDiagnosticValue = SanitizedLogValue;
 
@@ -22,9 +23,11 @@ const GAME_BOOT_DIAGNOSTIC_DEBUG_FLAG_KEY = 'portfolio-game-debug';
 const GAME_BOOT_DIAGNOSTIC_DEBUG_BOOT_FLAG_KEY = 'debugBoot';
 const GAME_BOOT_DIAGNOSTIC_DEBUG_QUERY_KEY = 'debugBoot';
 const GAME_BOOT_DIAGNOSTIC_MAX_ENTRIES = 160;
-const GAME_BOOT_DIAGNOSTIC_MOBILE_MAX_ENTRIES = 72;
+const GAME_BOOT_DIAGNOSTIC_LIGHT_MAX_ENTRIES = 48;
+const GAME_BOOT_DIAGNOSTIC_DEBUG_MOBILE_MAX_ENTRIES = 72;
 const GAME_BOOT_DIAGNOSTIC_STORAGE_BUDGET_BYTES = 420_000;
-const GAME_BOOT_DIAGNOSTIC_MOBILE_STORAGE_BUDGET_BYTES = 120_000;
+const GAME_BOOT_DIAGNOSTIC_LIGHT_STORAGE_BUDGET_BYTES = 72_000;
+const GAME_BOOT_DIAGNOSTIC_DEBUG_MOBILE_STORAGE_BUDGET_BYTES = 120_000;
 const GAME_BOOT_DIAGNOSTIC_DEDUPE_WINDOW_MS = 180;
 const GAME_BOOT_DIAGNOSTIC_OVERLAY_MAX_ENTRIES = 48;
 const GAME_BOOT_DIAGNOSTIC_MOBILE_OVERLAY_MAX_ENTRIES = 28;
@@ -32,6 +35,19 @@ const SENTRY_TRANSPORT_PATTERN =
   /(?:o\d+\.ingest\.[\w.-]*sentry\.io|ingest\.[\w.-]*sentry\.io|sentry\.io\/api|@sentry\/browser|@sentry\/core)/i;
 const NETWORK_BLOCKED_PATTERN =
   /(?:ERR_BLOCKED_BY_CLIENT|Load failed|Failed to fetch|NetworkError|network request failed|fetch failed|blocked by client|content blocker)/i;
+const LOW_SIGNAL_BREADCRUMB_EVENTS = new Set([
+  'window_resize',
+  'orientation_change',
+  'page_hide',
+  'page_show',
+  'visibility_change',
+  'document_fullscreen_change',
+  'document_webkit_fullscreen_change',
+  'visual_viewport_resize',
+  'visual_viewport_scroll',
+  'display_sync',
+  'renderer_resize'
+]);
 
 let diagnosticsInstalled = false;
 let diagnosticsCache: GameBootDiagnosticEntry[] | null = null;
@@ -97,14 +113,36 @@ function isLikelyMobileDiagnosticsRuntime() {
   );
 }
 
+function getGameBootDiagnosticsMode(): GameBootDiagnosticsMode {
+  if (!hasBrowserRuntime()) {
+    return 'off';
+  }
+  if (isExplicitDebugModeEnabled()) {
+    return 'debug';
+  }
+  return isLikelyMobileDiagnosticsRuntime() ? 'light' : 'off';
+}
+
 function getDiagnosticMaxEntries() {
-  return isLikelyMobileDiagnosticsRuntime() ? GAME_BOOT_DIAGNOSTIC_MOBILE_MAX_ENTRIES : GAME_BOOT_DIAGNOSTIC_MAX_ENTRIES;
+  const mode = getGameBootDiagnosticsMode();
+  if (mode === 'light') {
+    return GAME_BOOT_DIAGNOSTIC_LIGHT_MAX_ENTRIES;
+  }
+  if (mode === 'debug' && isLikelyMobileDiagnosticsRuntime()) {
+    return GAME_BOOT_DIAGNOSTIC_DEBUG_MOBILE_MAX_ENTRIES;
+  }
+  return GAME_BOOT_DIAGNOSTIC_MAX_ENTRIES;
 }
 
 function getDiagnosticStorageBudgetBytes() {
-  return isLikelyMobileDiagnosticsRuntime()
-    ? GAME_BOOT_DIAGNOSTIC_MOBILE_STORAGE_BUDGET_BYTES
-    : GAME_BOOT_DIAGNOSTIC_STORAGE_BUDGET_BYTES;
+  const mode = getGameBootDiagnosticsMode();
+  if (mode === 'light') {
+    return GAME_BOOT_DIAGNOSTIC_LIGHT_STORAGE_BUDGET_BYTES;
+  }
+  if (mode === 'debug' && isLikelyMobileDiagnosticsRuntime()) {
+    return GAME_BOOT_DIAGNOSTIC_DEBUG_MOBILE_STORAGE_BUDGET_BYTES;
+  }
+  return GAME_BOOT_DIAGNOSTIC_STORAGE_BUDGET_BYTES;
 }
 
 function getDiagnosticOverlayMaxEntries() {
@@ -123,17 +161,28 @@ function getDiagnosticSanitizeOptions() {
 }
 
 export function isGameBootDiagnosticsEnabled() {
-  if (!hasBrowserRuntime()) {
-    return false;
-  }
-  if (isExplicitDebugModeEnabled()) {
-    return true;
-  }
-  return window.matchMedia?.('(pointer: coarse)').matches ?? false;
+  return getGameBootDiagnosticsMode() !== 'off';
 }
 
 function isGameBootOverlayEnabled() {
-  return hasBrowserRuntime() && isExplicitDebugModeEnabled();
+  return getGameBootDiagnosticsMode() === 'debug';
+}
+
+function shouldInstallAutomaticViewportDiagnostics() {
+  return getGameBootDiagnosticsMode() === 'debug';
+}
+
+function shouldMirrorDiagnosticToBreadcrumb(event: string, level: GameBootDiagnosticLevel) {
+  if (getGameBootDiagnosticsMode() === 'off') {
+    return false;
+  }
+  if (level !== 'info') {
+    return true;
+  }
+  if (getGameBootDiagnosticsMode() === 'debug') {
+    return true;
+  }
+  return !LOW_SIGNAL_BREADCRUMB_EVENTS.has(event);
 }
 
 function sanitizeDiagnosticData(data?: Record<string, unknown>) {
@@ -413,15 +462,17 @@ function appendDiagnostic(level: GameBootDiagnosticLevel, event: string, data?: 
   persistDiagnosticsCache();
   queueOverlayRender();
 
-  addGameBreadcrumb(
-    event,
-    {
-      diagnosticLevel: level,
-      ...((sanitized && typeof sanitized === 'object' && !Array.isArray(sanitized)) ? sanitized : { payload: sanitized ?? null })
-    },
-    level === 'warn' ? 'warning' : level,
-    'game.boot'
-  );
+  if (shouldMirrorDiagnosticToBreadcrumb(event, level)) {
+    addGameBreadcrumb(
+      event,
+      {
+        diagnosticLevel: level,
+        ...((sanitized && typeof sanitized === 'object' && !Array.isArray(sanitized)) ? sanitized : { payload: sanitized ?? null })
+      },
+      level === 'warn' ? 'warning' : level,
+      'game.boot'
+    );
+  }
 
   if (level === 'error' || isExplicitDebugModeEnabled()) {
     const logMethod = level === 'error' ? console.error : level === 'warn' ? console.warn : console.info;
@@ -527,6 +578,10 @@ export function installGameBootDiagnostics() {
       }
     });
   });
+
+  if (!shouldInstallAutomaticViewportDiagnostics()) {
+    return;
+  }
 
   window.addEventListener(
     'resize',

@@ -136,6 +136,8 @@ interface GameHUDCallbacks {
 interface GameHudPreloadOptions {
   phase?: 'critical' | 'full';
   scheduleDeferred?: boolean;
+  includeAvatarAssets?: boolean;
+  includeDecorativeAssets?: boolean;
 }
 
 type AudioChannel = 'music' | 'sfx';
@@ -523,6 +525,8 @@ export class GameHUDSystem {
   private readonly uiAssetStatePromises = new Map<string, Promise<void>>();
   private readonly criticalUiAssetStatesReady = new Set<string>();
   private readonly criticalUiAssetStatePromises = new Map<string, Promise<void>>();
+  private readonly decorativeUiAssetStatesReady = new Set<string>();
+  private readonly decorativeUiAssetStatePromises = new Map<string, Promise<void>>();
   private readonly deferredWarmupPromises = new Map<string, Promise<void>>();
   private readonly gameOverRuleAssetCache = new Map<string, string>();
   private readonly gameOverRuleAssetPromises = new Map<string, Promise<string>>();
@@ -1153,7 +1157,6 @@ export class GameHUDSystem {
     this.element.style.pointerEvents = visible ? '' : 'none';
     document.body.classList.toggle('game-runtime-ui-active', visible);
     if (!visible) {
-      void this.displayController.exitGameFullscreen();
       this.hideGameOverStatHover();
       this.hideLeaderboardHover();
       this.closeHelp();
@@ -1232,9 +1235,13 @@ export class GameHUDSystem {
     const theme = resolveDocumentTheme();
     const requestedPhase = options.phase ?? (mobile ? 'critical' : 'full');
     const scheduleDeferred = options.scheduleDeferred ?? (mobile && requestedPhase === 'critical');
+    const includeAvatarAssets = options.includeAvatarAssets ?? !mobile;
+    const includeDecorativeAssets = options.includeDecorativeAssets ?? !mobile;
     recordGameBootDiagnostic('game_hud_preload_requested', {
       mobile,
-      mode: requestedPhase === 'critical' ? 'critical_first' : 'full'
+      mode: requestedPhase === 'critical' ? 'critical_first' : 'full',
+      includeAvatarAssets,
+      includeDecorativeAssets
     });
 
     const preloadRequest = requestedPhase === 'critical'
@@ -1243,7 +1250,11 @@ export class GameHUDSystem {
             this.scheduleDeferredWarmup(locale, theme);
           }
         })
-      : Promise.all([this.ensureUiAssetsPreloaded(locale, theme), this.ensureAvatarAssetsLoaded()]).then(() => undefined);
+      : Promise.all([
+          this.ensureUiAssetsPreloaded(locale, theme),
+          includeDecorativeAssets ? this.ensureDecorativeUiAssetsPreloaded(locale, theme) : Promise.resolve(),
+          includeAvatarAssets ? this.ensureAvatarAssetsLoaded() : Promise.resolve()
+        ]).then(() => undefined);
 
     return preloadRequest
       .then(() => {
@@ -1281,7 +1292,11 @@ export class GameHUDSystem {
       return pending;
     }
 
-    const request = this.preloadUiAssets(locale, theme)
+    const assetsToPreload = this.criticalUiAssetStatesReady.has(stateKey)
+      ? this.buildDeferredUiPreloadAssets(locale, theme)
+      : this.buildUiPreloadAssets(locale, theme);
+
+    const request = this.preloadUiAssetList(assetsToPreload, locale, theme, 'full')
       .then(() => {
         this.uiAssetStatesReady.add(stateKey);
       })
@@ -1313,6 +1328,32 @@ export class GameHUDSystem {
       });
 
     this.criticalUiAssetStatePromises.set(stateKey, request);
+    return request;
+  }
+
+  private ensureDecorativeUiAssetsPreloaded(locale: 'fr' | 'en' = this.i18n.current, theme = resolveDocumentTheme()) {
+    const stateKey = this.getUiAssetStateKey(locale, theme);
+    if (this.decorativeUiAssetStatesReady.has(stateKey)) {
+      return Promise.resolve();
+    }
+
+    const pending = this.decorativeUiAssetStatePromises.get(stateKey);
+    if (pending) {
+      return pending;
+    }
+
+    const request = Promise.all([
+      this.preloadShapeTemplates([EQUIPMENT_UI_ASSETS.bgBoat, ...Object.values(EQUIPMENT_UI_ASSETS.charges)]),
+      this.ensureGameOverRuleAsset(locale, theme).then(() => undefined)
+    ])
+      .then(() => {
+        this.decorativeUiAssetStatesReady.add(stateKey);
+      })
+      .finally(() => {
+        this.decorativeUiAssetStatePromises.delete(stateKey);
+      });
+
+    this.decorativeUiAssetStatePromises.set(stateKey, request);
     return request;
   }
 
@@ -3050,10 +3091,7 @@ export class GameHUDSystem {
   private preloadShapeTemplates(sources: string[]) {
     const uniqueSources = Array.from(new Set(sources));
     if (!isMobileRuntime()) {
-      uniqueSources.forEach((src) => {
-        void this.preloadShapeTemplate(src);
-      });
-      return;
+      return Promise.all(uniqueSources.map((src) => this.preloadShapeTemplate(src))).then(() => undefined);
     }
 
     this.shapeTemplateWarmupPromise = this.shapeTemplateWarmupPromise.then(async () => {
@@ -3062,6 +3100,7 @@ export class GameHUDSystem {
         await new Promise<void>((resolve) => window.setTimeout(resolve, 48));
       }
     });
+    return this.shapeTemplateWarmupPromise;
   }
 
   private loadShapeTemplateSvgText(src: string) {
@@ -4510,6 +4549,11 @@ export class GameHUDSystem {
     ];
   }
 
+  private buildDeferredUiPreloadAssets(locale: 'fr' | 'en', theme: 'dark' | 'light') {
+    const criticalAssets = new Set(this.buildCriticalUiPreloadAssets(locale, theme));
+    return this.buildUiPreloadAssets(locale, theme).filter((assetUrl) => !criticalAssets.has(assetUrl));
+  }
+
   private buildCriticalUiPreloadAssets(locale: 'fr' | 'en', theme: 'dark' | 'light') {
     return [
       ...Object.values(MOMENTUM_BAR_ASSETS),
@@ -4528,10 +4572,6 @@ export class GameHUDSystem {
     ];
   }
 
-  private preloadUiAssets(locale: 'fr' | 'en' = this.i18n.current, theme = resolveDocumentTheme()) {
-    return this.preloadUiAssetList(this.buildUiPreloadAssets(locale, theme), locale, theme, 'full');
-  }
-
   private preloadUiAssetList(
     assetUrls: string[],
     locale: 'fr' | 'en' = this.i18n.current,
@@ -4546,13 +4586,7 @@ export class GameHUDSystem {
       phase,
       mobile: isMobileRuntime()
     });
-    const imagePreload = this.preloadImageAssets(preloadedAssets);
-    if (phase === 'full') {
-      this.preloadShapeTemplates([EQUIPMENT_UI_ASSETS.bgBoat, ...Object.values(EQUIPMENT_UI_ASSETS.charges)]);
-    }
-
-    const gameOverRulePreload = phase === 'full' ? this.ensureGameOverRuleAsset(locale, theme) : Promise.resolve('');
-    return Promise.all([imagePreload, gameOverRulePreload]).then(() => {
+    return this.preloadImageAssets(preloadedAssets).then(() => {
       recordGameBootDiagnostic('game_hud_ui_assets_completed', {
         stateKey,
         assetCount: preloadedAssets.length,

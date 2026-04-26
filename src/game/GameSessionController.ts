@@ -885,14 +885,26 @@ export class GameSessionController {
       return Promise.resolve();
     }
 
-    const assetUrls = phase === 'critical' ? this.buildCriticalPreloadAssets() : this.buildFullPreloadAssets();
-    recordGameBootDiagnostic('game_session_preload_started', {
-      assetCount: assetUrls.length,
-      mobile,
-      phase
-    });
-
-    const request = this.preloadImageAssets(assetUrls, phase)
+    let assetCount = 0;
+    const request = Promise.resolve(
+      phase === 'full' && this.criticalVisualAssetsPreloadPromise
+        ? this.criticalVisualAssetsPreloadPromise
+        : undefined
+    )
+      .then(() => {
+        const assetUrls = phase === 'critical'
+          ? this.buildCriticalPreloadAssets()
+          : this.criticalVisualAssetsPreloaded
+            ? this.buildDeferredFullPreloadAssets()
+            : this.buildFullPreloadAssets();
+        recordGameBootDiagnostic('game_session_preload_started', {
+          assetCount: assetUrls.length,
+          mobile,
+          phase
+        });
+        assetCount = assetUrls.length;
+        return this.preloadImageAssets(assetUrls, phase);
+      })
       .then(() => {
         if (phase === 'critical') {
           this.criticalVisualAssetsPreloaded = true;
@@ -901,7 +913,7 @@ export class GameSessionController {
           this.visualAssetsPreloaded = true;
         }
         recordGameBootDiagnostic('game_session_preload_completed', {
-          assetCount: assetUrls.length,
+          assetCount,
           phase
         });
       })
@@ -912,14 +924,14 @@ export class GameSessionController {
           this.visualAssetsPreloadPromise = null;
         }
         recordGameBootDiagnosticError('game_session_preload_failed', error, {
-          assetCount: assetUrls.length,
+          assetCount,
           phase
         });
         captureGameException(error, {
           event: 'game_session_preload_failed',
           category: 'game_session_preload',
           data: {
-            assetCount: assetUrls.length,
+            assetCount,
             mobile,
             phase
           }
@@ -958,6 +970,11 @@ export class GameSessionController {
       ...rogueliteItems.flatMap((item) => [item.hudIconSrc, item.rarityIconSrc]),
       ...moduleSpriteAssets
     ]));
+  }
+
+  private buildDeferredFullPreloadAssets() {
+    const criticalAssets = new Set(this.buildCriticalPreloadAssets());
+    return this.buildFullPreloadAssets().filter((assetUrl) => !criticalAssets.has(assetUrl));
   }
 
   private async preloadImageAssets(urls: string[], phase: 'critical' | 'full' = 'full') {
