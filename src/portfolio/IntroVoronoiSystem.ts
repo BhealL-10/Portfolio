@@ -286,7 +286,7 @@ export class IntroVoronoiSystem {
   }
 
   private renderText() {
-    const title = 'Ape Prod Portfolio (BhealL)';
+    const title = 'Portfolio';
     this.titleElement.textContent = title;
     this.titleElement.dataset.text = title;
     this.syncPointerGlow(window.innerWidth * 0.5, window.innerHeight * 0.82);

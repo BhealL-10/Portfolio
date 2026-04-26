@@ -1,4 +1,5 @@
 import { addGameBreadcrumb, captureGameException } from './sentry';
+import { classifyExternalBrowserNoise } from './externalBrowserNoise';
 import {
   sanitizeLogString,
   sanitizeLogValue,
@@ -16,6 +17,10 @@ interface GameBootDiagnosticEntry {
   level: GameBootDiagnosticLevel;
   event: string;
   data?: GameBootDiagnosticValue;
+}
+
+interface InstallGameBootDiagnosticsOptions {
+  autoStartSession?: boolean;
 }
 
 const GAME_BOOT_DIAGNOSTIC_STORAGE_KEY = 'portfolio-game-boot-diagnostics-v1';
@@ -58,6 +63,7 @@ let visualViewportFrame: number | null = null;
 let overlayElement: HTMLDivElement | null = null;
 let overlayContentElement: HTMLPreElement | null = null;
 let overlayRenderFrame: number | null = null;
+let bootSessionStarted = false;
 
 declare global {
   interface Window {
@@ -497,7 +503,26 @@ export function recordGameBootDiagnosticError(event: string, error: unknown, dat
   });
 }
 
-export function installGameBootDiagnostics() {
+export function recordGameBootSessionStarted(data?: Record<string, unknown>) {
+  if (bootSessionStarted || !isGameBootDiagnosticsEnabled() || !hasBrowserRuntime()) {
+    return;
+  }
+  bootSessionStarted = true;
+  recordGameBootDiagnostic('boot_start', {
+    ...data,
+    debugOverlay: isGameBootOverlayEnabled(),
+    ...buildViewportSnapshot()
+  });
+  recordGameBootDiagnostic('session_started', {
+    ...data,
+    userAgent: window.navigator.userAgent,
+    maxTouchPoints: window.navigator.maxTouchPoints ?? 0,
+    debugOverlay: isGameBootOverlayEnabled(),
+    ...buildViewportSnapshot()
+  });
+}
+
+export function installGameBootDiagnostics(options: InstallGameBootDiagnosticsOptions = {}) {
   if (diagnosticsInstalled || !isGameBootDiagnosticsEnabled()) {
     return;
   }
@@ -505,16 +530,9 @@ export function installGameBootDiagnostics() {
 
   readDiagnosticsCache();
   ensureOverlay();
-  recordGameBootDiagnostic('boot_start', {
-    debugOverlay: isGameBootOverlayEnabled(),
-    ...buildViewportSnapshot()
-  });
-  recordGameBootDiagnostic('session_started', {
-    userAgent: window.navigator.userAgent,
-    maxTouchPoints: window.navigator.maxTouchPoints ?? 0,
-    debugOverlay: isGameBootOverlayEnabled(),
-    ...buildViewportSnapshot()
-  });
+  if (options.autoStartSession !== false) {
+    recordGameBootSessionStarted();
+  }
 
   window.addEventListener('error', (event) => {
     const target = event.target instanceof HTMLElement
@@ -533,6 +551,14 @@ export function installGameBootDiagnostics() {
       message: event.message,
       target
     };
+    const externalNoise = classifyExternalBrowserNoise(event.error ?? event.message ?? event, hints);
+    if (externalNoise) {
+      recordGameBootWarning('external_browser_extension_error', {
+        source: 'window_error',
+        ...externalNoise
+      });
+      return;
+    }
     if (looksLikeSentryTransportFailure(event.error ?? event.message ?? event, hints)) {
       recordGameBootWarning('sentry_transport_ignored', {
         source: 'window_error',
@@ -558,6 +584,15 @@ export function installGameBootDiagnostics() {
   });
 
   window.addEventListener('unhandledrejection', (event) => {
+    const externalNoise = classifyExternalBrowserNoise(event.reason);
+    if (externalNoise) {
+      recordGameBootWarning('external_browser_extension_error', {
+        source: 'unhandled_rejection',
+        ...externalNoise
+      });
+      event.preventDefault();
+      return;
+    }
     if (looksLikeSentryTransportFailure(event.reason)) {
       recordGameBootWarning('sentry_transport_ignored', {
         source: 'unhandled_rejection',

@@ -1,6 +1,7 @@
 import * as Sentry from '@sentry/browser';
 import type { Breadcrumb, BrowserOptions, Event } from '@sentry/browser';
 import { getRuntimeDeviceState } from './device';
+import { classifyExternalBrowserNoise } from './externalBrowserNoise';
 import {
   isDataUriString,
   sanitizeLogRecord,
@@ -323,7 +324,12 @@ export function initFrontendSentry() {
       environment: getFrontendEnvironment(),
       release: getFrontendRelease(),
       beforeBreadcrumb: (breadcrumb) => sanitizeSentryBreadcrumb(breadcrumb),
-      beforeSend: (event) => sanitizeSentryEvent(event) as typeof event
+      beforeSend: (event) => {
+        if (classifyExternalBrowserNoise(event)) {
+          return null;
+        }
+        return sanitizeSentryEvent(event) as typeof event;
+      }
     });
     frontendSentryAvailable = true;
   } catch (error) {
@@ -376,6 +382,9 @@ export function captureGameException(
   }
 ) {
   if (!frontendSentryAvailable) {
+    return;
+  }
+  if (classifyExternalBrowserNoise(error, options.data)) {
     return;
   }
 
