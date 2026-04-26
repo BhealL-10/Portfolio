@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { recordGameBootDiagnostic } from '../core/gameBootDiagnostics';
 import { damp } from '../core/math';
+import { getPerformanceProfile, isPerfDebugEnabled } from '../core/performanceProfile';
 import { getRuntimeViewportSize } from '../core/viewport';
 import { getThemeBackgroundHex, getThemeForegroundHex } from '../core/themePalette';
 import type { ScreenProjection } from '../game/worldHudProjection';
@@ -20,6 +21,7 @@ export class WorldRenderer {
   private static readonly MAX_MOBILE_PIXEL_RATIO = 1.35;
   private static readonly DESKTOP_PIXEL_BUDGET = 3_200_000;
   private static readonly MOBILE_PIXEL_BUDGET = 1_500_000;
+  private static activeRendererCount = 0;
 
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
@@ -44,11 +46,16 @@ export class WorldRenderer {
 
   constructor(private readonly host: HTMLElement) {
     this.coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    const profile = getPerformanceProfile();
     this.renderer = new THREE.WebGLRenderer({
-      antialias: !this.coarsePointer,
+      antialias: !this.coarsePointer && profile.id === 'desktopHigh',
       alpha: true,
       powerPreference: this.coarsePointer ? 'low-power' : 'high-performance'
     });
+    WorldRenderer.activeRendererCount += 1;
+    if (WorldRenderer.activeRendererCount > 1 && isPerfDebugEnabled()) {
+      console.warn(`[WorldRenderer] Multiple active WebGL renderers detected (${WorldRenderer.activeRendererCount}).`);
+    }
     this.renderer.domElement.className = 'app-canvas';
     this.renderer.domElement.addEventListener('webglcontextlost', this.handleContextLost as EventListener, false);
     this.renderer.domElement.addEventListener('webglcontextrestored', this.handleContextRestored as EventListener, false);
@@ -56,7 +63,7 @@ export class WorldRenderer {
     this.host.appendChild(this.renderer.domElement);
     recordGameBootDiagnostic('renderer_constructed', {
       coarsePointer: this.coarsePointer,
-      antialias: !this.coarsePointer,
+      antialias: !this.coarsePointer && profile.id === 'desktopHigh',
       powerPreference: this.coarsePointer ? 'low-power' : 'high-performance'
     });
 
@@ -175,6 +182,27 @@ export class WorldRenderer {
     this.renderer.domElement.removeEventListener('webglcontextlost', this.handleContextLost as EventListener, false);
     this.renderer.domElement.removeEventListener('webglcontextrestored', this.handleContextRestored as EventListener, false);
     this.renderer.dispose();
+    if (WorldRenderer.activeRendererCount > 0) {
+      WorldRenderer.activeRendererCount -= 1;
+    }
+  }
+
+  getDebugStats() {
+    const { render, memory } = this.renderer.info;
+    let visibleObjects = 0;
+    this.scene.traverseVisible(() => {
+      visibleObjects += 1;
+    });
+    return {
+      activeRendererCount: WorldRenderer.activeRendererCount,
+      renderCalls: render.calls,
+      triangles: render.triangles,
+      points: render.points,
+      lines: render.lines,
+      textures: memory.textures,
+      geometries: memory.geometries,
+      visibleObjects
+    };
   }
 
   private readonly handleContextLost = (event: Event) => {
@@ -191,11 +219,14 @@ export class WorldRenderer {
   };
 
   private resolvePixelRatio(width: number, height: number) {
+    const profile = getPerformanceProfile();
     const devicePixelRatio = Math.max(1, window.devicePixelRatio || 1);
     const coarsePointer = this.coarsePointer || window.matchMedia('(pointer: coarse)').matches;
-    const pixelBudget = coarsePointer ? WorldRenderer.MOBILE_PIXEL_BUDGET : WorldRenderer.DESKTOP_PIXEL_BUDGET;
+    const fallbackBudget = coarsePointer ? WorldRenderer.MOBILE_PIXEL_BUDGET : WorldRenderer.DESKTOP_PIXEL_BUDGET;
+    const pixelBudget = profile.rendererPixelBudget || fallbackBudget;
     const budgetRatio = Math.sqrt(pixelBudget / Math.max(1, width * height));
-    const maxPixelRatio = coarsePointer ? WorldRenderer.MAX_MOBILE_PIXEL_RATIO : WorldRenderer.MAX_DESKTOP_PIXEL_RATIO;
+    const fallbackMaxPixelRatio = coarsePointer ? WorldRenderer.MAX_MOBILE_PIXEL_RATIO : WorldRenderer.MAX_DESKTOP_PIXEL_RATIO;
+    const maxPixelRatio = Math.min(profile.maxRendererPixelRatio || fallbackMaxPixelRatio, fallbackMaxPixelRatio);
     return Math.max(1, Math.min(devicePixelRatio, maxPixelRatio, budgetRatio));
   }
 }

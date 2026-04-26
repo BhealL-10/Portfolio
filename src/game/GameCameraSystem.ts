@@ -115,6 +115,19 @@ export class GameCameraSystem {
     };
   }
 
+  copyPose(positionTarget: THREE.Vector3, lookAtTarget: THREE.Vector3) {
+    positionTarget.copy(this.position);
+    lookAtTarget.copy(this.lookAt);
+    return {
+      position: positionTarget,
+      lookAt: lookAtTarget
+    };
+  }
+
+  getLookAtX() {
+    return this.lookAt.x;
+  }
+
   private computeProgress(x: number, y: number, dirX: number, dirY: number) {
     return x * clamp(dirX, -1, 1) + y * clamp(dirY, -1, 1);
   }

@@ -1,5 +1,5 @@
 import type { Language, PortfolioProject } from '../types/content';
-import { LANGUAGE_BUTTON_ASSETS, THEME_TOGGLE_ASSETS } from '../game/GameUiAssetResolver';
+import { LANGUAGE_BUTTON_ASSETS, THEME_TOGGLE_ASSETS } from './AppChromeAssetResolver';
 import { observeThemeChanges, resolveDocumentTheme } from '../game/ThemeAssetResolver';
 import { I18nService } from './I18nService';
 

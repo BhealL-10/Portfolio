@@ -38,6 +38,14 @@ function isBootVisibilityReady() {
   return document.visibilityState === 'visible' && !isDocumentPrerendering();
 }
 
+function shouldDeferTelemetryBoot() {
+  return (
+    window.matchMedia?.('(pointer: coarse)').matches ||
+    (window.navigator.maxTouchPoints ?? 0) > 1 ||
+    Math.min(window.innerWidth || 0, window.innerHeight || 0) <= 900
+  );
+}
+
 function getBootStateSnapshot(trigger: BootTrigger, pageShowPersisted = false) {
   return {
     trigger,
@@ -89,7 +97,9 @@ function startBoot(trigger: BootTrigger, pageShowPersisted = false) {
   });
 
   try {
-    initFrontendSentry();
+    initFrontendSentry({
+      deferUntilIdle: shouldDeferTelemetryBoot()
+    });
     appController = new AppController(appRoot, { entryRoute });
     bootCompleted = true;
     recordGameBootDiagnostic('boot_app_controller_ready', getBootStateSnapshot(trigger, pageShowPersisted));

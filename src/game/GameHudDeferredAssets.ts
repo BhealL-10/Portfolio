@@ -22,6 +22,10 @@ const AVATAR_LAYER_MODULES = import.meta.glob('../../assets/Avatar_asset/*/*.png
 const helpPageCache = new Map<string, Promise<string[]>>();
 let avatarLayerSetsPromise: Promise<GameHudAvatarLayerSets> | null = null;
 
+function buildHelpCacheKey(locale: HelpLocale, theme: HelpTheme, limit?: number) {
+  return `${locale}:${theme}:${limit ?? 'all'}`;
+}
+
 function isMobileAssetWarmupRuntime() {
   return (
     typeof window !== 'undefined' &&
@@ -44,14 +48,46 @@ function extractRuleOrder(value: string) {
   return Number((value.match(/rules(\d+)|rules-(\d+)/i)?.slice(1).find(Boolean)) ?? 0);
 }
 
+function isMobileHelpCandidate(path: string, name: string) {
+  const normalizedPath = path.toLowerCase();
+  const normalizedName = name.toLowerCase();
+  return normalizedPath.includes('/mobile/') || normalizedName.includes('-mobile.');
+}
+
+function getLocalizedHelpCandidates(
+  candidates: Array<{
+    path: string;
+    load: () => Promise<string>;
+    name: string;
+  }>,
+  locale: HelpLocale,
+  theme: HelpTheme,
+  options: {
+    preferMobileVariant?: boolean;
+  } = {}
+) {
+  const normalizedLocale = locale.toLowerCase();
+  const normalizedTheme = theme.toLowerCase();
+  const filtered = candidates.filter(({ path, name }) => {
+    const normalizedPath = path.toLowerCase();
+    return normalizedPath.includes(`/${normalizedLocale}/${normalizedTheme}/`) && /rules\d+-(dark|light)/i.test(name);
+  });
+
+  if (!options.preferMobileVariant || filtered.length <= 0) {
+    return filtered;
+  }
+
+  const mobilePreferred = filtered.filter(({ path, name }) => isMobileHelpCandidate(path, name));
+  return mobilePreferred.length > 0 ? mobilePreferred : filtered;
+}
+
 function getHelpCandidates(locale: HelpLocale, theme: HelpTheme) {
   const candidates = Object.entries(HELP_IMAGE_MODULES)
     .map(([path, load]) => ({ path, load, name: path.split('/').pop() ?? '' }))
     .sort((a, b) => extractRuleOrder(a.name) - extractRuleOrder(b.name));
 
-  const localized = candidates.filter(({ path, name }) => {
-    const normalizedPath = path.toLowerCase();
-    return normalizedPath.includes(`/${locale}/${theme}/`) && /rules\d+-(dark|light)\./i.test(name);
+  const localized = getLocalizedHelpCandidates(candidates, locale, theme, {
+    preferMobileVariant: isMobileAssetWarmupRuntime()
   });
   if (localized.length > 0) {
     return localized;
@@ -73,17 +109,18 @@ function getHelpCandidates(locale: HelpLocale, theme: HelpTheme) {
   return candidates.filter(({ name }) => /^en-rules-\d+\./i.test(name));
 }
 
-export function loadHelpPagesFor(locale: HelpLocale, theme: HelpTheme) {
-  const cacheKey = `${locale}:${theme}`;
+export function loadHelpPagesFor(locale: HelpLocale, theme: HelpTheme, options: { limit?: number } = {}) {
+  const cacheKey = buildHelpCacheKey(locale, theme, options.limit);
   const cached = helpPageCache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
   const candidates = getHelpCandidates(locale, theme);
+  const selectedCandidates = typeof options.limit === 'number' ? candidates.slice(0, Math.max(0, options.limit)) : candidates;
   const request = (async () => {
     const pages: string[] = [];
-    for (const { load } of candidates) {
+    for (const { load } of selectedCandidates) {
       const page = await load();
       if (page) {
         pages.push(page);

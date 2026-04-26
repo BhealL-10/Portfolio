@@ -166,6 +166,10 @@ export class OrbitWorldSystem {
   private readonly cameraReferencePosition = new THREE.Vector3(0, 0.88, 28.8);
   private readonly focusCameraForward = new THREE.Vector3(0, 0, -1);
   private readonly pivot = new THREE.Vector3(0, 0, 0);
+  private readonly scratchTargetPosition = new THREE.Vector3();
+  private readonly scratchDetachDirection = new THREE.Vector3();
+  private readonly scratchDetachTarget = new THREE.Vector3();
+  private readonly scratchFragmentBurstTarget = new THREE.Vector3();
   private readonly roundGeometry = createFragmentedIcosahedronGeometry(1.25, 4);
   private readonly miniShardGeometry = createFragmentedIcosahedronGeometry(1.02, 10);
   private readonly ovalGeometry = createFragmentedSphereGeometry(1.18, 18, 14);
@@ -502,15 +506,15 @@ export class OrbitWorldSystem {
     return this.entityList[wrapIndex(index, this.entityList.length)]?.project || null;
   }
 
-  getPivot() {
-    return this.pivot.clone();
+  getPivot(target = new THREE.Vector3()) {
+    return target.copy(this.pivot);
   }
 
-  getOrbitCameraPose() {
+  getOrbitCameraPose(positionTarget = new THREE.Vector3(), lookAtTarget = new THREE.Vector3()) {
     this.activeLookAt.copy(this.pivot);
     return {
-      position: ORBIT_CAMERA_POSITION,
-      lookAt: this.activeLookAt.clone()
+      position: positionTarget.copy(ORBIT_CAMERA_POSITION),
+      lookAt: lookAtTarget.copy(this.activeLookAt)
     };
   }
 
@@ -528,11 +532,11 @@ export class OrbitWorldSystem {
     this.focusCameraPosition.y += 0.12;
   }
 
-  getFocusCameraPose() {
+  getFocusCameraPose(positionTarget = new THREE.Vector3(), lookAtTarget = new THREE.Vector3()) {
     const focused = this.focusedId ? this.entities.get(this.focusedId) : null;
     return {
-      position: this.focusCameraPosition.clone(),
-      lookAt: focused?.group.position.clone() || this.focusTargetPosition.clone()
+      position: positionTarget.copy(this.focusCameraPosition),
+      lookAt: lookAtTarget.copy(focused?.group.position ?? this.focusTargetPosition)
     };
   }
 
@@ -918,8 +922,8 @@ export class OrbitWorldSystem {
         if (externalPosition) {
           targetPosition = externalPosition;
         } else if (this.externalTransitionFrom[index] && this.externalTransitionTo[index]) {
-          targetPosition = this.externalTransitionFrom[index]
-            .clone()
+          targetPosition = this.scratchTargetPosition
+            .copy(this.externalTransitionFrom[index])
             .lerp(this.externalTransitionTo[index], this.getDelayedExternalProgress(index));
         }
         if (this.externalLayoutPositions && entity.group.position.distanceToSquared(targetPosition) > 14 * 14) {
@@ -964,32 +968,38 @@ export class OrbitWorldSystem {
         targetScaleZ = DRAGGING_SHARD_SCALE;
         targetState = 'dragging';
       } else if (entity.snapped) {
-        targetPosition = new THREE.Vector3(slot!.worldPosition.x, slot!.worldPosition.y, slot!.worldPosition.z);
+        targetPosition = this.scratchTargetPosition.set(slot!.worldPosition.x, slot!.worldPosition.y, slot!.worldPosition.z);
         targetScaleX = SNAPPED_SHARD_SCALE;
         targetScaleY = SNAPPED_SHARD_SCALE * 0.88;
         targetScaleZ = SNAPPED_SHARD_SCALE * 0.94;
         targetState = 'snapped';
       } else if (isSlotPreview && slot) {
-        targetPosition = new THREE.Vector3(slot.worldPosition.x, slot.worldPosition.y, slot.worldPosition.z);
+        targetPosition = this.scratchTargetPosition.set(slot.worldPosition.x, slot.worldPosition.y, slot.worldPosition.z);
         targetScaleX = SLOT_PREVIEW_SHARD_SCALE;
         targetScaleY = SLOT_PREVIEW_SHARD_SCALE * 0.88;
         targetScaleZ = SLOT_PREVIEW_SHARD_SCALE * 0.94;
         targetState = 'snapped';
       } else if (inFocusFlow) {
         const focusVisual = THREE.MathUtils.clamp(entity.focusAmount, 0, 1);
-        const detachDirection = orbitTarget.clone().sub(this.pivot).setZ(0);
+        const detachDirection = this.scratchDetachDirection.copy(orbitTarget).sub(this.pivot).setZ(0);
         if (detachDirection.lengthSq() < 0.001) {
           detachDirection.set(0, 1, 0);
         } else {
           detachDirection.normalize();
         }
-        const detachTarget = orbitTarget.clone().add(new THREE.Vector3(detachDirection.x * 1.65, detachDirection.y * 0.96, 2.1));
-        const fragmentBurstTarget = orbitTarget.clone().add(new THREE.Vector3(detachDirection.x * 0.72, detachDirection.y * 0.34, 4.8));
+        const detachTarget = this.scratchDetachTarget.copy(orbitTarget);
+        detachTarget.x += detachDirection.x * 1.65;
+        detachTarget.y += detachDirection.y * 0.96;
+        detachTarget.z += 2.1;
+        const fragmentBurstTarget = this.scratchFragmentBurstTarget.copy(orbitTarget);
+        fragmentBurstTarget.x += detachDirection.x * 0.72;
+        fragmentBurstTarget.y += detachDirection.y * 0.34;
+        fragmentBurstTarget.z += 4.8;
         const detachBlend = THREE.MathUtils.smoothstep(Math.min(1, focusVisual / 0.28), 0, 1);
         const burstBlend = focusVisual <= 0.18 ? 0 : THREE.MathUtils.smoothstep(Math.min(1, (focusVisual - 0.18) / 0.36), 0, 1);
         const settleBlend = focusVisual <= 0.54 ? 0 : THREE.MathUtils.smoothstep(Math.min(1, (focusVisual - 0.54) / 0.46), 0, 1);
-        targetPosition = orbitTarget
-          .clone()
+        targetPosition = this.scratchTargetPosition
+          .copy(orbitTarget)
           .lerp(detachTarget, detachBlend)
           .lerp(fragmentBurstTarget, burstBlend)
           .lerp(this.focusTargetPosition, settleBlend);

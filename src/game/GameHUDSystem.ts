@@ -3,6 +3,7 @@ import { getItemById, rarityLabels, rogueliteItems } from './roguelite';
 import { drawImageIfReady, preloadImageAsset } from '../core/browserAssetCache';
 import { isMobileRuntime } from '../core/device';
 import { recordGameBootDiagnostic, recordGameBootDiagnosticError } from '../core/gameBootDiagnostics';
+import { getPerformanceProfile } from '../core/performanceProfile';
 import { addGameBreadcrumb, captureGameException } from '../core/sentry';
 import { decodeDataUriText, isDataUriString } from '../core/logSanitizer';
 import { I18nService } from '../ui/I18nService';
@@ -1457,7 +1458,8 @@ export class GameHUDSystem {
       return pending;
     }
 
-    const request = this.ensureHelpPagesLoaded(locale, theme)
+    const request = this.ensureDeferredAssetsModule()
+      .then(({ loadHelpPagesFor }) => loadHelpPagesFor(locale, theme as HelpTheme, { limit: 1 }))
       .then(async (pages) => {
         const selectedPage = pages[0] ?? '';
         if (!selectedPage) {
@@ -1681,7 +1683,8 @@ export class GameHUDSystem {
       payload.state === 'running' &&
       !this.helpOpen &&
       !this.helpAutoOpenedThisSession &&
-      !this.hasCompletedHelpTutorial()
+      !this.hasCompletedHelpTutorial() &&
+      getPerformanceProfile().enableAutoHelpTutorial
     ) {
       const openAutoHelp = () => {
         if (this.helpOpen || this.helpAutoOpenedThisSession || this.hasCompletedHelpTutorial()) {
@@ -4509,24 +4512,30 @@ export class GameHUDSystem {
   }
 
   private buildUiPreloadAssets(locale: 'fr' | 'en', theme: 'dark' | 'light') {
+    const profile = getPerformanceProfile();
     const hoverTheme = resolveContrastTheme(theme);
+    const includeHoverThemeVariants = !profile.isMobile;
     const itemAssets = rogueliteItems.flatMap((item) => [item.hudIconSrc, item.rarityIconSrc]);
     const buttonAssets = [
-      ...UI_BUTTON_PRELOAD_TYPES.flatMap((type) => [getUIButtonAsset(type, locale, theme), getUIButtonAsset(type, locale, hoverTheme)]),
+      ...UI_BUTTON_PRELOAD_TYPES.flatMap((type) =>
+        includeHoverThemeVariants
+          ? [getUIButtonAsset(type, locale, theme), getUIButtonAsset(type, locale, hoverTheme)]
+          : [getUIButtonAsset(type, locale, theme)]
+      ),
       LANGUAGE_BUTTON_ASSETS[locale],
       FULLSCREEN_BUTTON_ASSETS.on[theme],
       FULLSCREEN_BUTTON_ASSETS.off[theme],
       SAVE_BUTTON_ASSETS[theme],
-      SAVE_BUTTON_ASSETS[hoverTheme],
+      ...(includeHoverThemeVariants ? [SAVE_BUTTON_ASSETS[hoverTheme]] : []),
       THEME_TOGGLE_ASSETS[theme],
       ACHIEVEMENT_ICON_ASSETS[theme],
       HELP_ICON_ASSETS[theme],
       SECONDARY_NAV_ASSETS.left[theme],
-      SECONDARY_NAV_ASSETS.left[hoverTheme],
+      ...(includeHoverThemeVariants ? [SECONDARY_NAV_ASSETS.left[hoverTheme]] : []),
       SECONDARY_NAV_ASSETS.right[theme],
-      SECONDARY_NAV_ASSETS.right[hoverTheme],
+      ...(includeHoverThemeVariants ? [SECONDARY_NAV_ASSETS.right[hoverTheme]] : []),
       SECONDARY_NAV_ASSETS.close[theme],
-      SECONDARY_NAV_ASSETS.close[hoverTheme],
+      ...(includeHoverThemeVariants ? [SECONDARY_NAV_ASSETS.close[hoverTheme]] : []),
       SOUND_BUTTON_ASSETS.on[theme],
       SOUND_BUTTON_ASSETS.off[theme],
       SOUND_BUTTON_ASSETS.sprite,
@@ -4543,8 +4552,12 @@ export class GameHUDSystem {
       GAME_OVER_HEADER_ASSETS[theme],
       ...Object.values(ACHIEVEMENT_RARITY_ICON_ASSETS),
       ...Object.values(EQUIPMENT_UI_ASSETS.charges),
-      ...Object.values(MOBILE_CONTROL_ASSETS).flatMap((assetSet) => [assetSet[theme], assetSet[hoverTheme]]),
-      ...MOBILE_CHARGE_ASSETS.flatMap((assetSet) => [assetSet[theme], assetSet[hoverTheme]]),
+      ...Object.values(MOBILE_CONTROL_ASSETS).flatMap((assetSet) =>
+        includeHoverThemeVariants ? [assetSet[theme], assetSet[hoverTheme]] : [assetSet[theme]]
+      ),
+      ...MOBILE_CHARGE_ASSETS.flatMap((assetSet) =>
+        includeHoverThemeVariants ? [assetSet[theme], assetSet[hoverTheme]] : [assetSet[theme]]
+      ),
       ...buttonAssets
     ];
   }

@@ -4619,6 +4619,29 @@ html[data-theme='dark'] .game-hud__leaderboard-preview-rank {
   filter: drop-shadow(0 10px 22px rgb(0 0 0 / 0.22));
 }
 
+.primaterie-portal__social-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  font-size: clamp(0.7rem, 1vw, 0.82rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.92);
+  text-shadow: 0 6px 18px rgb(0 0 0 / 0.26);
+}
+
+.primaterie-portal__social.has-artwork .primaterie-portal__social-label {
+  display: none;
+}
+
+.primaterie-portal__social:not(.has-artwork) img {
+  display: none;
+}
+
 .primaterie-portal__social--discord {
   left: calc(var(--safe-left) + 18px);
 }

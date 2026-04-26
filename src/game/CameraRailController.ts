@@ -274,6 +274,19 @@ export class CameraRailController {
     };
   }
 
+  copyPose(positionTarget: THREE.Vector3, lookAtTarget: THREE.Vector3) {
+    positionTarget.copy(this.position);
+    lookAtTarget.copy(this.lookAt);
+    return {
+      position: positionTarget,
+      lookAt: lookAtTarget
+    };
+  }
+
+  getLookAtX() {
+    return this.lookAt.x;
+  }
+
   getZoom() {
     return this.renderZoom;
   }

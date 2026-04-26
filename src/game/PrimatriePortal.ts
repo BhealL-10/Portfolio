@@ -1,20 +1,9 @@
 import type { Language } from '../types/content';
-import { LANGUAGE_BUTTON_ASSETS, THEME_TOGGLE_ASSETS } from './GameUiAssetResolver';
+import { LANGUAGE_BUTTON_ASSETS, THEME_TOGGLE_ASSETS } from '../ui/AppChromeAssetResolver';
 
 const HUB_LOGO_ASSETS = {
   dark: new URL('../../assets/images/shared/branding/primaterie-mark-light.svg', import.meta.url).href,
   light: new URL('../../assets/images/shared/branding/primaterie-mark-dark.svg', import.meta.url).href
-} as const;
-
-const COMMUNITY_BUTTON_ASSETS = {
-  discord: {
-    dark: new URL('../../assets/images/portfolio/projects/shared/discord-btn-light.png', import.meta.url).href,
-    light: new URL('../../assets/images/portfolio/projects/shared/discord-btn-dark.png', import.meta.url).href
-  },
-  patreon: {
-    dark: new URL('../../assets/images/portfolio/projects/shared/patreon-btn-light.png', import.meta.url).href,
-    light: new URL('../../assets/images/portfolio/projects/shared/patreon-btn-dark.png', import.meta.url).href
-  }
 } as const;
 
 const COMMUNITY_LINKS = {
@@ -38,8 +27,13 @@ export class primateriePortal {
   private readonly tenVsTenButton: HTMLButtonElement;
   private readonly discordButton: HTMLButtonElement;
   private readonly discordButtonImage: HTMLImageElement;
+  private readonly discordButtonLabel: HTMLSpanElement;
   private readonly patreonButton: HTMLButtonElement;
   private readonly patreonButtonImage: HTMLImageElement;
+  private readonly patreonButtonLabel: HTMLSpanElement;
+  private readonly communityArtworkEnabled: boolean;
+  private communityArtworkLoader: Promise<void> | null = null;
+  private communityArtworkAssets: (typeof import('./PrimateriePortalCommunityAssets'))['COMMUNITY_BUTTON_ASSETS'] | null = null;
   private visible = false;
   private busy = false;
   private loading = false;
@@ -52,8 +46,12 @@ export class primateriePortal {
       onSinglePlayer: () => void;
       onThemeToggle: () => void;
       onLanguageToggle: () => void;
-    }
+    },
+    options: {
+      loadCommunityArtwork?: boolean;
+    } = {}
   ) {
+    this.communityArtworkEnabled = options.loadCommunityArtwork ?? true;
     this.element = document.createElement('div');
     this.element.className = 'primaterie-portal';
     this.element.innerHTML = `
@@ -66,9 +64,11 @@ export class primateriePortal {
       </div>
       <button type="button" class="primaterie-portal__social primaterie-portal__social--discord" data-guide-hover="primaterie-discord" data-primaterie-discord>
         <img data-primaterie-discord-image alt="" />
+        <span class="primaterie-portal__social-label" data-primaterie-discord-label></span>
       </button>
       <button type="button" class="primaterie-portal__social primaterie-portal__social--patreon" data-guide-hover="primaterie-patreon" data-primaterie-patreon>
         <img data-primaterie-patreon-image alt="" />
+        <span class="primaterie-portal__social-label" data-primaterie-patreon-label></span>
       </button>
       <div class="primaterie-portal__anchor">
         <div class="primaterie-portal__actions" data-primaterie-actions>
@@ -93,8 +93,10 @@ export class primateriePortal {
     this.tenVsTenButton = this.element.querySelector<HTMLButtonElement>('[data-primaterie-10v10]')!;
     this.discordButton = this.element.querySelector<HTMLButtonElement>('[data-primaterie-discord]')!;
     this.discordButtonImage = this.element.querySelector<HTMLImageElement>('[data-primaterie-discord-image]')!;
+    this.discordButtonLabel = this.element.querySelector<HTMLSpanElement>('[data-primaterie-discord-label]')!;
     this.patreonButton = this.element.querySelector<HTMLButtonElement>('[data-primaterie-patreon]')!;
     this.patreonButtonImage = this.element.querySelector<HTMLImageElement>('[data-primaterie-patreon-image]')!;
+    this.patreonButtonLabel = this.element.querySelector<HTMLSpanElement>('[data-primaterie-patreon-label]')!;
 
     this.portfolioButton.addEventListener('click', callbacks.onPortfolio);
     this.singlePlayerButton.addEventListener('click', callbacks.onSinglePlayer);
@@ -116,6 +118,7 @@ export class primateriePortal {
     });
 
     this.element.hidden = true;
+    this.element.classList.toggle('is-community-artwork-enabled', this.communityArtworkEnabled);
     this.renderStatic();
     host.appendChild(this.element);
   }
@@ -140,6 +143,7 @@ export class primateriePortal {
       this.setLoading(false);
     } else {
       this.element.removeAttribute('inert');
+      this.scheduleCommunityArtworkLoad();
     }
     this.element.hidden = !visible;
     this.element.setAttribute('aria-hidden', String(!visible));
@@ -174,8 +178,9 @@ export class primateriePortal {
     this.logo.src = HUB_LOGO_ASSETS[theme];
     this.themeButton.src = THEME_TOGGLE_ASSETS[theme];
     this.languageButton.src = LANGUAGE_BUTTON_ASSETS[this.locale];
-    this.discordButtonImage.src = COMMUNITY_BUTTON_ASSETS.discord[theme];
-    this.patreonButtonImage.src = COMMUNITY_BUTTON_ASSETS.patreon[theme];
+    this.discordButtonLabel.textContent = 'Discord';
+    this.patreonButtonLabel.textContent = 'Patreon';
+    this.applyCommunityArtwork(theme);
     this.singlePlayerButton.textContent = this.locale === 'fr' ? 'Aventure' : 'Adventure';
     this.portfolioButton.textContent = 'Portfolio';
     this.threeVsThreeButton.textContent = '3v3';
@@ -189,6 +194,7 @@ export class primateriePortal {
     this.loadingLabel.setAttribute('aria-hidden', String(!this.loading));
     this.setBusy(this.busy);
     this.setLoading(this.loading);
+    this.scheduleCommunityArtworkLoad();
   }
 
   private refreshActionState() {
@@ -203,5 +209,46 @@ export class primateriePortal {
 
   private openExternalLink(url: string) {
     window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
+  private applyCommunityArtwork(theme: 'dark' | 'light') {
+    if (!this.communityArtworkAssets) {
+      this.discordButton.classList.remove('has-artwork');
+      this.patreonButton.classList.remove('has-artwork');
+      this.discordButtonImage.removeAttribute('src');
+      this.patreonButtonImage.removeAttribute('src');
+      return;
+    }
+
+    this.discordButton.classList.add('has-artwork');
+    this.patreonButton.classList.add('has-artwork');
+    this.discordButtonImage.src = this.communityArtworkAssets.discord[theme];
+    this.patreonButtonImage.src = this.communityArtworkAssets.patreon[theme];
+  }
+
+  private scheduleCommunityArtworkLoad() {
+    if (!this.communityArtworkEnabled || !this.visible || this.communityArtworkAssets || this.communityArtworkLoader) {
+      return;
+    }
+
+    const runLoad = () => {
+      this.communityArtworkLoader = import('./PrimateriePortalCommunityAssets')
+        .then((module) => {
+          this.communityArtworkAssets = module.COMMUNITY_BUTTON_ASSETS;
+          this.renderStatic();
+        })
+        .finally(() => {
+          this.communityArtworkLoader = null;
+        });
+    };
+
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+    };
+    if (typeof idleWindow.requestIdleCallback === 'function') {
+      idleWindow.requestIdleCallback(() => runLoad(), { timeout: 1800 });
+      return;
+    }
+    window.setTimeout(runLoad, 240);
   }
 }

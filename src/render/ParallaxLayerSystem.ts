@@ -56,7 +56,7 @@ export class ParallaxLayerSystem {
   private readonly strips = new Map<LayerCategory, ParallaxStrip>();
   private readonly viewportSize = new THREE.Vector2();
   private readonly topHorizonStrip: ParallaxStrip;
-  private readonly momentumBoatLayer: MomentumBoatLayer;
+  private readonly momentumBoatLayer: MomentumBoatLayer | null;
   private readonly verticalOffsetPx: Record<LayerCategory, number> = { ...INITIAL_VERTICAL_OFFSET_PX };
   private topHorizonVerticalOffsetPx = 0;
   private visible = false;
@@ -96,7 +96,8 @@ export class ParallaxLayerSystem {
     scene: THREE.Scene,
     private readonly camera: THREE.PerspectiveCamera,
     private readonly renderer: THREE.WebGLRenderer,
-    initialTheme: ThemeMode
+    initialTheme: ThemeMode,
+    private readonly enableMomentumBoats = true
   ) {
     this.currentTheme = initialTheme;
     this.root.visible = false;
@@ -117,7 +118,9 @@ export class ParallaxLayerSystem {
       this.camera,
       initialTheme
     );
-    this.momentumBoatLayer = new MomentumBoatLayer(this.root, this.camera, initialTheme);
+    this.momentumBoatLayer = this.enableMomentumBoats
+      ? new MomentumBoatLayer(this.root, this.camera, initialTheme)
+      : null;
   }
 
   init() {
@@ -133,10 +136,12 @@ export class ParallaxLayerSystem {
       });
       await preloadParallaxLayerAssets(this.currentTheme);
       recordGameBootDiagnostic('parallax_svg_preload_completed');
-      await preloadMomentumBoatAssets({ phase: mobile ? 'critical' : 'full' });
-      recordGameBootDiagnostic('parallax_momentum_boat_assets_completed', {
-        phase: mobile ? 'critical' : 'full'
-      });
+      if (this.enableMomentumBoats) {
+        await preloadMomentumBoatAssets({ phase: mobile ? 'critical' : 'full' });
+        recordGameBootDiagnostic('parallax_momentum_boat_assets_completed', {
+          phase: mobile ? 'critical' : 'full'
+        });
+      }
       this.captureViewportSize();
       for (const category of PARALLAX_SCENIC_LAYER_ORDER) {
         const strip = this.strips.get(category);
@@ -179,7 +184,7 @@ export class ParallaxLayerSystem {
     this.root.visible = visible && this.initialized;
     this.strips.forEach((strip) => strip.setVisible(visible && this.initialized));
     this.topHorizonStrip.setVisible(visible && this.initialized);
-    this.momentumBoatLayer.setVisible(visible && this.initialized);
+    this.momentumBoatLayer?.setVisible(visible && this.initialized);
     if (visible) {
       this.pendingCoverageRealign = true;
     }
@@ -190,7 +195,7 @@ export class ParallaxLayerSystem {
     this.captureViewportSize();
     this.strips.forEach((strip, category) => strip.setTheme(theme, this.resolveDisplayedHeightPx(PARALLAX_LAYER_CONFIG[category])));
     this.topHorizonStrip.setTheme(theme, this.resolveDisplayedHeightPx(PARALLAX_LAYER_CONFIG.horizon));
-    this.momentumBoatLayer.setTheme(theme);
+    this.momentumBoatLayer?.setTheme(theme);
   }
 
   setMirrorMode(enabled: boolean) {
@@ -249,7 +254,7 @@ export class ParallaxLayerSystem {
     this.topHorizonStrip.resetLayout();
     this.targetMomentumRatio = 0;
     this.smoothedMomentumRatio = 0;
-    this.momentumBoatLayer.resetForRun();
+    this.momentumBoatLayer?.resetForRun();
   }
 
   rearmAdventureIntro() {
@@ -296,8 +301,8 @@ export class ParallaxLayerSystem {
     this.topHorizonStrip.setVisible(this.visible);
     this.topHorizonStrip.setMirrorMode(this.mirrorMode);
     this.topHorizonStrip.setTheme(this.currentTheme, this.resolveDisplayedHeightPx(PARALLAX_LAYER_CONFIG.horizon));
-    this.momentumBoatLayer.setVisible(this.visible);
-    this.momentumBoatLayer.setTheme(this.currentTheme);
+    this.momentumBoatLayer?.setVisible(this.visible);
+    this.momentumBoatLayer?.setTheme(this.currentTheme);
   }
 
   update(deltaTime: number) {
@@ -415,7 +420,7 @@ export class ParallaxLayerSystem {
       this.viewportHeightPx * PARALLAX_LAYER_CONFIG.mid.bottomScreenRatio + PARALLAX_GLOBAL_Y_OFFSET_PX,
       this.viewportHeightPx * PARALLAX_LAYER_CONFIG.foreground.bottomScreenRatio + PARALLAX_GLOBAL_Y_OFFSET_PX
     ];
-    this.momentumBoatLayer.update({
+    this.momentumBoatLayer?.update({
       deltaTime,
       viewportWidthPx: this.viewportWidthPx,
       viewportHeightPx: this.viewportHeightPx,
@@ -442,7 +447,7 @@ export class ParallaxLayerSystem {
     this.strips.forEach((strip) => strip.dispose());
     this.strips.clear();
     this.topHorizonStrip.dispose();
-    this.momentumBoatLayer.dispose();
+    this.momentumBoatLayer?.dispose();
     if (this.root.parent) {
       this.root.parent.remove(this.root);
     }

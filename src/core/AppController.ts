@@ -5,6 +5,8 @@ import type { GameHUDSystem } from '../game/GameHUDSystem';
 import type { GameAudioSystem } from '../game/GameAudioSystem';
 import type { primateriePortal, primaterieModeId } from '../game/PrimatriePortal';
 import type { GameSessionController } from '../game/GameSessionController';
+import { MINI_GAME_PORTAL_CAMERA_OFFSET } from '../game/MiniGamePortalLayout';
+import { createPrimateriePortalPreviewLayout } from '../game/PrimateriePortalPreview';
 import { DragCameraOrbitController } from '../portfolio/DragCameraOrbitController';
 import { IntroVoronoiSystem } from '../portfolio/IntroVoronoiSystem';
 import { OrbitWorldSystem } from '../portfolio/OrbitWorldSystem';
@@ -32,6 +34,7 @@ import {
   isprimaterieMode
 } from './appModePredicates';
 import { applyRuntimeDeviceAttributes, getRuntimeDeviceState, isMobilePortraitRuntime, isMobileRuntime } from './device';
+import { getBrowserAssetCacheStats } from './browserAssetCache';
 import {
   installGameBootDiagnostics,
   recordGameBootDiagnostic,
@@ -39,6 +42,8 @@ import {
   recordGameBootWarning
 } from './gameBootDiagnostics';
 import { damp, wrapIndex } from './math';
+import { PerfDebugOverlay } from './perfDebug';
+import { getPerformanceProfile } from './performanceProfile';
 import { RenderLoop } from './RenderLoop';
 import { addGameBreadcrumb, captureGameException, setSentryContext } from './sentry';
 import { TransitionSystem } from './TransitionSystem';
@@ -58,14 +63,13 @@ const GAME_HELP_TUTORIAL_COMPLETED_KEY = 'portfolio-game-help-tutorial-complete-
 const GAME_GUIDE_EVENT_FLAGS_KEY = 'portfolio-game-guide-events-v1';
 
 type ProjectGameHudPayload = typeof import('../game/projectGameHudPayload').projectGameHudPayload;
+type GameRuntimeModule = typeof import('../game/AppGameRuntime');
 
 interface LoadedGameRuntime {
   game: GameSessionController;
   audio: GameAudioSystem;
   gameHud: GameHUDSystem;
-  primateriePortal: primateriePortal;
   projectGameHudPayload: ProjectGameHudPayload;
-  miniGamePortalCameraOffset: THREE.Vector3;
 }
 
 type IntroMirrorGuideStage = '0' | 'first_click' | '50' | '100';
@@ -99,6 +103,29 @@ export class AppController {
   private readonly cameraOrbit = new DragCameraOrbitController();
   private readonly introStartCameraPosition = new THREE.Vector3(0, 1.6, 42);
   private readonly introStartLookAt = new THREE.Vector3(0, 0, 0);
+  private readonly scratchPivot = new THREE.Vector3();
+  private readonly scratchOrbitPosition = new THREE.Vector3();
+  private readonly scratchOrbitLookAt = new THREE.Vector3();
+  private readonly scratchWorldOrbitPosition = new THREE.Vector3();
+  private readonly scratchWorldOrbitLookAt = new THREE.Vector3();
+  private readonly scratchFocusPosition = new THREE.Vector3();
+  private readonly scratchFocusLookAt = new THREE.Vector3();
+  private readonly scratchPortfolioPosition = new THREE.Vector3();
+  private readonly scratchPortfolioLookAt = new THREE.Vector3();
+  private readonly scratchGamePosition = new THREE.Vector3();
+  private readonly scratchGameLookAt = new THREE.Vector3();
+  private readonly scratchPrimateriePosition = new THREE.Vector3();
+  private readonly scratchPrimaterieLookAt = new THREE.Vector3();
+  private readonly scratchTransitionPosition = new THREE.Vector3();
+  private readonly scratchTransitionLookAt = new THREE.Vector3();
+  private readonly scratchCameraPosition = new THREE.Vector3();
+  private readonly scratchCameraLookAt = new THREE.Vector3();
+  private readonly scratchTransitionAnchor = new THREE.Vector3();
+  private readonly scratchDirection = new THREE.Vector3();
+  private readonly scratchDirectionB = new THREE.Vector3();
+  private readonly scratchFocusPoint = new THREE.Vector3();
+  private readonly scratchAccentColor = new THREE.Color();
+  private readonly scratchAccentColorB = new THREE.Color();
   private cameraFocusBlend = 0;
   private introTransitionProgress = 0;
   private gameTransitionProgress = 0;
@@ -119,9 +146,15 @@ export class AppController {
   private gameTransitionReturningToHub = false;
   private gameTransitionAnchor: THREE.Vector3 | null = null;
   private gameRuntime: LoadedGameRuntime | null = null;
+  private gameRuntimeModule: GameRuntimeModule | null = null;
+  private gameRuntimeModulePromise: Promise<GameRuntimeModule> | null = null;
   private gameRuntimeLoader: Promise<LoadedGameRuntime> | null = null;
+  private gameRuntimeModulePrefetchScheduled = false;
   private gameRuntimeUnsubscribers: Array<() => void> = [];
+  private primateriePortalRuntime: primateriePortal | null = null;
+  private primateriePortalLoader: Promise<primateriePortal> | null = null;
   private pendingGameTransitionRequest: { forceDirectEntry: boolean; skipPreAlign: boolean } | null = null;
+  private primaterieHubShellReadyLogged = false;
   private primaterieHubPreloaded = false;
   private primaterieHubPreloadPromise: Promise<void> | null = null;
   private gameAssetWarmupScheduled = false;
@@ -136,6 +169,11 @@ export class AppController {
   private showMirrorGuideUntil = 0;
   private readonly introMirrorGuideStagesSeen = new Set<IntroMirrorGuideStage>();
   private readonly gameGuideEventFlags = new Set<string>();
+  private readonly perfDebugOverlay: PerfDebugOverlay | null;
+  private lastHudUpdateAt = 0;
+  private lastUiRefreshAt = 0;
+  private lastGuideUpdateAt = 0;
+  private guideDeltaAccumulator = 0;
   private primateriePendingAction: {
     execute: () => void;
   } | null = null;
@@ -149,6 +187,15 @@ export class AppController {
   constructor(host: HTMLElement, options: { entryRoute: AppEntryRoute }) {
     installGameBootDiagnostics();
     recordGameBootDiagnostic('app_controller_constructor_started', { entryRoute: options.entryRoute });
+    recordGameBootDiagnostic('performance_profile_selected', {
+      profile: this.performanceProfile.id,
+      targetGameplayFps: this.performanceProfile.targetGameplayFps,
+      targetShellFps: this.performanceProfile.targetShellFps,
+      backdropQuality: this.performanceProfile.backdropQuality,
+      enableMomentumBoats: this.performanceProfile.enableMomentumBoats,
+      prefetchGameRuntimeOnHubIdle: this.performanceProfile.prefetchGameRuntimeOnHubIdle,
+      loadPortalCommunityArtwork: this.performanceProfile.loadPortalCommunityArtwork
+    });
     setSentryContext('app_boot', {
       entryRoute: options.entryRoute
     });
@@ -201,12 +248,17 @@ export class AppController {
     recordGameBootDiagnostic('world_ok');
     recordGameBootDiagnostic('world_renderer_ready');
     this.renderer.setTheme(this.theme.current);
-    this.musicBackdrop = new MusicReactiveBackdrop(this.renderer.scene, this.theme.current);
+    this.musicBackdrop = new MusicReactiveBackdrop(
+      this.renderer.scene,
+      this.theme.current,
+      this.performanceProfile.backdropQuality
+    );
     this.parallaxLayers = new ParallaxLayerSystem(
       this.renderer.scene,
       this.renderer.camera,
       this.renderer.renderer,
-      this.theme.current
+      this.theme.current,
+      this.performanceProfile.enableMomentumBoats
     );
     recordGameBootDiagnostic('parallax_layer_system_ready', { eagerInitRemoved: true });
     this.slotSystem = new SecretSlotSystem(
@@ -334,7 +386,16 @@ export class AppController {
     );
     void this.interaction;
 
-    this.loop = new RenderLoop((deltaTime, elapsedTime) => this.update(deltaTime, elapsedTime));
+    this.loop = new RenderLoop((deltaTime, elapsedTime) => this.update(deltaTime, elapsedTime), {
+      debugName: 'app-main-loop',
+      getTargetFps: () => this.resolveTargetFps()
+    });
+    this.perfDebugOverlay = new PerfDebugOverlay(() => this.buildPerfDebugSnapshot());
+    if (this.perfDebugOverlay) {
+      addGameBreadcrumb('perf_debug_enabled', {
+        profile: this.performanceProfile.id
+      });
+    }
 
     this.bindEvents();
     this.syncRuntimeDeviceState();
@@ -366,10 +427,105 @@ export class AppController {
   }
 
   private get primateriePortal() {
-    if (!this.gameRuntime) {
+    if (!this.primateriePortalRuntime) {
       throw new Error('primaterie portal accessed before it was loaded.');
     }
-    return this.gameRuntime.primateriePortal;
+    return this.primateriePortalRuntime;
+  }
+
+  private loadGameRuntimeModule(reason: 'construct' | 'prefetch' = 'construct') {
+    if (this.gameRuntimeModule) {
+      return Promise.resolve(this.gameRuntimeModule);
+    }
+    if (this.gameRuntimeModulePromise) {
+      return this.gameRuntimeModulePromise;
+    }
+
+    if (reason === 'prefetch') {
+      recordGameBootDiagnostic('game_runtime_module_prefetch_requested', {
+        profile: this.performanceProfile.id,
+        entryRoute: this.entryRoute
+      });
+    }
+
+    this.gameRuntimeModulePromise = import('../game/AppGameRuntime')
+      .then((module) => {
+        this.gameRuntimeModule = module;
+        recordGameBootDiagnostic(reason === 'prefetch' ? 'game_runtime_module_prefetch_completed' : 'game_runtime_module_loaded');
+        return module;
+      })
+      .catch((error) => {
+        this.gameRuntimeModulePromise = null;
+        if (reason === 'prefetch') {
+          recordGameBootDiagnosticError('game_runtime_module_prefetch_failed', error, {
+            profile: this.performanceProfile.id,
+            entryRoute: this.entryRoute
+          });
+        }
+        throw error;
+      });
+
+    return this.gameRuntimeModulePromise;
+  }
+
+  private async ensurePrimateriePortalLoaded() {
+    if (this.primateriePortalRuntime) {
+      return this.primateriePortalRuntime;
+    }
+    if (this.primateriePortalLoader) {
+      return this.primateriePortalLoader;
+    }
+
+    recordGameBootDiagnostic('primaterie_portal_load_requested', {
+      entryRoute: this.entryRoute,
+      profile: this.performanceProfile.id
+    });
+    this.primateriePortalLoader = import('../game/PrimatriePortal')
+      .then((module) => {
+        recordGameBootDiagnostic('primaterie_portal_module_loaded');
+        if (this.primateriePortalRuntime) {
+          return this.primateriePortalRuntime;
+        }
+
+        const portal = new module.primateriePortal(
+          this.uiHost,
+          {
+            onPortfolio: () => this.returnToPortfolioFromprimateriePortal(),
+            onSinglePlayer: () => this.activateprimaterieMode('adventure'),
+            onThemeToggle: () => this.theme.toggle(),
+            onLanguageToggle: () => this.i18n.toggle()
+          },
+          {
+            loadCommunityArtwork: this.performanceProfile.loadPortalCommunityArtwork
+          }
+        );
+        portal.setLocale(this.i18n.current);
+        this.primateriePortalRuntime = portal;
+        recordGameBootDiagnostic('primaterie_portal_constructed', {
+          communityArtwork: this.performanceProfile.loadPortalCommunityArtwork
+        });
+        this.refreshUI();
+        return portal;
+      })
+      .catch((error) => {
+        recordGameBootDiagnosticError('primaterie_portal_load_failed', error, {
+          entryRoute: this.entryRoute
+        });
+        captureGameException(error, {
+          event: 'primaterie_portal_load_failed',
+          category: 'primaterie_portal',
+          data: {
+            entryRoute: this.entryRoute,
+            profile: this.performanceProfile.id
+          }
+        });
+        throw error;
+      })
+      .finally(() => {
+        this.primateriePortalLoader = null;
+      });
+
+    return this.primateriePortalLoader;
   }
 
   private async ensureGameRuntimeLoaded() {
@@ -384,9 +540,8 @@ export class AppController {
       entryRoute: this.entryRoute
     });
     recordGameBootDiagnostic('game_runtime_load_requested');
-    this.gameRuntimeLoader = import('../game/AppGameRuntime')
+    this.gameRuntimeLoader = this.loadGameRuntimeModule('construct')
       .then((module) => {
-        recordGameBootDiagnostic('game_runtime_module_loaded');
         if (this.gameRuntime) {
           return this.gameRuntime;
         }
@@ -480,30 +635,6 @@ export class AppController {
         }
         recordGameBootDiagnostic('game_runtime_construct_hud_completed');
 
-        recordGameBootDiagnostic('game_runtime_construct_portal_started');
-        let primateriePortal: primateriePortal;
-        try {
-          primateriePortal = new module.primateriePortal(this.uiHost, {
-            onPortfolio: () => this.returnToPortfolioFromprimateriePortal(),
-            onSinglePlayer: () => this.activateprimaterieMode('adventure'),
-            onThemeToggle: () => this.theme.toggle(),
-            onLanguageToggle: () => this.i18n.toggle()
-          });
-        } catch (error) {
-          recordGameBootDiagnosticError('game_runtime_construct_portal_failed', error);
-          captureGameException(error, {
-            event: 'game_runtime_construct_portal_failed',
-            category: 'app_runtime',
-            data: {
-              entryRoute: this.entryRoute,
-              locale: this.i18n.current
-            }
-          });
-          throw error;
-        }
-        recordGameBootDiagnostic('game_runtime_construct_portal_completed');
-        primateriePortal.setLocale(this.i18n.current);
-
         // Store unsubscribe functions so they can be cleaned up when leaving the game runtime
         this.gameRuntimeUnsubscribers = [
           audio.onSettingsChange((settings) => {
@@ -523,9 +654,7 @@ export class AppController {
           game,
           audio,
           gameHud,
-          primateriePortal,
-          projectGameHudPayload: module.projectGameHudPayload,
-          miniGamePortalCameraOffset: module.MINI_GAME_PORTAL_CAMERA_OFFSET
+          projectGameHudPayload: module.projectGameHudPayload
         };
         this.gameRuntime = runtime;
 
@@ -573,27 +702,28 @@ export class AppController {
     if (!this.mode.is('primaterie_portal')) {
       this.mode.setMode('primaterie_portal');
     }
-    void this.ensureGameRuntimeLoaded()
+    void this.ensurePrimateriePortalLoaded()
       .then(() => {
         if (this.entryRoute === 'primaterie') {
           this.enterprimateriePortalMode();
+          this.scheduleGameRuntimeModulePrefetch();
         }
       })
       .catch((error) => {
-        recordGameBootDiagnosticError('entry_route_game_runtime_failed', error);
+        recordGameBootDiagnosticError('entry_route_primaterie_portal_failed', error);
         captureGameException(error, {
-          event: 'entry_route_game_runtime_failed',
+          event: 'entry_route_primaterie_portal_failed',
           category: 'entry_route',
           data: {
             entryRoute: this.entryRoute
           }
         });
-        console.error('Failed to load game runtime for /primaterie.', error);
+        console.error('Failed to load primaterie portal for /primaterie.', error);
       });
   }
 
   private setprimateriePortalVisible(visible: boolean) {
-    this.gameRuntime?.primateriePortal.setVisible(visible);
+    this.primateriePortalRuntime?.setVisible(visible);
   }
 
   private preloadprimaterieHubAssets() {
@@ -636,7 +766,7 @@ export class AppController {
         phase: mobile ? 'critical' : 'full'
       });
       recordGameBootDiagnostic('primaterie_hub_preload_completed');
-      recordGameBootDiagnostic('primaterie_hub_stable_interactive', {
+      recordGameBootDiagnostic('primaterie_hub_assets_prepared', {
         mobile,
         fullWarmupStrategy: mobile ? 'on_game_start' : 'immediate'
       });
@@ -668,6 +798,46 @@ export class AppController {
       });
 
     return this.primaterieHubPreloadPromise;
+  }
+
+  private scheduleGameRuntimeModulePrefetch() {
+    if (
+      !this.performanceProfile.prefetchGameRuntimeOnHubIdle ||
+      this.entryRoute !== 'primaterie' ||
+      this.gameRuntime ||
+      this.gameRuntimeLoader ||
+      this.gameRuntimeModule ||
+      this.gameRuntimeModulePromise ||
+      this.gameRuntimeModulePrefetchScheduled
+    ) {
+      return;
+    }
+
+    this.gameRuntimeModulePrefetchScheduled = true;
+    const runPrefetch = () => {
+      if (
+        this.entryRoute !== 'primaterie' ||
+        !this.mode.is('primaterie_portal') ||
+        this.gameRuntime ||
+        this.gameRuntimeLoader ||
+        this.gameRuntimeModule
+      ) {
+        this.gameRuntimeModulePrefetchScheduled = false;
+        return;
+      }
+      void this.loadGameRuntimeModule('prefetch').finally(() => {
+        this.gameRuntimeModulePrefetchScheduled = false;
+      });
+    };
+
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+    };
+    if (typeof idleWindow.requestIdleCallback === 'function') {
+      idleWindow.requestIdleCallback(runPrefetch, { timeout: 2600 });
+      return;
+    }
+    window.setTimeout(runPrefetch, 900);
   }
 
   private scheduleGameAssetWarmup() {
@@ -720,7 +890,7 @@ export class AppController {
   }
 
   private enterprimateriePortalMode() {
-    if (!this.gameRuntime) {
+    if (!this.primateriePortalRuntime) {
       return;
     }
     if (!this.mode.is('primaterie_portal')) {
@@ -731,23 +901,37 @@ export class AppController {
     this.slotSystem.reset();
     this.interaction.reset();
     this.world.setHovered(null);
-    this.game.beginPortalPreview();
-    this.game.clearPortalPreviewTransitionIntent();
+    if (this.gameRuntime) {
+      this.game.beginPortalPreview();
+      this.game.clearPortalPreviewTransitionIntent();
+    }
     this.syncprimateriePortalLayout();
     this.primateriePortal.setBusy(false);
-    this.primateriePortal.setLoading(!this.primaterieHubPreloaded);
+    this.primateriePortal.setLoading(false);
     this.setprimateriePortalVisible(true);
-    if (!this.primaterieHubPreloaded) {
-      void this.preloadprimaterieHubAssets();
+    if (!this.primaterieHubShellReadyLogged) {
+      this.primaterieHubShellReadyLogged = true;
+      recordGameBootDiagnostic('primaterie_hub_shell_ready', {
+        entryRoute: this.entryRoute,
+        runtimeLoaded: Boolean(this.gameRuntime),
+        runtimePrefetch: this.performanceProfile.prefetchGameRuntimeOnHubIdle,
+        communityArtwork: this.performanceProfile.loadPortalCommunityArtwork
+      });
+      recordGameBootDiagnostic('primaterie_hub_stable_interactive', {
+        entryRoute: this.entryRoute,
+        runtimeLoaded: Boolean(this.gameRuntime),
+        gameRuntimeStrategy: this.performanceProfile.prefetchGameRuntimeOnHubIdle ? 'idle_chunk_prefetch' : 'on_demand',
+        assetWarmupStrategy: 'on_adventure'
+      });
     }
     this.refreshUI();
   }
 
   private activateprimaterieMode(modeId: primaterieModeId) {
-    if (!this.gameRuntime) {
+    if (!this.primateriePortalRuntime) {
       return;
     }
-    if (!this.mode.is('primaterie_portal') || this.primateriePendingAction || !this.primaterieHubPreloaded) {
+    if (!this.mode.is('primaterie_portal') || this.primateriePendingAction) {
       return;
     }
     if (modeId !== 'adventure') {
@@ -757,10 +941,38 @@ export class AppController {
       execute: () => this.startGameTransition(true)
     };
     this.primateriePortal.setBusy(true);
+    this.primateriePortal.setLoading(true);
+    void this.ensureGameRuntimeLoaded()
+      .then(() => {
+        if (!this.mode.is('primaterie_portal') || !this.primateriePendingAction) {
+          return;
+        }
+        this.game.beginPortalPreview();
+        this.game.clearPortalPreviewTransitionIntent();
+        this.syncprimateriePortalLayout();
+        return this.preloadprimaterieHubAssets();
+      })
+      .catch((error) => {
+        this.primateriePendingAction = null;
+        this.primateriePortal.setBusy(false);
+        this.primateriePortal.setLoading(false);
+        recordGameBootDiagnosticError('primaterie_adventure_prepare_failed', error, {
+          entryRoute: this.entryRoute
+        });
+        captureGameException(error, {
+          event: 'primaterie_adventure_prepare_failed',
+          category: 'primaterie_portal',
+          data: {
+            entryRoute: this.entryRoute,
+            modeId
+          }
+        });
+        console.error('Failed to prepare the mini-game runtime from the primaterie hub.', error);
+      });
   }
 
   private returnToPortfolioFromprimateriePortal() {
-    if (!this.gameRuntime) {
+    if (!this.primateriePortalRuntime) {
       return;
     }
     if (!this.mode.is('primaterie_portal')) {
@@ -773,10 +985,15 @@ export class AppController {
 
     this.entryRoute = 'portfolio';
     window.history.replaceState(null, '', '/');
+    this.primateriePendingAction = null;
+    this.primateriePortal.setBusy(false);
+    this.primateriePortal.setLoading(false);
     this.setprimateriePortalVisible(false);
     this.mode.setMode('primaterie_transition');
     this.primaterieReturnProgress = 0;
-    this.game.stop();
+    if (this.gameRuntime) {
+      this.game.stop();
+    }
     this.world.beginExternalLayoutTransition(this.world.getOrbitPositions(), undefined, undefined, {
       staggerVisibleIndex: 0,
       reverseStagger: true
@@ -808,10 +1025,12 @@ export class AppController {
   }
 
   private syncprimateriePortalLayout() {
-    if (!this.gameRuntime) {
+    if (!this.primateriePortalRuntime) {
       return;
     }
-    const preview = this.game.getPortalPreviewLayout();
+    const preview = this.gameRuntime
+      ? this.game.getPortalPreviewLayout()
+      : createPrimateriePortalPreviewLayout(performance.now() / 1000);
     this.world.setSingleNodeExternalLayout(preview.position, preview.visual);
     const projected = this.renderer.projectWorldToScreen(preview.position);
     this.primateriePortal.setAnchor(projected.x, projected.y, 1);
@@ -839,16 +1058,16 @@ export class AppController {
       this.voronoiReveal.setTheme(theme);
       if (this.gameRuntime) {
         this.game.setTheme(theme);
-        this.primateriePortal.setLocale(this.i18n.current);
       }
+      this.primateriePortalRuntime?.setLocale(this.i18n.current);
       this.refreshUI();
     });
 
     this.i18n.onChange(() => {
       if (this.gameRuntime) {
         this.game.setLocale(this.i18n.current);
-        this.primateriePortal.setLocale(this.i18n.current);
       }
+      this.primateriePortalRuntime?.setLocale(this.i18n.current);
       this.refreshUI();
       const focusedProject = this.world.getFocusedProject();
       if (focusedProject) {
@@ -1846,15 +2065,101 @@ export class AppController {
     );
   }
 
-  private getprimateriePortalCameraPose() {
-    if (!this.gameRuntime) {
-      throw new Error('primaterie portal camera pose requested before runtime load.');
-    }
-    const preview = this.game.getPortalPreviewLayout();
+  private getprimateriePortalCameraPose(
+    positionTarget: THREE.Vector3 = this.scratchPrimateriePosition,
+    lookAtTarget: THREE.Vector3 = this.scratchPrimaterieLookAt
+  ) {
+    const preview = this.gameRuntime
+      ? this.game.getPortalPreviewLayout()
+      : createPrimateriePortalPreviewLayout(performance.now() / 1000);
     const mobilePreviewScale = window.innerWidth <= 820 ? 0.88 : 1;
     return {
-      position: preview.position.clone().add(this.gameRuntime.miniGamePortalCameraOffset.clone().multiplyScalar(mobilePreviewScale)),
-      lookAt: preview.position.clone()
+      position: positionTarget.copy(preview.position).addScaledVector(MINI_GAME_PORTAL_CAMERA_OFFSET, mobilePreviewScale),
+      lookAt: lookAtTarget.copy(preview.position)
+    };
+  }
+
+  private get performanceProfile() {
+    return getPerformanceProfile();
+  }
+
+  private resolveTargetFps() {
+    const profile = this.performanceProfile;
+    return this.mode.is('game') || this.mode.is('game_transition') || this.mode.is('game_over')
+      ? profile.targetGameplayFps
+      : profile.targetShellFps;
+  }
+
+  private shouldRefreshUi(elapsedTime: number) {
+    const nextRefreshAt = this.lastUiRefreshAt + this.performanceProfile.uiRefreshIntervalMs / 1000;
+    if (elapsedTime < nextRefreshAt) {
+      return false;
+    }
+    this.lastUiRefreshAt = elapsedTime;
+    return true;
+  }
+
+  private shouldUpdateGameHud(elapsedTime: number) {
+    const nextUpdateAt = this.lastHudUpdateAt + this.performanceProfile.hudUpdateIntervalMs / 1000;
+    if (elapsedTime < nextUpdateAt) {
+      return false;
+    }
+    this.lastHudUpdateAt = elapsedTime;
+    return true;
+  }
+
+  private shouldUpdateGuide(elapsedTime: number) {
+    const nextUpdateAt = this.lastGuideUpdateAt + this.performanceProfile.guideUpdateIntervalMs / 1000;
+    if (elapsedTime < nextUpdateAt) {
+      return false;
+    }
+    this.lastGuideUpdateAt = elapsedTime;
+    return true;
+  }
+
+  private buildPerfDebugSnapshot() {
+    const profile = this.performanceProfile;
+    const loopStats = this.loop.getStats();
+    const rendererStats = this.renderer.getDebugStats();
+    const assetStats = getBrowserAssetCacheStats();
+    const memory = (performance as Performance & {
+      memory?: {
+        usedJSHeapSize?: number;
+        jsHeapSizeLimit?: number;
+      };
+    }).memory;
+    const flags = [
+      `backdrop:${profile.backdropQuality}`,
+      `boats:${profile.enableMomentumBoats ? 'on' : 'off'}`,
+      `helpAuto:${profile.enableAutoHelpTutorial ? 'on' : 'off'}`,
+      `runtimePrefetch:${profile.prefetchGameRuntimeOnHubIdle ? 'on' : 'off'}`,
+      `portalArtwork:${profile.loadPortalCommunityArtwork ? 'on' : 'off'}`
+    ];
+    return {
+      profile: profile.id,
+      mode: this.mode.current,
+      gameState: this.gameRuntime ? this.game.currentState : null,
+      targetFps: this.resolveTargetFps(),
+      fpsAverage: loopStats.fpsAverage,
+      frameMsAverage: loopStats.frameMsAverage,
+      frameMsP95: loopStats.frameMsP95,
+      activeLoops: loopStats.activeLoopCount,
+      rendererCalls: rendererStats.renderCalls,
+      rendererTriangles: rendererStats.triangles,
+      rendererPoints: rendererStats.points,
+      rendererLines: rendererStats.lines,
+      rendererTextures: rendererStats.textures,
+      rendererGeometries: rendererStats.geometries,
+      visibleObjects: rendererStats.visibleObjects,
+      assetCachedImages: assetStats.cachedImages,
+      assetLoadedImages: assetStats.loadedImages,
+      assetCachedTextures: assetStats.cachedTextures,
+      assetQueuedPreloads: assetStats.queuedPreloads,
+      assetActivePreloads: assetStats.activePreloads,
+      assetPreloadConcurrency: assetStats.preloadConcurrency,
+      memoryUsedMb: memory?.usedJSHeapSize ? memory.usedJSHeapSize / (1024 * 1024) : null,
+      memoryLimitMb: memory?.jsHeapSizeLimit ? memory.jsHeapSizeLimit / (1024 * 1024) : null,
+      flags
     };
   }
 
@@ -1862,23 +2167,29 @@ export class AppController {
     const cycleDuration = ACCENT_COLOR_HOLD_SECONDS + ACCENT_COLOR_BLEND_SECONDS;
     const cycleIndex = Math.floor(elapsedTime / cycleDuration) % ACCENT_COLOR_CYCLE.length;
     const cycleTime = elapsedTime % cycleDuration;
-    const from = new THREE.Color(ACCENT_COLOR_CYCLE[cycleIndex]);
+    const from = this.scratchAccentColor.set(ACCENT_COLOR_CYCLE[cycleIndex]);
     if (cycleTime <= ACCENT_COLOR_HOLD_SECONDS) {
       return `#${from.getHexString()}`;
     }
-    const to = new THREE.Color(ACCENT_COLOR_CYCLE[(cycleIndex + 1) % ACCENT_COLOR_CYCLE.length]);
+    const to = this.scratchAccentColorB.set(ACCENT_COLOR_CYCLE[(cycleIndex + 1) % ACCENT_COLOR_CYCLE.length]);
     const blend = THREE.MathUtils.clamp((cycleTime - ACCENT_COLOR_HOLD_SECONDS) / ACCENT_COLOR_BLEND_SECONDS, 0, 1);
     from.lerp(to, blend);
     return `#${from.getHexString()}`;
   }
 
   private update(deltaTime: number, elapsedTime: number) {
+    this.guideDeltaAccumulator += deltaTime;
     this.transitions.update(deltaTime);
     const accentColor = this.getAccentColor(elapsedTime);
     document.documentElement.style.setProperty('--accent-color', accentColor);
     this.voronoiReveal.setEnabled(!isGameRuntimeMode(this.mode.current));
     this.voronoiReveal.update(deltaTime);
-    const cameraOrbitPose = this.cameraOrbit.update(deltaTime, this.world.getPivot());
+    const cameraOrbitPose = this.cameraOrbit.update(
+      deltaTime,
+      this.world.getPivot(this.scratchPivot),
+      this.scratchOrbitPosition,
+      this.scratchOrbitLookAt
+    );
     if (this.mode.is('game_transition')) {
       this.syncWorldCameraReferenceFromRenderer();
     } else {
@@ -1900,21 +2211,6 @@ export class AppController {
         this.game.currentState !== 'idle';
       this.audio.setEnabled(audioActive);
       this.audio.update(this.game.getAudioState(), deltaTime);
-
-      if (this.mode.is('primaterie_portal')) {
-        let portalTransitionStarted = false;
-        if (this.primateriePendingAction) {
-          const pendingAction = this.primateriePendingAction;
-          if (this.game.preparePortalPreviewTransition('forward')) {
-            this.primateriePendingAction = null;
-            pendingAction.execute();
-            portalTransitionStarted = true;
-          }
-        }
-        if (!portalTransitionStarted && this.mode.is('primaterie_portal')) {
-          this.syncprimateriePortalLayout();
-        }
-      }
 
       if (this.mode.is('game') || this.mode.is('game_over')) {
         const gameFieldCount = this.getGameFieldCount();
@@ -1946,6 +2242,21 @@ export class AppController {
       }
     }
 
+    if (this.mode.is('primaterie_portal') && this.primateriePortalRuntime) {
+      let portalTransitionStarted = false;
+      if (gameRuntime && this.primateriePendingAction) {
+        const pendingAction = this.primateriePendingAction;
+        if (this.game.preparePortalPreviewTransition('forward')) {
+          this.primateriePendingAction = null;
+          pendingAction.execute();
+          portalTransitionStarted = true;
+        }
+      }
+      if (!portalTransitionStarted && this.mode.is('primaterie_portal')) {
+        this.syncprimateriePortalLayout();
+      }
+    }
+
     if (this.mode.is('focus_enter') && this.world.isFocusSettled()) {
       this.mode.setMode('focus');
       const focusedProject = this.world.getFocusedProject();
@@ -1971,38 +2282,47 @@ export class AppController {
       deltaTime
     );
 
-    const orbitPose = this.world.getOrbitCameraPose();
-    const focusPose = this.world.getFocusCameraPose();
-    const portfolioPosition = cameraOrbitPose.position.clone().lerp(focusPose.position, this.cameraFocusBlend);
-    const portfolioLookAt = cameraOrbitPose.lookAt.clone().lerp(orbitPose.lookAt, 0.18).lerp(focusPose.lookAt, this.cameraFocusBlend);
+    const orbitPose = this.world.getOrbitCameraPose(this.scratchWorldOrbitPosition, this.scratchWorldOrbitLookAt);
+    const focusPose = this.world.getFocusCameraPose(this.scratchFocusPosition, this.scratchFocusLookAt);
+    const portfolioPosition = this.scratchPortfolioPosition.copy(cameraOrbitPose.position).lerp(focusPose.position, this.cameraFocusBlend);
+    const portfolioLookAt = this.scratchPortfolioLookAt
+      .copy(cameraOrbitPose.lookAt)
+      .lerp(orbitPose.lookAt, 0.18)
+      .lerp(focusPose.lookAt, this.cameraFocusBlend);
     const gamePose = gameRuntime
-      ? this.game.getCameraPose()
+      ? this.game.copyCameraPose(this.scratchGamePosition, this.scratchGameLookAt)
       : {
-          position: portfolioPosition.clone(),
-          lookAt: portfolioLookAt.clone()
+          position: this.scratchGamePosition.copy(portfolioPosition),
+          lookAt: this.scratchGameLookAt.copy(portfolioLookAt)
         };
     const primateriePose =
-      gameRuntime && (this.mode.is('primaterie_portal') || this.mode.is('primaterie_transition') || this.gameTransitionFromprimaterie)
-        ? this.getprimateriePortalCameraPose()
+      this.primateriePortalRuntime && (this.mode.is('primaterie_portal') || this.mode.is('primaterie_transition') || this.gameTransitionFromprimaterie)
+        ? this.getprimateriePortalCameraPose(this.scratchPrimateriePosition, this.scratchPrimaterieLookAt)
         : null;
     const primaterieBasePosition =
       primateriePose && (this.mode.is('primaterie_portal') || this.mode.is('primaterie_transition'))
-        ? primateriePose.position.clone().lerp(portfolioPosition, this.primaterieReturnProgress)
+        ? this.scratchCameraPosition.copy(primateriePose.position).lerp(portfolioPosition, this.primaterieReturnProgress)
         : portfolioPosition;
     const primaterieBaseLookAt =
       primateriePose && (this.mode.is('primaterie_portal') || this.mode.is('primaterie_transition'))
-        ? primateriePose.lookAt.clone().lerp(portfolioLookAt, this.primaterieReturnProgress)
+        ? this.scratchCameraLookAt.copy(primateriePose.lookAt).lerp(portfolioLookAt, this.primaterieReturnProgress)
         : portfolioLookAt;
     const transitionPose = this.getGameTransitionCameraPose(
       this.gameTransitionFromprimaterie && primateriePose ? primateriePose.position : primaterieBasePosition,
       this.gameTransitionFromprimaterie && primateriePose ? primateriePose.lookAt : primaterieBaseLookAt,
       gamePose.position,
-      gamePose.lookAt
+      gamePose.lookAt,
+      this.scratchTransitionPosition,
+      this.scratchTransitionLookAt
     );
     const blendedPosition = transitionPose.position;
     const blendedLookAt = transitionPose.lookAt;
-    const cameraPosition = this.introStartCameraPosition.clone().lerp(blendedPosition, this.introTransitionProgress);
-    const cameraLookAt = this.introStartLookAt.clone().lerp(blendedLookAt, this.introTransitionProgress);
+    const cameraPosition = this.scratchCameraPosition
+      .copy(this.introStartCameraPosition)
+      .lerp(blendedPosition, this.introTransitionProgress);
+    const cameraLookAt = this.scratchCameraLookAt
+      .copy(this.introStartLookAt)
+      .lerp(blendedLookAt, this.introTransitionProgress);
 
     this.renderer.setCameraResponse(
       this.mode.is('game_transition') || this.mode.is('game') || this.mode.is('game_over') ? 18 : 8,
@@ -2069,7 +2389,8 @@ export class AppController {
     if (
       gameRuntime &&
       (this.mode.is('game_transition') || this.mode.is('game') || this.mode.is('game_over')) &&
-      !this.gameTransitionReturningToHub
+      !this.gameTransitionReturningToHub &&
+      this.shouldUpdateGameHud(elapsedTime)
     ) {
       this.gameHud.update(this.getGameHudPayload());
     }
@@ -2084,8 +2405,13 @@ export class AppController {
     this.intro.update(deltaTime);
     this.updateRotateOverlay();
 
-    this.refreshUI();
-    this.guide.update(deltaTime);
+    if (this.shouldRefreshUi(elapsedTime)) {
+      this.refreshUI();
+    }
+    if (this.shouldUpdateGuide(elapsedTime)) {
+      this.guide.update(this.guideDeltaAccumulator);
+      this.guideDeltaAccumulator = 0;
+    }
   }
 
   private refreshUI() {
@@ -2354,7 +2680,7 @@ export class AppController {
   }
 
   private getGuidePrimaterieAnchorTarget() {
-    if (!this.gameRuntime) {
+    if (!this.primateriePortalRuntime) {
       return this.createGuideTarget(window.innerWidth * 0.5, window.innerHeight * 0.52, 220, 220);
     }
     const anchor = this.primateriePortal.element.querySelector<HTMLElement>('.primaterie-portal__anchor');
@@ -2656,17 +2982,20 @@ export class AppController {
     portfolioPosition: THREE.Vector3,
     portfolioLookAt: THREE.Vector3,
     gamePosition: THREE.Vector3,
-    gameLookAt: THREE.Vector3
+    gameLookAt: THREE.Vector3,
+    positionTarget: THREE.Vector3 = this.scratchTransitionPosition,
+    lookAtTarget: THREE.Vector3 = this.scratchTransitionLookAt
   ) {
     if (this.mode.is('game_transition') && this.gameTransitionFromprimaterie) {
-      const focusPoint = this.game.getPlayerFocusPoint().clone().add(new THREE.Vector3(0, 0.2, 0));
-      const entryOffset = portfolioPosition.clone().sub(focusPoint);
+      const focusPoint = this.game.getPlayerFocusPoint(this.scratchFocusPoint).add(this.scratchDirection.set(0, 0.2, 0));
+      const entryOffset = this.scratchDirectionB.copy(portfolioPosition).sub(focusPoint);
+      const entryOffsetLength = entryOffset.length();
       const entryDirection =
-        entryOffset.lengthSq() > 0.0001 ? entryOffset.clone().normalize() : new THREE.Vector3(0, 0.18, 1);
-      const cinematicPosition = focusPoint
-        .clone()
-        .addScaledVector(entryDirection, Math.max(0.54, entryOffset.length() * 0.14))
-        .add(new THREE.Vector3(0, 0.04, 0));
+        entryOffsetLength > 0.0001 ? entryOffset.normalize() : this.scratchDirection.set(0, 0.18, 1);
+      const cinematicPosition = this.scratchTransitionAnchor
+        .copy(focusPoint)
+        .addScaledVector(entryDirection, Math.max(0.54, entryOffsetLength * 0.14))
+        .add(this.scratchDirectionB.set(0, 0.04, 0));
 
       if (this.gameTransitionProgress <= primaterie_TO_GAME_CINEMATIC_FOCUS_END) {
         const zoomPhase = THREE.MathUtils.smoothstep(
@@ -2675,15 +3004,15 @@ export class AppController {
           1
         );
         return {
-          position: portfolioPosition.clone().lerp(cinematicPosition, zoomPhase),
-          lookAt: portfolioLookAt.clone().lerp(focusPoint, zoomPhase)
+          position: positionTarget.copy(portfolioPosition).lerp(cinematicPosition, zoomPhase),
+          lookAt: lookAtTarget.copy(portfolioLookAt).lerp(focusPoint, zoomPhase)
         };
       }
 
       if (this.gameTransitionProgress <= primaterie_TO_GAME_CINEMATIC_HOLD_END) {
         return {
-          position: cinematicPosition,
-          lookAt: focusPoint
+          position: positionTarget.copy(cinematicPosition),
+          lookAt: lookAtTarget.copy(focusPoint)
         };
       }
 
@@ -2698,27 +3027,30 @@ export class AppController {
         1
       );
       return {
-        position: cinematicPosition.clone().lerp(gamePosition, returnPhase),
-        lookAt: focusPoint.clone().lerp(gameLookAt, returnPhase)
+        position: positionTarget.copy(cinematicPosition).lerp(gamePosition, returnPhase),
+        lookAt: lookAtTarget.copy(focusPoint).lerp(gameLookAt, returnPhase)
       };
     }
 
     if (!this.mode.is('game_transition')) {
       return {
-        position: portfolioPosition.clone().lerp(gamePosition, this.gameTransitionProgress),
-        lookAt: portfolioLookAt.clone().lerp(gameLookAt, this.gameTransitionProgress)
+        position: positionTarget.copy(portfolioPosition).lerp(gamePosition, this.gameTransitionProgress),
+        lookAt: lookAtTarget.copy(portfolioLookAt).lerp(gameLookAt, this.gameTransitionProgress)
       };
     }
 
-    const transitionLookAt = this.gameTransitionAnchor?.clone() ?? portfolioLookAt.clone();
-    const portfolioOffset = portfolioPosition.clone().sub(transitionLookAt);
+    const transitionLookAt = this.gameTransitionAnchor
+      ? this.scratchTransitionAnchor.copy(this.gameTransitionAnchor)
+      : this.scratchTransitionAnchor.copy(portfolioLookAt);
+    const portfolioOffset = this.scratchDirection.copy(portfolioPosition).sub(transitionLookAt);
+    const portfolioOffsetLength = portfolioOffset.length();
     const portfolioDirection =
-      portfolioOffset.lengthSq() > 0.0001 ? portfolioOffset.clone().normalize() : new THREE.Vector3(0, 0.04, 1);
-    const alignedRadius = Math.max(19.4, portfolioOffset.length() * 0.92);
-    const alignedPosition = transitionLookAt
-      .clone()
+      portfolioOffsetLength > 0.0001 ? portfolioOffset.normalize() : this.scratchDirectionB.set(0, 0.04, 1);
+    const alignedRadius = Math.max(19.4, portfolioOffsetLength * 0.92);
+    const alignedPosition = this.scratchFocusPoint
+      .copy(transitionLookAt)
       .addScaledVector(portfolioDirection, alignedRadius)
-      .add(new THREE.Vector3(0, 0.16, 0));
+      .add(this.scratchDirectionB.set(0, 0.16, 0));
 
     const rotatePhase = THREE.MathUtils.smoothstep(
       THREE.MathUtils.clamp(this.gameTransitionProgress / PORTFOLIO_TO_GAME_ROTATE_PHASE_END, 0, 1),
@@ -2727,15 +3059,15 @@ export class AppController {
     );
     if (this.gameTransitionProgress <= PORTFOLIO_TO_GAME_ROTATE_PHASE_END) {
       return {
-        position: portfolioPosition.clone().lerp(alignedPosition, rotatePhase),
-        lookAt: portfolioLookAt.clone().lerp(transitionLookAt, rotatePhase)
+        position: positionTarget.copy(portfolioPosition).lerp(alignedPosition, rotatePhase),
+        lookAt: lookAtTarget.copy(portfolioLookAt).lerp(transitionLookAt, rotatePhase)
       };
     }
 
     if (this.gameTransitionProgress <= PORTFOLIO_TO_GAME_HOLD_PHASE_END) {
       return {
-        position: alignedPosition.clone(),
-        lookAt: transitionLookAt.clone()
+        position: positionTarget.copy(alignedPosition),
+        lookAt: lookAtTarget.copy(transitionLookAt)
       };
     }
 
@@ -2750,8 +3082,8 @@ export class AppController {
       1
     );
     return {
-      position: alignedPosition.clone().lerp(gamePosition, stackPhase),
-      lookAt: transitionLookAt.clone().lerp(gameLookAt, stackPhase)
+      position: positionTarget.copy(alignedPosition).lerp(gamePosition, stackPhase),
+      lookAt: lookAtTarget.copy(transitionLookAt).lerp(gameLookAt, stackPhase)
     };
   }
 

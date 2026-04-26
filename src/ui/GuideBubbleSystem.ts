@@ -905,6 +905,20 @@ export class GuideBubbleSystem {
   }
 
   update(deltaTime: number) {
+    const dormant =
+      !this.playback &&
+      this.queue.length === 0 &&
+      !this.helpPanelOpen &&
+      !this.currentPresence.visible &&
+      !this.visible &&
+      !this.manuallyDisabled &&
+      !this.suspended &&
+      this.currentAnimation !== 'arrive' &&
+      this.currentAnimation !== 'leave';
+    if (dormant) {
+      return;
+    }
+
     const now = performance.now();
     this.advancePlayback(now);
 

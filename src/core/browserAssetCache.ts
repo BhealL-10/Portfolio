@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getPerformanceProfile } from './performanceProfile';
 
 interface SharedTextureOptions {
   colorSpace?: THREE.ColorSpace;
@@ -25,11 +26,54 @@ interface SharedImageEntry {
   listeners: Set<() => void>;
 }
 
+interface PreloadQueueEntry {
+  src: string;
+  decoding: HTMLImageElement['decoding'];
+  resolve: () => void;
+}
+
 const textureLoader = new THREE.TextureLoader();
 const textureCache = new Map<string, THREE.Texture>();
 const rasterizedTextureCache = new Map<string, Promise<THREE.Texture>>();
 const imageCache = new Map<string, SharedImageEntry>();
+const imagePreloadPromises = new Map<string, Promise<void>>();
 const MAX_RASTERIZED_CANVAS_DIMENSION = 4096;
+const preloadQueue: PreloadQueueEntry[] = [];
+let activePreloadCount = 0;
+
+function getPreloadConcurrencyLimit() {
+  return Math.max(1, getPerformanceProfile().assetPreloadConcurrency);
+}
+
+function pumpPreloadQueue() {
+  while (activePreloadCount < getPreloadConcurrencyLimit() && preloadQueue.length > 0) {
+    const next = preloadQueue.shift();
+    if (!next) {
+      return;
+    }
+    activePreloadCount += 1;
+    void performImagePreload(next.src, next.decoding).finally(() => {
+      activePreloadCount = Math.max(0, activePreloadCount - 1);
+      next.resolve();
+      pumpPreloadQueue();
+    });
+  }
+}
+
+function enqueueImagePreload(src: string, decoding: HTMLImageElement['decoding']) {
+  const queued = imagePreloadPromises.get(src);
+  if (queued) {
+    return queued;
+  }
+  const request = new Promise<void>((resolve) => {
+    preloadQueue.push({ src, decoding, resolve });
+    pumpPreloadQueue();
+  }).finally(() => {
+    imagePreloadPromises.delete(src);
+  });
+  imagePreloadPromises.set(src, request);
+  return request;
+}
 
 function buildTextureCacheKey(src: string, options: SharedTextureOptions) {
   return JSON.stringify([
@@ -145,7 +189,7 @@ export function getSharedImageAsset(
   return entry.image;
 }
 
-export function preloadImageAsset(src: string, decoding: HTMLImageElement['decoding'] = 'async') {
+function performImagePreload(src: string, decoding: HTMLImageElement['decoding'] = 'async') {
   return new Promise<void>((resolve) => {
     let settled = false;
     const finish = () => {
@@ -179,6 +223,14 @@ export function preloadImageAsset(src: string, decoding: HTMLImageElement['decod
   });
 }
 
+export function preloadImageAsset(src: string, decoding: HTMLImageElement['decoding'] = 'async') {
+  const image = getSharedImageAsset(src, { decoding });
+  if (image.complete && image.naturalWidth > 0) {
+    return performImagePreload(src, decoding);
+  }
+  return enqueueImagePreload(src, decoding);
+}
+
 export function isRenderableImageAsset(image: HTMLImageElement | null | undefined): image is HTMLImageElement {
   return Boolean(image && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0);
 }
@@ -201,6 +253,29 @@ export function drawImageIfReady(
   } catch {
     return false;
   }
+}
+
+export function getBrowserAssetCacheStats() {
+  let loadedImages = 0;
+  let failedImages = 0;
+  imageCache.forEach((entry) => {
+    if (entry.loaded || (entry.image.complete && entry.image.naturalWidth > 0)) {
+      loadedImages += 1;
+    } else if (entry.failed) {
+      failedImages += 1;
+    }
+  });
+  return {
+    cachedTextures: textureCache.size,
+    rasterizedTextureRequests: rasterizedTextureCache.size,
+    cachedImages: imageCache.size,
+    loadedImages,
+    failedImages,
+    activePreloads: activePreloadCount,
+    queuedPreloads: preloadQueue.length,
+    pendingPreloadPromises: imagePreloadPromises.size,
+    preloadConcurrency: getPreloadConcurrencyLimit()
+  };
 }
 
 function buildRasterizedTextureCacheKey(src: string, options: RasterizedSvgTextureOptions) {

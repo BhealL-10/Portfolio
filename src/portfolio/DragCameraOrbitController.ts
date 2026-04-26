@@ -52,7 +52,12 @@ export class DragCameraOrbitController {
     this.yawTarget = this.yaw + delta;
   }
 
-  update(deltaTime: number, pivot: THREE.Vector3) {
+  update(
+    deltaTime: number,
+    pivot: THREE.Vector3,
+    targetPosition: THREE.Vector3 = this.pose,
+    targetLookAt: THREE.Vector3 = this.lookAt
+  ) {
     this.yawTarget += this.yawVelocity;
     this.yawVelocity = damp(this.yawVelocity, 0, 11, deltaTime);
     this.yaw = damp(this.yaw, this.yawTarget, 10, deltaTime);
@@ -64,9 +69,11 @@ export class DragCameraOrbitController {
     );
 
     this.lookAt.copy(pivot);
+    targetPosition.copy(this.pose);
+    targetLookAt.copy(this.lookAt);
     return {
-      position: this.pose.clone(),
-      lookAt: this.lookAt.clone()
+      position: targetPosition,
+      lookAt: targetLookAt
     };
   }
 }

@@ -116,6 +116,34 @@ function copyLegacyAssets(projectRoot: string, outDir: string, assetDirs: string
   };
 }
 
+function resolveManualChunk(id: string) {
+  const normalizedId = id.split('\\').join('/');
+
+  if (normalizedId.includes('/node_modules/three/')) {
+    return 'vendor-three';
+  }
+  if (normalizedId.includes('/node_modules/@sentry/')) {
+    return 'vendor-sentry';
+  }
+  if (
+    normalizedId.includes('/src/game/PrimatriePortal.ts') ||
+    normalizedId.includes('/src/game/PrimateriePortalCommunityAssets.ts')
+  ) {
+    return 'primaterie-portal';
+  }
+  if (
+    normalizedId.includes('/src/game/') &&
+    !normalizedId.includes('/src/game/MiniGamePortalLayout.ts') &&
+    !normalizedId.includes('/src/game/PrimatriePortal.ts') &&
+    !normalizedId.includes('/src/game/PrimateriePortalCommunityAssets.ts') &&
+    !normalizedId.includes('/src/game/PrimateriePortalPreview.ts')
+  ) {
+    return 'game-runtime';
+  }
+
+  return undefined;
+}
+
 export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const sentryArtifactUploadEnabled = Boolean(
@@ -140,7 +168,12 @@ export default defineConfig(({ mode, command }) => {
       sourcemap: buildConfig.sourcemap,
       target: 'es2020',
       assetsInlineLimit: 0,
-      chunkSizeWarningLimit: buildConfig.chunkSizeWarningLimit
+      chunkSizeWarningLimit: buildConfig.chunkSizeWarningLimit,
+      rollupOptions: {
+        output: {
+          manualChunks: resolveManualChunk
+        }
+      }
     },
     test: {
       environment: 'node'

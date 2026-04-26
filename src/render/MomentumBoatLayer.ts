@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { getSharedTextureAsset, preloadImageAsset } from '../core/browserAssetCache';
 import { isMobileRuntime } from '../core/device';
 import { damp } from '../core/math';
-import { preloadAvatarLayerSets, type GameHudAvatarLayerSets } from '../game/GameHudDeferredAssets';
 import { SpriteSheetPlane } from '../game/SpriteSheetPlane';
+import type { GameHudAvatarLayerSets } from '../game/GameHudDeferredAssets';
 import type { LandingGrade } from '../game/gameSessionTypes';
 import type { ThemeMode } from '../types/content';
 
@@ -136,6 +136,12 @@ interface BoatScreenBounds {
 }
 
 let avatarLayerSetsCache: GameHudAvatarLayerSets | null = null;
+let momentumBoatDeferredAssetsPromise: Promise<typeof import('../game/GameHudDeferredAssets')> | null = null;
+
+function loadMomentumBoatDeferredAssets() {
+  momentumBoatDeferredAssetsPromise ??= import('../game/GameHudDeferredAssets');
+  return momentumBoatDeferredAssetsPromise;
+}
 
 function createAvatarSelection(): AvatarSelection {
   return {
@@ -234,6 +240,7 @@ function resolveEdgeFade(screenX: number, widthPx: number, leftEdgePx: number, r
 export async function preloadMomentumBoatAssets(options: { phase?: 'critical' | 'full' } = {}) {
   const phase = options.phase ?? (isMobileRuntime() ? 'critical' : 'full');
   if (phase === 'full') {
+    const { preloadAvatarLayerSets } = await loadMomentumBoatDeferredAssets();
     const layerSets = await preloadAvatarLayerSets();
     avatarLayerSetsCache = layerSets;
   }

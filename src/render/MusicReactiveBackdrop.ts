@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { isMobileRuntime } from '../core/device';
+import type { PerformanceBackdropQuality } from '../core/performanceProfile';
 import { getThemeBackgroundHex, getThemeNonShardHex } from '../core/themePalette';
 import type { MusicReactiveState } from '../game/GameAudioSystem';
 import type { ThemeMode } from '../types/content';
@@ -14,8 +15,6 @@ const MOMENTUM_COLORS = {
   max: '#FF4545'
 } as const;
 
-const SHARD_COUNT = isMobileRuntime() ? 96 : 144;
-const WAVE_COUNT = isMobileRuntime() ? 18 : 28;
 const WAVE_SEGMENTS = 24;
 const WAVE_UPDATE_INTERVAL_SECONDS = isMobileRuntime() ? 1 / 20 : 1 / 30;
 const ORB_CENTER = new THREE.Vector3(0, 0, -43);
@@ -64,13 +63,15 @@ export class MusicReactiveBackdrop {
   private readonly currentColor = new THREE.Color();
   private readonly targetColor = new THREE.Color();
   private readonly softFocusColor = new THREE.Color();
+  private readonly effectEnabled: boolean;
   private theme: ThemeMode;
   private visible = false;
   private waveUpdateAccumulator = WAVE_UPDATE_INTERVAL_SECONDS;
 
-  constructor(scene: THREE.Scene, theme: ThemeMode) {
+  constructor(scene: THREE.Scene, theme: ThemeMode, quality: PerformanceBackdropQuality = 'high') {
     this.theme = theme;
-    this.shards = this.createShards();
+    this.effectEnabled = quality !== 'off';
+    this.shards = this.createShards(quality);
     this.softFocusColor.set(resolveBackdropThemeColor(theme));
     this.material = new THREE.MeshBasicMaterial({
       color: resolveBackdropThemeColor(theme),
@@ -80,7 +81,7 @@ export class MusicReactiveBackdrop {
       depthWrite: false,
       toneMapped: false
     });
-    this.mesh = new THREE.InstancedMesh(createShardGeometry(), this.material, this.shards.length);
+    this.mesh = new THREE.InstancedMesh(createShardGeometry(), this.material, Math.max(1, this.shards.length));
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.frustumCulled = false;
     this.hazeInner = createHazeSprite(resolveBackdropThemeColor(theme), 0.11);
@@ -92,7 +93,7 @@ export class MusicReactiveBackdrop {
 
     this.waveGroup = new THREE.Group();
     this.waveGroup.renderOrder = -3;
-    this.waves = this.createWaveLines(theme);
+    this.waves = this.createWaveLines(theme, quality);
     this.waves.forEach((wave) => this.waveGroup.add(wave.line));
 
     this.root.renderOrder = -4;
@@ -123,15 +124,16 @@ export class MusicReactiveBackdrop {
   }
 
   setVisible(visible: boolean) {
-    if (this.visible === visible) {
+    const nextVisible = visible && this.effectEnabled;
+    if (this.visible === nextVisible) {
       return;
     }
-    this.visible = visible;
-    this.root.visible = visible;
+    this.visible = nextVisible;
+    this.root.visible = nextVisible;
   }
 
   update(deltaTime: number, elapsedTime: number, camera: THREE.PerspectiveCamera, reactive: MusicReactiveState) {
-    if (!this.visible) {
+    if (!this.visible || !this.effectEnabled) {
       return;
     }
     this.root.position.copy(camera.position);
@@ -155,10 +157,11 @@ export class MusicReactiveBackdrop {
     this.applyMatrices(elapsedTime, reactive, updateWaves);
   }
 
-  private createShards() {
+  private createShards(quality: PerformanceBackdropQuality) {
+    const shardCount = quality === 'off' ? 0 : quality === 'low' ? 56 : isMobileRuntime() ? 96 : 144;
     const shards: OrbShard[] = [];
-    for (let index = 0; index < SHARD_COUNT; index += 1) {
-      const point = fibonacciSpherePoint(index, SHARD_COUNT);
+    for (let index = 0; index < shardCount; index += 1) {
+      const point = fibonacciSpherePoint(index, shardCount);
       const normal = point.clone().normalize();
       const tangentSeed = Math.abs(normal.dot(UNIT_Y)) > 0.92 ? UNIT_X : UNIT_Y;
       const tangent = new THREE.Vector3().crossVectors(tangentSeed, normal).normalize();
@@ -184,9 +187,10 @@ export class MusicReactiveBackdrop {
     return shards;
   }
 
-  private createWaveLines(theme: ThemeMode) {
+  private createWaveLines(theme: ThemeMode, quality: PerformanceBackdropQuality) {
+    const waveCount = quality === 'off' ? 0 : quality === 'low' ? 10 : isMobileRuntime() ? 18 : 28;
     const waves: WaveLine[] = [];
-    for (let index = 0; index < WAVE_COUNT; index += 1) {
+    for (let index = 0; index < waveCount; index += 1) {
       const geometry = new THREE.BufferGeometry();
       const positions = new Float32Array((WAVE_SEGMENTS + 1) * 3);
       geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -200,7 +204,7 @@ export class MusicReactiveBackdrop {
       const line = new THREE.Line(geometry, material);
       line.frustumCulled = false;
       line.renderOrder = -3;
-      const angle = (index / WAVE_COUNT) * Math.PI * 2;
+      const angle = (index / Math.max(1, waveCount)) * Math.PI * 2;
 
       waves.push({
         phase: Math.random() * Math.PI * 2,

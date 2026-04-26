@@ -2399,9 +2399,13 @@ export class GameSessionController {
     return this.camera.getPose();
   }
 
-  getPlayerFocusPoint() {
+  copyCameraPose(positionTarget: THREE.Vector3, lookAtTarget: THREE.Vector3) {
+    return this.camera.copyPose(positionTarget, lookAtTarget);
+  }
+
+  getPlayerFocusPoint(target = new THREE.Vector3()) {
     const source = this.player.visible ? this.player.position : this.playerPosition;
-    return source.clone().add(new THREE.Vector3(0, 0.42, 0.04));
+    return target.copy(source).add(this.scratchVector.set(0, 0.42, 0.04));
   }
 
   getParallaxAnchor(target = new THREE.Vector3()) {
@@ -2410,7 +2414,7 @@ export class GameSessionController {
   }
 
   getParallaxCoverageAnchorX() {
-    return this.getCameraPose().lookAt.x;
+    return this.camera.getLookAtX();
   }
 
   getParallaxLandingFeedback() {
@@ -4031,7 +4035,6 @@ export class GameSessionController {
       iconScale: 0.34
     };
   }
-
   private emitScore() {
     this.scoreListeners.forEach((listener) => listener());
   }

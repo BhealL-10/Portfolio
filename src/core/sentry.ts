@@ -1,4 +1,3 @@
-import * as Sentry from '@sentry/browser';
 import type { Breadcrumb, BrowserOptions, Event } from '@sentry/browser';
 import { getRuntimeDeviceState } from './device';
 import { classifyExternalBrowserNoise } from './externalBrowserNoise';
@@ -12,21 +11,52 @@ import { observeRuntimeViewport } from './viewport';
 
 declare const __APP_VERSION__: string;
 
+type SentryModule = typeof import('@sentry/browser');
 type SentryPrimitive = string | number | boolean | null;
 type SentryValue = SentryPrimitive | SentryValue[] | { [key: string]: SentryValue };
 type BreadcrumbLevel = 'fatal' | 'error' | 'warning' | 'log' | 'info' | 'debug';
+
+interface PendingBreadcrumb {
+  message: string;
+  data?: Record<string, unknown>;
+  level: BreadcrumbLevel;
+  category: string;
+}
+
+interface PendingContext {
+  name: string;
+  data: Record<string, unknown>;
+}
+
+interface PendingException {
+  error: unknown;
+  options: {
+    event: string;
+    category?: string;
+    data?: Record<string, unknown>;
+  };
+}
 
 const FRONTEND_SENTRY_DSN =
   'https://a84c9e864592bea05dac3d84504e1d8f@o4511266261237760.ingest.de.sentry.io/4511266316222544';
 const FRONTEND_SENTRY_TEST_QUERY_KEY = 'sentry_test';
 const FRONTEND_SENTRY_TEST_VALUES = new Set(['frontend', 'front', 'both']);
+const MAX_PENDING_BREADCRUMBS = 40;
+const MAX_PENDING_CONTEXTS = 16;
+const MAX_PENDING_EXCEPTIONS = 8;
 
 let frontendSentryInitialized = false;
 let frontendSentryAvailable = false;
 let frontendSentryRuntimeFailureLogged = false;
+let frontendSentrySdk: SentryModule | null = null;
+let frontendSentrySdkPromise: Promise<SentryModule | null> | null = null;
 let runtimeDeviceContextFrame: number | null = null;
+let runtimeDeviceContextObserved = false;
 let lastRuntimeDeviceContextSignature = '';
 let lastRuntimeDeviceContextSyncedAt = 0;
+const pendingBreadcrumbs: PendingBreadcrumb[] = [];
+const pendingContexts: PendingContext[] = [];
+const pendingExceptions: PendingException[] = [];
 
 function isFrontendSentryDebugLoggingEnabled() {
   if (typeof window === 'undefined') {
@@ -74,12 +104,34 @@ function reportSentryRuntimeFailure(phase: string, error: unknown) {
   console.info(message);
 }
 
-function runSentrySafely<T>(phase: string, operation: () => T) {
-  if (!frontendSentryAvailable) {
+function loadFrontendSentrySdk() {
+  if (frontendSentrySdk) {
+    return Promise.resolve(frontendSentrySdk);
+  }
+  if (frontendSentrySdkPromise) {
+    return frontendSentrySdkPromise;
+  }
+
+  frontendSentrySdkPromise = import('@sentry/browser')
+    .then((module) => {
+      frontendSentrySdk = module;
+      return module;
+    })
+    .catch((error) => {
+      frontendSentrySdkPromise = null;
+      reportSentryRuntimeFailure('sdk download', error);
+      return null;
+    });
+
+  return frontendSentrySdkPromise;
+}
+
+function runSentrySafely<T>(phase: string, operation: (sdk: SentryModule) => T) {
+  if (!frontendSentryAvailable || !frontendSentrySdk) {
     return undefined;
   }
   try {
-    return operation();
+    return operation(frontendSentrySdk);
   } catch (error) {
     reportSentryRuntimeFailure(phase, error);
     return undefined;
@@ -163,11 +215,11 @@ function syncRuntimeDeviceContext() {
   }
   lastRuntimeDeviceContextSignature = signature;
   lastRuntimeDeviceContextSyncedAt = now;
-  runSentrySafely('device context sync', () => {
-    Sentry.setTag('runtime.platform', 'frontend');
-    Sentry.setTag('runtime.device', deviceContext.isMobile ? 'mobile' : 'desktop');
-    Sentry.setTag('runtime.orientation', deviceContext.isLandscape ? 'landscape' : 'portrait');
-    Sentry.setContext('runtime_device', deviceContext);
+  runSentrySafely('device context sync', (sdk) => {
+    sdk.setTag('runtime.platform', 'frontend');
+    sdk.setTag('runtime.device', deviceContext.isMobile ? 'mobile' : 'desktop');
+    sdk.setTag('runtime.orientation', deviceContext.isLandscape ? 'landscape' : 'portrait');
+    sdk.setContext('runtime_device', deviceContext);
   });
 }
 
@@ -191,14 +243,14 @@ function maybeTriggerFrontendSentryTest() {
     return;
   }
 
-  runSentrySafely('manual smoke test', () => Sentry.withScope((scope) => {
+  runSentrySafely('manual smoke test', (sdk) => sdk.withScope((scope) => {
     scope.setLevel('info');
     scope.setTag('sentry.test', 'frontend');
     scope.setContext('sentry_test', {
       target: 'frontend',
       href: window.location.href
     });
-    Sentry.captureException(new Error('Manual frontend Sentry smoke test'));
+    sdk.captureException(new Error('Manual frontend Sentry smoke test'));
   }));
 
   url.searchParams.delete(FRONTEND_SENTRY_TEST_QUERY_KEY);
@@ -286,62 +338,142 @@ function sanitizeExceptionForSentry(error: unknown): Error {
   return sanitized;
 }
 
-export function initFrontendSentry() {
+function enqueuePendingBreadcrumb(breadcrumb: PendingBreadcrumb) {
+  pendingBreadcrumbs.push(breadcrumb);
+  if (pendingBreadcrumbs.length > MAX_PENDING_BREADCRUMBS) {
+    pendingBreadcrumbs.splice(0, pendingBreadcrumbs.length - MAX_PENDING_BREADCRUMBS);
+  }
+}
+
+function enqueuePendingContext(context: PendingContext) {
+  pendingContexts.push(context);
+  if (pendingContexts.length > MAX_PENDING_CONTEXTS) {
+    pendingContexts.splice(0, pendingContexts.length - MAX_PENDING_CONTEXTS);
+  }
+}
+
+function enqueuePendingException(exception: PendingException) {
+  pendingExceptions.push(exception);
+  if (pendingExceptions.length > MAX_PENDING_EXCEPTIONS) {
+    pendingExceptions.splice(0, pendingExceptions.length - MAX_PENDING_EXCEPTIONS);
+  }
+}
+
+function flushPendingTelemetry() {
+  if (!frontendSentryAvailable) {
+    return;
+  }
+
+  const breadcrumbs = pendingBreadcrumbs.splice(0, pendingBreadcrumbs.length);
+  breadcrumbs.forEach((breadcrumb) => {
+    runSentrySafely('breadcrumb flush', (sdk) => sdk.addBreadcrumb({
+      category: breadcrumb.category,
+      level: breadcrumb.level,
+      message: breadcrumb.message,
+      data: sanitizeRecord(breadcrumb.data)
+    }));
+  });
+
+  const contexts = pendingContexts.splice(0, pendingContexts.length);
+  contexts.forEach((context) => {
+    const sanitized = sanitizeRecord(context.data);
+    if (!sanitized) {
+      return;
+    }
+    runSentrySafely('context flush', (sdk) => sdk.setContext(context.name, sanitized));
+  });
+
+  const exceptions = pendingExceptions.splice(0, pendingExceptions.length);
+  exceptions.forEach(({ error, options }) => {
+    captureGameException(error, options);
+  });
+}
+
+function initializeFrontendSentrySdk() {
+  return loadFrontendSentrySdk().then((sdk) => {
+    if (!sdk) {
+      frontendSentryAvailable = false;
+      return;
+    }
+
+    try {
+      const mobileTelemetryProfile = isLikelyMobileTelemetryRuntime();
+      const integrations: NonNullable<BrowserOptions['integrations']> = [
+        sdk.browserTracingIntegration({
+          traceFetch: !mobileTelemetryProfile,
+          traceXHR: !mobileTelemetryProfile,
+          enableLongTask: !mobileTelemetryProfile,
+          enableLongAnimationFrame: false,
+          shouldCreateSpanForRequest: (url) => !isDataUriString(url)
+        })
+      ];
+      if (!mobileTelemetryProfile) {
+        integrations.push(
+          sdk.replayIntegration({
+            maskAllText: false,
+            blockAllMedia: false
+          })
+        );
+      }
+
+      sdk.init({
+        dsn: FRONTEND_SENTRY_DSN,
+        integrations,
+        tracesSampleRate: mobileTelemetryProfile ? 0.15 : 1.0,
+        replaysSessionSampleRate: mobileTelemetryProfile ? 0 : 0.1,
+        replaysOnErrorSampleRate: mobileTelemetryProfile ? 0 : 1.0,
+        tracePropagationTargets: getTracePropagationTargets(),
+        sendDefaultPii: true,
+        environment: getFrontendEnvironment(),
+        release: getFrontendRelease(),
+        beforeBreadcrumb: (breadcrumb) => sanitizeSentryBreadcrumb(breadcrumb),
+        beforeSend: (event) => {
+          if (classifyExternalBrowserNoise(event)) {
+            return null;
+          }
+          return sanitizeSentryEvent(event) as typeof event;
+        }
+      });
+      frontendSentryAvailable = true;
+    } catch (error) {
+      frontendSentryAvailable = false;
+      reportSentryRuntimeFailure('initialization', error);
+      return;
+    }
+
+    syncRuntimeDeviceContext();
+    if (!runtimeDeviceContextObserved) {
+      runtimeDeviceContextObserved = true;
+      observeRuntimeViewport(scheduleRuntimeDeviceContextSync);
+    }
+    flushPendingTelemetry();
+    maybeTriggerFrontendSentryTest();
+  });
+}
+
+export function initFrontendSentry(options: { deferUntilIdle?: boolean } = {}) {
   if (frontendSentryInitialized || typeof window === 'undefined') {
     return;
   }
 
   frontendSentryInitialized = true;
+  const startSdk = () => {
+    void initializeFrontendSentrySdk();
+  };
 
-  try {
-    const mobileTelemetryProfile = isLikelyMobileTelemetryRuntime();
-    const integrations: NonNullable<BrowserOptions['integrations']> = [
-      Sentry.browserTracingIntegration({
-        traceFetch: !mobileTelemetryProfile,
-        traceXHR: !mobileTelemetryProfile,
-        enableLongTask: !mobileTelemetryProfile,
-        enableLongAnimationFrame: false,
-        shouldCreateSpanForRequest: (url) => !isDataUriString(url)
-      })
-    ];
-    if (!mobileTelemetryProfile) {
-      integrations.push(
-        Sentry.replayIntegration({
-          maskAllText: false,
-          blockAllMedia: false
-        })
-      );
+  if (options.deferUntilIdle) {
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+    };
+    if (typeof idleWindow.requestIdleCallback === 'function') {
+      idleWindow.requestIdleCallback(() => startSdk(), { timeout: 3200 });
+      return;
     }
-
-    Sentry.init({
-      dsn: FRONTEND_SENTRY_DSN,
-      integrations,
-      tracesSampleRate: mobileTelemetryProfile ? 0.15 : 1.0,
-      replaysSessionSampleRate: mobileTelemetryProfile ? 0 : 0.1,
-      replaysOnErrorSampleRate: mobileTelemetryProfile ? 0 : 1.0,
-      tracePropagationTargets: getTracePropagationTargets(),
-      sendDefaultPii: true,
-      environment: getFrontendEnvironment(),
-      release: getFrontendRelease(),
-      beforeBreadcrumb: (breadcrumb) => sanitizeSentryBreadcrumb(breadcrumb),
-      beforeSend: (event) => {
-        if (classifyExternalBrowserNoise(event)) {
-          return null;
-        }
-        return sanitizeSentryEvent(event) as typeof event;
-      }
-    });
-    frontendSentryAvailable = true;
-  } catch (error) {
-    frontendSentryAvailable = false;
-    reportSentryRuntimeFailure('initialization', error);
+    window.setTimeout(startSdk, 1200);
     return;
   }
 
-  syncRuntimeDeviceContext();
-  observeRuntimeViewport(scheduleRuntimeDeviceContextSync);
-
-  maybeTriggerFrontendSentryTest();
+  startSdk();
 }
 
 export function addGameBreadcrumb(
@@ -351,10 +483,13 @@ export function addGameBreadcrumb(
   category = 'game'
 ) {
   if (!frontendSentryAvailable) {
+    if (frontendSentryInitialized) {
+      enqueuePendingBreadcrumb({ message, data, level, category });
+    }
     return;
   }
 
-  runSentrySafely('breadcrumb capture', () => Sentry.addBreadcrumb({
+  runSentrySafely('breadcrumb capture', (sdk) => sdk.addBreadcrumb({
     category,
     level,
     message,
@@ -364,13 +499,16 @@ export function addGameBreadcrumb(
 
 export function setSentryContext(name: string, data: Record<string, unknown>) {
   if (!frontendSentryAvailable) {
+    if (frontendSentryInitialized) {
+      enqueuePendingContext({ name, data });
+    }
     return;
   }
   const context = sanitizeRecord(data);
   if (!context) {
     return;
   }
-  runSentrySafely('context capture', () => Sentry.setContext(name, context));
+  runSentrySafely('context capture', (sdk) => sdk.setContext(name, context));
 }
 
 export function captureGameException(
@@ -381,10 +519,14 @@ export function captureGameException(
     data?: Record<string, unknown>;
   }
 ) {
-  if (!frontendSentryAvailable) {
+  if (classifyExternalBrowserNoise(error, options.data)) {
     return;
   }
-  if (classifyExternalBrowserNoise(error, options.data)) {
+
+  if (!frontendSentryAvailable) {
+    if (frontendSentryInitialized) {
+      enqueuePendingException({ error, options });
+    }
     return;
   }
 
@@ -392,7 +534,7 @@ export function captureGameException(
   const category = options.category ?? 'game';
   const data = sanitizeRecord(options.data);
 
-  runSentrySafely('exception capture', () => Sentry.withScope((scope) => {
+  runSentrySafely('exception capture', (sdk) => sdk.withScope((scope) => {
     scope.setLevel('error');
     scope.setTag('runtime.platform', 'frontend');
     scope.setTag('game.event', options.event);
@@ -400,6 +542,6 @@ export function captureGameException(
     if (data) {
       scope.setContext(category, data);
     }
-    Sentry.captureException(exception);
+    sdk.captureException(exception);
   }));
 }
