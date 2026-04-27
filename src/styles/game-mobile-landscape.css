@@ -121,6 +121,22 @@
     padding: calc(8px * var(--game-ui-scale));
   }
 
+  .game-hud__toast-stack {
+    top: calc(var(--safe-top) + 8px);
+    width: min(46vw, 420px);
+    gap: 4px;
+  }
+
+  .game-hud__toast {
+    padding: 8px 12px;
+  }
+
+  .game-hud__game-over-achievements {
+    top: calc(var(--safe-top) + 8px);
+    width: min(44vw, 360px);
+    max-height: min(28dvh, 112px);
+  }
+
   .game-hud__stash {
     top: calc(var(--safe-top) + var(--game-stash-top-offset));
     left: calc(var(--safe-left) + var(--game-stash-side-offset));

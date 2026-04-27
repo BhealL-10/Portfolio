@@ -3,6 +3,7 @@ import { getItemById, rarityLabels, rogueliteItems } from './roguelite';
 import { drawImageIfReady, preloadImageAsset } from '../core/browserAssetCache';
 import { isMobileRuntime } from '../core/device';
 import { recordGameBootDiagnostic, recordGameBootDiagnosticError } from '../core/gameBootDiagnostics';
+import { buildGameVisualQuality, type GameQualitySelection, type GameQualityState } from '../core/gameQuality';
 import { getPerformanceProfile } from '../core/performanceProfile';
 import { addGameBreadcrumb, captureGameException } from '../core/sentry';
 import { decodeDataUriText, isDataUriString } from '../core/logSanitizer';
@@ -16,12 +17,12 @@ import {
   type AchievementRewardSnapshot,
   type AchievementToastSnapshot
 } from './achievements/AchievementTypes';
-import { LandingGradeDisplay } from './LandingGradeDisplay';
+import { LandingGradeDisplay, type LandingGradeDisplayVisualMode } from './LandingGradeDisplay';
 import { GRADE_SPRITE_ASSET_URLS } from './GradeSpriteResolver';
 import { MobileControlsHud } from './MobileControlsHud';
 import { MOBILE_CHARGE_ASSETS, MOBILE_CONTROL_ASSETS } from './MobileControlLayoutResolver';
 import { RewardBranchLabelLayoutResolver } from './RewardBranchLabelLayoutResolver';
-import { AvatarMomentumHudWidget, AVATAR_MOMENTUM_HUD_ASSET_URLS } from './AvatarMomentumHudWidget';
+import { AvatarMomentumHudWidget, AVATAR_MOMENTUM_HUD_ASSET_URLS, type AvatarMomentumHudVisualMode } from './AvatarMomentumHudWidget';
 import { GameDisplayController, type GameDisplayMode } from './GameDisplayController';
 import {
   ACHIEVEMENT_ICON_ASSETS,
@@ -128,6 +129,7 @@ interface GameHUDCallbacks {
   onLeaderboardPosition: (position: number) => void;
   onThemeToggle: () => void;
   onLanguageToggle: () => void;
+  onQualitySelectionChange: (selection: GameQualitySelection) => void;
   onAudioMuteToggle: () => void;
   onAudioMusicVolumeChange: (value: number) => void;
   onAudioSfxVolumeChange: (value: number) => void;
@@ -423,6 +425,10 @@ export class GameHUDSystem {
   private settingsUiScaleLabel: HTMLSpanElement;
   private settingsUiScaleGroup: HTMLDivElement;
   private readonly settingsUiScaleButtons = {} as Record<GameUiScaleMode, HTMLButtonElement>;
+  private settingsQualityLabel: HTMLSpanElement;
+  private settingsQualityGroup: HTMLDivElement;
+  private settingsQualityNote: HTMLSpanElement;
+  private readonly settingsQualityButtons = {} as Record<GameQualitySelection, HTMLButtonElement>;
   private branchLayer: HTMLDivElement;
   private stashBar: HTMLDivElement;
   private inventoryBar: HTMLDivElement;
@@ -540,6 +546,12 @@ export class GameHUDSystem {
   private renderedAchievementsSerial = -1;
   private achievementFilter: AchievementFilterValue = 'all';
   private achievementSortMode: AchievementSortMode = 'acquired';
+  private qualityState: GameQualityState = {
+    selection: 'auto',
+    resolved: 'high',
+    source: 'auto',
+    visual: buildGameVisualQuality('high')
+  };
   private achievementSortMenuOpen = false;
   private readonly handleAvatarSelectionBroadcast = (event: Event) => {
     const customEvent = event as CustomEvent<{ selection?: AvatarSelection }>;
@@ -628,6 +640,17 @@ export class GameHUDSystem {
               <button type="button" data-settings-ui-scale-option="medium"></button>
               <button type="button" data-settings-ui-scale-option="large"></button>
             </div>
+          </div>
+          <div class="game-hud__settings-quality" data-settings-quality>
+            <span class="game-hud__settings-quality-label" data-settings-quality-label></span>
+            <div class="game-hud__settings-quality-options" role="radiogroup" data-settings-quality-group>
+              <button type="button" data-settings-quality-option="auto"></button>
+              <button type="button" data-settings-quality-option="high"></button>
+              <button type="button" data-settings-quality-option="medium"></button>
+              <button type="button" data-settings-quality-option="low"></button>
+              <button type="button" data-settings-quality-option="ultra_low"></button>
+            </div>
+            <span class="game-hud__settings-quality-note" data-settings-quality-note></span>
           </div>
         </div>
       </div>
@@ -798,6 +821,14 @@ export class GameHUDSystem {
     this.settingsUiScaleButtons.small = this.element.querySelector<HTMLButtonElement>('[data-settings-ui-scale-option="small"]')!;
     this.settingsUiScaleButtons.medium = this.element.querySelector<HTMLButtonElement>('[data-settings-ui-scale-option="medium"]')!;
     this.settingsUiScaleButtons.large = this.element.querySelector<HTMLButtonElement>('[data-settings-ui-scale-option="large"]')!;
+    this.settingsQualityLabel = this.element.querySelector<HTMLSpanElement>('[data-settings-quality-label]')!;
+    this.settingsQualityGroup = this.element.querySelector<HTMLDivElement>('[data-settings-quality-group]')!;
+    this.settingsQualityNote = this.element.querySelector<HTMLSpanElement>('[data-settings-quality-note]')!;
+    this.settingsQualityButtons.auto = this.element.querySelector<HTMLButtonElement>('[data-settings-quality-option="auto"]')!;
+    this.settingsQualityButtons.high = this.element.querySelector<HTMLButtonElement>('[data-settings-quality-option="high"]')!;
+    this.settingsQualityButtons.medium = this.element.querySelector<HTMLButtonElement>('[data-settings-quality-option="medium"]')!;
+    this.settingsQualityButtons.low = this.element.querySelector<HTMLButtonElement>('[data-settings-quality-option="low"]')!;
+    this.settingsQualityButtons.ultra_low = this.element.querySelector<HTMLButtonElement>('[data-settings-quality-option="ultra_low"]')!;
     this.branchLayer = this.element.querySelector<HTMLDivElement>('.game-hud__branch-layer')!;
     this.stashBar = this.element.querySelector<HTMLDivElement>('.game-hud__stash')!;
     this.inventoryBar = this.element.querySelector<HTMLDivElement>('.game-hud__inventory')!;
@@ -879,6 +910,8 @@ export class GameHUDSystem {
     this.draftAvatarSelection = { ...this.playerAvatarSelection };
     this.avatarMomentumWidget = new AvatarMomentumHudWidget();
     this.momentumMeter.appendChild(this.avatarMomentumWidget.element);
+    this.avatarMomentumWidget.setVisualMode(this.resolveAvatarHudVisualMode());
+    this.landingFeedbackDisplay.setVisualMode(this.resolveLandingFeedbackVisualMode());
     this.syncAvatarMomentumWidgetAvatar();
     this.topRightCluster = new TopRightUiCluster(
       this.element.querySelector<HTMLDivElement>('.game-hud__top-right-anchor')!,
@@ -972,6 +1005,11 @@ export class GameHUDSystem {
       button.addEventListener('click', () => {
         this.displayController.setUiScaleMode(mode);
         this.renderSettingsButtons();
+      });
+    });
+    (Object.entries(this.settingsQualityButtons) as Array<[GameQualitySelection, HTMLButtonElement]>).forEach(([selection, button]) => {
+      button.addEventListener('click', () => {
+        this.callbacks.onQualitySelectionChange(selection);
       });
     });
     const updateVolumeFromPointer = (channel: AudioChannel, clientX: number) => {
@@ -1568,6 +1606,51 @@ export class GameHUDSystem {
     this.renderAudioControls();
   }
 
+  setQualityState(state: GameQualityState) {
+    this.qualityState = {
+      selection: state.selection,
+      resolved: state.resolved,
+      source: state.source,
+      visual: { ...state.visual }
+    };
+    this.element.dataset.gameQuality = this.qualityState.resolved;
+    this.element.dataset.gameQualitySelection = this.qualityState.selection;
+    this.avatarMomentumWidget.setVisualMode(this.resolveAvatarHudVisualMode());
+    this.landingFeedbackDisplay.setVisualMode(this.resolveLandingFeedbackVisualMode());
+    if (!this.qualityState.visual.enableHudAnimations) {
+      this.clearScoreFeed();
+    }
+    this.renderSettingsButtons();
+  }
+
+  private resolveAvatarHudVisualMode(): AvatarMomentumHudVisualMode {
+    if (!this.qualityState.visual.enableMomentumAvatarAnimation) {
+      return 'static';
+    }
+    return this.qualityState.resolved === 'low' ? 'reduced' : 'full';
+  }
+
+  private resolveLandingFeedbackVisualMode(): LandingGradeDisplayVisualMode {
+    if (!this.qualityState.visual.enableGradeAnimations) {
+      return 'static';
+    }
+    return this.qualityState.resolved === 'low' ? 'reduced' : 'full';
+  }
+
+  private getToastLimit() {
+    if (!this.qualityState.visual.enableHudAnimations) {
+      return isMobileRuntime() ? 1 : 2;
+    }
+    if (isMobileRuntime() || this.qualityState.resolved === 'low') {
+      return 2;
+    }
+    return 3;
+  }
+
+  private allowHudBurstAnimations() {
+    return this.qualityState.visual.enableHudAnimations && this.qualityState.resolved !== 'low';
+  }
+
   update(payload: GameHUDPayload) {
     this.currentAchievements = payload.achievements;
     const previousMetrics = this.previousRunStripMetrics;
@@ -1579,16 +1662,16 @@ export class GameHUDSystem {
     this.runStripBestValue.textContent = String(payload.highscore);
     this.runStripDistanceValue.textContent = `${Math.round(payload.distanceMeters)}m`;
     if (previousMetrics) {
-      if (payload.score > previousMetrics.score) {
+      if (this.allowHudBurstAnimations() && payload.score > previousMetrics.score) {
         this.bumpHudMetric(this.runStripScoreValue.closest('div'));
       }
-      if (payload.highscore > previousMetrics.highscore) {
+      if (this.allowHudBurstAnimations() && payload.highscore > previousMetrics.highscore) {
         this.bumpHudMetric(this.runStripBestValue.closest('div'));
       }
-      if (Math.round(payload.distanceMeters) > Math.round(previousMetrics.distanceMeters)) {
+      if (this.allowHudBurstAnimations() && Math.round(payload.distanceMeters) > Math.round(previousMetrics.distanceMeters)) {
         this.bumpHudMetric(this.runStripDistanceValue.closest('div'));
       }
-      if (payload.coins > previousMetrics.coins) {
+      if (this.allowHudBurstAnimations() && payload.coins > previousMetrics.coins) {
         this.bumpHudMetric(this.coinsValue.closest('.game-hud__wallet'));
       }
     }
@@ -1598,7 +1681,12 @@ export class GameHUDSystem {
       distanceMeters: payload.distanceMeters,
       coins: payload.coins
     };
-    if (payload.state === 'running' && payload.scoreFeed && payload.scoreFeed.serial !== this.lastScoreFeedSerial) {
+    if (
+      this.qualityState.visual.enableHudAnimations &&
+      payload.state === 'running' &&
+      payload.scoreFeed &&
+      payload.scoreFeed.serial !== this.lastScoreFeedSerial
+    ) {
       this.lastScoreFeedSerial = payload.scoreFeed.serial;
       this.pushScoreFeedEvent(payload.scoreFeed);
     }
@@ -1607,8 +1695,8 @@ export class GameHUDSystem {
     this.chainValue.style.opacity = `${0.58 + payload.momentumGauge * 0.42}`;
     this.momentumBarValue.textContent = '';
     this.momentumShell.style.setProperty('--momentum-ratio', payload.momentumGauge.toFixed(3));
-    const fillIntervalMs = 120;
-    const fillPhase = Math.floor(performance.now() / fillIntervalMs) % 4;
+    const fillIntervalMs = this.qualityState.visual.enableHudAnimations ? (this.qualityState.resolved === 'low' ? 220 : 120) : Number.POSITIVE_INFINITY;
+    const fillPhase = Number.isFinite(fillIntervalMs) ? Math.floor(performance.now() / fillIntervalMs) % 4 : 0;
     this.momentumShell.style.setProperty('--momentum-frame', String(fillPhase));
     Object.values(this.settingsVolumeControls).forEach((control) => {
       control.meterFill.style.setProperty('--sound-ui-frame', String(this.audioMuted ? 0 : fillPhase));
@@ -1841,7 +1929,8 @@ export class GameHUDSystem {
       return;
     }
 
-    this.toastStack.innerHTML = toasts
+    const visibleToasts = toasts.slice(0, this.getToastLimit());
+    this.toastStack.innerHTML = visibleToasts
       .map((toast) => {
         if (toast.kind === 'achievement') {
           const rewardMarkup = toast.value.reward
@@ -2397,6 +2486,45 @@ export class GameHUDSystem {
     });
   }
 
+  private getQualityLabel(selection: GameQualitySelection) {
+    switch (selection) {
+      case 'high':
+        return this.i18n.t('gameQualityHigh');
+      case 'medium':
+        return this.i18n.t('gameQualityMedium');
+      case 'low':
+        return this.i18n.t('gameQualityLow');
+      case 'ultra_low':
+        return this.i18n.t('gameQualityUltraLow');
+      case 'auto':
+      default:
+        return this.i18n.t('gameQualityAuto');
+    }
+  }
+
+  private renderQualityButtons() {
+    const groupLabel = this.i18n.t('gameQuality');
+    const selection = this.qualityState.selection;
+    const resolvedLabel = this.getQualityLabel(this.qualityState.resolved);
+    const modeLabel = selection === 'auto' ? this.i18n.t('gameQualityAuto') : this.i18n.t('gameQualityManual');
+    const statusPrefix = this.i18n.current === 'fr' ? 'Actif' : 'Active';
+
+    this.settingsQualityLabel.textContent = groupLabel;
+    this.settingsQualityGroup.setAttribute('aria-label', groupLabel);
+    this.settingsQualityNote.textContent = `${modeLabel} · ${statusPrefix}: ${resolvedLabel}`;
+
+    (Object.entries(this.settingsQualityButtons) as Array<[GameQualitySelection, HTMLButtonElement]>).forEach(([mode, button]) => {
+      const active = mode === selection;
+      const label = this.getQualityLabel(mode);
+      button.className = `game-hud__settings-quality-option${active ? ' is-active' : ''}`;
+      button.textContent = label;
+      button.setAttribute('role', 'radio');
+      button.setAttribute('aria-checked', active ? 'true' : 'false');
+      button.setAttribute('aria-label', `${groupLabel}: ${label}`);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
   private renderSettingsButtons() {
     const languageAsset = LANGUAGE_BUTTON_ASSETS[this.i18n.current];
     const theme = resolveDocumentTheme();
@@ -2427,6 +2555,7 @@ export class GameHUDSystem {
     this.settingsFullscreenButton.setAttribute('aria-pressed', fullscreenActive ? 'true' : 'false');
     this.settingsFullscreenButton.innerHTML = `<img class="game-hud__settings-fullscreen-icon" src="${fullscreenSrc}" alt="" />`;
     this.renderUiScaleButtons();
+    this.renderQualityButtons();
   }
 
   private renderAudioControls() {
@@ -2724,7 +2853,8 @@ export class GameHUDSystem {
   }
 
   private renderGameOverAchievementStrip(snapshot: AchievementPanelSnapshot, visible: boolean, force = false) {
-    const runUnlocks = snapshot.profile.runUnlockedAchievements.slice(-4);
+    const runUnlockLimit = isMobileRuntime() || !this.qualityState.visual.enableHudAnimations ? 3 : 4;
+    const runUnlocks = snapshot.profile.runUnlockedAchievements.slice(-runUnlockLimit);
     if (!visible || this.avatarEditorOpen || runUnlocks.length === 0) {
       this.gameOverAchievements.hidden = true;
       if (force) {

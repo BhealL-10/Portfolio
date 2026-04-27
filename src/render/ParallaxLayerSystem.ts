@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { isMobileRuntime } from '../core/device';
 import { recordGameBootDiagnostic, recordGameBootDiagnosticError } from '../core/gameBootDiagnostics';
+import { buildGameVisualQuality, type GameVisualQuality } from '../core/gameQuality';
 import { damp } from '../core/math';
 import type { MusicReactiveState } from '../game/GameAudioSystem';
 import type { LandingGrade } from '../game/gameSessionTypes';
@@ -91,15 +92,17 @@ export class ParallaxLayerSystem {
   private introTransitionActive = false;
   private introTransitionProgress = 1;
   private currentTheme: ThemeMode;
+  private visualQuality: GameVisualQuality = buildGameVisualQuality('high');
 
   constructor(
     scene: THREE.Scene,
     private readonly camera: THREE.PerspectiveCamera,
     private readonly renderer: THREE.WebGLRenderer,
     initialTheme: ThemeMode,
-    private readonly enableMomentumBoats = true
+    initialQuality: GameVisualQuality = buildGameVisualQuality('high')
   ) {
     this.currentTheme = initialTheme;
+    this.visualQuality = { ...initialQuality };
     this.root.visible = false;
     scene.add(this.root);
 
@@ -118,9 +121,7 @@ export class ParallaxLayerSystem {
       this.camera,
       initialTheme
     );
-    this.momentumBoatLayer = this.enableMomentumBoats
-      ? new MomentumBoatLayer(this.root, this.camera, initialTheme)
-      : null;
+    this.momentumBoatLayer = new MomentumBoatLayer(this.root, this.camera, initialTheme);
   }
 
   init() {
@@ -136,7 +137,7 @@ export class ParallaxLayerSystem {
       });
       await preloadParallaxLayerAssets(this.currentTheme);
       recordGameBootDiagnostic('parallax_svg_preload_completed');
-      if (this.enableMomentumBoats) {
+      if (this.visualQuality.showMomentumBoats) {
         await preloadMomentumBoatAssets({ phase: mobile ? 'critical' : 'full' });
         recordGameBootDiagnostic('parallax_momentum_boat_assets_completed', {
           phase: mobile ? 'critical' : 'full'
@@ -181,13 +182,19 @@ export class ParallaxLayerSystem {
       return;
     }
     this.visible = visible;
-    this.root.visible = visible && this.initialized;
-    this.strips.forEach((strip) => strip.setVisible(visible && this.initialized));
-    this.topHorizonStrip.setVisible(visible && this.initialized);
-    this.momentumBoatLayer?.setVisible(visible && this.initialized);
+    this.syncLayerVisibility();
     if (visible) {
       this.pendingCoverageRealign = true;
     }
+  }
+
+  setVisualQuality(quality: GameVisualQuality) {
+    const previousShowMomentumBoats = this.visualQuality.showMomentumBoats;
+    this.visualQuality = { ...quality };
+    if (!previousShowMomentumBoats && this.visualQuality.showMomentumBoats) {
+      void preloadMomentumBoatAssets({ phase: isMobileRuntime() ? 'critical' : 'full' });
+    }
+    this.syncLayerVisibility();
   }
 
   setTheme(theme: ThemeMode) {
@@ -293,20 +300,22 @@ export class ParallaxLayerSystem {
     this.captureViewportSize();
     this.strips.forEach((strip, category) => {
       strip.resetLayout();
-      strip.setVisible(this.visible);
+      strip.setVisible(this.visible && this.visualQuality.showParallaxLayers);
       strip.setMirrorMode(this.mirrorMode);
       strip.setTheme(this.currentTheme, this.resolveDisplayedHeightPx(PARALLAX_LAYER_CONFIG[category]));
     });
     this.topHorizonStrip.resetLayout();
-    this.topHorizonStrip.setVisible(this.visible);
+    this.topHorizonStrip.setVisible(this.visible && this.visualQuality.showParallaxLayers);
     this.topHorizonStrip.setMirrorMode(this.mirrorMode);
     this.topHorizonStrip.setTheme(this.currentTheme, this.resolveDisplayedHeightPx(PARALLAX_LAYER_CONFIG.horizon));
-    this.momentumBoatLayer?.setVisible(this.visible);
+    this.momentumBoatLayer?.setVisible(this.visible && this.visualQuality.showMomentumBoats);
     this.momentumBoatLayer?.setTheme(this.currentTheme);
   }
 
   update(deltaTime: number) {
-    if (!this.initialized || !this.visible) {
+    const scenicVisible = this.visualQuality.showParallaxLayers;
+    const boatsVisible = this.visualQuality.showMomentumBoats;
+    if (!this.initialized || !this.visible || (!scenicVisible && !boatsVisible)) {
       return;
     }
 
@@ -337,74 +346,76 @@ export class ParallaxLayerSystem {
     const playerHeightSignal = this.resolvePlayerHeightSignal();
     const topIndicatorBlend = this.resolveVerticalIndicatorBlend('top');
     const puppetActive = this.cameraFollowsPlayer && !this.milestoneView;
-    PARALLAX_SCENIC_LAYER_ORDER.forEach((category) => {
-      const strip = this.strips.get(category);
-      const config = PARALLAX_LAYER_CONFIG[category];
-      if (!strip) {
-        return;
-      }
+    if (scenicVisible) {
+      PARALLAX_SCENIC_LAYER_ORDER.forEach((category) => {
+        const strip = this.strips.get(category);
+        const config = PARALLAX_LAYER_CONFIG[category];
+        if (!strip) {
+          return;
+        }
 
-      const displayedHeightPx = this.resolveDisplayedHeightPx(config);
-      const directionalDrift = config.staticLayer ? 0 : this.accumulatedDriftSeconds * config.driftSpeedPx * (this.mirrorMode ? -1 : 1);
-      const progressionParallaxPx = worldTravelX * config.parallaxFactor * (this.mirrorMode ? 1 : -1);
-      const travelOffsetPx = directionalDrift + progressionParallaxPx;
-      const targetVerticalOffsetPx = this.resolveLayerTargetVerticalOffsetPx(category, puppetActive, playerHeightSignal);
-      this.verticalOffsetPx[category] = damp(this.verticalOffsetPx[category], targetVerticalOffsetPx, PUPPET_HEIGHT_RESPONSE, deltaTime);
-      const introOffsetPx = this.resolveIntroOffsetPx(category);
-      const atmosphereOffsetPx = this.resolveAtmosphereOffsetPx(category);
-      const unclampedBottomScreenY =
-        this.viewportHeightPx * config.bottomScreenRatio +
-        PARALLAX_GLOBAL_Y_OFFSET_PX +
-        this.verticalOffsetPx[category] +
-        atmosphereOffsetPx +
-        introOffsetPx;
-      const visibleBottomScreenY = Math.max(this.viewportHeightPx + config.minimumBottomCoveragePx, unclampedBottomScreenY);
-      strip.update({
+        const displayedHeightPx = this.resolveDisplayedHeightPx(config);
+        const directionalDrift = config.staticLayer ? 0 : this.accumulatedDriftSeconds * config.driftSpeedPx * (this.mirrorMode ? -1 : 1);
+        const progressionParallaxPx = worldTravelX * config.parallaxFactor * (this.mirrorMode ? 1 : -1);
+        const travelOffsetPx = directionalDrift + progressionParallaxPx;
+        const targetVerticalOffsetPx = this.resolveLayerTargetVerticalOffsetPx(category, puppetActive, playerHeightSignal);
+        this.verticalOffsetPx[category] = damp(this.verticalOffsetPx[category], targetVerticalOffsetPx, PUPPET_HEIGHT_RESPONSE, deltaTime);
+        const introOffsetPx = this.resolveIntroOffsetPx(category);
+        const atmosphereOffsetPx = this.resolveAtmosphereOffsetPx(category);
+        const unclampedBottomScreenY =
+          this.viewportHeightPx * config.bottomScreenRatio +
+          PARALLAX_GLOBAL_Y_OFFSET_PX +
+          this.verticalOffsetPx[category] +
+          atmosphereOffsetPx +
+          introOffsetPx;
+        const visibleBottomScreenY = Math.max(this.viewportHeightPx + config.minimumBottomCoveragePx, unclampedBottomScreenY);
+        strip.update({
+          viewportWidthPx: this.viewportWidthPx,
+          viewportHeightPx: this.viewportHeightPx,
+          bottomScreenY: visibleBottomScreenY,
+          displayedHeightPx,
+          travelOffsetPx,
+          opacity: 1,
+          mirrorMode: this.mirrorMode
+        });
+      });
+
+      const horizonConfig = PARALLAX_LAYER_CONFIG.horizon;
+      const topHorizonDisplayedHeightPx = this.resolveDisplayedHeightPx(horizonConfig);
+      const horizonDirectionalDrift = horizonConfig.staticLayer
+        ? 0
+        : this.accumulatedDriftSeconds * horizonConfig.driftSpeedPx * (this.mirrorMode ? -1 : 1);
+      const horizonProgressionParallaxPx = worldTravelX * horizonConfig.parallaxFactor * (this.mirrorMode ? 1 : -1);
+      const topTravelOffsetPx = horizonDirectionalDrift + horizonProgressionParallaxPx;
+      const topHorizonTargetVerticalOffsetPx = this.resolveLayerTargetVerticalOffsetPx('horizon', puppetActive, playerHeightSignal);
+      this.verticalOffsetPx.horizon = damp(this.verticalOffsetPx.horizon, topHorizonTargetVerticalOffsetPx, PUPPET_HEIGHT_RESPONSE, deltaTime);
+      this.topHorizonVerticalOffsetPx = this.resolveTopHorizonVerticalOffsetPx();
+      const topIntroOffsetPx = this.resolveTopHorizonIntroOffsetPx(topHorizonDisplayedHeightPx);
+      const unclampedTopBottomScreenY =
+        this.viewportHeightPx * PARALLAX_TOP_HORIZON_BOTTOM_SCREEN_RATIO +
+        PARALLAX_TOP_HORIZON_VERTICAL_OFFSET_PX +
+        this.topHorizonVerticalOffsetPx +
+        this.resolveAtmosphereOffsetPx('horizon') +
+        topIntroOffsetPx;
+      const topHorizonCoverageCeilingPx = topHorizonDisplayedHeightPx - 12;
+      const visibleTopBottomScreenY =
+        this.introTransitionRequested || this.introTransitionActive
+          ? unclampedTopBottomScreenY
+          : Math.min(topHorizonCoverageCeilingPx, Math.max(topHorizonDisplayedHeightPx * 0.64, unclampedTopBottomScreenY));
+      const topIndicatorOpacity = this.introTransitionRequested || this.introTransitionActive ? 1 : topIndicatorBlend;
+      const topBottomScreenY = THREE.MathUtils.lerp(-topHorizonDisplayedHeightPx * 0.24, visibleTopBottomScreenY, topIndicatorOpacity);
+
+      this.topHorizonStrip.update({
         viewportWidthPx: this.viewportWidthPx,
         viewportHeightPx: this.viewportHeightPx,
-        bottomScreenY: visibleBottomScreenY,
-        displayedHeightPx,
-        travelOffsetPx,
-        opacity: 1,
-        mirrorMode: this.mirrorMode
+        bottomScreenY: topBottomScreenY,
+        displayedHeightPx: topHorizonDisplayedHeightPx,
+        travelOffsetPx: topTravelOffsetPx,
+        opacity: topIndicatorOpacity,
+        mirrorMode: this.mirrorMode,
+        verticalFlip: true
       });
-    });
-
-    const horizonConfig = PARALLAX_LAYER_CONFIG.horizon;
-    const topHorizonDisplayedHeightPx = this.resolveDisplayedHeightPx(horizonConfig);
-    const horizonDirectionalDrift = horizonConfig.staticLayer
-      ? 0
-      : this.accumulatedDriftSeconds * horizonConfig.driftSpeedPx * (this.mirrorMode ? -1 : 1);
-    const horizonProgressionParallaxPx = worldTravelX * horizonConfig.parallaxFactor * (this.mirrorMode ? 1 : -1);
-    const topTravelOffsetPx = horizonDirectionalDrift + horizonProgressionParallaxPx;
-    const topHorizonTargetVerticalOffsetPx = this.resolveLayerTargetVerticalOffsetPx('horizon', puppetActive, playerHeightSignal);
-    this.verticalOffsetPx.horizon = damp(this.verticalOffsetPx.horizon, topHorizonTargetVerticalOffsetPx, PUPPET_HEIGHT_RESPONSE, deltaTime);
-    this.topHorizonVerticalOffsetPx = this.resolveTopHorizonVerticalOffsetPx();
-    const topIntroOffsetPx = this.resolveTopHorizonIntroOffsetPx(topHorizonDisplayedHeightPx);
-    const unclampedTopBottomScreenY =
-      this.viewportHeightPx * PARALLAX_TOP_HORIZON_BOTTOM_SCREEN_RATIO +
-      PARALLAX_TOP_HORIZON_VERTICAL_OFFSET_PX +
-      this.topHorizonVerticalOffsetPx +
-      this.resolveAtmosphereOffsetPx('horizon') +
-      topIntroOffsetPx;
-    const topHorizonCoverageCeilingPx = topHorizonDisplayedHeightPx - 12;
-    const visibleTopBottomScreenY =
-      this.introTransitionRequested || this.introTransitionActive
-        ? unclampedTopBottomScreenY
-        : Math.min(topHorizonCoverageCeilingPx, Math.max(topHorizonDisplayedHeightPx * 0.64, unclampedTopBottomScreenY));
-    const topIndicatorOpacity = this.introTransitionRequested || this.introTransitionActive ? 1 : topIndicatorBlend;
-    const topBottomScreenY = THREE.MathUtils.lerp(-topHorizonDisplayedHeightPx * 0.24, visibleTopBottomScreenY, topIndicatorOpacity);
-
-    this.topHorizonStrip.update({
-      viewportWidthPx: this.viewportWidthPx,
-      viewportHeightPx: this.viewportHeightPx,
-      bottomScreenY: topBottomScreenY,
-      displayedHeightPx: topHorizonDisplayedHeightPx,
-      travelOffsetPx: topTravelOffsetPx,
-      opacity: topIndicatorOpacity,
-      mirrorMode: this.mirrorMode,
-      verticalFlip: true
-    });
+    }
 
     const directionSign = this.mirrorMode ? -1 : 1;
     const travelOffsets: [number, number, number] = [
@@ -420,27 +431,38 @@ export class ParallaxLayerSystem {
       this.viewportHeightPx * PARALLAX_LAYER_CONFIG.mid.bottomScreenRatio + PARALLAX_GLOBAL_Y_OFFSET_PX,
       this.viewportHeightPx * PARALLAX_LAYER_CONFIG.foreground.bottomScreenRatio + PARALLAX_GLOBAL_Y_OFFSET_PX
     ];
-    this.momentumBoatLayer?.update({
-      deltaTime,
-      viewportWidthPx: this.viewportWidthPx,
-      viewportHeightPx: this.viewportHeightPx,
-      travelOffsets,
-      bottomScreenYs,
-      mirrorMode: this.mirrorMode,
-      momentumRatio: this.smoothedMomentumRatio,
-      bassIntensity: this.smoothedBass,
-      midIntensity: this.smoothedMid,
-      melodyIntensity: this.smoothedMelody,
-      overallEnergy: this.smoothedEnergy,
-      landingFeedback:
-        this.landingFeedback && this.landingFeedback.progress <= 0.24
-          ? {
-              serial: this.landingFeedback.serial,
-              grade: this.landingFeedback.grade,
-              twist: this.landingFeedback.twist
-            }
-          : null
-    });
+    if (boatsVisible) {
+      this.momentumBoatLayer?.update({
+        deltaTime,
+        viewportWidthPx: this.viewportWidthPx,
+        viewportHeightPx: this.viewportHeightPx,
+        travelOffsets,
+        bottomScreenYs,
+        mirrorMode: this.mirrorMode,
+        momentumRatio: this.smoothedMomentumRatio,
+        bassIntensity: this.smoothedBass,
+        midIntensity: this.smoothedMid,
+        melodyIntensity: this.smoothedMelody,
+        overallEnergy: this.smoothedEnergy,
+        landingFeedback:
+          this.landingFeedback && this.landingFeedback.progress <= 0.24
+            ? {
+                serial: this.landingFeedback.serial,
+                grade: this.landingFeedback.grade,
+                twist: this.landingFeedback.twist
+              }
+            : null
+      });
+    }
+  }
+
+  private syncLayerVisibility() {
+    const scenicVisible = this.visible && this.initialized && this.visualQuality.showParallaxLayers;
+    const boatsVisible = this.visible && this.initialized && this.visualQuality.showMomentumBoats;
+    this.root.visible = scenicVisible || boatsVisible;
+    this.strips.forEach((strip) => strip.setVisible(scenicVisible));
+    this.topHorizonStrip.setVisible(scenicVisible);
+    this.momentumBoatLayer?.setVisible(boatsVisible);
   }
 
   dispose() {

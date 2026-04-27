@@ -65,6 +65,7 @@ export class EnemySystem {
   }> = [];
   private readonly assignedIds = new Set<string>();
   private theme: ThemeMode;
+  private animationEnabled = true;
 
   constructor(scene: THREE.Scene, theme: ThemeMode) {
     this.theme = theme;
@@ -118,6 +119,10 @@ export class EnemySystem {
 
   setVisible(visible: boolean) {
     this.group.visible = visible;
+  }
+
+  setAnimationEnabled(enabled: boolean) {
+    this.animationEnabled = enabled;
   }
 
   reset() {
@@ -213,7 +218,11 @@ export class EnemySystem {
           return;
         }
         entry.group.visible = true;
-        entry.body.playLoop([4, 5, 6, 7], 4.4, deathElapsed);
+        if (this.animationEnabled) {
+          entry.body.playLoop([4, 5, 6, 7], 4.4, deathElapsed);
+        } else {
+          entry.body.setFrame(6);
+        }
         const fade = Math.max(0, 1 - deathElapsed / 0.72);
         entry.body.mesh.material.opacity = fade;
         entry.backArrow.material.opacity = fade;
@@ -235,7 +244,11 @@ export class EnemySystem {
       const progress = THREE.MathUtils.clamp((elapsedTime - startedAt) / duration, 0, 0.999);
       const frames = [4, 5, 6, 7];
       const frameIndex = Math.min(frames.length - 1, Math.floor(progress * frames.length));
-      body.setFrame(frames[frameIndex] ?? 4);
+      body.setFrame(this.animationEnabled ? (frames[frameIndex] ?? 4) : 6);
+      return;
+    }
+    if (!this.animationEnabled) {
+      body.setFrame(animation === 'sprint' ? 1 : 0);
       return;
     }
     if (animation === 'sprint') {

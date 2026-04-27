@@ -49,6 +49,7 @@ export const AVATAR_MOMENTUM_HUD_ASSET_URLS = [
 ] as const;
 
 export type AvatarMomentumFrontAnimationKind = 'idle' | 'fail' | 'success' | 'twist';
+export type AvatarMomentumHudVisualMode = 'full' | 'reduced' | 'static';
 
 export interface AvatarMomentumSpriteMetrics {
   frameCount: typeof FRAME_COUNT;
@@ -265,10 +266,12 @@ export class AvatarMomentumHudWidget {
   private highlightStartedAt = -AURA_HIGHLIGHT_DECAY_MS;
   private landingImpulseStartedAt = -LANDING_IMPULSE_DURATION_MS;
   private landingImpulseStrength = 0;
+  private visualMode: AvatarMomentumHudVisualMode = 'full';
 
   constructor() {
     this.element = document.createElement('div');
     this.element.className = 'game-hud__momentum-avatar-widget';
+    this.element.dataset.animationMode = this.visualMode;
     this.element.style.left = `${HUD_WIDGET_GEOMETRY.widgetLeftPercent}%`;
     this.element.style.top = `${HUD_WIDGET_GEOMETRY.widgetTopPercent}%`;
     this.element.style.width = `${HUD_WIDGET_GEOMETRY.widgetWidthPercent}%`;
@@ -325,6 +328,21 @@ export class AvatarMomentumHudWidget {
     this.avatarSlot.innerHTML = markup;
   }
 
+  setVisualMode(mode: AvatarMomentumHudVisualMode) {
+    if (this.visualMode === mode) {
+      return;
+    }
+    this.visualMode = mode;
+    this.element.dataset.animationMode = mode;
+    this.frontAnimation = null;
+    this.landingImpulseStrength = 0;
+    this.applyAuraFrame(mode === 'full' ? this.activeAuraFrame : 0);
+    this.applyFrontFrame(0, 'idle');
+    if (mode !== 'full') {
+      this.element.style.transform = 'scale(1)';
+    }
+  }
+
   update(payload: AvatarMomentumWidgetUpdatePayload) {
     const now = performance.now();
 
@@ -332,23 +350,32 @@ export class AvatarMomentumHudWidget {
       this.lastLandingSerial = payload.landingFeedback.serial;
       this.auraGrade = payload.landingFeedback.grade;
       this.highlightStartedAt = now;
-      this.frontAnimation = {
-        kind: resolveAvatarMomentumFrontAnimationKind(payload.landingFeedback.grade, payload.landingFeedback.twist),
-        startedAt: now
-      };
-      this.landingImpulseStartedAt = now;
-      this.landingImpulseStrength = resolveAvatarMomentumLandingImpulseStrength(
-        payload.landingFeedback.grade,
-        payload.landingFeedback.twist
-      );
+      if (this.visualMode === 'full') {
+        this.frontAnimation = {
+          kind: resolveAvatarMomentumFrontAnimationKind(payload.landingFeedback.grade, payload.landingFeedback.twist),
+          startedAt: now
+        };
+        this.landingImpulseStartedAt = now;
+        this.landingImpulseStrength = resolveAvatarMomentumLandingImpulseStrength(
+          payload.landingFeedback.grade,
+          payload.landingFeedback.twist
+        );
+      } else {
+        this.frontAnimation = null;
+        this.landingImpulseStrength = 0;
+      }
     }
 
-    const auraFrame = Math.floor(now / AURA_FRAME_DURATION_MS) % FRAME_COUNT;
+    const auraFrame = this.visualMode === 'full' ? Math.floor(now / AURA_FRAME_DURATION_MS) % FRAME_COUNT : 0;
     this.applyAuraFrame(auraFrame);
     this.applyAuraVisuals(payload.momentumGauge, now);
-    this.applyLandingImpulse(now);
+    if (this.visualMode === 'full') {
+      this.applyLandingImpulse(now);
+    } else {
+      this.element.style.transform = 'scale(1)';
+    }
 
-    if (this.frontAnimation) {
+    if (this.visualMode === 'full' && this.frontAnimation) {
       const elapsed = Math.max(0, now - this.frontAnimation.startedAt);
       const totalDuration = FRONT_ANIMATION_SEQUENCE.length * FRONT_FRAME_DURATION_MS;
       if (elapsed < totalDuration) {
@@ -429,8 +456,11 @@ export class AvatarMomentumHudWidget {
     const highlightElapsed = Math.max(0, now - this.highlightStartedAt);
     const persistentHighlightOpacity = 0.18 + clampedMomentum * 0.08;
     const highlightPulse = Math.max(0, 1 - highlightElapsed / AURA_HIGHLIGHT_DECAY_MS);
-    const targetHighlightOpacity = persistentHighlightOpacity + highlightPulse * 0.54;
-    const targetRainbowOpacity = resolveMomentumAuraRainbowOpacity(clampedMomentum);
+    const targetHighlightOpacity =
+      this.visualMode === 'static'
+        ? 0.16 + clampedMomentum * 0.08
+        : persistentHighlightOpacity + highlightPulse * (this.visualMode === 'reduced' ? 0.24 : 0.54);
+    const targetRainbowOpacity = this.visualMode === 'full' ? resolveMomentumAuraRainbowOpacity(clampedMomentum) : 0;
     const rainbowShift = (now * 0.026) % 220;
 
     this.baseAuraColor = mixColor(this.baseAuraColor, targetBaseColor, COLOR_LERP_ALPHA);
@@ -441,7 +471,7 @@ export class AvatarMomentumHudWidget {
     this.auraBaseStrip.style.background = formatRgb(this.baseAuraColor);
     this.auraRainbowStrip.style.backgroundImage = `linear-gradient(90deg, ${MOMENTUM_RAINBOW_COLORS.join(', ')})`;
     this.auraRainbowStrip.style.backgroundSize = '240% 100%';
-    this.auraRainbowStrip.style.backgroundPosition = `${rainbowShift.toFixed(2)}% 50%`;
+    this.auraRainbowStrip.style.backgroundPosition = this.visualMode === 'full' ? `${rainbowShift.toFixed(2)}% 50%` : '50% 50%';
     this.auraRainbowStrip.style.opacity = this.rainbowOpacity.toFixed(3);
     this.auraHighlightStrip.style.background = formatRgb(this.highlightAuraColor);
     this.auraHighlightStrip.style.opacity = this.highlightOpacity.toFixed(3);

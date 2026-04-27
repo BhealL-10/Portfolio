@@ -2,6 +2,8 @@ import type { LandingGrade } from './gameSessionTypes';
 import { GradeAnimationController } from './GradeAnimationController';
 import { GradeSpriteResolver } from './GradeSpriteResolver';
 
+export type LandingGradeDisplayVisualMode = 'full' | 'reduced' | 'static';
+
 interface LandingGradeDisplayPayload {
   serial: number;
   grade: LandingGrade;
@@ -26,10 +28,12 @@ export class LandingGradeDisplay {
   private lastDismissedSignature = '';
   private startedAt = 0;
   private lastObservedProgress = 0;
+  private visualMode: LandingGradeDisplayVisualMode = 'full';
 
   constructor() {
     this.element = document.createElement('div');
     this.element.className = 'game-hud__landing-feedback';
+    this.element.dataset.animationMode = this.visualMode;
 
     this.twistElement = document.createElement('div');
     this.twistElement.className = 'game-hud__landing-feedback-sprite game-hud__landing-feedback-sprite--twist';
@@ -41,6 +45,11 @@ export class LandingGradeDisplay {
 
     this.element.append(this.twistElement, this.gradeElement);
     this.clear();
+  }
+
+  setVisualMode(mode: LandingGradeDisplayVisualMode) {
+    this.visualMode = mode;
+    this.element.dataset.animationMode = mode;
   }
 
   clear() {
@@ -106,24 +115,39 @@ export class LandingGradeDisplay {
     }
 
     const animationState = this.animation.resolve(progress);
+    const frameIndex = this.visualMode === 'full' ? animationState.frameIndex : 0;
+    const opacity =
+      this.visualMode === 'full'
+        ? animationState.opacity
+        : this.visualMode === 'reduced'
+          ? Math.max(0, 1 - progress * 0.72)
+          : Math.max(0, 0.96 - progress * 0.54);
     const popScale =
-      progress < 0.18
-        ? 0.82 + (progress / 0.18) * 0.28
-        : 1.1 - Math.min(1, (progress - 0.18) / 0.82) * 0.1;
-    const driftY = this.activePayload.screenY - progress * 28;
+      this.visualMode === 'full'
+        ? (
+            progress < 0.18
+              ? 0.82 + (progress / 0.18) * 0.28
+              : 1.1 - Math.min(1, (progress - 0.18) / 0.82) * 0.1
+          )
+        : this.visualMode === 'reduced'
+          ? 1.02
+          : 1;
+    const driftY =
+      this.activePayload.screenY -
+      progress * (this.visualMode === 'full' ? 28 : this.visualMode === 'reduced' ? 14 : 8);
 
-    this.applySprite(this.gradeElement, this.activePayload.grade, animationState.frameIndex, this.activePayload.gradeLabel);
-    this.gradeElement.style.opacity = animationState.opacity.toFixed(3);
+    this.applySprite(this.gradeElement, this.activePayload.grade, frameIndex, this.activePayload.gradeLabel);
+    this.gradeElement.style.opacity = opacity.toFixed(3);
 
     this.twistElement.hidden = !this.activePayload.twist;
     if (this.activePayload.twist) {
-      this.applySprite(this.twistElement, 'twist', animationState.frameIndex, this.activePayload.twistLabel);
-      this.twistElement.style.opacity = animationState.opacity.toFixed(3);
+      this.applySprite(this.twistElement, 'twist', frameIndex, this.activePayload.twistLabel);
+      this.twistElement.style.opacity = opacity.toFixed(3);
     }
 
     this.element.classList.toggle('is-twist', this.activePayload.twist);
     this.element.classList.add('is-visible');
-    this.element.style.opacity = animationState.opacity.toFixed(3);
+    this.element.style.opacity = opacity.toFixed(3);
     this.element.style.transform = `translate(${this.activePayload.screenX}px, ${driftY}px) scale(${popScale.toFixed(3)})`;
   }
 

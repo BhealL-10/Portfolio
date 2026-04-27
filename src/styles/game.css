@@ -323,6 +323,12 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
   transition-delay: 420ms;
 }
 
+.game-hud__panel.is-settings-open .game-hud__settings-quality {
+  opacity: 1;
+  transform: translateX(0);
+  transition-delay: 460ms;
+}
+
 .game-hud__panel.is-settings-open {
   opacity: 1;
   visibility: visible;
@@ -722,6 +728,19 @@ html[data-theme='dark'] .game-hud__run-strip div:nth-child(3) {
   mix-blend-mode: screen;
 }
 
+.game-hud__momentum-avatar-widget[data-animation-mode='reduced'] .game-hud__momentum-avatar-widget-mask-strip--rainbow,
+.game-hud__momentum-avatar-widget[data-animation-mode='static'] .game-hud__momentum-avatar-widget-mask-strip--rainbow {
+  display: none;
+}
+
+.game-hud__momentum-avatar-widget[data-animation-mode='static'] .game-hud__momentum-avatar-widget-layer--front {
+  display: none;
+}
+
+.game-hud__momentum-avatar-widget[data-animation-mode='static'] .game-hud__momentum-avatar-widget-mask-strip--highlight {
+  mix-blend-mode: normal;
+}
+
 .game-hud__orbit-grace {
   --orbit-grace-progress: 0;
   width: 44px;
@@ -982,6 +1001,52 @@ html[data-runtime-device='mobile'] .game-hud__settings-chip--fullscreen {
 }
 
 .game-hud__settings-ui-scale-option.is-active {
+  background: rgb(var(--overlay-fg-rgb) / 0.92);
+  color: rgb(var(--overlay-bg-rgb));
+  box-shadow: 0 0 0 2px rgb(var(--overlay-fg-rgb) / 0.08);
+}
+
+.game-hud__settings-quality {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: calc(6px * var(--game-ui-scale));
+  padding-top: calc(2px * var(--game-ui-scale));
+  opacity: 0;
+  transform: translateX(calc(10px * var(--game-ui-scale)));
+  transition: opacity 180ms ease, transform 220ms ease;
+}
+
+.game-hud__settings-quality-label,
+.game-hud__settings-quality-note {
+  justify-self: center;
+  font-size: calc(0.58rem * var(--game-ui-scale));
+  line-height: 1.1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--overlay-copy-muted);
+  text-align: center;
+}
+
+.game-hud__settings-quality-options {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: calc(6px * var(--game-ui-scale));
+}
+
+.game-hud__settings-quality-option {
+  min-height: calc(30px * var(--game-ui-scale));
+  padding: calc(6px * var(--game-ui-scale)) calc(6px * var(--game-ui-scale));
+  border-radius: calc(999px * var(--game-ui-scale));
+  border: 1px solid rgb(var(--overlay-fg-rgb) / 0.14);
+  background: rgb(var(--overlay-fg-rgb) / 0.08);
+  color: var(--overlay-copy-muted);
+  font-size: calc(0.52rem * var(--game-ui-scale));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: auto;
+}
+
+.game-hud__settings-quality-option.is-active {
   background: rgb(var(--overlay-fg-rgb) / 0.92);
   color: rgb(var(--overlay-bg-rgb));
   box-shadow: 0 0 0 2px rgb(var(--overlay-fg-rgb) / 0.08);
@@ -1945,6 +2010,11 @@ html[data-theme='dark'] .game-hud__achievement-card {
   margin-left: 8px;
 }
 
+.game-hud__landing-feedback[data-animation-mode='static'] .game-hud__landing-feedback-sprite,
+.game-hud__landing-feedback[data-animation-mode='reduced'] .game-hud__landing-feedback-sprite {
+  filter: drop-shadow(0 8px 14px rgb(0 0 0 / 0.18));
+}
+
 .game-hud__landing-feedback.is-twist .game-hud__landing-feedback-sprite--grade {
   width: var(--game-landing-feedback-grade-twist-width);
 }
@@ -2869,7 +2939,11 @@ html .game-hud__game-over-achievement-pill[data-rarity='legendary'] {
   gap: calc(10px * var(--game-overlay-scale));
   flex-wrap: wrap;
   transform: translateX(-50%);
-  pointer-events: none;
+  max-height: min(24dvh, calc(168px * var(--game-overlay-scale)));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: calc(4px * var(--game-overlay-scale));
+  pointer-events: auto;
 }
 
 .game-hud__game-over-achievement-pill {
@@ -4129,16 +4203,6 @@ html[data-theme='dark'] .game-hud__leaderboard-preview-rank {
     padding: calc(9px * var(--game-menu-scale)) calc(10px * var(--game-menu-scale));
   }
 
-  .game-hud__toast-stack {
-    top: calc(var(--safe-top) + 88px);
-    gap: 8px;
-  }
-
-  .game-hud__toast {
-    min-width: 138px;
-    max-width: calc(100vw - 42px);
-  }
-
   .game-hud__game-over-achievement-pill {
     max-width: calc(100vw - 48px);
     min-height: calc(42px * var(--game-overlay-scale));
@@ -4193,17 +4257,67 @@ html[data-theme='dark'] .game-hud__leaderboard-preview-rank {
     font-size: calc(0.56rem * var(--game-font-scale));
   }
 
-  .game-hud__toast {
-    min-width: 170px;
-    max-width: calc(100vw - 28px);
-    padding: 12px 18px;
-  }
-
   .game-hud__game-over-achievement-pill {
     min-width: calc(168px * var(--game-overlay-fixed-scale));
     max-width: calc(100vw - 28px);
     padding: calc(10px * var(--game-overlay-fixed-scale)) calc(18px * var(--game-overlay-fixed-scale));
   }
+}
+
+html[data-runtime-device='mobile'] .game-hud__toast-stack {
+  top: calc(var(--safe-top) + 12px);
+  width: min(90vw, 520px);
+  gap: 6px;
+}
+
+html[data-runtime-device='mobile'] .game-hud__toast {
+  min-width: 0;
+  max-width: min(90vw, 520px);
+  min-height: 0;
+  padding: 10px 14px;
+  border-radius: 22px;
+}
+
+html[data-runtime-device='mobile'] .game-hud__toast-copy {
+  gap: 4px;
+}
+
+html[data-runtime-device='mobile'] .game-hud__toast-eyebrow,
+html[data-runtime-device='mobile'] .game-hud__toast-reward em,
+html[data-runtime-device='mobile'] .game-hud__toast-meta {
+  font-size: 0.58rem;
+}
+
+html[data-runtime-device='mobile'] .game-hud__toast-title {
+  font-size: 0.78rem;
+  line-height: 1.18;
+}
+
+html[data-runtime-device='mobile'] .game-hud__toast-icon {
+  width: 28px;
+  height: 28px;
+}
+
+html[data-runtime-device='mobile'] .game-hud__toast-reward .game-hud__achievement-reward-preview {
+  width: 26px;
+  min-width: 26px;
+  border-radius: 8px;
+}
+
+html[data-runtime-device='mobile'] .game-hud__game-over-achievements {
+  top: calc(var(--safe-top) + 10px);
+  width: min(92vw, calc(var(--game-width) - 16px));
+  gap: calc(6px * var(--game-overlay-scale));
+  max-height: min(22dvh, 120px);
+}
+
+html[data-runtime-device='mobile'] .game-hud__settings-quality-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.game-hud[data-game-quality='ultra_low'] .game-hud__momentum-mask,
+.game-hud[data-game-quality='ultra_low'] .game-hud__momentum-fill {
+  will-change: auto;
 }
 
 .game-hud__leaderboard-preview-copy strong,

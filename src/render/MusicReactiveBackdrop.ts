@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { isMobileRuntime } from '../core/device';
-import type { PerformanceBackdropQuality } from '../core/performanceProfile';
+import { buildGameVisualQuality, type GameVisualQuality } from '../core/gameQuality';
 import { getThemeBackgroundHex, getThemeNonShardHex } from '../core/themePalette';
 import type { MusicReactiveState } from '../game/GameAudioSystem';
 import type { ThemeMode } from '../types/content';
@@ -63,15 +63,17 @@ export class MusicReactiveBackdrop {
   private readonly currentColor = new THREE.Color();
   private readonly targetColor = new THREE.Color();
   private readonly softFocusColor = new THREE.Color();
-  private readonly effectEnabled: boolean;
   private theme: ThemeMode;
+  private visualQuality: GameVisualQuality = buildGameVisualQuality('high');
   private visible = false;
+  private activeShardCount = 0;
+  private activeWaveCount = 0;
   private waveUpdateAccumulator = WAVE_UPDATE_INTERVAL_SECONDS;
 
-  constructor(scene: THREE.Scene, theme: ThemeMode, quality: PerformanceBackdropQuality = 'high') {
+  constructor(scene: THREE.Scene, theme: ThemeMode, quality: GameVisualQuality = buildGameVisualQuality('high')) {
     this.theme = theme;
-    this.effectEnabled = quality !== 'off';
-    this.shards = this.createShards(quality);
+    this.visualQuality = { ...quality };
+    this.shards = this.createShards();
     this.softFocusColor.set(resolveBackdropThemeColor(theme));
     this.material = new THREE.MeshBasicMaterial({
       color: resolveBackdropThemeColor(theme),
@@ -82,6 +84,7 @@ export class MusicReactiveBackdrop {
       toneMapped: false
     });
     this.mesh = new THREE.InstancedMesh(createShardGeometry(), this.material, Math.max(1, this.shards.length));
+    this.mesh.count = Math.max(1, this.shards.length);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.frustumCulled = false;
     this.hazeInner = createHazeSprite(resolveBackdropThemeColor(theme), 0.11);
@@ -93,7 +96,7 @@ export class MusicReactiveBackdrop {
 
     this.waveGroup = new THREE.Group();
     this.waveGroup.renderOrder = -3;
-    this.waves = this.createWaveLines(theme, quality);
+    this.waves = this.createWaveLines(theme);
     this.waves.forEach((wave) => this.waveGroup.add(wave.line));
 
     this.root.renderOrder = -4;
@@ -108,6 +111,7 @@ export class MusicReactiveBackdrop {
       { active: false, bassIntensity: 0, midIntensity: 0, melodyIntensity: 0, overallEnergy: 0, momentumRatio: 0, difficultyRatio: 0 },
       true
     );
+    this.applyQuality();
   }
 
   setTheme(theme: ThemeMode) {
@@ -124,7 +128,7 @@ export class MusicReactiveBackdrop {
   }
 
   setVisible(visible: boolean) {
-    const nextVisible = visible && this.effectEnabled;
+    const nextVisible = visible && this.isBackdropVisible();
     if (this.visible === nextVisible) {
       return;
     }
@@ -132,8 +136,13 @@ export class MusicReactiveBackdrop {
     this.root.visible = nextVisible;
   }
 
+  setVisualQuality(quality: GameVisualQuality) {
+    this.visualQuality = { ...quality };
+    this.applyQuality();
+  }
+
   update(deltaTime: number, elapsedTime: number, camera: THREE.PerspectiveCamera, reactive: MusicReactiveState) {
-    if (!this.visible || !this.effectEnabled) {
+    if (!this.visible || !this.visualQuality.showMusicReactiveBackdrop) {
       return;
     }
     this.root.position.copy(camera.position);
@@ -142,13 +151,18 @@ export class MusicReactiveBackdrop {
     this.root.rotation.z = elapsedTime * spinSpeed;
     this.root.rotation.x = Math.sin(elapsedTime * (0.18 + reactive.difficultyRatio * 0.16)) * (0.08 + reactive.difficultyRatio * 0.06);
     this.root.rotation.y = Math.cos(elapsedTime * (0.24 + reactive.difficultyRatio * 0.18)) * (0.12 + reactive.difficultyRatio * 0.08);
-    const hazePulse = 0.006 + reactive.overallEnergy * 0.01 + reactive.melodyIntensity * 0.006;
-    this.root.scale.set(
-      1 + Math.sin(elapsedTime * 0.78) * hazePulse * 0.55,
-      1 + Math.cos(elapsedTime * 1.02) * hazePulse,
-      1
-    );
-    this.waveGroup.position.y = Math.sin(elapsedTime * 0.92) * (0.06 + reactive.overallEnergy * 0.09);
+    if (this.visualQuality.enableGlowEffects) {
+      const hazePulse = 0.006 + reactive.overallEnergy * 0.01 + reactive.melodyIntensity * 0.006;
+      this.root.scale.set(
+        1 + Math.sin(elapsedTime * 0.78) * hazePulse * 0.55,
+        1 + Math.cos(elapsedTime * 1.02) * hazePulse,
+        1
+      );
+    } else {
+      this.root.scale.set(1, 1, 1);
+    }
+    this.waveGroup.position.y =
+      this.activeWaveCount > 0 ? Math.sin(elapsedTime * 0.92) * (0.06 + reactive.overallEnergy * 0.09) : 0;
     this.waveUpdateAccumulator += deltaTime;
     const updateWaves = this.waveUpdateAccumulator >= WAVE_UPDATE_INTERVAL_SECONDS;
     if (updateWaves) {
@@ -157,8 +171,8 @@ export class MusicReactiveBackdrop {
     this.applyMatrices(elapsedTime, reactive, updateWaves);
   }
 
-  private createShards(quality: PerformanceBackdropQuality) {
-    const shardCount = quality === 'off' ? 0 : quality === 'low' ? 56 : isMobileRuntime() ? 96 : 144;
+  private createShards() {
+    const shardCount = isMobileRuntime() ? 96 : 144;
     const shards: OrbShard[] = [];
     for (let index = 0; index < shardCount; index += 1) {
       const point = fibonacciSpherePoint(index, shardCount);
@@ -187,8 +201,8 @@ export class MusicReactiveBackdrop {
     return shards;
   }
 
-  private createWaveLines(theme: ThemeMode, quality: PerformanceBackdropQuality) {
-    const waveCount = quality === 'off' ? 0 : quality === 'low' ? 10 : isMobileRuntime() ? 18 : 28;
+  private createWaveLines(theme: ThemeMode) {
+    const waveCount = isMobileRuntime() ? 18 : 28;
     const waves: WaveLine[] = [];
     for (let index = 0; index < waveCount; index += 1) {
       const geometry = new THREE.BufferGeometry();
@@ -235,13 +249,18 @@ export class MusicReactiveBackdrop {
     this.material.color.copy(this.currentColor);
     this.hazeInner.material.color.copy(this.currentColor);
     this.hazeOuter.material.color.copy(this.currentColor);
-    const blurFade = 1 - THREE.MathUtils.smoothstep(momentum, 0.8, 1);
-    this.hazeInner.scale.setScalar(35 + momentum * 10 + energy * 4.2);
-    this.hazeOuter.scale.setScalar(50 + momentum * 14 + bass * 5.2);
-    this.hazeInner.material.opacity = (0.092 + energy * 0.044) * blurFade;
-    this.hazeOuter.material.opacity = (0.066 + bass * 0.036) * blurFade;
+    if (this.visualQuality.enableGlowEffects) {
+      const blurFade = 1 - THREE.MathUtils.smoothstep(momentum, 0.8, 1);
+      this.hazeInner.scale.setScalar(35 + momentum * 10 + energy * 4.2);
+      this.hazeOuter.scale.setScalar(50 + momentum * 14 + bass * 5.2);
+      this.hazeInner.material.opacity = (0.092 + energy * 0.044) * blurFade;
+      this.hazeOuter.material.opacity = (0.066 + bass * 0.036) * blurFade;
+    } else {
+      this.hazeInner.material.opacity = 0;
+      this.hazeOuter.material.opacity = 0;
+    }
 
-    for (let index = 0; index < this.shards.length; index += 1) {
+    for (let index = 0; index < this.activeShardCount; index += 1) {
       const shard = this.shards[index]!;
       const primary = shard.melodyDriven ? melody : bass;
       const secondary = shard.melodyDriven ? mid : melody;
@@ -277,7 +296,7 @@ export class MusicReactiveBackdrop {
     const lineBaseLength = WAVE_BASE_LENGTH + momentum * 12 + energy * 18 + difficulty * 8;
     const lineOpacity = THREE.MathUtils.clamp(0.16 + momentum * 0.31 + energy * 0.1 + (bass + mid + melody) * 0.18, 0.16, 0.84);
 
-    for (let index = 0; index < this.waves.length; index += 1) {
+    for (let index = 0; index < this.activeWaveCount; index += 1) {
       const wave = this.waves[index]!;
       const pulsate = 0.6 + Math.sin(elapsedTime * (1.6 * wave.drift) + wave.phase) * 0.32;
       const waveLength = lineBaseLength * pulsate + audioDrive * 14 + wave.amplitudeSeed * 5;
@@ -310,6 +329,28 @@ export class MusicReactiveBackdrop {
     }
 
     this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  private isBackdropVisible() {
+    return this.visualQuality.showMusicReactiveBackdrop && (this.activeShardCount > 0 || this.activeWaveCount > 0 || this.visualQuality.enableGlowEffects);
+  }
+
+  private applyQuality() {
+    const particlesEnabled = this.visualQuality.showMusicReactiveBackdrop && this.visualQuality.showParticles;
+    const wavesEnabled = this.visualQuality.showMusicReactiveBackdrop && this.visualQuality.showDecorativeWaves;
+    const glowEnabled = this.visualQuality.showMusicReactiveBackdrop && this.visualQuality.enableGlowEffects;
+    this.activeShardCount = particlesEnabled ? this.shards.length : 0;
+    this.activeWaveCount = wavesEnabled ? this.waves.length : 0;
+    this.mesh.visible = particlesEnabled;
+    this.mesh.count = Math.max(1, this.activeShardCount || this.shards.length);
+    this.waveGroup.visible = wavesEnabled;
+    this.hazeInner.visible = glowEnabled;
+    this.hazeOuter.visible = glowEnabled;
+    this.waves.forEach((wave, index) => {
+      wave.line.visible = index < this.activeWaveCount && wavesEnabled;
+    });
+    this.visible = this.visible && this.isBackdropVisible();
+    this.root.visible = this.visible;
   }
 
   dispose() {

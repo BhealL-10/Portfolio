@@ -2,12 +2,10 @@ import { getRuntimeDeviceState } from './device';
 import { getRuntimeViewportSize } from './viewport';
 
 export type RuntimePerformanceProfileId = 'desktopHigh' | 'desktopLow' | 'mobile' | 'mobileLow';
-export type PerformanceBackdropQuality = 'high' | 'low' | 'off';
 
 export interface RuntimePerformanceProfile {
   id: RuntimePerformanceProfileId;
   isMobile: boolean;
-  targetGameplayFps: number;
   targetShellFps: number;
   hudUpdateIntervalMs: number;
   uiRefreshIntervalMs: number;
@@ -15,8 +13,6 @@ export interface RuntimePerformanceProfile {
   assetPreloadConcurrency: number;
   maxRendererPixelRatio: number;
   rendererPixelBudget: number;
-  backdropQuality: PerformanceBackdropQuality;
-  enableMomentumBoats: boolean;
   enableAutoHelpTutorial: boolean;
   prefetchGameRuntimeOnHubIdle: boolean;
   loadPortalCommunityArtwork: boolean;
@@ -55,7 +51,6 @@ function resolveProfile() {
     return {
       id: 'mobileLow',
       isMobile: true,
-      targetGameplayFps: 36,
       targetShellFps: 24,
       hudUpdateIntervalMs: 80,
       uiRefreshIntervalMs: 96,
@@ -63,8 +58,6 @@ function resolveProfile() {
       assetPreloadConcurrency: 2,
       maxRendererPixelRatio: 1.05,
       rendererPixelBudget: 1_050_000,
-      backdropQuality: 'off',
-      enableMomentumBoats: false,
       enableAutoHelpTutorial: false,
       prefetchGameRuntimeOnHubIdle: false,
       loadPortalCommunityArtwork: false
@@ -75,7 +68,6 @@ function resolveProfile() {
     return {
       id: 'mobile',
       isMobile: true,
-      targetGameplayFps: 50,
       targetShellFps: 30,
       hudUpdateIntervalMs: 50,
       uiRefreshIntervalMs: 66,
@@ -83,8 +75,6 @@ function resolveProfile() {
       assetPreloadConcurrency: 3,
       maxRendererPixelRatio: 1.2,
       rendererPixelBudget: 1_350_000,
-      backdropQuality: 'low',
-      enableMomentumBoats: true,
       enableAutoHelpTutorial: false,
       prefetchGameRuntimeOnHubIdle: false,
       loadPortalCommunityArtwork: false
@@ -95,7 +85,6 @@ function resolveProfile() {
     return {
       id: 'desktopLow',
       isMobile: false,
-      targetGameplayFps: 50,
       targetShellFps: 40,
       hudUpdateIntervalMs: 34,
       uiRefreshIntervalMs: 34,
@@ -103,8 +92,6 @@ function resolveProfile() {
       assetPreloadConcurrency: 6,
       maxRendererPixelRatio: 1.5,
       rendererPixelBudget: 2_400_000,
-      backdropQuality: 'low',
-      enableMomentumBoats: true,
       enableAutoHelpTutorial: true,
       prefetchGameRuntimeOnHubIdle: true,
       loadPortalCommunityArtwork: true
@@ -114,7 +101,6 @@ function resolveProfile() {
   return {
     id: 'desktopHigh',
     isMobile: false,
-    targetGameplayFps: 60,
     targetShellFps: 60,
     hudUpdateIntervalMs: 16,
     uiRefreshIntervalMs: 16,
@@ -122,8 +108,6 @@ function resolveProfile() {
     assetPreloadConcurrency: 10,
     maxRendererPixelRatio: 1.75,
     rendererPixelBudget: 3_200_000,
-    backdropQuality: 'high',
-    enableMomentumBoats: true,
     enableAutoHelpTutorial: true,
     prefetchGameRuntimeOnHubIdle: true,
     loadPortalCommunityArtwork: true

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { drawImageIfReady, getSharedImageAsset, getSharedTextureAsset, preloadImageAsset } from '../core/browserAssetCache';
 import { isMobileRuntime } from '../core/device';
 import { recordGameBootDiagnostic, recordGameBootDiagnosticError } from '../core/gameBootDiagnostics';
+import { buildGameVisualQuality, type GameVisualQuality } from '../core/gameQuality';
 import { clamp, damp } from '../core/math';
 import { addGameBreadcrumb, captureGameException, setSentryContext } from '../core/sentry';
 import { getThemeNonShardHex, getThemeShardContrastHex, getThemeShardHex } from '../core/themePalette';
@@ -462,6 +463,7 @@ export class GameSessionController {
   private readonly enemies: EnemySystem;
   private readonly shop: ShopSystem;
   private locale: 'fr' | 'en' = 'en';
+  private visualQuality: GameVisualQuality = buildGameVisualQuality('high');
   private rewardBillboardSignature = '';
   private readonly rewardImageCache = new Map<string, HTMLImageElement>();
   private readonly transitionPlayerStartPosition = new THREE.Vector3();
@@ -1193,6 +1195,14 @@ export class GameSessionController {
     this.bigCanonRangeIndicator.material.color.set(this.getRarityColor('common'));
     this.bigCanonRadarSweep.material.color.set(this.getRarityColor('common'));
     this.rewardBillboardSignature = '';
+  }
+
+  setVisualQuality(quality: GameVisualQuality) {
+    this.visualQuality = { ...quality };
+    this.enemies.setAnimationEnabled(this.visualQuality.enableEnemySpriteAnimations);
+    if (!this.visualQuality.showDecorativeWaves) {
+      this.impactWaves.clear();
+    }
   }
 
   setThemeRequestHandler(handler: ((theme: ThemeMode) => void) | null) {
@@ -2018,10 +2028,18 @@ export class GameSessionController {
   }
 
   private buildVisiblePlatformVisual(node: ResolvedGamePathNode, isCurrent: boolean): VisiblePlatformVisual {
+    const decorativeWavesEnabled = this.visualQuality.showDecorativeWaves;
+    const particlesEnabled = this.visualQuality.showParticles;
+    const glowEffectsEnabled = this.visualQuality.enableGlowEffects;
+    const boatMomentumEnabled = this.visualQuality.showMomentumBoats;
     const localAngle = this.getSurfaceLocalAngle(node, this.orbitAngle);
     const protectsCurrentShard = node.index === this.attachedIndex && this.playerState !== 'airborne';
     const orbitRamp = isCurrent ? (this.orbitGraceActive ? this.orbitGraceProgress : 1) : 1;
-    const visualWave = this.getVisualWaveState(node);
+    const visualWave = decorativeWavesEnabled ? this.getVisualWaveState(node) : null;
+    const boatWaveStrength =
+      decorativeWavesEnabled && boatMomentumEnabled && isCurrent && protectsCurrentShard
+        ? Math.max(0, this.sampleBoatWaveOffset(node, localAngle))
+        : 0;
     const directionSign = this.getProgressionDirectionSign();
     const nodeRadius = this.getPhysicalRadius(node);
     const trailingScreenEdge =
@@ -2050,13 +2068,15 @@ export class GameSessionController {
           )
         : 0;
     const hiddenSlotVisualBias = isCurrent ? 0.1 + orbitRamp * 0.08 : 0.04;
-    const fragmentAmount = protectsCurrentShard
+    const fragmentAmount = protectsCurrentShard || !particlesEnabled
       ? 0
       : clamp(Math.max(passedScreenFragment, surpassedFragment, passedLifecycleProgress, hiddenSlotVisualBias), 0, 1);
     const passiveStrength = node.isMilestone ? 0.003 : node.shapeKind === 'round' ? 0.018 : node.shapeKind === 'oval' ? 0.038 : 0.048;
     const passiveDensity = node.isMilestone ? 0.18 : node.shapeKind === 'round' ? 0.52 : node.shapeKind === 'oval' ? 0.68 : 0.78;
     const targetDensity = passiveDensity + 0.42 + this.momentum.gauge * 0.34;
-    const liveDensity = isCurrent ? THREE.MathUtils.lerp(passiveDensity, targetDensity, orbitRamp) : Math.max(passiveDensity, visualWave?.density ?? passiveDensity);
+    const liveDensity = decorativeWavesEnabled
+      ? (isCurrent ? THREE.MathUtils.lerp(passiveDensity, targetDensity, orbitRamp) : Math.max(passiveDensity, visualWave?.density ?? passiveDensity))
+      : passiveDensity;
     const activeStrength = node.isMilestone ? 0.012 + orbitRamp * 0.02 : passiveStrength + 0.18 + orbitRamp * 0.12 + this.momentum.gauge * 0.46;
     const rewardItem = node.offerId ? getItemById(node.offerId) : null;
     const isGuaranteedShopShard = Boolean(node.guaranteedShopIcon);
@@ -2100,22 +2120,35 @@ export class GameSessionController {
       stripeMix: 0,
       stripePhase,
       pulse:
-        node.isMilestone
-          ? 0.18
-          : isGuaranteedShopShard
-            ? 0.42
-            : isRandomRewardShard
-              ? 0.48
-            : node.colorHint === 'reward'
-              ? 0.68
-              : node.eventType !== 'none'
-                ? 0.34
-                : clamp(this.momentum.gauge * 0.22, 0, 0.22) + gravityBeltRadius * 0.08,
-      deformAngle: passedLifecycleProgress > 0.001 ? passedFragmentAngle : isCurrent ? localAngle : visualWave?.angle ?? 0,
+        glowEffectsEnabled
+          ? node.isMilestone
+            ? 0.18
+            : isGuaranteedShopShard
+              ? 0.42
+              : isRandomRewardShard
+                ? 0.48
+                : node.colorHint === 'reward'
+                  ? 0.68
+                  : node.eventType !== 'none'
+                    ? 0.34
+                    : clamp(this.momentum.gauge * 0.22, 0, 0.22) + gravityBeltRadius * 0.08
+          : node.isMilestone
+            ? 0.08
+            : node.eventType !== 'none' || node.colorHint === 'reward'
+              ? 0.14
+              : 0,
+      deformAngle:
+        decorativeWavesEnabled
+          ? (passedLifecycleProgress > 0.001 ? passedFragmentAngle : isCurrent ? localAngle : visualWave?.angle ?? 0)
+          : 0,
       deformStrength:
-        isCurrent
-          ? activeStrength
-          : Math.max(passiveStrength, visualWave?.strength ?? 0) + (node.isMilestone ? 0 : fragmentAmount * 0.16 + passedLifecycleProgress * 0.12),
+        decorativeWavesEnabled
+          ? (
+              isCurrent
+                ? activeStrength + boatWaveStrength * 0.32
+                : Math.max(passiveStrength, visualWave?.strength ?? 0) + (node.isMilestone ? 0 : fragmentAmount * 0.16 + passedLifecycleProgress * 0.12)
+            )
+          : 0,
       deformDensity: liveDensity,
       fragmentAmount,
       iconSrc:
@@ -7349,7 +7382,8 @@ export class GameSessionController {
   }
 
   private queueAchievementToastsIfNeeded() {
-    while (this.achievementToasts.length < 3) {
+    const toastLimit = this.getAchievementToastLimit();
+    while (this.achievementToasts.length < toastLimit) {
       const pending = this.achievements.consumePendingUnlock();
       if (!pending) {
         return;
@@ -7361,6 +7395,13 @@ export class GameSessionController {
         serial: this.achievementToastSerial
       });
     }
+  }
+
+  private getAchievementToastLimit() {
+    if (!this.visualQuality.enableHudAnimations || isMobileRuntime()) {
+      return this.visualQuality.enableHudAnimations ? 2 : 1;
+    }
+    return 3;
   }
 
   private tryTriggerMirrorMode(anchorNode: ResolvedGamePathNode) {
@@ -7958,10 +7999,10 @@ export class GameSessionController {
     const sizeDamping = clamp(1.08 - node.visualScale * 0.035, 0.32, 1);
     const amplitude = (0.008 + levelFactor * 0.03) * sizeDamping;
     const primaryFrequency = node.shapeKind === 'triangular' ? 3 : node.shapeKind === 'oval' ? 2 : 4;
-    const base =
+    return (
       Math.sin(localAngle * primaryFrequency + node.motionSeed * 6.2) * amplitude +
-      Math.sin(localAngle * (primaryFrequency + 3) - node.motionSeed * 4.1) * amplitude * 0.42;
-    return base + this.sampleImpactWaveOffset(node, localAngle) + this.sampleBoatWaveOffset(node, localAngle) * sizeDamping;
+      Math.sin(localAngle * (primaryFrequency + 3) - node.motionSeed * 4.1) * amplitude * 0.42
+    );
   }
 
   private sampleSurfaceSlope(node: ResolvedGamePathNode, localAngle: number) {
@@ -7970,31 +8011,6 @@ export class GameSessionController {
       this.sampleSurfaceDeformation(node, wrapAngle(localAngle + epsilon)) -
       this.sampleSurfaceDeformation(node, wrapAngle(localAngle - epsilon))
     ) / (epsilon * 2);
-  }
-
-  private sampleImpactWaveOffset(node: ResolvedGamePathNode, localAngle: number) {
-    const waves = this.impactWaves.get(node.index);
-    if (!waves || waves.length === 0) return 0;
-
-    let total = 0;
-    const remaining: ImpactWave[] = [];
-    waves.forEach((wave) => {
-      const age = this.currentTime - wave.createdAt;
-      if (age >= wave.decay) return;
-      const life = 1 - age / wave.decay;
-      const angleDelta = shortestAngleDistance(localAngle, wave.originAngle);
-      const influence = Math.exp(-(angleDelta * angleDelta) / Math.max(0.08, wave.radius * wave.radius));
-      total += wave.strength * influence * life;
-      remaining.push(wave);
-    });
-
-    if (remaining.length > 0) {
-      this.impactWaves.set(node.index, remaining);
-    } else {
-      this.impactWaves.delete(node.index);
-    }
-
-    return total;
   }
 
   private sampleBoatWaveOffset(node: ResolvedGamePathNode, localAngle: number) {
@@ -8013,6 +8029,9 @@ export class GameSessionController {
   }
 
   private registerImpactWave(node: ResolvedGamePathNode, angle: number, impactSpeed: number) {
+    if (!this.visualQuality.showDecorativeWaves) {
+      return;
+    }
     const levelFactor = clamp(node.index / 240, 0, 1);
     const sizeDamping = clamp(1.04 - node.visualScale * 0.03, 0.34, 1);
     const damping = 1 - this.runUpgrades.modifiers.shockwaveDamping;
@@ -8034,6 +8053,9 @@ export class GameSessionController {
   }
 
   private getVisualWaveState(node: ResolvedGamePathNode) {
+    if (!this.visualQuality.showDecorativeWaves) {
+      return null;
+    }
     const waves = this.impactWaves.get(node.index);
     if (!waves || waves.length === 0) return null;
 

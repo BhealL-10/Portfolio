@@ -43,6 +43,7 @@ import {
 } from './gameBootDiagnostics';
 import { damp, wrapIndex } from './math';
 import { PerfDebugOverlay } from './perfDebug';
+import { GameQualityController, buildGameVisualQuality, type GameQualitySelection, type GameQualityState } from './gameQuality';
 import { getPerformanceProfile } from './performanceProfile';
 import { RenderLoop } from './RenderLoop';
 import { addGameBreadcrumb, captureGameException, setSentryContext } from './sentry';
@@ -172,10 +173,17 @@ export class AppController {
   private readonly introMirrorGuideStagesSeen = new Set<IntroMirrorGuideStage>();
   private readonly gameGuideEventFlags = new Set<string>();
   private readonly perfDebugOverlay: PerfDebugOverlay | null;
+  private readonly qualityController: GameQualityController;
   private lastHudUpdateAt = 0;
   private lastUiRefreshAt = 0;
   private lastGuideUpdateAt = 0;
   private guideDeltaAccumulator = 0;
+  private gameQualityState: GameQualityState = {
+    selection: 'auto',
+    resolved: 'high',
+    source: 'auto',
+    visual: buildGameVisualQuality('high')
+  };
   private primateriePendingAction: {
     execute: () => void;
   } | null = null;
@@ -189,14 +197,18 @@ export class AppController {
   constructor(host: HTMLElement, options: { entryRoute: AppEntryRoute }) {
     installGameBootDiagnostics();
     recordGameBootDiagnostic('app_controller_constructor_started', { entryRoute: options.entryRoute });
+    this.qualityController = new GameQualityController();
+    this.gameQualityState = this.qualityController.getState();
     recordGameBootDiagnostic('performance_profile_selected', {
       profile: this.performanceProfile.id,
-      targetGameplayFps: this.performanceProfile.targetGameplayFps,
       targetShellFps: this.performanceProfile.targetShellFps,
-      backdropQuality: this.performanceProfile.backdropQuality,
-      enableMomentumBoats: this.performanceProfile.enableMomentumBoats,
       prefetchGameRuntimeOnHubIdle: this.performanceProfile.prefetchGameRuntimeOnHubIdle,
       loadPortalCommunityArtwork: this.performanceProfile.loadPortalCommunityArtwork
+    });
+    recordGameBootDiagnostic('game_quality_selected', {
+      selection: this.gameQualityState.selection,
+      resolved: this.gameQualityState.resolved,
+      source: this.gameQualityState.source
     });
     setSentryContext('app_boot', {
       entryRoute: options.entryRoute
@@ -214,6 +226,7 @@ export class AppController {
     this.root.append(this.canvasHost, this.uiHost);
     host.appendChild(this.root);
     this.syncRuntimeDeviceState();
+    this.applyGameQualityState();
 
     recordGameBootDiagnostic('renderer_start', {
       mobile: isMobileRuntime()
@@ -253,14 +266,14 @@ export class AppController {
     this.musicBackdrop = new MusicReactiveBackdrop(
       this.renderer.scene,
       this.theme.current,
-      this.performanceProfile.backdropQuality
+      this.gameQualityState.visual
     );
     this.parallaxLayers = new ParallaxLayerSystem(
       this.renderer.scene,
       this.renderer.camera,
       this.renderer.renderer,
       this.theme.current,
-      this.performanceProfile.enableMomentumBoats
+      this.gameQualityState.visual
     );
     recordGameBootDiagnostic('parallax_layer_system_ready', { eagerInitRemoved: true });
     this.slotSystem = new SecretSlotSystem(
@@ -566,6 +579,7 @@ export class AppController {
         }
         recordGameBootDiagnostic('game_runtime_construct_game_completed');
         game.setLocale(this.i18n.current);
+        game.setVisualQuality(this.gameQualityState.visual);
         game.setThemeRequestHandler((theme) => this.theme.set(theme));
         await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 
@@ -605,6 +619,7 @@ export class AppController {
             onLeaderboardPosition: (position) => game.recordLeaderboardPosition(position),
             onThemeToggle: () => this.theme.toggle(),
             onLanguageToggle: () => this.i18n.toggle(),
+            onQualitySelectionChange: (selection) => this.setGameQualitySelection(selection),
             onAudioMuteToggle: () => audio.toggleMute(),
             onAudioMusicVolumeChange: (value) => audio.setMusicVolume(value),
             onAudioSfxVolumeChange: (value) => audio.setSfxVolume(value),
@@ -638,6 +653,7 @@ export class AppController {
           throw error;
         }
         recordGameBootDiagnostic('game_runtime_construct_hud_completed');
+        gameHud.setQualityState(this.gameQualityState);
 
         // Store unsubscribe functions so they can be cleaned up when leaving the game runtime
         this.gameRuntimeUnsubscribers = [
@@ -738,6 +754,7 @@ export class AppController {
       return this.adventureLaunchPreparationPromise;
     }
     this.hasObservedUserGesture = true;
+    const adventureLoadStartedAt = performance.now();
     this.adventureLaunchPreparationPromise = this.ensurePrimateriePortalLoaded().then(async () => {
       const mobile = isMobileRuntime();
       this.primateriePortal.setBusy(true);
@@ -767,10 +784,15 @@ export class AppController {
       });
       await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
       await this.prepareAdventureCriticalAssets();
+      const qualityDowngrade = this.qualityController.applyAdventureLoadMeasurement(performance.now() - adventureLoadStartedAt);
+      if (qualityDowngrade) {
+        this.handleGameQualityChange(qualityDowngrade);
+      }
       this.adventureLaunchPrepared = true;
       recordGameBootDiagnostic('adventure_ready', {
         mobile,
         profile: this.performanceProfile.id,
+        quality: this.gameQualityState.resolved,
         gameState: this.game.currentState
       });
     })
@@ -955,8 +977,8 @@ export class AppController {
           this.game.preloadAssets({ phase: 'full' }),
           this.gameHud.preloadAssets({
             phase: 'full',
-            includeAvatarAssets: !this.performanceProfile.isMobile,
-            includeDecorativeAssets: !this.performanceProfile.isMobile
+            includeAvatarAssets: this.gameQualityState.resolved !== 'ultra_low' && !this.performanceProfile.isMobile,
+            includeDecorativeAssets: this.gameQualityState.visual.enableGlowEffects && !this.performanceProfile.isMobile
           }),
           this.audio.prepareForLaunch('core')
         ]);
@@ -2040,6 +2062,7 @@ export class AppController {
         this.world.setShardLockTransition(false, 0);
         this.mode.setMode('game');
         this.game.beginRun();
+        this.qualityController.markRunStarted(performance.now() / 1000);
         recordGameBootDiagnostic('game_ok', {
           forceDirectEntry,
           source: enteredFromPrimaterie ? 'primaterie' : 'portfolio'
@@ -2068,6 +2091,7 @@ export class AppController {
     this.audio.prime();
     addGameBreadcrumb('Game restart requested', undefined, 'info', 'game.lifecycle');
     this.game.restart();
+    this.qualityController.markRunStarted(performance.now() / 1000);
     this.parallaxLayers.resetForRun(this.game.getParallaxCoverageAnchorX());
     const gameFieldCount = this.getGameFieldCount();
     const layout = this.game.getVisiblePlatformLayout(gameFieldCount);
@@ -2180,10 +2204,65 @@ export class AppController {
     return getPerformanceProfile();
   }
 
+  private setGameQualitySelection(selection: GameQualitySelection) {
+    const nextState = this.qualityController.setSelection(selection);
+    this.gameQualityState = nextState;
+    this.applyGameQualityState(true);
+    recordGameBootDiagnostic('game_quality_selected', {
+      selection: nextState.selection,
+      resolved: nextState.resolved,
+      source: nextState.source
+    });
+  }
+
+  private observeAutoGameQuality(deltaTime: number, elapsedTime: number) {
+    const change = this.qualityController.observeRuntimeFrame(deltaTime, elapsedTime, this.loop.getStats());
+    if (change) {
+      this.handleGameQualityChange(change);
+    }
+  }
+
+  private handleGameQualityChange(change: {
+    previousQuality: GameQualityState['resolved'];
+    newQuality: GameQualityState['resolved'];
+    reason: string;
+    state: GameQualityState;
+  }) {
+    this.gameQualityState = change.state;
+    this.applyGameQualityState(true);
+    recordGameBootDiagnostic('auto_quality_downgrade', {
+      previousQuality: change.previousQuality,
+      newQuality: change.newQuality,
+      reason: change.reason
+    });
+  }
+
+  private applyGameQualityState(forceRefresh = false) {
+    document.documentElement.dataset.gameQuality = this.gameQualityState.resolved;
+    document.documentElement.dataset.gameQualitySelection = this.gameQualityState.selection;
+    this.root.dataset.gameQuality = this.gameQualityState.resolved;
+    this.root.dataset.gameQualitySelection = this.gameQualityState.selection;
+    this.uiHost.dataset.gameQuality = this.gameQualityState.resolved;
+    this.uiHost.dataset.gameQualitySelection = this.gameQualityState.selection;
+
+    if (this.musicBackdrop) {
+      this.musicBackdrop.setVisualQuality(this.gameQualityState.visual);
+    }
+    if (this.parallaxLayers) {
+      this.parallaxLayers.setVisualQuality(this.gameQualityState.visual);
+    }
+    this.gameRuntime?.game.setVisualQuality(this.gameQualityState.visual);
+    this.gameRuntime?.gameHud.setQualityState(this.gameQualityState);
+
+    if (forceRefresh) {
+      this.refreshUI();
+    }
+  }
+
   private resolveTargetFps() {
     const profile = this.performanceProfile;
     return this.mode.is('game') || this.mode.is('game_transition') || this.mode.is('game_over')
-      ? profile.targetGameplayFps
+      ? 0
       : profile.targetShellFps;
   }
 
@@ -2216,6 +2295,7 @@ export class AppController {
 
   private buildPerfDebugSnapshot() {
     const profile = this.performanceProfile;
+    const quality = this.gameQualityState;
     const loopStats = this.loop.getStats();
     const rendererStats = this.renderer.getDebugStats();
     const assetStats = getBrowserAssetCacheStats();
@@ -2226,8 +2306,11 @@ export class AppController {
       };
     }).memory;
     const flags = [
-      `backdrop:${profile.backdropQuality}`,
-      `boats:${profile.enableMomentumBoats ? 'on' : 'off'}`,
+      `quality:${quality.selection}/${quality.resolved}`,
+      `backdrop:${quality.visual.showMusicReactiveBackdrop ? 'on' : 'off'}`,
+      `boats:${quality.visual.showMomentumBoats ? 'on' : 'off'}`,
+      `parallax:${quality.visual.showParallaxLayers ? 'on' : 'off'}`,
+      `hudAnim:${quality.visual.enableHudAnimations ? 'on' : 'off'}`,
       `helpAuto:${profile.enableAutoHelpTutorial ? 'on' : 'off'}`,
       `runtimePrefetch:${profile.prefetchGameRuntimeOnHubIdle ? 'on' : 'off'}`,
       `portalArtwork:${profile.loadPortalCommunityArtwork ? 'on' : 'off'}`
@@ -2301,6 +2384,9 @@ export class AppController {
         this.game.setGrappleActionActive(false);
       }
       this.game.update(orientationBlocked ? 0 : deltaTime, elapsedTime);
+      if (!orientationBlocked && (this.mode.is('game') || this.mode.is('game_over'))) {
+        this.observeAutoGameQuality(deltaTime, elapsedTime);
+      }
       const audioActive =
         (this.mode.is('game_transition') || this.mode.is('game') || this.mode.is('game_over')) &&
         !this.gameTransitionReturningToHub &&
