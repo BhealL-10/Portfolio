@@ -1,4 +1,4 @@
-import { getRuntimeDeviceState } from './device';
+import { getRuntimeDeviceState, getRuntimePlatformDetails } from './device';
 import { getRuntimeViewportSize } from './viewport';
 
 export type GameQualitySelection = 'auto' | 'high' | 'medium' | 'low' | 'ultra_low';
@@ -21,6 +21,7 @@ export interface GameQualityState {
   selection: GameQualitySelection;
   resolved: ResolvedGameQuality;
   source: 'auto' | 'manual';
+  recoveryForced: boolean;
   visual: GameVisualQuality;
 }
 
@@ -44,6 +45,18 @@ export interface GameQualityRuntimeAdjustmentInput {
   startupStutterCount: number;
 }
 
+export interface GameQualityWarmupAdjustmentInput {
+  frameMsAverage: number;
+  frameMsP95: number;
+  sampleCount: number;
+}
+
+export interface AutoQualityPlatformInfo {
+  isMobile: boolean;
+  isAppleMobile: boolean;
+  isAndroid: boolean;
+}
+
 export interface GameQualityChangeEvent {
   previousQuality: ResolvedGameQuality;
   newQuality: ResolvedGameQuality;
@@ -53,14 +66,21 @@ export interface GameQualityChangeEvent {
 
 interface GameQualityControllerOptions {
   estimateInput?: Partial<GameQualityEstimateInput>;
+  platformInfo?: Partial<AutoQualityPlatformInfo>;
   now?: () => number;
+  recoveryForced?: boolean;
   storage?: Storage | null;
 }
 
 const GAME_QUALITY_STORAGE_KEY = 'portfolio-game-quality-v1';
-const AUTO_EVALUATION_INTERVAL_SECONDS = 1.6;
+const AUTO_EVALUATION_INTERVAL_SECONDS = 0.9;
+const AUTO_UPGRADE_EVALUATION_INTERVAL_SECONDS = 6.2;
 const STARTUP_STUTTER_WINDOW_SECONDS = 4.5;
 const STARTUP_STUTTER_THRESHOLD_MS = 45;
+const AUTO_STABLE_UPGRADE_GRACE_SECONDS = 4.2;
+const DESKTOP_AUTO_UPGRADE_LOCK_SECONDS = 8.5;
+const MOBILE_AUTO_UPGRADE_LOCK_SECONDS = 13.5;
+const APPLE_MOBILE_AUTO_UPGRADE_LOCK_SECONDS = 18;
 
 const RESOLVED_QUALITY_ORDER: readonly ResolvedGameQuality[] = ['high', 'medium', 'low', 'ultra_low'] as const;
 
@@ -133,11 +153,12 @@ function resolveStorage(storage?: Storage | null) {
   return window.localStorage;
 }
 
-function buildState(selection: GameQualitySelection, resolved: ResolvedGameQuality): GameQualityState {
+function buildState(selection: GameQualitySelection, resolved: ResolvedGameQuality, recoveryForced = false): GameQualityState {
   return {
     selection,
     resolved,
     source: selection === 'auto' ? 'auto' : 'manual',
+    recoveryForced,
     visual: buildGameVisualQuality(resolved)
   };
 }
@@ -155,6 +176,25 @@ function estimateInputFromRuntime(): GameQualityEstimateInput {
   };
 }
 
+function estimatePlatformFromRuntime(): AutoQualityPlatformInfo {
+  const deviceState = getRuntimeDeviceState();
+  const platformDetails = getRuntimePlatformDetails();
+  return {
+    isMobile: deviceState.isMobile,
+    isAppleMobile: platformDetails.isAppleMobile,
+    isAndroid: platformDetails.isAndroid
+  };
+}
+
+function clampPlatformInfo(input: Partial<AutoQualityPlatformInfo> = {}): AutoQualityPlatformInfo {
+  const runtime = typeof window === 'undefined' ? null : estimatePlatformFromRuntime();
+  return {
+    isMobile: input.isMobile ?? runtime?.isMobile ?? false,
+    isAppleMobile: input.isAppleMobile ?? runtime?.isAppleMobile ?? false,
+    isAndroid: input.isAndroid ?? runtime?.isAndroid ?? false
+  };
+}
+
 function stepDownQuality(quality: ResolvedGameQuality, steps = 1): ResolvedGameQuality {
   const startIndex = RESOLVED_QUALITY_ORDER.indexOf(quality);
   if (startIndex < 0) {
@@ -162,6 +202,49 @@ function stepDownQuality(quality: ResolvedGameQuality, steps = 1): ResolvedGameQ
   }
   const nextIndex = Math.min(RESOLVED_QUALITY_ORDER.length - 1, startIndex + Math.max(1, steps));
   return RESOLVED_QUALITY_ORDER[nextIndex] ?? 'ultra_low';
+}
+
+function stepUpQuality(quality: ResolvedGameQuality, steps = 1): ResolvedGameQuality {
+  const startIndex = RESOLVED_QUALITY_ORDER.indexOf(quality);
+  if (startIndex <= 0) {
+    return 'high';
+  }
+  const nextIndex = Math.max(0, startIndex - Math.max(1, steps));
+  return RESOLVED_QUALITY_ORDER[nextIndex] ?? 'high';
+}
+
+export function getResolvedQualityRank(quality: ResolvedGameQuality) {
+  return Math.max(0, RESOLVED_QUALITY_ORDER.indexOf(quality));
+}
+
+export function clampMobileAutoQualityCeiling(
+  quality: ResolvedGameQuality,
+  platform: Partial<AutoQualityPlatformInfo> = {}
+): ResolvedGameQuality {
+  const resolvedPlatform = clampPlatformInfo(platform);
+  if (!resolvedPlatform.isMobile) {
+    return quality;
+  }
+  return getResolvedQualityRank(quality) < getResolvedQualityRank('medium') ? 'medium' : quality;
+}
+
+export function resolveInitialAutoQuality(
+  estimatedQuality: ResolvedGameQuality,
+  platform: Partial<AutoQualityPlatformInfo> = {},
+  recoveryForced = false
+): ResolvedGameQuality {
+  const resolvedPlatform = clampPlatformInfo(platform);
+  const ceiling = clampMobileAutoQualityCeiling(estimatedQuality, resolvedPlatform);
+  if (recoveryForced) {
+    return 'ultra_low';
+  }
+  if (!resolvedPlatform.isMobile) {
+    return ceiling;
+  }
+  if (resolvedPlatform.isAppleMobile) {
+    return 'ultra_low';
+  }
+  return ceiling === 'ultra_low' ? 'ultra_low' : 'low';
 }
 
 export function sanitizeGameQualitySelection(value: string | null | undefined): GameQualitySelection {
@@ -324,22 +407,57 @@ export function resolveRuntimeAutoDowngrade(
   return null;
 }
 
+export function resolveRuntimeAutoUpgrade(
+  currentQuality: ResolvedGameQuality,
+  targetQuality: ResolvedGameQuality,
+  input: GameQualityRuntimeAdjustmentInput
+) {
+  if (input.sampleCount < 90 || getResolvedQualityRank(currentQuality) <= getResolvedQualityRank(targetQuality)) {
+    return null;
+  }
+
+  const stableFps = input.fpsAverage >= 56;
+  const stableP95 = input.frameMsP95 > 0 && input.frameMsP95 <= 22;
+  const calmStartup = input.startupStutterCount <= 1;
+  if (!stableFps || !stableP95 || !calmStartup) {
+    return null;
+  }
+
+  return {
+    quality: stepUpQuality(currentQuality),
+    reason: 'stable_runtime'
+  };
+}
+
 export class GameQualityController {
-  private readonly now;
-  private readonly storage;
+  private readonly now: () => number;
+  private readonly storage: Storage | null;
+  private readonly platformInfo: AutoQualityPlatformInfo;
+  private readonly autoCeiling: ResolvedGameQuality;
+  private readonly recoveryForced: boolean;
+  private readonly runtimeUpgradeLockSeconds: number;
   private autoQuality: ResolvedGameQuality;
   private selection: GameQualitySelection;
   private state: GameQualityState;
   private lastRuntimeEvaluationAt = Number.NEGATIVE_INFINITY;
+  private lastUpgradeEvaluationAt = Number.NEGATIVE_INFINITY;
   private runStartedAt = Number.NEGATIVE_INFINITY;
+  private adventureStableAt = Number.POSITIVE_INFINITY;
   private startupStutterCount = 0;
 
   constructor(options: GameQualityControllerOptions = {}) {
     this.now = options.now ?? (() => performance.now());
     this.storage = resolveStorage(options.storage);
+    this.platformInfo = clampPlatformInfo(options.platformInfo);
+    this.recoveryForced = options.recoveryForced ?? false;
     this.selection = readStoredGameQualitySelection(this.storage);
-    this.autoQuality = estimateAutoGameQuality(options.estimateInput);
-    this.state = buildState(this.selection, this.selection === 'auto' ? this.autoQuality : this.selection);
+    const estimatedAutoQuality = estimateAutoGameQuality(options.estimateInput);
+    this.autoCeiling = clampMobileAutoQualityCeiling(estimatedAutoQuality, this.platformInfo);
+    this.autoQuality = resolveInitialAutoQuality(estimatedAutoQuality, this.platformInfo, this.recoveryForced);
+    this.runtimeUpgradeLockSeconds = this.platformInfo.isMobile
+      ? (this.platformInfo.isAppleMobile ? APPLE_MOBILE_AUTO_UPGRADE_LOCK_SECONDS : MOBILE_AUTO_UPGRADE_LOCK_SECONDS)
+      : DESKTOP_AUTO_UPGRADE_LOCK_SECONDS;
+    this.state = buildState(this.selection, this.resolveCurrentStateQuality(), this.recoveryForced);
   }
 
   getState() {
@@ -353,18 +471,24 @@ export class GameQualityController {
     }
     this.selection = sanitized;
     persistGameQualitySelection(this.selection, this.storage);
-    this.state = buildState(this.selection, this.selection === 'auto' ? this.autoQuality : this.selection);
+    this.state = buildState(this.selection, this.resolveCurrentStateQuality(), this.recoveryForced);
     return this.state;
   }
 
   markRunStarted(startedAtSeconds = this.now() / 1000) {
     this.runStartedAt = startedAtSeconds;
     this.lastRuntimeEvaluationAt = startedAtSeconds;
+    this.lastUpgradeEvaluationAt = startedAtSeconds;
+    this.adventureStableAt = Number.POSITIVE_INFINITY;
     this.startupStutterCount = 0;
   }
 
+  markAdventureStable(stableAtSeconds = this.now() / 1000) {
+    this.adventureStableAt = stableAtSeconds;
+  }
+
   applyAdventureLoadMeasurement(adventureLoadMs: number): GameQualityChangeEvent | null {
-    if (this.selection !== 'auto') {
+    if (this.selection !== 'auto' || this.recoveryForced) {
       return null;
     }
     const adjustment = resolveAdventureLoadAutoDowngrade(this.autoQuality, { adventureLoadMs });
@@ -374,12 +498,34 @@ export class GameQualityController {
     return this.applyAutoQualityChange(adjustment.quality, adjustment.reason);
   }
 
+  applyAdventureSafetyWarmup(input: GameQualityWarmupAdjustmentInput): GameQualityChangeEvent | null {
+    if (this.selection !== 'auto' || this.recoveryForced || !this.platformInfo.isMobile || input.sampleCount < 6) {
+      return null;
+    }
+
+    const overloaded = input.frameMsAverage >= 30 || input.frameMsP95 >= 42;
+    if (overloaded && this.autoQuality !== 'ultra_low') {
+      return this.applyAutoQualityChange('ultra_low', 'adventure_safety_warmup_overloaded');
+    }
+
+    const stableWarmup = input.frameMsAverage > 0 && input.frameMsAverage <= 24 && input.frameMsP95 > 0 && input.frameMsP95 <= 28;
+    if (
+      stableWarmup &&
+      this.autoQuality === 'ultra_low' &&
+      getResolvedQualityRank(this.autoCeiling) <= getResolvedQualityRank('low')
+    ) {
+      return this.applyAutoQualityChange('low', 'adventure_safety_warmup_stable');
+    }
+
+    return null;
+  }
+
   observeRuntimeFrame(
     deltaTime: number,
     elapsedTime: number,
     runtime: Pick<GameQualityRuntimeAdjustmentInput, 'fpsAverage' | 'frameMsP95' | 'sampleCount'>
   ): GameQualityChangeEvent | null {
-    if (this.selection !== 'auto') {
+    if (this.selection !== 'auto' || this.recoveryForced) {
       return null;
     }
 
@@ -400,15 +546,39 @@ export class GameQualityController {
       startupStutterCount: this.startupStutterCount
     });
     if (!adjustment || adjustment.quality === this.autoQuality) {
-      return null;
+      const upgradeUnlockedAt = Math.max(
+        this.runStartedAt + this.runtimeUpgradeLockSeconds,
+        this.adventureStableAt + AUTO_STABLE_UPGRADE_GRACE_SECONDS
+      );
+      if (
+        !Number.isFinite(this.adventureStableAt) ||
+        elapsedTime < upgradeUnlockedAt ||
+        elapsedTime - this.lastUpgradeEvaluationAt < AUTO_UPGRADE_EVALUATION_INTERVAL_SECONDS
+      ) {
+        return null;
+      }
+      this.lastUpgradeEvaluationAt = elapsedTime;
+      const upgrade = resolveRuntimeAutoUpgrade(this.autoQuality, this.autoCeiling, {
+        ...runtime,
+        startupStutterCount: this.startupStutterCount
+      });
+      if (!upgrade || upgrade.quality === this.autoQuality) {
+        return null;
+      }
+      return this.applyAutoQualityChange(upgrade.quality, upgrade.reason);
     }
     return this.applyAutoQualityChange(adjustment.quality, adjustment.reason);
+  }
+
+  private resolveCurrentStateQuality() {
+    const resolved = this.selection === 'auto' ? this.autoQuality : this.selection;
+    return this.recoveryForced ? 'ultra_low' : resolved;
   }
 
   private applyAutoQualityChange(nextQuality: ResolvedGameQuality, reason: string): GameQualityChangeEvent {
     const previousQuality = this.autoQuality;
     this.autoQuality = nextQuality;
-    this.state = buildState(this.selection, this.autoQuality);
+    this.state = buildState(this.selection, this.resolveCurrentStateQuality(), this.recoveryForced);
     return {
       previousQuality,
       newQuality: nextQuality,

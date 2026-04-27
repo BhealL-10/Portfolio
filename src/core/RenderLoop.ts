@@ -41,6 +41,12 @@ export class RenderLoop {
     cancelAnimationFrame(this.frameId);
   }
 
+  resetStats(now = performance.now()) {
+    this.frameSamples.length = 0;
+    this.fpsSamples.length = 0;
+    this.lastTime = now;
+  }
+
   getStats() {
     const frameMsAverage =
       this.frameSamples.length > 0

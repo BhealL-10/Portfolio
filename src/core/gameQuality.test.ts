@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   GameQualityController,
   buildGameVisualQuality,
+  clampMobileAutoQualityCeiling,
   estimateAutoGameQuality,
+  resolveInitialAutoQuality,
   resolveAdventureLoadAutoDowngrade,
+  resolveRuntimeAutoUpgrade,
   resolveRuntimeAutoDowngrade
 } from './gameQuality';
 
@@ -72,6 +75,41 @@ describe('gameQuality', () => {
     ).toBe('high');
   });
 
+  it('never starts mobile auto above low during the launch path', () => {
+    expect(
+      resolveInitialAutoQuality(
+        'high',
+        {
+          isMobile: true,
+          isAppleMobile: false,
+          isAndroid: true
+        },
+        false
+      )
+    ).toBe('low');
+    expect(
+      resolveInitialAutoQuality(
+        'medium',
+        {
+          isMobile: true,
+          isAppleMobile: true,
+          isAndroid: false
+        },
+        false
+      )
+    ).toBe('ultra_low');
+  });
+
+  it('caps mobile auto ceilings below high even on strong phones', () => {
+    expect(
+      clampMobileAutoQualityCeiling('high', {
+        isMobile: true,
+        isAppleMobile: false,
+        isAndroid: true
+      })
+    ).toBe('medium');
+  });
+
   it('downgrades auto quality on slow adventure loads', () => {
     expect(resolveAdventureLoadAutoDowngrade('high', { adventureLoadMs: 5000 })).toEqual({
       quality: 'medium',
@@ -90,6 +128,55 @@ describe('gameQuality', () => {
     ).toEqual({
       quality: 'low',
       reason: 'p95_critical'
+    });
+  });
+
+  it('allows only one-step auto upgrades after sustained stability', () => {
+    expect(
+      resolveRuntimeAutoUpgrade('low', 'medium', {
+        fpsAverage: 58,
+        frameMsP95: 20,
+        sampleCount: 100,
+        startupStutterCount: 0
+      })
+    ).toEqual({
+      quality: 'medium',
+      reason: 'stable_runtime'
+    });
+  });
+
+  it('lets mobile warmup lift ultra low only to low when early frames are stable', () => {
+    const controller = new GameQualityController({
+      estimateInput: {
+        isMobile: true,
+        viewportWidth: 430,
+        viewportHeight: 932,
+        devicePixelRatio: 3,
+        hardwareConcurrency: 6,
+        deviceMemory: 6
+      },
+      platformInfo: {
+        isMobile: true,
+        isAppleMobile: true,
+        isAndroid: false
+      },
+      now: () => 0
+    });
+
+    expect(controller.getState().resolved).toBe('ultra_low');
+    expect(
+      controller.applyAdventureSafetyWarmup({
+        frameMsAverage: 16.5,
+        frameMsP95: 22,
+        sampleCount: 8
+      })
+    ).toEqual({
+      previousQuality: 'ultra_low',
+      newQuality: 'low',
+      reason: 'adventure_safety_warmup_stable',
+      state: expect.objectContaining({
+        resolved: 'low'
+      })
     });
   });
 
@@ -127,5 +214,23 @@ describe('gameQuality', () => {
     expect(state.selection).toBe('ultra_low');
     expect(state.source).toBe('manual');
     expect(storage.get('portfolio-game-quality-v1')).toBe('ultra_low');
+  });
+
+  it('forces ultra low for the current session after a recovered crash', () => {
+    const controller = new GameQualityController({
+      recoveryForced: true,
+      estimateInput: {
+        isMobile: false,
+        viewportWidth: 1440,
+        viewportHeight: 900,
+        devicePixelRatio: 1,
+        hardwareConcurrency: 8,
+        deviceMemory: 16
+      },
+      now: () => 0
+    });
+
+    expect(controller.getState().resolved).toBe('ultra_low');
+    expect(controller.getState().recoveryForced).toBe(true);
   });
 });

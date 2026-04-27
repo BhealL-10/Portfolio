@@ -476,6 +476,14 @@ export function initFrontendSentry(options: { deferUntilIdle?: boolean } = {}) {
   startSdk();
 }
 
+export function isFrontendSentryAvailable() {
+  return frontendSentryAvailable;
+}
+
+export function isFrontendSentryInitialized() {
+  return frontendSentryInitialized;
+}
+
 export function addGameBreadcrumb(
   message: string,
   data?: Record<string, unknown>,

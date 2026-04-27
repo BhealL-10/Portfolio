@@ -33,7 +33,22 @@ import {
   isPortfolioInteractionMode,
   isprimaterieMode
 } from './appModePredicates';
-import { applyRuntimeDeviceAttributes, getRuntimeDeviceState, isMobilePortraitRuntime, isMobileRuntime } from './device';
+import {
+  applyRuntimeDeviceAttributes,
+  getRuntimeDeviceState,
+  isAppleMobileRuntime,
+  isMobilePortraitRuntime,
+  isMobileRuntime
+} from './device';
+import {
+  beginAdventureLaunchTracking,
+  clearAdventureLaunchTracking,
+  detectPreviousAdventureLaunchCrash,
+  flushPendingAdventureCrashReport as flushStoredAdventureCrashReport,
+  hasPendingAdventureCrashReport as hasStoredAdventureCrashReport,
+  updateAdventureLaunchTracking,
+  type AdventureLaunchPhase
+} from './adventureLaunchSafety';
 import { getBrowserAssetCacheStats } from './browserAssetCache';
 import {
   installGameBootDiagnostics,
@@ -43,7 +58,13 @@ import {
 } from './gameBootDiagnostics';
 import { damp, wrapIndex } from './math';
 import { PerfDebugOverlay } from './perfDebug';
-import { GameQualityController, buildGameVisualQuality, type GameQualitySelection, type GameQualityState } from './gameQuality';
+import {
+  GameQualityController,
+  buildGameVisualQuality,
+  getResolvedQualityRank as getResolvedGameQualityRank,
+  type GameQualitySelection,
+  type GameQualityState
+} from './gameQuality';
 import { getPerformanceProfile } from './performanceProfile';
 import { RenderLoop } from './RenderLoop';
 import { addGameBreadcrumb, captureGameException, setSentryContext } from './sentry';
@@ -182,8 +203,14 @@ export class AppController {
     selection: 'auto',
     resolved: 'high',
     source: 'auto',
+    recoveryForced: false,
     visual: buildGameVisualQuality('high')
   };
+  private readonly previousAdventureCrash = detectPreviousAdventureLaunchCrash();
+  private adventureRunStartedAt = Number.NEGATIVE_INFINITY;
+  private adventureFirstFramesLogged = false;
+  private adventureStableLogged = false;
+  private lastPendingCrashReportFlushAt = Number.NEGATIVE_INFINITY;
   private primateriePendingAction: {
     execute: () => void;
   } | null = null;
@@ -197,8 +224,38 @@ export class AppController {
   constructor(host: HTMLElement, options: { entryRoute: AppEntryRoute }) {
     installGameBootDiagnostics();
     recordGameBootDiagnostic('app_controller_constructor_started', { entryRoute: options.entryRoute });
-    this.qualityController = new GameQualityController();
+    if (this.previousAdventureCrash) {
+      recordGameBootDiagnostic('previous_adventure_launch_crashed', {
+        previousQuality: this.previousAdventureCrash.previousQuality,
+        previousPhase: this.previousAdventureCrash.previousPhase,
+        previousTimestamp: this.previousAdventureCrash.previousTimestamp,
+        route: this.previousAdventureCrash.route
+      });
+      addGameBreadcrumb(
+        'Previous adventure launch likely crashed',
+        {
+          previousQuality: this.previousAdventureCrash.previousQuality,
+          previousPhase: this.previousAdventureCrash.previousPhase,
+          previousTimestamp: this.previousAdventureCrash.previousTimestamp
+        },
+        'warning',
+        'game.recovery'
+      );
+      setSentryContext('adventure_recovery', {
+        previousQuality: this.previousAdventureCrash.previousQuality,
+        previousPhase: this.previousAdventureCrash.previousPhase,
+        previousTimestamp: this.previousAdventureCrash.previousTimestamp,
+        route: this.previousAdventureCrash.route
+      });
+    }
+    this.qualityController = new GameQualityController({
+      recoveryForced: Boolean(this.previousAdventureCrash)
+    });
     this.gameQualityState = this.qualityController.getState();
+    if (hasStoredAdventureCrashReport()) {
+      this.lastPendingCrashReportFlushAt = 0;
+      void this.flushPendingAdventureCrashReport();
+    }
     recordGameBootDiagnostic('performance_profile_selected', {
       profile: this.performanceProfile.id,
       targetShellFps: this.performanceProfile.targetShellFps,
@@ -208,10 +265,12 @@ export class AppController {
     recordGameBootDiagnostic('game_quality_selected', {
       selection: this.gameQualityState.selection,
       resolved: this.gameQualityState.resolved,
-      source: this.gameQualityState.source
+      source: this.gameQualityState.source,
+      recoveryForced: this.gameQualityState.recoveryForced
     });
     setSentryContext('app_boot', {
-      entryRoute: options.entryRoute
+      entryRoute: options.entryRoute,
+      recoveryForced: this.gameQualityState.recoveryForced
     });
     this.entryRoute = options.entryRoute;
     this.root = document.createElement('div');
@@ -762,6 +821,9 @@ export class AppController {
       this.primateriePortal.setLoadingMessage(
         this.i18n.current === 'fr' ? 'Préparation de l’aventure…' : 'Preparing adventure…'
       );
+      this.trackAdventureLaunchPhase('adventure_loading_requested', {
+        preloadQueue: 'prepare_adventure_launch'
+      });
       recordGameBootDiagnostic('adventure_loading_requested', {
         entryRoute: this.entryRoute,
         mobile,
@@ -770,6 +832,9 @@ export class AppController {
         assetsReady: this.primaterieHubPreloaded
       });
 
+      this.trackAdventureLaunchPhase('adventure_runtime_loading', {
+        preloadQueue: 'runtime_module'
+      });
       recordGameBootDiagnostic('adventure_runtime_loading', {
         mobile,
         profile: this.performanceProfile.id
@@ -788,6 +853,7 @@ export class AppController {
       if (qualityDowngrade) {
         this.handleGameQualityChange(qualityDowngrade);
       }
+      await this.runAdventureSafetyWarmup();
       this.adventureLaunchPrepared = true;
       recordGameBootDiagnostic('adventure_ready', {
         mobile,
@@ -795,9 +861,11 @@ export class AppController {
         quality: this.gameQualityState.resolved,
         gameState: this.game.currentState
       });
+      clearAdventureLaunchTracking();
     })
       .catch((error) => {
         this.adventureLaunchPrepared = false;
+        clearAdventureLaunchTracking();
         recordGameBootDiagnosticError('adventure_prepare_failed', error, {
           entryRoute: this.entryRoute,
           profile: this.performanceProfile.id
@@ -843,6 +911,9 @@ export class AppController {
 
     this.primaterieHubPreloadPromise = (async () => {
       const mobile = isMobileRuntime();
+      this.trackAdventureLaunchPhase('adventure_assets_preloading', {
+        preloadQueue: 'game_critical_assets'
+      });
       recordGameBootDiagnostic('adventure_assets_preloading', {
         mobile,
         profile: this.performanceProfile.id,
@@ -850,13 +921,14 @@ export class AppController {
         hudPhase: 'critical'
       });
       await this.game.preloadAssets({ phase: 'critical' });
-      await new Promise<void>((resolve) => window.setTimeout(resolve, mobile ? 24 : 8));
+      await new Promise<void>((resolve) => window.setTimeout(resolve, mobile ? 32 : 10));
       await this.gameHud.preloadAssets({
         phase: 'critical',
         scheduleDeferred: true,
         includeAvatarAssets: false,
         includeDecorativeAssets: false
       });
+      await new Promise<void>((resolve) => window.setTimeout(resolve, mobile ? 28 : 10));
       if (this.hasObservedUserGesture) {
         this.audio.registerUserGesture();
         recordGameBootDiagnostic('adventure_audio_prepare_started', {
@@ -877,6 +949,7 @@ export class AppController {
           mobile,
           level: mobile ? 'minimal' : 'core'
         });
+        await new Promise<void>((resolve) => window.setTimeout(resolve, mobile ? 18 : 0));
       }
       this.primaterieHubPreloaded = true;
       recordGameBootDiagnostic('adventure_assets_ready', {
@@ -903,6 +976,138 @@ export class AppController {
       });
 
     return this.primaterieHubPreloadPromise;
+  }
+
+  private async runAdventureSafetyWarmup() {
+    if (this.gameQualityState.selection !== 'auto' || !isMobileRuntime()) {
+      return;
+    }
+
+    const mobile = isMobileRuntime();
+    const appleMobile = isAppleMobileRuntime();
+    this.trackAdventureLaunchPhase('adventure_safety_warmup', {
+      preloadQueue: 'adventure_safety_warmup'
+    });
+    recordGameBootDiagnostic('adventure_safety_warmup', {
+      mobile,
+      appleMobile,
+      quality: this.gameQualityState.resolved
+    });
+    const warmupSample = await this.collectAnimationFrameSample(appleMobile ? 10 : 8);
+    const qualityChange = this.qualityController.applyAdventureSafetyWarmup(warmupSample);
+    if (qualityChange) {
+      this.handleGameQualityChange(qualityChange);
+    }
+    this.trackAdventureLaunchPhase('adventure_safety_warmup', {
+      preloadQueue: 'adventure_safety_warmup_complete',
+      lastDiagnosticEvent: 'adventure_safety_warmup_completed',
+      fpsAverage: warmupSample.frameMsAverage > 0 ? 1000 / warmupSample.frameMsAverage : 0,
+      frameMsP95: warmupSample.frameMsP95,
+      sampleCount: warmupSample.sampleCount
+    });
+    recordGameBootDiagnostic('adventure_safety_warmup_completed', {
+      mobile,
+      appleMobile,
+      quality: this.gameQualityState.resolved,
+      frameMsAverage: Number(warmupSample.frameMsAverage.toFixed(2)),
+      frameMsP95: Number(warmupSample.frameMsP95.toFixed(2)),
+      sampleCount: warmupSample.sampleCount
+    });
+  }
+
+  private collectAnimationFrameSample(sampleCount: number) {
+    return new Promise<{ frameMsAverage: number; frameMsP95: number; sampleCount: number }>((resolve) => {
+      const samples: number[] = [];
+      let previousTime = 0;
+
+      const finalize = () => {
+        if (samples.length === 0) {
+          resolve({
+            frameMsAverage: 0,
+            frameMsP95: 0,
+            sampleCount: 0
+          });
+          return;
+        }
+        const average = samples.reduce((sum, sample) => sum + sample, 0) / samples.length;
+        const sorted = [...samples].sort((left, right) => left - right);
+        const p95Index = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95));
+        resolve({
+          frameMsAverage: average,
+          frameMsP95: sorted[p95Index] ?? average,
+          sampleCount: samples.length
+        });
+      };
+
+      const capture = (now: number) => {
+        if (previousTime > 0) {
+          samples.push(Math.max(0, now - previousTime));
+        }
+        previousTime = now;
+        if (samples.length >= sampleCount) {
+          finalize();
+          return;
+        }
+        window.requestAnimationFrame(capture);
+      };
+
+      window.requestAnimationFrame(capture);
+    });
+  }
+
+  private trackAdventureLaunchPhase(
+    phase: AdventureLaunchPhase,
+    options: {
+      preloadQueue?: string;
+      lastDiagnosticEvent?: string;
+      fpsAverage?: number;
+      frameMsP95?: number;
+      sampleCount?: number;
+    } = {}
+  ) {
+    const loopStats = this.loop.getStats();
+    const snapshot = {
+      route: this.entryRoute,
+      phase,
+      qualityState: this.gameQualityState,
+      fpsAverage: options.fpsAverage ?? loopStats.fpsAverage,
+      frameMsP95: options.frameMsP95 ?? loopStats.frameMsP95,
+      sampleCount: options.sampleCount ?? loopStats.sampleCount,
+      preloadQueue: options.preloadQueue,
+      lastDiagnosticEvent: options.lastDiagnosticEvent ?? phase
+    };
+    addGameBreadcrumb(
+      `Adventure phase: ${phase}`,
+      {
+        route: snapshot.route,
+        quality: snapshot.qualityState.resolved,
+        selection: snapshot.qualityState.selection,
+        preloadQueue: snapshot.preloadQueue,
+        fpsAverage: Number(snapshot.fpsAverage.toFixed(1)),
+        frameMsP95: Number(snapshot.frameMsP95.toFixed(2)),
+        sampleCount: snapshot.sampleCount
+      },
+      'info',
+      'game.adventure.phase'
+    );
+
+    if (phase === 'adventure_loading_requested' || phase === 'adventure_transition_resume') {
+      beginAdventureLaunchTracking(snapshot);
+      return;
+    }
+    updateAdventureLaunchTracking(snapshot);
+  }
+
+  private flushPendingAdventureCrashReport(elapsedTime = performance.now() / 1000) {
+    if (!hasStoredAdventureCrashReport() || elapsedTime - this.lastPendingCrashReportFlushAt < 2.4) {
+      return;
+    }
+    this.lastPendingCrashReportFlushAt = elapsedTime;
+    if (flushStoredAdventureCrashReport()) {
+      recordGameBootDiagnostic('adventure_crash_report_flushed', {
+        recoveryForced: this.gameQualityState.recoveryForced
+      });
+    }
   }
 
   private scheduleGameRuntimeModulePrefetch() {
@@ -1997,6 +2202,9 @@ export class AppController {
     this.parallaxLayers.beginAdventureIntro();
     this.parallaxLayers.setTransitionState(true, 0);
     if (this.gameTransitionFromprimaterie) {
+      this.trackAdventureLaunchPhase('adventure_game_start', {
+        preloadQueue: 'game_transition'
+      });
       recordGameBootDiagnostic('adventure_game_start', {
         entryRoute: this.entryRoute,
         profile: this.performanceProfile.id
@@ -2061,8 +2269,12 @@ export class AppController {
         this.gameTransitionAnchor = null;
         this.world.setShardLockTransition(false, 0);
         this.mode.setMode('game');
+        this.loop.resetStats();
         this.game.beginRun();
         this.qualityController.markRunStarted(performance.now() / 1000);
+        this.adventureRunStartedAt = enteredFromPrimaterie ? performance.now() / 1000 : Number.NEGATIVE_INFINITY;
+        this.adventureFirstFramesLogged = false;
+        this.adventureStableLogged = false;
         recordGameBootDiagnostic('game_ok', {
           forceDirectEntry,
           source: enteredFromPrimaterie ? 'primaterie' : 'portfolio'
@@ -2090,6 +2302,7 @@ export class AppController {
     }
     this.audio.prime();
     addGameBreadcrumb('Game restart requested', undefined, 'info', 'game.lifecycle');
+    this.loop.resetStats();
     this.game.restart();
     this.qualityController.markRunStarted(performance.now() / 1000);
     this.parallaxLayers.resetForRun(this.game.getParallaxCoverageAnchorX());
@@ -2106,6 +2319,11 @@ export class AppController {
     if (!isGameRuntimeMode(this.mode.current)) {
       return;
     }
+
+    clearAdventureLaunchTracking();
+    this.adventureRunStartedAt = Number.NEGATIVE_INFINITY;
+    this.adventureFirstFramesLogged = false;
+    this.adventureStableLogged = false;
 
     // Clean up all subscriptions and UI listeners before exiting
     this.gameRuntimeUnsubscribers.forEach((unsubscribe) => unsubscribe());
@@ -2211,7 +2429,8 @@ export class AppController {
     recordGameBootDiagnostic('game_quality_selected', {
       selection: nextState.selection,
       resolved: nextState.resolved,
-      source: nextState.source
+      source: nextState.source,
+      recoveryForced: nextState.recoveryForced
     });
   }
 
@@ -2219,6 +2438,45 @@ export class AppController {
     const change = this.qualityController.observeRuntimeFrame(deltaTime, elapsedTime, this.loop.getStats());
     if (change) {
       this.handleGameQualityChange(change);
+    }
+  }
+
+  private observeAdventureLaunchStability(elapsedTime: number) {
+    if (!Number.isFinite(this.adventureRunStartedAt)) {
+      return;
+    }
+
+    const loopStats = this.loop.getStats();
+    const runElapsed = elapsedTime - this.adventureRunStartedAt;
+    if (!this.adventureFirstFramesLogged && loopStats.sampleCount >= 8) {
+      this.adventureFirstFramesLogged = true;
+      this.trackAdventureLaunchPhase('adventure_first_frames', {
+        preloadQueue: 'adventure_first_frames',
+        lastDiagnosticEvent: 'adventure_first_frames'
+      });
+      recordGameBootDiagnostic('adventure_first_frames', {
+        quality: this.gameQualityState.resolved,
+        fpsAverage: Number(loopStats.fpsAverage.toFixed(1)),
+        frameMsP95: Number(loopStats.frameMsP95.toFixed(2)),
+        sampleCount: loopStats.sampleCount
+      });
+    }
+
+    if (!this.adventureStableLogged && runElapsed >= 4.8 && loopStats.sampleCount >= 30) {
+      this.adventureStableLogged = true;
+      this.qualityController.markAdventureStable(elapsedTime);
+      this.trackAdventureLaunchPhase('adventure_stable', {
+        preloadQueue: 'adventure_stable',
+        lastDiagnosticEvent: 'adventure_stable'
+      });
+      recordGameBootDiagnostic('adventure_stable', {
+        quality: this.gameQualityState.resolved,
+        fpsAverage: Number(loopStats.fpsAverage.toFixed(1)),
+        frameMsP95: Number(loopStats.frameMsP95.toFixed(2)),
+        sampleCount: loopStats.sampleCount,
+        stableAfterSeconds: Number(runElapsed.toFixed(2))
+      });
+      clearAdventureLaunchTracking();
     }
   }
 
@@ -2230,7 +2488,9 @@ export class AppController {
   }) {
     this.gameQualityState = change.state;
     this.applyGameQualityState(true);
-    recordGameBootDiagnostic('auto_quality_downgrade', {
+    const upgraded =
+      getResolvedGameQualityRank(change.newQuality) < getResolvedGameQualityRank(change.previousQuality);
+    recordGameBootDiagnostic(upgraded ? 'auto_quality_upgrade' : 'auto_quality_downgrade', {
       previousQuality: change.previousQuality,
       newQuality: change.newQuality,
       reason: change.reason
@@ -2240,10 +2500,13 @@ export class AppController {
   private applyGameQualityState(forceRefresh = false) {
     document.documentElement.dataset.gameQuality = this.gameQualityState.resolved;
     document.documentElement.dataset.gameQualitySelection = this.gameQualityState.selection;
+    document.documentElement.dataset.gameQualityRecovery = this.gameQualityState.recoveryForced ? 'on' : 'off';
     this.root.dataset.gameQuality = this.gameQualityState.resolved;
     this.root.dataset.gameQualitySelection = this.gameQualityState.selection;
+    this.root.dataset.gameQualityRecovery = this.gameQualityState.recoveryForced ? 'on' : 'off';
     this.uiHost.dataset.gameQuality = this.gameQualityState.resolved;
     this.uiHost.dataset.gameQualitySelection = this.gameQualityState.selection;
+    this.uiHost.dataset.gameQualityRecovery = this.gameQualityState.recoveryForced ? 'on' : 'off';
 
     if (this.musicBackdrop) {
       this.musicBackdrop.setVisualQuality(this.gameQualityState.visual);
@@ -2307,6 +2570,7 @@ export class AppController {
     }).memory;
     const flags = [
       `quality:${quality.selection}/${quality.resolved}`,
+      `recovery:${quality.recoveryForced ? 'on' : 'off'}`,
       `backdrop:${quality.visual.showMusicReactiveBackdrop ? 'on' : 'off'}`,
       `boats:${quality.visual.showMomentumBoats ? 'on' : 'off'}`,
       `parallax:${quality.visual.showParallaxLayers ? 'on' : 'off'}`,
@@ -2358,6 +2622,7 @@ export class AppController {
   }
 
   private update(deltaTime: number, elapsedTime: number) {
+    this.flushPendingAdventureCrashReport(elapsedTime);
     this.guideDeltaAccumulator += deltaTime;
     this.transitions.update(deltaTime);
     const accentColor = this.getAccentColor(elapsedTime);
@@ -2386,6 +2651,7 @@ export class AppController {
       this.game.update(orientationBlocked ? 0 : deltaTime, elapsedTime);
       if (!orientationBlocked && (this.mode.is('game') || this.mode.is('game_over'))) {
         this.observeAutoGameQuality(deltaTime, elapsedTime);
+        this.observeAdventureLaunchStability(elapsedTime);
       }
       const audioActive =
         (this.mode.is('game_transition') || this.mode.is('game') || this.mode.is('game_over')) &&
@@ -2430,6 +2696,9 @@ export class AppController {
       if (gameRuntime && this.primateriePendingAction) {
         const pendingAction = this.primateriePendingAction;
         if (this.game.preparePortalPreviewTransition('forward')) {
+          this.trackAdventureLaunchPhase('adventure_transition_resume', {
+            preloadQueue: 'portal_transition_resume'
+          });
           recordGameBootDiagnostic('adventure_transition_resume', {
             entryRoute: this.entryRoute,
             prepared: this.adventureLaunchPrepared,

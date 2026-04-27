@@ -13,8 +13,17 @@ export interface RuntimeDeviceState {
   hasAnyCoarsePointer: boolean;
 }
 
+export interface RuntimePlatformDetails {
+  isAppleMobile: boolean;
+  isAndroid: boolean;
+  platform: string;
+  userAgent: string;
+}
+
 const MOBILE_USER_AGENT_RE =
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|Tablet/i;
+const APPLE_MOBILE_USER_AGENT_RE = /iPhone|iPad|iPod/i;
+const ANDROID_USER_AGENT_RE = /Android/i;
 
 function getViewportSize() {
   return getRuntimeViewportSize();
@@ -28,6 +37,20 @@ function isLikelyMobileUserAgent() {
   const userAgent = window.navigator.userAgent ?? '';
   const maxTouchPoints = window.navigator.maxTouchPoints ?? 0;
   return MOBILE_USER_AGENT_RE.test(userAgent) || (/Macintosh/i.test(userAgent) && maxTouchPoints > 1);
+}
+
+export function getRuntimePlatformDetails(): RuntimePlatformDetails {
+  const userAgent = window.navigator.userAgent ?? '';
+  const platform = window.navigator.platform ?? '';
+  const maxTouchPoints = window.navigator.maxTouchPoints ?? 0;
+  const isAppleMobile =
+    APPLE_MOBILE_USER_AGENT_RE.test(userAgent) || (/Macintosh/i.test(userAgent) && maxTouchPoints > 1);
+  return {
+    isAppleMobile,
+    isAndroid: ANDROID_USER_AGENT_RE.test(userAgent),
+    platform,
+    userAgent
+  };
 }
 
 export function getRuntimeDeviceState(): RuntimeDeviceState {
@@ -80,4 +103,12 @@ export function isMobileLandscapeRuntime() {
 
 export function isMobilePortraitRuntime() {
   return getRuntimeDeviceState().isMobilePortrait;
+}
+
+export function isAppleMobileRuntime() {
+  return getRuntimePlatformDetails().isAppleMobile;
+}
+
+export function isAndroidRuntime() {
+  return getRuntimePlatformDetails().isAndroid;
 }

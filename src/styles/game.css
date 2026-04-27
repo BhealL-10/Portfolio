@@ -2015,6 +2015,17 @@ html[data-theme='dark'] .game-hud__achievement-card {
   filter: drop-shadow(0 8px 14px rgb(0 0 0 / 0.18));
 }
 
+.game-hud__landing-feedback[data-animation-mode='static'] {
+  left: auto;
+  top: auto;
+  right: calc(var(--safe-right) + 18px);
+  bottom: calc(var(--safe-bottom) + 88px);
+  align-items: flex-end;
+  gap: 6px;
+  transform: scale(1);
+  transform-origin: right bottom;
+}
+
 .game-hud__landing-feedback.is-twist .game-hud__landing-feedback-sprite--grade {
   width: var(--game-landing-feedback-grade-twist-width);
 }
@@ -2759,10 +2770,9 @@ html[data-theme='dark'] .game-hud__toast::before {
   line-height: 1.28;
   text-align: inherit;
   max-width: 100%;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  text-wrap: pretty;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: currentColor;
 }
 

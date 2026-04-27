@@ -131,6 +131,11 @@
     padding: 8px 12px;
   }
 
+  .game-hud__landing-feedback[data-animation-mode='static'] {
+    right: calc(var(--safe-right) + 12px);
+    bottom: calc(var(--safe-bottom) + 70px);
+  }
+
   .game-hud__game-over-achievements {
     top: calc(var(--safe-top) + 8px);
     width: min(44vw, 360px);

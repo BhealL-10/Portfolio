@@ -11,7 +11,7 @@ type GameBootDiagnosticsMode = 'off' | 'light' | 'debug';
 
 type GameBootDiagnosticValue = SanitizedLogValue;
 
-interface GameBootDiagnosticEntry {
+export interface GameBootDiagnosticEntry {
   at: number;
   iso: string;
   level: GameBootDiagnosticLevel;
@@ -520,6 +520,10 @@ export function recordGameBootSessionStarted(data?: Record<string, unknown>) {
     debugOverlay: isGameBootOverlayEnabled(),
     ...buildViewportSnapshot()
   });
+}
+
+export function getRecentGameBootDiagnostics(limit = 12) {
+  return readDiagnosticsCache().slice(-Math.max(1, limit)).map((entry) => ({ ...entry }));
 }
 
 export function installGameBootDiagnostics(options: InstallGameBootDiagnosticsOptions = {}) {

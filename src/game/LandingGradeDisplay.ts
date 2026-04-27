@@ -121,7 +121,7 @@ export class LandingGradeDisplay {
         ? animationState.opacity
         : this.visualMode === 'reduced'
           ? Math.max(0, 1 - progress * 0.72)
-          : Math.max(0, 0.96 - progress * 0.54);
+          : 1;
     const popScale =
       this.visualMode === 'full'
         ? (
@@ -133,8 +133,9 @@ export class LandingGradeDisplay {
           ? 1.02
           : 1;
     const driftY =
-      this.activePayload.screenY -
-      progress * (this.visualMode === 'full' ? 28 : this.visualMode === 'reduced' ? 14 : 8);
+      this.visualMode === 'static'
+        ? this.activePayload.screenY
+        : this.activePayload.screenY - progress * (this.visualMode === 'full' ? 28 : 14);
 
     this.applySprite(this.gradeElement, this.activePayload.grade, frameIndex, this.activePayload.gradeLabel);
     this.gradeElement.style.opacity = opacity.toFixed(3);
@@ -148,7 +149,10 @@ export class LandingGradeDisplay {
     this.element.classList.toggle('is-twist', this.activePayload.twist);
     this.element.classList.add('is-visible');
     this.element.style.opacity = opacity.toFixed(3);
-    this.element.style.transform = `translate(${this.activePayload.screenX}px, ${driftY}px) scale(${popScale.toFixed(3)})`;
+    this.element.style.transform =
+      this.visualMode === 'static'
+        ? `scale(${popScale.toFixed(3)})`
+        : `translate(${this.activePayload.screenX}px, ${driftY}px) scale(${popScale.toFixed(3)})`;
   }
 
   private buildSignature(payload: LandingGradeDisplayPayload) {

@@ -550,6 +550,7 @@ export class GameHUDSystem {
     selection: 'auto',
     resolved: 'high',
     source: 'auto',
+    recoveryForced: false,
     visual: buildGameVisualQuality('high')
   };
   private achievementSortMenuOpen = false;
@@ -1611,6 +1612,7 @@ export class GameHUDSystem {
       selection: state.selection,
       resolved: state.resolved,
       source: state.source,
+      recoveryForced: state.recoveryForced,
       visual: { ...state.visual }
     };
     this.element.dataset.gameQuality = this.qualityState.resolved;
@@ -1933,6 +1935,7 @@ export class GameHUDSystem {
     this.toastStack.innerHTML = visibleToasts
       .map((toast) => {
         if (toast.kind === 'achievement') {
+          const title = this.formatAchievementToastTitle(toast.value.name);
           const rewardMarkup = toast.value.reward
             ? `
               <div class="game-hud__toast-reward">
@@ -1945,7 +1948,7 @@ export class GameHUDSystem {
             <div class="game-hud__toast is-visible" data-kind="achievement" data-rarity="${toast.value.rarity}" style="--toast-progress:${toast.value.progress.toFixed(3)}">
               <div class="game-hud__toast-copy">
                 <span class="game-hud__toast-eyebrow">${this.i18n.current === 'fr' ? 'Succès' : 'Achievement'}</span>
-                <strong class="game-hud__toast-title">${toast.value.name}</strong>
+                <strong class="game-hud__toast-title" title="${this.escapeHtml(title.full)}" aria-label="${this.escapeHtml(title.full)}">${this.escapeHtml(title.display)}</strong>
                 ${rewardMarkup}
               </div>
             </div>
@@ -2502,11 +2505,38 @@ export class GameHUDSystem {
     }
   }
 
+  private formatAchievementToastTitle(title: string) {
+    const normalized = title.trim();
+    if (normalized.length <= 10) {
+      return {
+        display: normalized,
+        full: normalized
+      };
+    }
+    return {
+      display: `${normalized.slice(0, 10).trimEnd()}...`,
+      full: normalized
+    };
+  }
+
+  private escapeHtml(value: string) {
+    return value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
   private renderQualityButtons() {
     const groupLabel = this.i18n.t('gameQuality');
     const selection = this.qualityState.selection;
     const resolvedLabel = this.getQualityLabel(this.qualityState.resolved);
-    const modeLabel = selection === 'auto' ? this.i18n.t('gameQualityAuto') : this.i18n.t('gameQualityManual');
+    const modeLabel = this.qualityState.recoveryForced
+      ? this.i18n.t('gameQualityRecovery')
+      : selection === 'auto'
+        ? this.i18n.t('gameQualityAuto')
+        : this.i18n.t('gameQualityManual');
     const statusPrefix = this.i18n.current === 'fr' ? 'Actif' : 'Active';
 
     this.settingsQualityLabel.textContent = groupLabel;
