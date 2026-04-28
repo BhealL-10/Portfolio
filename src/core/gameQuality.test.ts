@@ -7,7 +7,8 @@ import {
   resolveInitialAutoQuality,
   resolveAdventureLoadAutoDowngrade,
   resolveRuntimeAutoUpgrade,
-  resolveRuntimeAutoDowngrade
+  resolveRuntimeAutoDowngrade,
+  sanitizeGameQualitySelection
 } from './gameQuality';
 
 describe('gameQuality', () => {
@@ -41,12 +42,8 @@ describe('gameQuality', () => {
     });
   });
 
-  it('collapses ultra low to gameplay-safe visuals only', () => {
-    const quality = buildGameVisualQuality('ultra_low');
-    expect(quality.showParallaxLayers).toBe(false);
-    expect(quality.showParticles).toBe(false);
-    expect(quality.enableHudAnimations).toBe(false);
-    expect(quality.enableEnemySpriteAnimations).toBe(false);
+  it('maps legacy ultra low selections to low', () => {
+    expect(sanitizeGameQualitySelection('ultra_low')).toBe('low');
   });
 
   it('estimates weaker mobile devices below high', () => {
@@ -97,17 +94,17 @@ describe('gameQuality', () => {
         },
         false
       )
-    ).toBe('ultra_low');
+    ).toBe('low');
   });
 
-  it('caps mobile auto ceilings below high even on strong phones', () => {
+  it('keeps strong mobile auto ceilings available for later promotion', () => {
     expect(
       clampMobileAutoQualityCeiling('high', {
         isMobile: true,
         isAppleMobile: false,
         isAndroid: true
       })
-    ).toBe('medium');
+    ).toBe('high');
   });
 
   it('downgrades auto quality on slow adventure loads', () => {
@@ -145,7 +142,7 @@ describe('gameQuality', () => {
     });
   });
 
-  it('lets mobile warmup lift ultra low only to low when early frames are stable', () => {
+  it('keeps mobile warmup from introducing a lower-than-low fallback', () => {
     const controller = new GameQualityController({
       estimateInput: {
         isMobile: true,
@@ -163,21 +160,14 @@ describe('gameQuality', () => {
       now: () => 0
     });
 
-    expect(controller.getState().resolved).toBe('ultra_low');
+    expect(controller.getState().resolved).toBe('low');
     expect(
       controller.applyAdventureSafetyWarmup({
         frameMsAverage: 16.5,
         frameMsP95: 22,
         sampleCount: 8
       })
-    ).toEqual({
-      previousQuality: 'ultra_low',
-      newQuality: 'low',
-      reason: 'adventure_safety_warmup_stable',
-      state: expect.objectContaining({
-        resolved: 'low'
-      })
-    });
+    ).toBeNull();
   });
 
   it('persists manual overrides without changing gameplay state', () => {
@@ -210,13 +200,13 @@ describe('gameQuality', () => {
       now: () => 0
     });
 
-    const state = controller.setSelection('ultra_low');
-    expect(state.selection).toBe('ultra_low');
+    const state = controller.setSelection('low');
+    expect(state.selection).toBe('low');
     expect(state.source).toBe('manual');
-    expect(storage.get('portfolio-game-quality-v1')).toBe('ultra_low');
+    expect(storage.get('portfolio-game-quality-v1')).toBe('low');
   });
 
-  it('forces ultra low for the current session after a recovered crash', () => {
+  it('forces low for the current session after a recovered crash', () => {
     const controller = new GameQualityController({
       recoveryForced: true,
       estimateInput: {
@@ -230,7 +220,7 @@ describe('gameQuality', () => {
       now: () => 0
     });
 
-    expect(controller.getState().resolved).toBe('ultra_low');
+    expect(controller.getState().resolved).toBe('low');
     expect(controller.getState().recoveryForced).toBe(true);
   });
 });

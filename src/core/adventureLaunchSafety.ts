@@ -224,7 +224,7 @@ function writeMarker(snapshot: AdventureLaunchTrackingSnapshot, resetStartTime =
 
 function buildRecoverySession(report: AdventureCrashRecoveryReport): AdventureRecoverySession {
   return {
-    forcedQuality: 'ultra_low',
+    forcedQuality: 'low',
     detectedAt: report.detectedAt,
     previousQuality: report.previousQuality,
     previousPhase: report.previousPhase

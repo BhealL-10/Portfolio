@@ -210,6 +210,8 @@ export class AppController {
   private adventureRunStartedAt = Number.NEGATIVE_INFINITY;
   private adventureFirstFramesLogged = false;
   private adventureStableLogged = false;
+  private deferredParallaxInitScheduled = false;
+  private deferredParallaxInitPromise: Promise<void> | null = null;
   private lastPendingCrashReportFlushAt = Number.NEGATIVE_INFINITY;
   private primateriePendingAction: {
     execute: () => void;
@@ -737,10 +739,7 @@ export class AppController {
         };
         this.gameRuntime = runtime;
 
-        if (this.hasObservedUserGesture) {
-          audio.registerUserGesture();
-          audio.prime();
-        }
+        recordGameBootDiagnostic('game_runtime_audio_prime_deferred_to_launch');
 
         this.refreshUI();
         recordGameBootDiagnostic('session_ok', {
@@ -930,26 +929,32 @@ export class AppController {
       });
       await new Promise<void>((resolve) => window.setTimeout(resolve, mobile ? 28 : 10));
       if (this.hasObservedUserGesture) {
-        this.audio.registerUserGesture();
-        recordGameBootDiagnostic('adventure_audio_prepare_started', {
-          mobile,
-          level: mobile ? 'minimal' : 'core'
-        });
-        await this.audio.prepareForLaunch(mobile ? 'minimal' : 'core').catch((error) => {
-          recordGameBootDiagnosticError('adventure_audio_prepare_failed', error, {
-            mobile,
-            level: mobile ? 'minimal' : 'core'
+        if (mobile) {
+          recordGameBootDiagnostic('adventure_audio_prepare_deferred_to_post_launch', {
+            mobile: true
           });
-          recordGameBootWarning('adventure_audio_prepare_non_critical_failed', {
+        } else {
+          this.audio.registerUserGesture();
+          recordGameBootDiagnostic('adventure_audio_prepare_started', {
             mobile,
-            message: error instanceof Error ? error.message : String(error)
+            level: 'core'
           });
-        });
-        recordGameBootDiagnostic('adventure_audio_prepare_completed', {
-          mobile,
-          level: mobile ? 'minimal' : 'core'
-        });
-        await new Promise<void>((resolve) => window.setTimeout(resolve, mobile ? 18 : 0));
+          await this.audio.prepareForLaunch('core').catch((error) => {
+            recordGameBootDiagnosticError('adventure_audio_prepare_failed', error, {
+              mobile,
+              level: 'core'
+            });
+            recordGameBootWarning('adventure_audio_prepare_non_critical_failed', {
+              mobile,
+              message: error instanceof Error ? error.message : String(error)
+            });
+          });
+          recordGameBootDiagnostic('adventure_audio_prepare_completed', {
+            mobile,
+            level: 'core'
+          });
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+        }
       }
       this.primaterieHubPreloaded = true;
       recordGameBootDiagnostic('adventure_assets_ready', {
@@ -1182,7 +1187,7 @@ export class AppController {
           this.game.preloadAssets({ phase: 'full' }),
           this.gameHud.preloadAssets({
             phase: 'full',
-            includeAvatarAssets: this.gameQualityState.resolved !== 'ultra_low' && !this.performanceProfile.isMobile,
+            includeAvatarAssets: !this.performanceProfile.isMobile,
             includeDecorativeAssets: this.gameQualityState.visual.enableGlowEffects && !this.performanceProfile.isMobile
           }),
           this.audio.prepareForLaunch('core')
@@ -1207,6 +1212,67 @@ export class AppController {
       return;
     }
     window.setTimeout(runWarmup, 1200);
+  }
+
+  private shouldDeferParallaxInitOnLaunch() {
+    return this.performanceProfile.isMobile;
+  }
+
+  private prepareParallaxForAdventureLaunch() {
+    if (this.shouldDeferParallaxInitOnLaunch()) {
+      this.parallaxLayers.setAutoInitEnabled(false);
+      recordGameBootDiagnostic('parallax_init_deferred_for_launch', {
+        mobile: this.performanceProfile.isMobile
+      });
+      return;
+    }
+
+    this.parallaxLayers.setAutoInitEnabled(true);
+    void this.parallaxLayers.init();
+  }
+
+  private scheduleDeferredParallaxInit() {
+    if (
+      this.deferredParallaxInitScheduled ||
+      this.deferredParallaxInitPromise ||
+      this.parallaxLayers.isInitialized()
+    ) {
+      return;
+    }
+
+    this.deferredParallaxInitScheduled = true;
+    recordGameBootDiagnostic('parallax_init_warmup_scheduled', {
+      mobile: this.performanceProfile.isMobile
+    });
+    const run = () => {
+      this.deferredParallaxInitScheduled = false;
+      if (!this.gameRuntime || !(this.mode.is('game') || this.mode.is('game_over'))) {
+        recordGameBootDiagnostic('parallax_init_warmup_skipped', {
+          mode: this.mode.current
+        });
+        return;
+      }
+      this.parallaxLayers.setAutoInitEnabled(true);
+      this.deferredParallaxInitPromise = this.parallaxLayers.init()
+        .then(() => {
+          recordGameBootDiagnostic('parallax_init_warmup_completed');
+        })
+        .catch((error) => {
+          recordGameBootDiagnosticError('parallax_init_warmup_failed', error);
+        })
+        .finally(() => {
+          this.deferredParallaxInitPromise = null;
+        });
+    };
+
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+    };
+    if (typeof idleWindow.requestIdleCallback === 'function') {
+      idleWindow.requestIdleCallback(run, { timeout: 1800 });
+      return;
+    }
+    window.setTimeout(run, 900);
   }
 
   private enterprimateriePortalMode() {
@@ -2121,6 +2187,7 @@ export class AppController {
       this.about.close();
     }
 
+    this.audio.registerUserGesture();
     this.audio.prime();
     this.gameTransitionReturningToHub = false;
     recordGameBootDiagnostic('game_start', {
@@ -2143,7 +2210,7 @@ export class AppController {
       'info',
       'game.lifecycle'
     );
-    void this.parallaxLayers.init();
+    this.prepareParallaxForAdventureLaunch();
 
     if (isFocusMode(this.mode.current)) {
       this.exitFocus(() => this.startGameTransition(forceDirectEntry, skipPreAlign));
@@ -2476,6 +2543,7 @@ export class AppController {
         sampleCount: loopStats.sampleCount,
         stableAfterSeconds: Number(runElapsed.toFixed(2))
       });
+      this.scheduleDeferredParallaxInit();
       clearAdventureLaunchTracking();
     }
   }
@@ -2495,6 +2563,28 @@ export class AppController {
       newQuality: change.newQuality,
       reason: change.reason
     });
+  }
+
+  private getProjectedLandingFeedbackPayload() {
+    if (!this.gameRuntime) {
+      return null;
+    }
+    const feedback = this.game.getLandingFeedbackState();
+    if (!feedback) {
+      return null;
+    }
+    const projected = this.renderer.projectWorldToScreen(feedback.worldPosition);
+    if (!projected.visible) {
+      return null;
+    }
+    return {
+      serial: feedback.serial,
+      grade: feedback.grade,
+      twist: feedback.twist,
+      progress: feedback.progress,
+      screenX: projected.x,
+      screenY: projected.y
+    };
   }
 
   private applyGameQualityState(forceRefresh = false) {
@@ -2848,10 +2938,12 @@ export class AppController {
     if (
       gameRuntime &&
       (this.mode.is('game_transition') || this.mode.is('game') || this.mode.is('game_over')) &&
-      !this.gameTransitionReturningToHub &&
-      this.shouldUpdateGameHud(elapsedTime)
+      !this.gameTransitionReturningToHub
     ) {
-      this.gameHud.update(this.getGameHudPayload());
+      this.gameHud.updateLandingFeedbackOverlay(this.getProjectedLandingFeedbackPayload());
+      if (this.shouldUpdateGameHud(elapsedTime)) {
+        this.gameHud.update(this.getGameHudPayload());
+      }
     }
     const rawRenderer = this.renderer.renderer;
     const previousAutoClear = rawRenderer.autoClear;

@@ -93,6 +93,7 @@ export class ParallaxLayerSystem {
   private introTransitionProgress = 1;
   private currentTheme: ThemeMode;
   private visualQuality: GameVisualQuality = buildGameVisualQuality('high');
+  private autoInitEnabled = true;
 
   constructor(
     scene: THREE.Scene,
@@ -174,8 +175,19 @@ export class ParallaxLayerSystem {
     return this.initPromise;
   }
 
+  isInitialized() {
+    return this.initialized;
+  }
+
+  setAutoInitEnabled(enabled: boolean) {
+    this.autoInitEnabled = enabled;
+    if (enabled && this.visible && !this.initialized && !this.initPromise) {
+      void this.init();
+    }
+  }
+
   setVisible(visible: boolean) {
-    if (visible && !this.initialized && !this.initPromise) {
+    if (visible && this.autoInitEnabled && !this.initialized && !this.initPromise) {
       void this.init();
     }
     if (this.visible === visible) {

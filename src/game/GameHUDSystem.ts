@@ -582,7 +582,9 @@ export class GameHUDSystem {
   };
 
   constructor(host: HTMLElement, private readonly i18n: I18nService, private readonly callbacks: GameHUDCallbacks) {
+    recordGameBootDiagnostic('game_hud_display_controller_started');
     this.displayController = new GameDisplayController(host);
+    recordGameBootDiagnostic('game_hud_display_controller_completed');
     this.element = document.createElement('div');
     this.element.className = 'game-hud';
     this.element.hidden = true;
@@ -649,7 +651,6 @@ export class GameHUDSystem {
               <button type="button" data-settings-quality-option="high"></button>
               <button type="button" data-settings-quality-option="medium"></button>
               <button type="button" data-settings-quality-option="low"></button>
-              <button type="button" data-settings-quality-option="ultra_low"></button>
             </div>
             <span class="game-hud__settings-quality-note" data-settings-quality-note></span>
           </div>
@@ -829,7 +830,6 @@ export class GameHUDSystem {
     this.settingsQualityButtons.high = this.element.querySelector<HTMLButtonElement>('[data-settings-quality-option="high"]')!;
     this.settingsQualityButtons.medium = this.element.querySelector<HTMLButtonElement>('[data-settings-quality-option="medium"]')!;
     this.settingsQualityButtons.low = this.element.querySelector<HTMLButtonElement>('[data-settings-quality-option="low"]')!;
-    this.settingsQualityButtons.ultra_low = this.element.querySelector<HTMLButtonElement>('[data-settings-quality-option="ultra_low"]')!;
     this.branchLayer = this.element.querySelector<HTMLDivElement>('.game-hud__branch-layer')!;
     this.stashBar = this.element.querySelector<HTMLDivElement>('.game-hud__stash')!;
     this.inventoryBar = this.element.querySelector<HTMLDivElement>('.game-hud__inventory')!;
@@ -1231,6 +1231,25 @@ export class GameHUDSystem {
       this.toastStack.inert = false;
       this.achievementsOverlay.inert = !this.achievementsOpen;
     }
+  }
+
+  updateLandingFeedbackOverlay(
+    payload: {
+      serial: number;
+      grade: LandingGrade;
+      twist: boolean;
+      progress: number;
+      screenX: number;
+      screenY: number;
+    } | null
+  ) {
+    if (!this.visible) {
+      if (!payload) {
+        this.landingFeedbackDisplay.clear();
+      }
+      return;
+    }
+    this.renderLandingFeedback(payload);
   }
 
   dispose() {
@@ -2497,8 +2516,6 @@ export class GameHUDSystem {
         return this.i18n.t('gameQualityMedium');
       case 'low':
         return this.i18n.t('gameQualityLow');
-      case 'ultra_low':
-        return this.i18n.t('gameQualityUltraLow');
       case 'auto':
       default:
         return this.i18n.t('gameQualityAuto');
