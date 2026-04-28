@@ -1,4 +1,5 @@
 import { getRuntimeViewportMetrics, observeRuntimeViewport } from '../core/viewport';
+import { isAppleMobileRuntime } from '../core/device';
 import {
   recordGameBootDiagnostic,
   recordGameBootDiagnosticError,
@@ -31,6 +32,7 @@ export class GameDisplayController {
   private readonly fullscreenTarget: HTMLElement;
   private readonly listeners = new Set<() => void>();
   private readonly stopObservingViewport: () => void;
+  private readonly preferImmersiveFullscreen: boolean;
   private uiScaleMode: GameUiScaleMode;
   private immersiveActive = false;
   private pendingSyncFrame: number | null = null;
@@ -41,6 +43,7 @@ export class GameDisplayController {
   constructor(private readonly host: HTMLElement) {
     this.shell = host.closest<HTMLElement>('.app-shell') ?? host;
     this.fullscreenTarget = this.shell;
+    this.preferImmersiveFullscreen = isAppleMobileRuntime();
     this.uiScaleMode = readStoredGameUiScaleMode();
     this.stopObservingViewport = observeRuntimeViewport(this.scheduleSync);
     document.addEventListener('fullscreenchange', this.handleFullscreenChange);
@@ -69,6 +72,9 @@ export class GameDisplayController {
   }
 
   isFullscreenSupported() {
+    if (this.preferImmersiveFullscreen) {
+      return false;
+    }
     const fullscreenDocument = document as BrowserFullscreenDocument;
     const fullscreenElement = this.fullscreenTarget as BrowserFullscreenElement;
     return Boolean(
@@ -104,12 +110,13 @@ export class GameDisplayController {
     }
     this.pendingFullscreenAction = 'enter';
     recordGameBootDiagnostic('display_fullscreen_enter_requested', {
-      supported: this.isFullscreenSupported()
+      supported: this.isFullscreenSupported(),
+      immersivePreferred: this.preferImmersiveFullscreen
     });
     try {
       if (!this.isFullscreenSupported()) {
         recordGameBootWarning('display_fullscreen_native_unavailable');
-        this.enableImmersiveMode();
+        this.enableImmersiveMode(this.preferImmersiveFullscreen ? 'apple_mobile_fallback' : 'native_unavailable');
         return;
       }
 
@@ -125,7 +132,7 @@ export class GameDisplayController {
       this.immersiveActive = false;
     } catch {
       recordGameBootWarning('display_fullscreen_request_failed_fallback');
-      this.enableImmersiveMode();
+      this.enableImmersiveMode('request_failed_fallback');
     } finally {
       this.pendingFullscreenAction = null;
       this.sync();
@@ -144,6 +151,7 @@ export class GameDisplayController {
     const fullscreenDocument = document as BrowserFullscreenDocument;
     try {
       this.immersiveActive = false;
+      this.stabilizeMobileViewport();
       if (this.isCurrentlyFullscreen()) {
         if (document.exitFullscreen) {
           await document.exitFullscreen();
@@ -213,12 +221,24 @@ export class GameDisplayController {
     });
   };
 
-  private enableImmersiveMode() {
+  private enableImmersiveMode(reason: 'apple_mobile_fallback' | 'native_unavailable' | 'request_failed_fallback' | 'manual' = 'manual') {
     this.immersiveActive = true;
-    window.scrollTo(0, 0);
-    window.requestAnimationFrame(() => window.scrollTo(0, 0));
-    recordGameBootDiagnostic('display_immersive_enabled');
+    this.stabilizeMobileViewport();
+    recordGameBootDiagnostic('display_immersive_enabled', {
+      reason
+    });
     this.sync();
+  }
+
+  private stabilizeMobileViewport() {
+    window.scrollTo(0, 0);
+    window.requestAnimationFrame(() => {
+      window.scrollTo(0, 0);
+      window.setTimeout(() => {
+        window.scrollTo(0, 0);
+        this.sync();
+      }, 60);
+    });
   }
 
   private sync() {

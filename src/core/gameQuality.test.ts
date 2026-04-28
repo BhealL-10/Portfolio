@@ -33,7 +33,7 @@ describe('gameQuality', () => {
       assetTier: 'low-res',
       showMomentumBoats: false,
       showMusicReactiveBackdrop: false,
-      showParallaxLayers: true,
+      showParallaxLayers: false,
       showDecorativeWaves: true,
       showParticles: true,
       enableHudAnimations: true,
@@ -224,5 +224,27 @@ describe('gameQuality', () => {
 
     expect(controller.getState().resolved).toBe('low');
     expect(controller.getState().recoveryForced).toBe(true);
+  });
+
+  it('forces mobile manual selections to resolve as low at launch time', () => {
+    const controller = new GameQualityController({
+      estimateInput: {
+        isMobile: true,
+        viewportWidth: 430,
+        viewportHeight: 932,
+        devicePixelRatio: 3,
+        hardwareConcurrency: 6,
+        deviceMemory: 6
+      },
+      platformInfo: {
+        isMobile: true,
+        isAppleMobile: true,
+        isAndroid: false
+      },
+      now: () => 0
+    });
+
+    expect(controller.setSelection('high').resolved).toBe('low');
+    expect(controller.setSelection('medium').resolved).toBe('low');
   });
 });

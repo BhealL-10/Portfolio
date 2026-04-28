@@ -117,7 +117,7 @@ const VISUAL_QUALITY_BY_MODE: Record<ResolvedGameQuality, GameVisualQuality> = {
     assetTier: 'low-res',
     showMomentumBoats: false,
     showMusicReactiveBackdrop: false,
-    showParallaxLayers: true,
+    showParallaxLayers: false,
     showDecorativeWaves: true,
     showParticles: true,
     enableHudAnimations: true,
@@ -542,8 +542,11 @@ export class GameQualityController {
   }
 
   private resolveCurrentStateQuality() {
+    if (this.recoveryForced || this.platformInfo.isMobile) {
+      return 'low';
+    }
     const resolved = this.selection === 'auto' ? this.autoQuality : this.selection;
-    return this.recoveryForced ? 'low' : resolved;
+    return resolved;
   }
 
   private applyAutoQualityChange(nextQuality: ResolvedGameQuality, reason: string): GameQualityChangeEvent {

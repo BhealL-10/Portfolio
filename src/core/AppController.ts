@@ -816,6 +816,13 @@ export class AppController {
     const adventureLoadStartedAt = performance.now();
     this.adventureLaunchPreparationPromise = this.ensurePrimateriePortalLoaded().then(async () => {
       const mobile = isMobileRuntime();
+      if (mobile && this.gameQualityState.resolved !== 'low') {
+        this.setGameQualitySelection('low');
+        recordGameBootDiagnostic('mobile_launch_quality_forced_low', {
+          selection: this.gameQualityState.selection,
+          resolved: this.gameQualityState.resolved
+        });
+      }
       this.primateriePortal.setBusy(true);
       this.primateriePortal.setLoading(true);
       this.primateriePortal.setLoadingMessage(
@@ -1220,6 +1227,14 @@ export class AppController {
   }
 
   private prepareParallaxForAdventureLaunch() {
+    if (!this.gameQualityState.visual.showParallaxLayers && !this.gameQualityState.visual.showMomentumBoats) {
+      this.parallaxLayers.setAutoInitEnabled(false);
+      recordGameBootDiagnostic('parallax_init_skipped_for_low_quality', {
+        quality: this.gameQualityState.resolved,
+        mobile: this.performanceProfile.isMobile
+      });
+      return;
+    }
     if (this.shouldDeferParallaxInitOnLaunch()) {
       this.parallaxLayers.setAutoInitEnabled(false);
       recordGameBootDiagnostic('parallax_init_deferred_for_launch', {
@@ -1233,6 +1248,12 @@ export class AppController {
   }
 
   private scheduleDeferredParallaxInit() {
+    if (!this.gameQualityState.visual.showParallaxLayers && !this.gameQualityState.visual.showMomentumBoats) {
+      recordGameBootDiagnostic('parallax_init_warmup_skipped_quality', {
+        quality: this.gameQualityState.resolved
+      });
+      return;
+    }
     if (
       this.deferredParallaxInitScheduled ||
       this.deferredParallaxInitPromise ||

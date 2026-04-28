@@ -345,19 +345,29 @@ body {
   background: var(--color-bg);
   color: var(--color-fg);
   font-family: var(--font-body);
+  min-height: var(--game-height);
 }
 
 #app,
 .app-shell {
   position: relative;
   width: 100vw;
+  width: var(--game-width);
   height: 100vh;
   height: 100svh;
   height: 100dvh;
+  height: var(--game-height);
   min-height: 100vh;
   min-height: 100svh;
   min-height: 100dvh;
+  min-height: var(--game-height);
   overflow: hidden;
+}
+
+html[data-runtime-device='mobile'] .app-shell {
+  position: fixed;
+  top: var(--game-viewport-offset-top);
+  left: var(--game-viewport-offset-left);
 }
 
 .app-shell__canvas,
@@ -396,9 +406,9 @@ body {
 }
 
 .app-shell[data-game-display-mode='fullscreen'] {
-  width: 100vw;
-  height: 100dvh;
-  min-height: 100dvh;
+  width: var(--game-width);
+  height: var(--game-height);
+  min-height: var(--game-height);
 }
 
 body.game-immersive-active,

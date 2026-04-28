@@ -60,10 +60,13 @@ export function getRuntimeViewportMetrics(): RuntimeViewportMetrics {
   }
 
   const visualViewport = getVisualViewport();
-  const layoutWidth = Math.max(1, Math.round(window.innerWidth || visualViewport?.width || 1));
-  const layoutHeight = Math.max(1, Math.round(window.innerHeight || visualViewport?.height || 1));
-  const width = Math.max(1, Math.round(visualViewport?.width || layoutWidth));
-  const height = Math.max(1, Math.round(visualViewport?.height || layoutHeight));
+  const documentElement = typeof document === 'undefined' ? null : document.documentElement;
+  const documentWidth = Math.round(documentElement?.clientWidth || 0);
+  const documentHeight = Math.round(documentElement?.clientHeight || 0);
+  const layoutWidth = Math.max(1, documentWidth || Math.round(window.innerWidth || visualViewport?.width || 1));
+  const layoutHeight = Math.max(1, documentHeight || Math.round(window.innerHeight || visualViewport?.height || 1));
+  const width = Math.max(1, Math.min(layoutWidth, Math.round(visualViewport?.width || layoutWidth)));
+  const height = Math.max(1, Math.min(layoutHeight, Math.round(visualViewport?.height || layoutHeight)));
 
   return {
     width,
