@@ -1,6 +1,6 @@
 export const THEME_TOGGLE_ASSETS = {
-  dark: new URL('../../assets/images/shared/theme-icons/moon.svg', import.meta.url).href,
-  light: new URL('../../assets/images/shared/theme-icons/sun.svg', import.meta.url).href
+  dark: new URL('../../assets/images/shared/theme-icons/sun.svg', import.meta.url).href,
+  light: new URL('../../assets/images/shared/theme-icons/moon.svg', import.meta.url).href
 } as const;
 
 export const LANGUAGE_BUTTON_ASSETS = {

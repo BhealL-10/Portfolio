@@ -1,3 +1,4 @@
+import type { GameAssetTier } from '../core/gameQuality';
 import type { Language } from '../types/content';
 import { LANGUAGE_BUTTON_ASSETS, THEME_TOGGLE_ASSETS } from '../ui/AppChromeAssetResolver';
 
@@ -33,12 +34,13 @@ export class primateriePortal {
   private readonly patreonButtonLabel: HTMLSpanElement;
   private readonly communityArtworkEnabled: boolean;
   private communityArtworkLoader: Promise<void> | null = null;
-  private communityArtworkAssets: (typeof import('./PrimateriePortalCommunityAssets'))['COMMUNITY_BUTTON_ASSETS'] | null = null;
+  private communityArtworkResolver: (typeof import('./PrimateriePortalCommunityAssets'))['resolveCommunityButtonAssetSet'] | null = null;
   private visible = false;
   private busy = false;
   private loading = false;
   private locale: Language = 'fr';
   private loadingMessageOverride: string | null = null;
+  private communityAssetTier: GameAssetTier;
 
   constructor(
     host: HTMLElement,
@@ -50,9 +52,11 @@ export class primateriePortal {
     },
     options: {
       loadCommunityArtwork?: boolean;
+      communityAssetTier?: GameAssetTier;
     } = {}
   ) {
     this.communityArtworkEnabled = options.loadCommunityArtwork ?? true;
+    this.communityAssetTier = options.communityAssetTier ?? 'normal';
     this.element = document.createElement('div');
     this.element.className = 'primaterie-portal';
     this.element.innerHTML = `
@@ -172,6 +176,14 @@ export class primateriePortal {
     this.renderStatic();
   }
 
+  setCommunityAssetTier(assetTier: GameAssetTier) {
+    if (this.communityAssetTier === assetTier) {
+      return;
+    }
+    this.communityAssetTier = assetTier;
+    this.renderStatic();
+  }
+
   setLoadingMessage(message: string | null) {
     this.loadingMessageOverride = message;
     this.renderStatic();
@@ -222,7 +234,7 @@ export class primateriePortal {
   }
 
   private applyCommunityArtwork(theme: 'dark' | 'light') {
-    if (!this.communityArtworkAssets) {
+    if (!this.communityArtworkResolver) {
       this.discordButton.classList.remove('has-artwork');
       this.patreonButton.classList.remove('has-artwork');
       this.discordButtonImage.removeAttribute('src');
@@ -230,21 +242,22 @@ export class primateriePortal {
       return;
     }
 
+    const assets = this.communityArtworkResolver(this.communityAssetTier);
     this.discordButton.classList.add('has-artwork');
     this.patreonButton.classList.add('has-artwork');
-    this.discordButtonImage.src = this.communityArtworkAssets.discord[theme];
-    this.patreonButtonImage.src = this.communityArtworkAssets.patreon[theme];
+    this.discordButtonImage.src = assets.discord[theme];
+    this.patreonButtonImage.src = assets.patreon[theme];
   }
 
   private scheduleCommunityArtworkLoad() {
-    if (!this.communityArtworkEnabled || !this.visible || this.communityArtworkAssets || this.communityArtworkLoader) {
+    if (!this.communityArtworkEnabled || !this.visible || this.communityArtworkResolver || this.communityArtworkLoader) {
       return;
     }
 
     const runLoad = () => {
       this.communityArtworkLoader = import('./PrimateriePortalCommunityAssets')
         .then((module) => {
-          this.communityArtworkAssets = module.COMMUNITY_BUTTON_ASSETS;
+          this.communityArtworkResolver = module.resolveCommunityButtonAssetSet;
           this.renderStatic();
         })
         .finally(() => {

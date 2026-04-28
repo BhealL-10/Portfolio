@@ -3,8 +3,10 @@ import { getRuntimeViewportSize } from './viewport';
 
 export type GameQualitySelection = 'auto' | 'high' | 'medium' | 'low';
 export type ResolvedGameQuality = Exclude<GameQualitySelection, 'auto'>;
+export type GameAssetTier = 'normal' | 'low-res';
 
 export interface GameVisualQuality {
+  assetTier: GameAssetTier;
   showMomentumBoats: boolean;
   showMusicReactiveBackdrop: boolean;
   showParallaxLayers: boolean;
@@ -86,6 +88,7 @@ const RESOLVED_QUALITY_ORDER: readonly ResolvedGameQuality[] = ['high', 'medium'
 
 const VISUAL_QUALITY_BY_MODE: Record<ResolvedGameQuality, GameVisualQuality> = {
   high: {
+    assetTier: 'normal',
     showMomentumBoats: true,
     showMusicReactiveBackdrop: true,
     showParallaxLayers: true,
@@ -98,6 +101,7 @@ const VISUAL_QUALITY_BY_MODE: Record<ResolvedGameQuality, GameVisualQuality> = {
     enableGlowEffects: true
   },
   medium: {
+    assetTier: 'normal',
     showMomentumBoats: false,
     showMusicReactiveBackdrop: true,
     showParallaxLayers: true,
@@ -110,6 +114,7 @@ const VISUAL_QUALITY_BY_MODE: Record<ResolvedGameQuality, GameVisualQuality> = {
     enableGlowEffects: true
   },
   low: {
+    assetTier: 'low-res',
     showMomentumBoats: false,
     showMusicReactiveBackdrop: false,
     showParallaxLayers: true,

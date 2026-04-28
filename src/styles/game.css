@@ -4697,7 +4697,7 @@ html[data-runtime-device='mobile'] .game-hud__settings-quality-options {
   position: absolute;
   left: 0;
   top: 0;
-  transform: translate3d(var(--primaterie-anchor-x, 50vw), calc(var(--primaterie-anchor-y, 28vh) - 104px), 0) translateX(-50%);
+  transform: translate3d(var(--primaterie-anchor-x, 50vw), calc(var(--primaterie-anchor-y, 28vh) - clamp(112px, 14dvh, 140px)), 0) translateX(-50%);
   pointer-events: none;
   z-index: 1;
 }

@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import type { GameAssetTier } from '../core/gameQuality';
 import type { ThemeMode } from '../types/content';
 import type { ParallaxLayerVariantAsset } from './ParallaxLayerAssetResolver';
-import { loadParallaxLayerVariants } from './ParallaxLayerAssetResolver';
+import { loadParallaxLayerVariants, normalizeParallaxDisplayedHeight } from './ParallaxLayerAssetResolver';
 import type { ParallaxLayerConfig } from './ParallaxLayerConfig';
 
 const PANEL_GEOMETRY = new THREE.PlaneGeometry(1, 1);
@@ -42,6 +43,7 @@ export class ParallaxStrip {
   private randomState: number;
   private assetSignature = '';
   private assetRefreshRequestId = 0;
+  private assetTier: GameAssetTier = 'normal';
 
   constructor(
     parent: THREE.Object3D,
@@ -56,7 +58,8 @@ export class ParallaxStrip {
     parent.add(this.group);
   }
 
-  async init(viewportHeightPx: number) {
+  async init(viewportHeightPx: number, assetTier: GameAssetTier = this.assetTier) {
+    this.assetTier = assetTier;
     await this.ensureAssets(viewportHeightPx);
   }
 
@@ -68,12 +71,23 @@ export class ParallaxStrip {
     this.group.visible = visible;
   }
 
-  setTheme(theme: ThemeMode, viewportHeightPx: number) {
+  setTheme(theme: ThemeMode, viewportHeightPx: number, assetTier: GameAssetTier = this.assetTier) {
     if (this.theme === theme) {
+      this.setAssetTier(assetTier);
       return;
     }
     this.theme = theme;
+    this.assetTier = assetTier;
     void this.ensureAssets(viewportHeightPx);
+  }
+
+  setAssetTier(assetTier: GameAssetTier) {
+    if (this.assetTier === assetTier) {
+      return;
+    }
+    this.assetTier = assetTier;
+    this.assetSignature = '';
+    this.layoutDirty = true;
   }
 
   setMirrorMode(enabled: boolean) {
@@ -96,24 +110,33 @@ export class ParallaxStrip {
       return;
     }
 
-    void this.ensureAssets(context.displayedHeightPx);
+    if (!this.isRenderableContext(context)) {
+      return;
+    }
+
+    const normalizedContext = {
+      ...context,
+      displayedHeightPx: normalizeParallaxDisplayedHeight(context.displayedHeightPx, this.assetTier)
+    };
+
+    void this.ensureAssets(normalizedContext.displayedHeightPx);
     if (this.variants.length === 0) {
       return;
     }
 
     const viewportChanged =
-      Math.abs(context.viewportWidthPx - this.lastViewportWidthPx) > 0.5 ||
-      Math.abs(context.viewportHeightPx - this.lastViewportHeightPx) > 0.5 ||
-      Math.abs(context.displayedHeightPx - this.lastDisplayedHeightPx) > 0.5;
+      Math.abs(normalizedContext.viewportWidthPx - this.lastViewportWidthPx) > 0.5 ||
+      Math.abs(normalizedContext.viewportHeightPx - this.lastViewportHeightPx) > 0.5 ||
+      Math.abs(normalizedContext.displayedHeightPx - this.lastDisplayedHeightPx) > 0.5;
 
     if (this.layoutDirty || viewportChanged) {
-      this.rebuildPanels(context);
+      this.rebuildPanels(normalizedContext);
       return;
     }
 
-    this.lastTravelOffsetPx = context.travelOffsetPx;
-    this.positionPanels(context);
-    this.recyclePanels(context);
+    this.lastTravelOffsetPx = normalizedContext.travelOffsetPx;
+    this.positionPanels(normalizedContext);
+    this.recyclePanels(normalizedContext);
   }
 
   dispose() {
@@ -128,14 +151,17 @@ export class ParallaxStrip {
   }
 
   private async ensureAssets(displayedHeightPx: number) {
-    const roundedHeight = Math.max(this.config.minDisplayedHeightPx, Math.round(displayedHeightPx));
-    const nextSignature = `${this.theme}:${roundedHeight}`;
+    const roundedHeight = Math.max(
+      this.config.minDisplayedHeightPx,
+      normalizeParallaxDisplayedHeight(this.sanitizeDisplayedHeight(displayedHeightPx), this.assetTier)
+    );
+    const nextSignature = `${this.theme}:${this.assetTier}:${roundedHeight}`;
     if (nextSignature === this.assetSignature && this.variants.length > 0) {
       return;
     }
 
     const requestId = ++this.assetRefreshRequestId;
-    const variants = await loadParallaxLayerVariants(this.config.category, this.theme, roundedHeight, this.renderer);
+    const variants = await loadParallaxLayerVariants(this.config.category, this.theme, roundedHeight, this.renderer, this.assetTier);
     if (requestId !== this.assetRefreshRequestId) {
       return;
     }
@@ -267,6 +293,9 @@ export class ParallaxStrip {
       const centerScreenY = context.bottomScreenY - panel.heightPx * 0.5;
       const localX = centerScreenX * unitsPerPixel;
       const localY = (context.viewportHeightPx * 0.5 - centerScreenY) * unitsPerPixel;
+      if (![worldWidth, worldHeight, localX, localY].every(Number.isFinite)) {
+        continue;
+      }
       panel.mesh.position.set(localX, localY, this.config.localZ);
       panel.mesh.scale.set((this.mirrorMode ? -1 : 1) * worldWidth, (context.verticalFlip ? -1 : 1) * worldHeight, 1);
       panel.mesh.material.opacity = opacity;
@@ -310,6 +339,25 @@ export class ParallaxStrip {
   private clearMaterialCache() {
     this.materialCache.forEach((material) => material.dispose());
     this.materialCache.clear();
+  }
+
+  private sanitizeDisplayedHeight(displayedHeightPx: number) {
+    return Number.isFinite(displayedHeightPx) && displayedHeightPx > 0
+      ? displayedHeightPx
+      : this.config.minDisplayedHeightPx;
+  }
+
+  private isRenderableContext(context: ParallaxStripUpdateContext) {
+    return (
+      Number.isFinite(context.viewportWidthPx) &&
+      Number.isFinite(context.viewportHeightPx) &&
+      Number.isFinite(context.bottomScreenY) &&
+      Number.isFinite(context.displayedHeightPx) &&
+      Number.isFinite(context.travelOffsetPx) &&
+      context.viewportWidthPx > 0 &&
+      context.viewportHeightPx > 0 &&
+      context.displayedHeightPx > 0
+    );
   }
 }
 

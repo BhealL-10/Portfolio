@@ -14,6 +14,7 @@ import {
 describe('gameQuality', () => {
   it('keeps medium limited to momentum boats only', () => {
     expect(buildGameVisualQuality('medium')).toEqual({
+      assetTier: 'normal',
       showMomentumBoats: false,
       showMusicReactiveBackdrop: true,
       showParallaxLayers: true,
@@ -29,6 +30,7 @@ describe('gameQuality', () => {
 
   it('keeps low limited to boats plus reactive backdrop', () => {
     expect(buildGameVisualQuality('low')).toEqual({
+      assetTier: 'low-res',
       showMomentumBoats: false,
       showMusicReactiveBackdrop: false,
       showParallaxLayers: true,

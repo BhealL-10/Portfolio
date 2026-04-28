@@ -60,7 +60,7 @@ function resolveProfile() {
       rendererPixelBudget: 1_050_000,
       enableAutoHelpTutorial: false,
       prefetchGameRuntimeOnHubIdle: false,
-      loadPortalCommunityArtwork: false
+      loadPortalCommunityArtwork: true
     } satisfies RuntimePerformanceProfile;
   }
 
@@ -77,7 +77,7 @@ function resolveProfile() {
       rendererPixelBudget: 1_350_000,
       enableAutoHelpTutorial: false,
       prefetchGameRuntimeOnHubIdle: false,
-      loadPortalCommunityArtwork: false
+      loadPortalCommunityArtwork: true
     } satisfies RuntimePerformanceProfile;
   }
 

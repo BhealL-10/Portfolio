@@ -572,7 +572,8 @@ export class AppController {
             onLanguageToggle: () => this.i18n.toggle()
           },
           {
-            loadCommunityArtwork: this.performanceProfile.loadPortalCommunityArtwork
+            loadCommunityArtwork: this.performanceProfile.loadPortalCommunityArtwork,
+            communityAssetTier: this.gameQualityState.visual.assetTier
           }
         );
         portal.setLocale(this.i18n.current);
@@ -2606,6 +2607,7 @@ export class AppController {
     }
     this.gameRuntime?.game.setVisualQuality(this.gameQualityState.visual);
     this.gameRuntime?.gameHud.setQualityState(this.gameQualityState);
+    this.primateriePortalRuntime?.setCommunityAssetTier(this.gameQualityState.visual.assetTier);
 
     if (forceRefresh) {
       this.refreshUI();

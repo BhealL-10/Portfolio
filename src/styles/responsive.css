@@ -893,7 +893,7 @@ html[data-runtime-device='mobile'] {
   }
 
   .primaterie-portal__logo-wrap {
-    transform: translate3d(var(--primaterie-anchor-x, 50vw), calc(var(--primaterie-anchor-y, 50vh) - 78px), 0) translateX(-50%);
+    transform: translate3d(var(--primaterie-anchor-x, 50vw), calc(var(--primaterie-anchor-y, 50vh) - clamp(98px, 16dvh, 132px)), 0) translateX(-50%);
   }
 
   .primaterie-portal__social {
@@ -911,6 +911,10 @@ html[data-runtime-device='mobile'] {
   .primaterie-portal__chrome-button {
     width: 30px;
     height: 30px;
+  }
+
+  html[data-runtime-device='mobile'][data-runtime-orientation='portrait'] {
+    --game-primaterie-logo-width: min(calc(112px * var(--game-ui-scale)), 30vw);
   }
 
   .game-hud__achievements-panel {
